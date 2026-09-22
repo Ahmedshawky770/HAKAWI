@@ -1,9 +1,9 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
 import { Observable, from, of } from 'rxjs';
 import { map, switchMap, catchError } from 'rxjs/operators';
-import { ValkeyService } from '../services/valkey.service.js';
-import { WinstonLoggerService } from '../services/winston-logger.service.js';
-import { GetCacheKey, GetCacheTtl } from '../decorators/cache.decorator.js';
+import { ValkeyService } from '../services/valkey.service.ts';
+import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+import { GetCacheKey, GetCacheTtl } from '../decorators/cache.decorator.ts';
 
 @Injectable()
 export class CacheInterceptor implements NestInterceptor {

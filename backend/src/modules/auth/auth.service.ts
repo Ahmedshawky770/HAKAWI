@@ -1,11 +1,11 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
-import { UsersService } from '../users/users.service.js';
-import { PasswordHasher } from '../../common/utils/password.util.js';
-import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.js';
-import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto, OAuthTokensDto, OAuthUserInfoDto } from './dto/auth.dto.js';
-import { AccountType } from '../../common/constants/roles.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
+import { UsersService } from '../users/users.service.ts';
+import { PasswordHasher } from '../../common/utils/password.util.ts';
+import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.ts';
+import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto, OAuthTokensDto, OAuthUserInfoDto } from './dto/auth.dto.ts';
+import { AccountType } from '../../common/constants/roles.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 @Injectable()
 export class AuthService {

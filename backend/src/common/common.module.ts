@@ -3,13 +3,13 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { WinstonLoggerService } from './services/winston-logger.service.js';
-import { ValkeyService } from './services/valkey.service.js';
-import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
-import { RolesGuard } from './guards/roles.guard.js';
-import { PasswordHasher } from './utils/password.util.js';
-import { JwtHelper } from './utils/jwt.util.js';
-import { DatabaseModule } from '../db/database.module.js';
+import { WinstonLoggerService } from './services/winston-logger.service.ts';
+import { ValkeyService } from './services/valkey.service.ts';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
+import { RolesGuard } from './guards/roles.guard.ts';
+import { PasswordHasher } from './utils/password.util.ts';
+import { JwtHelper } from './utils/jwt.util.ts';
+import { DatabaseModule } from '../db/database.module.ts';
 
 @Module({
   imports: [

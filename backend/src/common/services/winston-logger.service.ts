@@ -1,17 +1,19 @@
-import { Injectable, LoggerService, LogLevel } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as winston from 'winston';
 
-const logLevels: Partial<Record<LogLevel, number>> = {
+const logLevels = {
   error: 0,
   warn: 1,
   info: 2,
   debug: 3,
   verbose: 4,
   fatal: 5,
-};
+} as const;
+
+type WinstonLogLevel = keyof typeof logLevels;
 
 @Injectable()
-export class WinstonLoggerService implements LoggerService {
+export class WinstonLoggerService {
   private readonly logger: winston.Logger;
 
   constructor() {
@@ -39,27 +41,27 @@ export class WinstonLoggerService implements LoggerService {
     });
   }
 
-  info(message: string, context?: string) {
+  info(message: string, context?: string): void {
     this.logger.info(message, { context });
   }
 
-  log(message: string, context?: string) {
+  log(message: string, context?: string): void {
     this.logger.info(message, { context });
   }
 
-  error(message: string, trace?: string, context?: string) {
+  error(message: string, trace?: string, context?: string): void {
     this.logger.error(message, { context, stack: trace });
   }
 
-  warn(message: string, context?: string) {
+  warn(message: string, context?: string): void {
     this.logger.warn(message, { context });
   }
 
-  debug(message: string, context?: string) {
+  debug(message: string, context?: string): void {
     this.logger.debug(message, { context });
   }
 
-  verbose(message: string, context?: string) {
+  verbose(message: string, context?: string): void {
     this.logger.verbose(message, { context });
   }
 }

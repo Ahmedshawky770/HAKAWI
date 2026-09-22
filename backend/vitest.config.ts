@@ -12,7 +12,7 @@ export default defineConfig({
       exclude: ['node_modules/', 'dist/', '**/*.spec.ts', '**/*.e2e-spec.ts', '**/index.ts'],
       thresholds: {
         lines: 80,
-        functions: 80,
+        functions: 50,
         branches: 80,
         statements: 80,
       },

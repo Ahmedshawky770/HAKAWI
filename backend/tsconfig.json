@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "Node16",
+    "moduleResolution": "node16",
     "resolvePackageJsonExports": true,
     "esModuleInterop": true,
     "isolatedModules": true,
@@ -10,6 +10,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
@@ -20,5 +21,5 @@
     "types": ["vitest/globals", "node"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "test", "migrations", "seeds"]
+  "exclude": ["node_modules", "dist", "test", "migrations", "seeds", "**/*.spec.ts"]
 }

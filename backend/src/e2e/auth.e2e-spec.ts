@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../app.module.js';
-import { JwtHelper } from '../common/utils/jwt.util.js';
+import { AppModule } from '../app.module.ts';
+import { JwtHelper } from '../common/utils/jwt.util.ts';
 
 describe('Auth E2E', () => {
   let app: INestApplication;

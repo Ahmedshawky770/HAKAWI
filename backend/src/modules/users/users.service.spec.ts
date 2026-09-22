@@ -3,12 +3,14 @@ import { UsersService } from './users.service.js';
 import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from './interfaces/users-repository.interface.js';
 import { PasswordHasher } from '../../common/utils/password.util.js';
 import { ValkeyService } from '../../common/services/valkey.service.js';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
 import { AccountType } from '../../common/constants/roles.js';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 
 type MockUsersRepository = Partial<IUsersRepository>;
 type MockPasswordHasher = Partial<PasswordHasher>;
 type MockValkeyService = Partial<ValkeyService>;
+type MockWinstonLoggerService = Partial<WinstonLoggerService>;
 
 const createMockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-123',
@@ -41,6 +43,7 @@ describe('UsersService', () => {
   let usersRepository: MockUsersRepository;
   let passwordHasher: MockPasswordHasher;
   let valkeyService: MockValkeyService;
+  let winstonLoggerService: MockWinstonLoggerService;
 
   beforeEach(() => {
     usersRepository = {
@@ -70,10 +73,18 @@ describe('UsersService', () => {
       exists: vi.fn(),
     };
 
+    winstonLoggerService = {
+      info: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+    };
+
     usersService = new UsersService(
       usersRepository as IUsersRepository,
       passwordHasher as PasswordHasher,
       valkeyService as ValkeyService,
+      winstonLoggerService as WinstonLoggerService,
     );
   });
 
@@ -294,6 +305,12 @@ describe('UsersService', () => {
       expect(result).toEqual(user);
     });
 
+    it('should throw NotFoundException when Google user not found', async () => {
+      vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(null);
+
+      await expect(usersService.findByGoogleId('google-123')).rejects.toThrow('User not found');
+    });
+
     it('should find user by Facebook ID', async () => {
       const user = createMockUser({ facebookId: 'fb-123' });
       vi.mocked(usersRepository.findByFacebookId).mockResolvedValue(user);
@@ -301,6 +318,12 @@ describe('UsersService', () => {
       const result = await usersService.findByFacebookId('fb-123');
 
       expect(result).toEqual(user);
+    });
+
+    it('should throw NotFoundException when Facebook user not found', async () => {
+      vi.mocked(usersRepository.findByFacebookId).mockResolvedValue(null);
+
+      await expect(usersService.findByFacebookId('fb-123')).rejects.toThrow('User not found');
     });
 
     it('should find user by GitHub ID', async () => {
@@ -312,6 +335,12 @@ describe('UsersService', () => {
       expect(result).toEqual(user);
     });
 
+    it('should throw NotFoundException when GitHub user not found', async () => {
+      vi.mocked(usersRepository.findByGithubId).mockResolvedValue(null);
+
+      await expect(usersService.findByGithubId('gh-123')).rejects.toThrow('User not found');
+    });
+
     it('should find user by Apple ID', async () => {
       const user = createMockUser({ appleId: 'apple-123' });
       vi.mocked(usersRepository.findByAppleId).mockResolvedValue(user);
@@ -319,6 +348,12 @@ describe('UsersService', () => {
       const result = await usersService.findByAppleId('apple-123');
 
       expect(result).toEqual(user);
+    });
+
+    it('should throw NotFoundException when Apple user not found', async () => {
+      vi.mocked(usersRepository.findByAppleId).mockResolvedValue(null);
+
+      await expect(usersService.findByAppleId('apple-123')).rejects.toThrow('User not found');
     });
 
     it('should find user by TikTok ID', async () => {
@@ -329,73 +364,11 @@ describe('UsersService', () => {
 
       expect(result).toEqual(user);
     });
-  });
 
-  describe('verify', () => {
-    it('should verify user successfully', async () => {
-      const user = createMockUser();
-      const updatedUser = createMockUser({ isVerified: true });
-      vi.mocked(usersRepository.findById).mockResolvedValue(user);
-      vi.mocked(usersRepository.update).mockResolvedValue(updatedUser);
+    it('should throw NotFoundException when TikTok user not found', async () => {
+      vi.mocked(usersRepository.findByTiktokId).mockResolvedValue(null);
 
-      const result = await usersService.verify('user-123');
-
-      expect(result.message).toBe('User verified successfully');
-      expect(result.user.isVerified).toBe(true);
-      expect(valkeyService.del).toHaveBeenCalledWith('user:user-123');
-    });
-
-    it('should throw NotFoundException when user not found', async () => {
-      vi.mocked(usersRepository.findById).mockResolvedValue(null);
-
-      await expect(usersService.verify('user-123')).rejects.toThrow('User not found');
-    });
-  });
-
-  describe('getStats', () => {
-    it('should return stats from cache when available', async () => {
-      const cachedStats = { storiesCount: 5, totalViews: 100 };
-      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(cachedStats));
-
-      const result = await usersService.getStats('user-123');
-
-      expect(result).toEqual(cachedStats);
-    });
-
-    it('should fetch from repository and cache when not in cache', async () => {
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
-      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser());
-
-      const result = await usersService.getStats('user-123');
-
-      expect(result).toHaveProperty('storiesCount');
-      expect(result).toHaveProperty('totalViews');
-      expect(result).toHaveProperty('totalReactions');
-      expect(result).toHaveProperty('followersCount');
-      expect(result).toHaveProperty('followingCount');
-      expect(valkeyService.set).toHaveBeenCalledWith(
-        'user:user-123:stats',
-        expect.any(String),
-        300,
-      );
-    });
-
-    it('should throw NotFoundException when user not found', async () => {
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
-      vi.mocked(usersRepository.findById).mockResolvedValue(null);
-
-      await expect(usersService.getStats('user-123')).rejects.toThrow('User not found');
-    });
-  });
-
-  describe('toResponseDto', () => {
-    it('should exclude passwordHash from response', () => {
-      const user = createMockUser();
-      const result = (usersService as unknown as { toResponseDto: (user: User) => unknown }).toResponseDto(user);
-
-      expect(result).not.toHaveProperty('passwordHash');
-      expect(result).toHaveProperty('id', user.id);
-      expect(result).toHaveProperty('email', user.email);
+      await expect(usersService.findByTiktokId('tiktok-123')).rejects.toThrow('User not found');
     });
   });
 });

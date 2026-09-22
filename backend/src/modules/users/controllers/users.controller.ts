@@ -1,25 +1,22 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { Public } from '../../common/decorators/roles.decorator.js';
-import { UsersService } from '../services/users.service.js';
+import { Controller, Get, Param, Patch, UseGuards, Body, Post } from '@nestjs/common';
+import { Public } from '../../../common/decorators/roles.decorator.ts';
+import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { UpdateUserDto } from '../dto/users.dto.ts';
+import { UsersService } from '../users.service.ts';
 
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Public()
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
-
-  @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  async findById(@Param('id') id: string) {
+    return this.usersService.findById(id);
   }
 
-  @Post()
-  create(@Body() data: unknown) {
-    return this.usersService.create(data);
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(id, updateUserDto);
   }
 }

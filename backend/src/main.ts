@@ -1,8 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
+import { AppModule } from './app.module.ts';
 import { Logger } from '@nestjs/common';
-import { WinstonLoggerService } from './common/services/winston-logger.service.js';
-import { WafMiddleware } from './common/middleware/waf.middleware.js';
+import { WinstonLoggerService } from './common/services/winston-logger.service.ts';
+import { WafMiddleware } from './common/middleware/waf.middleware.ts';
 import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {

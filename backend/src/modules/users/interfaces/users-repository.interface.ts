@@ -1,6 +1,6 @@
-import { symbol } from '../../common/utils/symbol.util.js';
-import type { User } from '../../../db/schema/users.schema.js';
-import type { NewUser } from '../../../db/schema/users.schema.js';
+import { symbol } from '../../../common/utils/symbol.util.ts';
+import type { User } from '../../../db/schema/users.schema.ts';
+import type { NewUser } from '../../../db/schema/users.schema.ts';
 
 export const USERS_REPOSITORY = symbol('USERS_REPOSITORY');
 

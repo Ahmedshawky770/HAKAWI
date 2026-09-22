@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { db } from '../index.js';
+import { db } from '../index.ts';
 import { sql } from 'drizzle-orm';
 
 const MIGRATIONS_TABLE = 'drizzle_migrations';

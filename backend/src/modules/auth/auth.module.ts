@@ -1,17 +1,17 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from './auth.service.js';
-import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.ts';
+import { AuthController } from './auth.controller.ts';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UsersModule } from '../users/users.module.js';
-import { JwtStrategy } from './strategies/jwt.strategy.js';
-import { CommonModule } from '../../common/common.module.js';
-import { GoogleStrategy } from './strategies/google.strategy.js';
-import { AppleStrategy } from './strategies/apple.strategy.js';
-import { FacebookStrategy } from './strategies/facebook.strategy.js';
-import { GithubStrategy } from './strategies/github.strategy.js';
-import { TiktokStrategy } from './strategies/tiktok.strategy.js';
+import { UsersModule } from '../users/users.module.ts';
+import { JwtStrategy } from './strategies/jwt.strategy.ts';
+import { CommonModule } from '../../common/common.module.ts';
+import { GoogleStrategy } from './strategies/google.strategy.ts';
+import { AppleStrategy } from './strategies/apple.strategy.ts';
+import { FacebookStrategy } from './strategies/facebook.strategy.ts';
+import { GithubStrategy } from './strategies/github.strategy.ts';
+import { TiktokStrategy } from './strategies/tiktok.strategy.ts';
 
 @Module({
   imports: [

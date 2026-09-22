@@ -1,8 +1,8 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY } from '../decorators/roles.decorator.js';
-import { AdminRole, AccountType } from '../constants/roles.js';
-import { RequireAdminRole } from '../decorators/roles.decorator.js';
+import { IS_PUBLIC_KEY } from '../decorators/roles.decorator.ts';
+import { AdminRole, AccountType } from '../constants/roles.ts';
+import { RequireAdminRole } from '../decorators/roles.decorator.ts';
 
 @Injectable()
 export class RolesGuard implements CanActivate {

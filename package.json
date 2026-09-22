@@ -1,7 +1,24 @@
 {
-  "dependencies": {
-    "@nestjs/config": "^12.0.0",
-    "@nestjs/jwt": "^12.0.2",
-    "pg": "^8.23.0"
+  "name": "hakawi",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run start:dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "lint": "npm run lint --workspace=backend && npm run lint --workspace=frontend",
+    "test": "npm run test --workspace=backend",
+    "typecheck": "npm run typecheck --workspace=backend && npm run typecheck --workspace=frontend",
+    "migration:run": "npm run db:push --workspace=backend",
+    "seed:dev": "npm run seed:dev --workspace=backend",
+    "seed:test": "npm run seed:test --workspace=backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

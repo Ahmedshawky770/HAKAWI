@@ -40,9 +40,12 @@ type MockValkeyService = {
 };
 
 type MockWinstonLoggerService = {
+  info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
   warn: ReturnType<typeof vi.fn>;
+  debug: ReturnType<typeof vi.fn>;
+  verbose: ReturnType<typeof vi.fn>;
 };
 
 describe('AuthService', () => {
@@ -85,9 +88,12 @@ describe('AuthService', () => {
     };
 
     winstonLoggerService = {
+      info: vi.fn(),
       log: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
+      debug: vi.fn(),
+      verbose: vi.fn(),
     };
 
     authService = new AuthService(
@@ -532,6 +538,44 @@ describe('AuthService', () => {
     it('should throw BadRequestException for unsupported provider', async () => {
       await expect(authService.oauthLogin('unknown', { id: '1', email: 'test@example.com', name: 'Test' }))
         .rejects.toThrow('Unsupported OAuth provider: unknown');
+    });
+
+    it('should login existing Facebook OAuth user', async () => {
+      vi.mocked(usersService.findByFacebookId).mockResolvedValue({
+        id: 'user-456',
+        email: 'fbuser@example.com',
+        username: 'fbuser',
+        name: 'FB User',
+        accountType: AccountType.READER,
+        passwordHash: null,
+        adminRole: null,
+        avatar: null,
+        bio: null,
+        googleId: null,
+        facebookId: 'fb-id-123',
+        twitterId: null,
+        githubId: null,
+        appleId: null,
+        tiktokId: null,
+        isVerified: false,
+        onboardingCompleted: false,
+        accessBlocked: false,
+        lastLoginAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User);
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+
+      const result = await authService.oauthLogin('facebook', {
+        id: 'fb-id-123',
+        email: 'fbuser@example.com',
+        name: 'FB User',
+      });
+
+      expect(result).toHaveProperty('tokens');
+      expect(result.user.id).toBe('user-456');
     });
   });
 });
