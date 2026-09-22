@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { User } from '../../../db/schema/users.schema.js';
 import type { NewUser } from '../../../db/schema/users.schema.js';
 
@@ -6,6 +6,8 @@ export const USERS_REPOSITORY = symbol('USERS_REPOSITORY');
 
 export type CreateUserInput = NewUser;
 export type UpdateUserInput = Partial<CreateUserInput>;
+
+export { User };
 
 export interface IUsersRepository {
   findById(id: string): Promise<User | null>;

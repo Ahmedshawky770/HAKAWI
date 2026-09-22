@@ -1,10 +1,12 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Transaction } from '../../../db/schema/transactions.schema.js';
 import type { NewTransaction } from '../../../db/schema/transactions.schema.js';
 
 export const TRANSACTIONS_REPOSITORY = symbol('TRANSACTIONS_REPOSITORY');
 
 export type CreateTransactionData = NewTransaction;
+
+export { Transaction };
 
 export interface ITransactionsRepository {
   findById(id: string): Promise<Transaction | null>;

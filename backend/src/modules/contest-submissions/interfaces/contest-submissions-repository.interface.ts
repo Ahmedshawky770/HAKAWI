@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { ContestSubmission } from '../../../db/schema/contest-submissions.schema.js';
 import type { NewContestSubmission } from '../../../db/schema/contest-submissions.schema.js';
 
@@ -8,6 +8,8 @@ export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
 
 export type CreateContestSubmissionData = NewContestSubmission;
 export type UpdateContestSubmissionData = Partial<CreateContestSubmissionData>;
+
+export { ContestSubmission };
 
 export interface IContestSubmissionsRepository {
   findById(id: string): Promise<ContestSubmission | null>;

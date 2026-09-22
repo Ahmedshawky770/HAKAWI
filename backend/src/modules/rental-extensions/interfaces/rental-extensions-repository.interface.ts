@@ -1,10 +1,12 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { RentalExtension } from '../../../db/schema/rental-extensions.schema.js';
 import type { NewRentalExtension } from '../../../db/schema/rental-extensions.schema.js';
 
 export const RENTAL_EXTENSIONS_REPOSITORY = symbol('RENTAL_EXTENSIONS_REPOSITORY');
 
 export type CreateRentalExtensionData = NewRentalExtension;
+
+export { RentalExtension };
 
 export interface IRentalExtensionsRepository {
   findById(id: string): Promise<RentalExtension | null>;

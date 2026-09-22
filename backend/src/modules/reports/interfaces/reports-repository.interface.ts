@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Report } from '../../../db/schema/reports.schema.js';
 import type { NewReport } from '../../../db/schema/reports.schema.js';
 
@@ -8,6 +8,8 @@ export type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed';
 
 export type CreateReportData = NewReport;
 export type UpdateReportData = Partial<CreateReportData>;
+
+export { Report };
 
 export interface IReportsRepository {
   findById(id: string): Promise<Report | null>;

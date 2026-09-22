@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Contest } from '../../../db/schema/contests.schema.js';
 import type { NewContest } from '../../../db/schema/contests.schema.js';
 
@@ -17,6 +17,8 @@ export interface ContestFilters {
 
 export type CreateContestData = NewContest;
 export type UpdateContestData = Partial<CreateContestData>;
+
+export { Contest };
 
 export interface IContestsRepository {
   findById(id: string): Promise<Contest | null>;

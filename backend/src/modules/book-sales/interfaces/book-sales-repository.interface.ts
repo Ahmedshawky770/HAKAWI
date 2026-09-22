@@ -1,10 +1,12 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { BookSale } from '../../../db/schema/book-sales.schema.js';
 import type { NewBookSale } from '../../../db/schema/book-sales.schema.js';
 
 export const BOOK_SALES_REPOSITORY = symbol('BOOK_SALES_REPOSITORY');
 
 export type CreateBookSaleData = NewBookSale;
+
+export { BookSale };
 
 export interface IBookSalesRepository {
   findById(id: string): Promise<BookSale | null>;

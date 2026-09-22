@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { BookReview } from '../../../db/schema/book-reviews.schema.js';
 import type { NewBookReview } from '../../../db/schema/book-reviews.schema.js';
 
@@ -6,6 +6,8 @@ export const BOOK_REVIEWS_REPOSITORY = symbol('BOOK_REVIEWS_REPOSITORY');
 
 export type CreateBookReviewData = NewBookReview;
 export type UpdateBookReviewData = Partial<CreateBookReviewData>;
+
+export { BookReview };
 
 export interface IBookReviewsRepository {
   findById(id: string): Promise<BookReview | null>;

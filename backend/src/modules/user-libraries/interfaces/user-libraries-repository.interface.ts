@@ -1,10 +1,12 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { UserLibrary } from '../../../db/schema/user-libraries.schema.js';
 import type { NewUserLibrary } from '../../../db/schema/user-libraries.schema.js';
 
 export const USER_LIBRARIES_REPOSITORY = symbol('USER_LIBRARIES_REPOSITORY');
 
 export type CreateUserLibraryData = NewUserLibrary;
+
+export { UserLibrary };
 
 export interface IUserLibrariesRepository {
   findById(id: string): Promise<UserLibrary | null>;

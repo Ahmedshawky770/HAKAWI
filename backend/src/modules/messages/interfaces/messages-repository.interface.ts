@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Message } from '../../../db/schema/messages.schema.js';
 import type { NewMessage } from '../../../db/schema/messages.schema.js';
 
@@ -6,6 +6,8 @@ export const MESSAGES_REPOSITORY = symbol('MESSAGES_REPOSITORY');
 
 export type CreateMessageData = NewMessage;
 export type UpdateMessageData = Partial<CreateMessageData>;
+
+export { Message };
 
 export interface IMessagesRepository {
   findById(id: string): Promise<Message | null>;

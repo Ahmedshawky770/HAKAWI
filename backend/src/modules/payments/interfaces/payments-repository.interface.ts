@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Payment } from '../../../db/schema/payments.schema.js';
 import type { NewPayment } from '../../../db/schema/payments.schema.js';
 
@@ -8,6 +8,8 @@ export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
 
 export type CreatePaymentData = NewPayment;
 export type UpdatePaymentData = Partial<CreatePaymentData>;
+
+export { Payment };
 
 export interface IPaymentsRepository {
   findById(id: string): Promise<Payment | null>;

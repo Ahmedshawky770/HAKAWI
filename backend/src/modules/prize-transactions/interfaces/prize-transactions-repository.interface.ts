@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { PrizeTransaction } from '../../../db/schema/prize-transactions.schema.js';
 import type { NewPrizeTransaction } from '../../../db/schema/prize-transactions.schema.js';
 
@@ -6,6 +6,8 @@ export const PRIZE_TRANSACTIONS_REPOSITORY = symbol('PRIZE_TRANSACTIONS_REPOSITO
 
 export type CreatePrizeTransactionData = NewPrizeTransaction;
 export type UpdatePrizeTransactionData = Partial<CreatePrizeTransactionData>;
+
+export { PrizeTransaction };
 
 export interface IPrizeTransactionsRepository {
   findById(id: string): Promise<PrizeTransaction | null>;

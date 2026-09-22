@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Story } from '../../../db/schema/stories.schema.js';
 import type { NewStory } from '../../../db/schema/stories.schema.js';
 
@@ -16,6 +16,8 @@ export interface StoryFilters {
 
 export type CreateStoryData = NewStory;
 export type UpdateStoryData = Partial<CreateStoryData>;
+
+export { Story };
 
 export interface IStoriesRepository {
   findById(id: string): Promise<Story | null>;

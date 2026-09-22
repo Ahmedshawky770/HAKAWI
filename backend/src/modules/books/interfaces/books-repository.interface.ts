@@ -1,4 +1,4 @@
-import { symbol } from '../utils/symbol.util.js';
+import { symbol } from '../../common/utils/symbol.util.js';
 import type { Book } from '../../../db/schema/books.schema.js';
 import type { NewBook } from '../../../db/schema/books.schema.js';
 
@@ -14,6 +14,8 @@ export interface BookFilters {
 
 export type CreateBookData = NewBook;
 export type UpdateBookData = Partial<CreateBookData>;
+
+export { Book };
 
 export interface IBooksRepository {
   findById(id: string): Promise<Book | null>;

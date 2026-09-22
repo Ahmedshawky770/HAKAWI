@@ -1,11 +1,13 @@
-import { symbol } from '../utils/symbol.util.js';
-import type { NotificationPreferences } from '../../../db/schema/notification-preferences.schema.js';
+import { symbol } from '../../common/utils/symbol.util.js';
+import type { NotificationPreference } from '../../../db/schema/notification-preferences.schema.js';
 import type { NewNotificationPreference } from '../../../db/schema/notification-preferences.schema.js';
 
 export const NOTIFICATION_PREFERENCES_REPOSITORY = symbol('NOTIFICATION_PREFERENCES_REPOSITORY');
 
 export type CreateNotificationPreferencesData = NewNotificationPreference;
 export type UpdateNotificationPreferencesData = Partial<CreateNotificationPreferencesData>;
+
+export type NotificationPreferences = NotificationPreference;
 
 export interface INotificationPreferencesRepository {
   findById(id: string): Promise<NotificationPreferences | null>;
