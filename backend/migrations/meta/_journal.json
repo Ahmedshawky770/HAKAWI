@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1790011033319,
+      "tag": "0000_plain_redwing",
+      "breakpoints": true
+    }
+  ]
+}
