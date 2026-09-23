@@ -1,12 +1,15 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Request, UseGuards, Query, Param } from '@nestjs/common';
-import { AuthService } from './auth.service.ts';
-import { RegisterDto, LoginDto, RefreshTokenDto, LogoutResponseDto, OAuthUserInfoDto } from './dto/auth.dto.ts';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Request, UseGuards, Query, Param, Inject, Res, Logger } from '@nestjs/common';
+import { type Response } from 'express';
+
 import { Public } from '../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 
+import { AuthService } from './auth.service.ts';
+import { RegisterDto, LoginDto, RefreshTokenDto, LogoutResponseDto } from './dto/auth.dto.ts';
+
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Post('register')
   @Public()
@@ -37,13 +40,41 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Body() dto: RefreshTokenDto): Promise<LogoutResponseDto> {
-    return this.authService.logout(dto.refreshToken);
+  logout(@Body('refreshToken') refreshToken: string): Promise<LogoutResponseDto> {
+    return this.authService.logout(refreshToken);
   }
 
   @Get('oauth/:provider')
   @Public()
-  oauth(@Param('provider') provider: string, @Query() query: OAuthUserInfoDto) {
-    return this.authService.oauthLogin(provider, query);
+  async oauth(@Param('provider') provider: string, @Query('state') state: string, @Res() res: Response) {
+    const authorizationUrl = await this.authService.getAuthorizationUrl(provider, state);
+    return res.redirect(authorizationUrl);
+  }
+
+  @Get('oauth/:provider/callback')
+  @Public()
+  async oauthCallback(
+    @Param('provider') provider: string,
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    if (error) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/error?error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/error?error=missing_code`);
+    }
+
+    try {
+      const tokens = await this.authService.handleOAuthCallback(provider, code, state);
+      const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?access_token=${tokens.accessToken}&refresh_token=${tokens.refreshToken}`;
+      return res.redirect(redirectUrl);
+    } catch (err) {
+      Logger.error('OAuth callback failed', err, 'AuthController');
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/error?error=oauth_failed`);
+    }
   }
 }

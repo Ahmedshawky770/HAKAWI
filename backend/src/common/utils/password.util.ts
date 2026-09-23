@@ -3,10 +3,7 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class PasswordHasher {
-  static hash(arg0: string) {
-    throw new Error("Method not implemented.");
-  }
-  private readonly rounds = 10;
+  private readonly rounds = 12;
 
   async hash(plain: string): Promise<string> {
     return bcrypt.hash(plain, this.rounds);

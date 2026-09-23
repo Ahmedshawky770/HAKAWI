@@ -10,8 +10,6 @@ const logLevels = {
   fatal: 5,
 } as const;
 
-type WinstonLogLevel = keyof typeof logLevels;
-
 @Injectable()
 export class WinstonLoggerService {
   private readonly logger: winston.Logger;
@@ -22,18 +20,24 @@ export class WinstonLoggerService {
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.errors({ stack: true }),
-        winston.format.printf(({ timestamp, level, message, context, stack }) => {
-          const contextStr = context ? `[${context}]` : '';
-          return `${timestamp} ${level.toUpperCase()} ${contextStr} ${message}${stack ? `\n${stack}` : ''}`;
+        winston.format.printf((info) => {
+          const context = typeof info.context === 'string' ? info.context : undefined;
+          const stack = typeof info.stack === 'string' ? info.stack : undefined;
+          const contextStr = context ? '[' + context + ']' : '';
+          const stackStr = stack ? '\n' + stack : '';
+          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+          return `${info.timestamp} ${info.level.toUpperCase()} ${contextStr} ${info.message}${stackStr}`;
         }),
       ),
       transports: [
         new winston.transports.Console({
           format: winston.format.combine(
             winston.format.colorize({ all: true }),
-            winston.format.printf(({ timestamp, level, message, context }) => {
-              const contextStr = context ? `[${context}]` : '';
-              return `${timestamp} ${level} ${contextStr} ${message}`;
+            winston.format.printf((info) => {
+              const context = typeof info.context === 'string' ? info.context : undefined;
+              const contextStr = context ? '[' + context + ']' : '';
+              // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+              return `${info.timestamp} ${info.level} ${contextStr} ${info.message}`;
             }),
           ),
         }),

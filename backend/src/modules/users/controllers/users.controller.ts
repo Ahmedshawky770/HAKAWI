@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Patch, UseGuards, Body, Post } from '@nestjs/common';
+import { Controller, Get, Param, Patch, UseGuards, Body, Inject } from '@nestjs/common';
+
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { UpdateUserDto } from '../dto/users.dto.ts';
@@ -7,7 +8,7 @@ import { UsersService } from '../users.service.ts';
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(@Inject(UsersService) private readonly usersService: UsersService) {}
 
   @Public()
   @Get(':id')

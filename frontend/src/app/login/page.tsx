@@ -21,7 +21,7 @@ export default function LoginPage() {
 
     try {
       const response = await api.login({ email, password });
-      localStorage.setItem("hakawi_tokens", JSON.stringify(response.token));
+      localStorage.setItem("hakawi_tokens", JSON.stringify(response.tokens));
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

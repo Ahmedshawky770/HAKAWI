@@ -1,84 +1,42 @@
 import { Injectable, NotFoundException, ConflictException, Inject } from '@nestjs/common';
-import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from './interfaces/users-repository.interface.ts';
-import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
+
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
-type UsersServiceUser = {
-  id: string;
-  email: string;
-  username: string;
-  name: string;
-  passwordHash: string | null;
-  accountType: string;
-  adminRole: string | null;
-  avatar: string | null;
-  bio: string | null;
-  googleId: string | null;
-  facebookId: string | null;
-  twitterId: string | null;
-  githubId: string | null;
-  appleId: string | null;
-  tiktokId: string | null;
-  isVerified: boolean;
-  onboardingCompleted: boolean;
-  accessBlocked: boolean;
-  lastLoginAt: Date | null;
-  deletedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type UsersServiceCreateInput = {
-  email: string;
-  username: string;
-  name: string;
-  password?: string;
-  passwordHash?: string;
-  accountType?: string;
-  googleId?: string | null;
-  facebookId?: string | null;
-  twitterId?: string | null;
-  githubId?: string | null;
-  appleId?: string | null;
-  tiktokId?: string | null;
-};
-
-type UsersServiceUpdateInput = Partial<{
-  name: string;
-  email: string;
-  username: string;
-  avatar: string | null;
-  bio: string | null;
-  password: string;
-  passwordHash: string;
-  isVerified: boolean;
-  onboardingCompleted: boolean;
-  accessBlocked: boolean;
-}>;
+import type { IUsersRepository } from './interfaces/users-repository.interface.ts';
+import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
+import type { User, CreateUserInput, UpdateUserInput } from './types.ts';
 
 @Injectable()
 export class UsersService {
   constructor(
     @Inject(USERS_REPOSITORY) private readonly usersRepository: IUsersRepository,
-    private readonly passwordHasher: PasswordHasher,
-    private readonly valkeyService: ValkeyService,
-    private readonly logger: WinstonLoggerService,
+    @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
+    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
+    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
   ) {}
 
   async findById(id: string): Promise<User> {
     const cached = await this.valkeyService.get(`user:${id}`);
     if (cached) {
-      return JSON.parse(cached) as User;
+      const user = JSON.parse(cached) as User;
+      if ('passwordHash' in user) {
+        delete (user as Record<string, unknown>).passwordHash;
+      }
+      return user;
     }
     const user = await this.usersRepository.findById(id);
     if (!user || user.deletedAt) {
       throw new NotFoundException('User not found');
     }
-    await this.valkeyService.set(`user:${id}`, JSON.stringify(user), 300);
-    return user;
+    const safeUser = { ...user };
+    if ('passwordHash' in safeUser) {
+      delete (safeUser as Record<string, unknown>).passwordHash;
+    }
+    await this.valkeyService.set(`user:${id}`, JSON.stringify(safeUser), 300);
+    return safeUser;
   }
 
   async findByEmail(email: string): Promise<User> {
@@ -97,7 +55,7 @@ export class UsersService {
     return user;
   }
 
-  async create(input: UsersServiceCreateInput): Promise<User> {
+  async create(input: CreateUserInput): Promise<User> {
     const existingEmail = await this.usersRepository.findByEmail(input.email).catch(() => null);
     if (existingEmail && !existingEmail.deletedAt) {
       throw new ConflictException('Email already exists');
@@ -124,12 +82,13 @@ export class UsersService {
       githubId: input.githubId ?? null,
       appleId: input.appleId ?? null,
       tiktokId: input.tiktokId ?? null,
-    } as CreateUserInput;
+    };
 
-    return this.usersRepository.create(data);
+    const user = await this.usersRepository.create(data);
+    return user;
   }
 
-  async update(id: string, input: UsersServiceUpdateInput): Promise<User> {
+  async update(id: string, input: UpdateUserInput): Promise<User> {
     if (input.email) {
       const existing = await this.usersRepository.findByEmail(input.email).catch(() => null);
       if (existing && existing.id !== id && !existing.deletedAt) {
@@ -148,7 +107,7 @@ export class UsersService {
 
     if (input.password) {
       updatePayload.passwordHash = await this.passwordHasher.hash(input.password);
-      delete (updatePayload as Record<string, unknown>).password;
+      delete updatePayload.password;
     }
 
     const user = await this.usersRepository.update(id, updatePayload);

@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import type { StringValue } from 'ms';
 
 export interface JwtPayload {
   sub: string;
@@ -12,14 +13,14 @@ export interface JwtPayload {
 @Injectable()
 export class JwtHelper {
   constructor(
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    @Inject(JwtService) private readonly jwtService: JwtService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
   ) {}
 
   generateAccessToken(payload: JwtPayload): string {
-    return this.jwtService.sign(payload, {
+    return this.jwtService.sign({ ...payload }, {
       secret: this.configService.get<string>('jwt.secret'),
-      expiresIn: this.configService.get<string>('jwt.expiry', '15m')!,
+      expiresIn: this.configService.get<string>('jwt.expiry', '15m') as StringValue,
     });
   }
 
@@ -28,7 +29,7 @@ export class JwtHelper {
       { ...payload, type: 'refresh' },
       {
         secret: this.configService.get<string>('jwt.refreshSecret'),
-        expiresIn: this.configService.get<string>('jwt.refreshExpiry', '7d')!,
+        expiresIn: this.configService.get<string>('jwt.refreshExpiry', '7d') as StringValue,
       },
     );
   }

@@ -6,22 +6,20 @@ import {
   timestamp,
   boolean,
   index,
-  unique,
 } from 'drizzle-orm/pg-core';
-import { createId } from '@paralleldrive/cuid2';
 
 export const users = pgTable(
   'users',
   {
-    id: uuid('id').default(createId()).primaryKey(),
-    googleId: varchar('google_id', { length: 255 }).unique(),
-    facebookId: varchar('facebook_id', { length: 255 }).unique(),
-    twitterId: varchar('twitter_id', { length: 255 }).unique(),
-    githubId: varchar('github_id', { length: 255 }).unique(),
-    appleId: varchar('apple_id', { length: 255 }).unique(),
-    tiktokId: varchar('tiktok_id', { length: 255 }).unique(),
-    username: varchar('username', { length: 50 }).notNull().unique(),
-    email: varchar('email', { length: 255 }).notNull().unique(),
+    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    googleId: varchar('google_id', { length: 255 }),
+    facebookId: varchar('facebook_id', { length: 255 }),
+    twitterId: varchar('twitter_id', { length: 255 }),
+    githubId: varchar('github_id', { length: 255 }),
+    appleId: varchar('apple_id', { length: 255 }),
+    tiktokId: varchar('tiktok_id', { length: 255 }),
+    username: varchar('username', { length: 50 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }),
     name: varchar('name', { length: 100 }).notNull(),
     avatar: text('avatar'),
@@ -37,8 +35,14 @@ export const users = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    emailIdx: index('users_email_idx').on(table.email),
-    usernameIdx: index('users_username_idx').on(table.username),
+    googleIdUnique: index('users_google_id_idx').on(table.googleId),
+    facebookIdUnique: index('users_facebook_id_idx').on(table.facebookId),
+    twitterIdUnique: index('users_twitter_id_idx').on(table.twitterId),
+    githubIdUnique: index('users_github_id_idx').on(table.githubId),
+    appleIdUnique: index('users_apple_id_idx').on(table.appleId),
+    tiktokIdUnique: index('users_tiktok_id_idx').on(table.tiktokId),
+    usernameUnique: index('users_username_idx').on(table.username),
+    emailUnique: index('users_email_idx').on(table.email),
     accountTypeIdx: index('users_account_type_idx').on(table.accountType),
   })
 );

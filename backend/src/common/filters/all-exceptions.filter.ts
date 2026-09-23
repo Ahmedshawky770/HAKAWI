@@ -1,12 +1,13 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger, Inject } from '@nestjs/common';
 import { Request, Response } from 'express';
+
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
-  constructor(private readonly winstonLogger: WinstonLoggerService) {}
+  constructor(@Inject(WinstonLoggerService) private readonly winstonLogger: WinstonLoggerService) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -14,7 +15,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string = 'Internal server error';
+    let message = 'Internal server error';
     let errorCode = 'INTERNAL_ERROR';
     let details: unknown[] = [];
 

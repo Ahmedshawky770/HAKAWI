@@ -82,4 +82,11 @@ export class ValkeyService implements OnModuleInit, OnModuleDestroy {
     }
     await this.client.expire(key, ttl);
   }
+
+  async ping(): Promise<string> {
+    if (!this.client) {
+      throw new Error('Valkey client not initialized');
+    }
+    return this.client.ping();
+  }
 }

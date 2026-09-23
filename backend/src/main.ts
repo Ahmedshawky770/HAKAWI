@@ -1,15 +1,16 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.ts';
 import { Logger } from '@nestjs/common';
+import { Request, Response, NextFunction } from 'express';
+
+import { AppModule } from './app.module.ts';
 import { WinstonLoggerService } from './common/services/winston-logger.service.ts';
 import { WafMiddleware } from './common/middleware/waf.middleware.ts';
-import { Request, Response, NextFunction } from 'express';
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new WinstonLoggerService(),
   });
-  const logger = new Logger('Bootstrap');
 
   const port = process.env.PORT ?? 3001;
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
@@ -22,13 +23,15 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   const winstonLogger = app.get(WinstonLoggerService);
+  const logger = new Logger('Bootstrap');
+
   const wafMiddleware = new WafMiddleware(winstonLogger);
   app.use((request: Request, response: Response, next: NextFunction) => wafMiddleware.use(request, response, next));
 
-  const { AllExceptionsFilter } = await import('./common/filters/all-exceptions.filter.js');
+  const { AllExceptionsFilter } = await import('./common/filters/all-exceptions.filter.ts');
   app.useGlobalFilters(new AllExceptionsFilter(winstonLogger));
 
-  const { LoggingInterceptor } = await import('./common/interceptors/logging.interceptor.js');
+  const { LoggingInterceptor } = await import('./common/interceptors/logging.interceptor.ts');
   const loggingInterceptor = app.get(LoggingInterceptor);
   app.useGlobalInterceptors(loggingInterceptor);
 
@@ -47,4 +50,9 @@ async function bootstrap() {
   logger.log(`Application is running on: http://localhost:${port}/api/v1`);
   logger.log(`Environment: ${process.env.NODE_ENV ?? 'development'}`);
 }
-bootstrap();
+
+bootstrap().catch((error) => {
+  const logger = new Logger('Bootstrap');
+  logger.error('Failed to start application', error);
+  process.exit(1);
+});

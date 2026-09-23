@@ -2,7 +2,7 @@ export enum AccountType {
   READER = 'reader',
   AUTHOR = 'author',
   ADMIN = 'admin',
-  WRITER = "WRITER",
+  WRITER = 'writer',
 }
 
 export enum AdminRole {

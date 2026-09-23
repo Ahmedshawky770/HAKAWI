@@ -1,6 +1,7 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Observable, from, of } from 'rxjs';
 import { map, switchMap, catchError } from 'rxjs/operators';
+
 import { ValkeyService } from '../services/valkey.service.ts';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { GetCacheKey, GetCacheTtl } from '../decorators/cache.decorator.ts';
@@ -24,10 +25,11 @@ export class CacheInterceptor implements NestInterceptor {
       switchMap((cachedValue) => {
         if (cachedValue) {
           this.winstonLogger.debug(`Cache hit: ${cacheKey}`, 'CacheInterceptor');
-          return of(JSON.parse(cachedValue));
+          const parsed = JSON.parse(cachedValue) as unknown;
+          return of(parsed);
         }
         return next.handle().pipe(
-          map((data) => {
+          map((data: unknown) => {
             try {
               void this.valkeyService.set(cacheKey, JSON.stringify(data), ttl);
               this.winstonLogger.debug(`Cache set: ${cacheKey}`, 'CacheInterceptor');

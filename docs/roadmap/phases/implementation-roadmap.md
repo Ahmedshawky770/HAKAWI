@@ -25,7 +25,7 @@
 - [ ] Set up Next.js frontend
 - [ ] Configure Docker Compose
 - [ ] Set up CI/CD pipeline
-- [ ] Set up testing framework (Jest, Supertest, Playwright)
+ - [ ] Set up testing framework (Vitest, Supertest, Playwright)
 - [ ] Write first tests (TDD from Day 1)
 
 ### Week 2: Core Infrastructure

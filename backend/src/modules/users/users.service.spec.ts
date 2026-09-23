@@ -4,6 +4,7 @@ import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '.
 import { PasswordHasher } from '../../common/utils/password.util.js';
 import { ValkeyService } from '../../common/services/valkey.service.js';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AccountType } from '../../common/constants/roles.js';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 
@@ -11,6 +12,7 @@ type MockUsersRepository = Partial<IUsersRepository>;
 type MockPasswordHasher = Partial<PasswordHasher>;
 type MockValkeyService = Partial<ValkeyService>;
 type MockWinstonLoggerService = Partial<WinstonLoggerService>;
+type MockEventEmitter = Partial<EventEmitter2>;
 
 const createMockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-123',
@@ -44,6 +46,7 @@ describe('UsersService', () => {
   let passwordHasher: MockPasswordHasher;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
+  let eventEmitter: MockEventEmitter;
 
   beforeEach(() => {
     usersRepository = {
@@ -80,10 +83,15 @@ describe('UsersService', () => {
       debug: vi.fn(),
     };
 
+    eventEmitter = {
+      emit: vi.fn(),
+    };
+
     usersService = new UsersService(
       usersRepository as IUsersRepository,
       passwordHasher as PasswordHasher,
       valkeyService as ValkeyService,
+      eventEmitter as EventEmitter2,
       winstonLoggerService as WinstonLoggerService,
     );
   });

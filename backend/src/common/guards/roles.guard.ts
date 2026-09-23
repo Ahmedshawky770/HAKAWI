@@ -1,12 +1,13 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Inject } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+
 import { IS_PUBLIC_KEY } from '../decorators/roles.decorator.ts';
 import { AdminRole, AccountType } from '../constants/roles.ts';
-import { RequireAdminRole } from '../decorators/roles.decorator.ts';
+import type { AuthRequest } from '../types/auth-request.interface.ts';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -30,10 +31,10 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthRequest>();
     const user = request.user;
 
-    if (!user) {
+    if (!user || !user.accountType) {
       throw new ForbiddenException('Access denied');
     }
 
@@ -41,7 +42,7 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Insufficient admin privileges');
     }
 
-    if (!requiredRoles.includes(user.accountType)) {
+    if (!requiredRoles.includes(user.accountType as AccountType)) {
       throw new ForbiddenException('Insufficient permissions');
     }
 

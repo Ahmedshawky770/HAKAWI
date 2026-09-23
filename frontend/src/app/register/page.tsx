@@ -37,7 +37,7 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
       });
-      localStorage.setItem("hakawi_tokens", JSON.stringify(response.token));
+      localStorage.setItem("hakawi_tokens", JSON.stringify(response.tokens));
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

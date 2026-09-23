@@ -29,7 +29,7 @@
 
 ### Tools
 
-- **Jest** — test runner and assertions
+- **Vitest** — test runner and assertions
 - **@nestjs/testing** — NestJS testing utilities
 
 ### Example
@@ -46,8 +46,8 @@ describe('UsersService', () => {
         {
           provide: UsersRepository,
           useValue: {
-            findById: jest.fn(),
-            create: jest.fn(),
+            findById: vi.fn(),
+            create: vi.fn(),
           },
         },
       ],
@@ -59,14 +59,14 @@ describe('UsersService', () => {
 
   it('should find user by id', async () => {
     const user = { id: '1', name: 'Test' };
-    jest.spyOn(repository, 'findById').mockResolvedValue(user);
+    vi.spyOn(repository, 'findById').mockResolvedValue(user);
 
     const result = await service.findById('1');
     expect(result).toEqual(user);
   });
 
   it('should throw NotFoundException when user not found', async () => {
-    jest.spyOn(repository, 'findById').mockResolvedValue(null);
+    vi.spyOn(repository, 'findById').mockResolvedValue(null);
 
     await expect(service.findById('1')).rejects.toThrow(NotFoundException);
   });
@@ -91,7 +91,7 @@ describe('UsersService', () => {
 
 ### Tools
 
-- **Jest** — test runner
+- **Vitest** — test runner
 - **Supertest** — HTTP assertions
 - **TestContainers** — database tests (optional)
 - **@nestjs/testing** — NestJS testing utilities
@@ -386,8 +386,8 @@ export const testWriter = {
 jest.mock('@payments/paymob');
 
 const mockPaymobService = {
-  createPayment: jest.fn(),
-  processWebhook: jest.fn(),
+  createPayment: vi.fn(),
+  processWebhook: vi.fn(),
 };
 ```
 
@@ -395,9 +395,9 @@ const mockPaymobService = {
 
 ```typescript
 const mockRepository = {
-  findById: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
+  findById: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
 };
 ```
 

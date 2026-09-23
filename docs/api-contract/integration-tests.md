@@ -15,7 +15,7 @@ This document provides comprehensive integration test examples for the Hakawi pl
 - Event-driven integration tests
 
 ### Tools
-- Jest (test runner)
+- Vitest (test runner)
 - Supertest (HTTP assertions)
 - Testcontainers (database)
 - @nestjs/testing (NestJS testing utilities)
@@ -141,16 +141,16 @@ describe('AuthService', () => {
         {
           provide: UsersService,
           useValue: {
-            create: jest.fn(),
-            findByEmail: jest.fn(),
-            findOne: jest.fn()
+            create: vi.fn(),
+            findByEmail: vi.fn(),
+            findOne: vi.fn()
           }
         },
         {
           provide: JwtService,
           useValue: {
             sign: jest.fn(() => 'token'),
-            verify: jest.fn()
+            verify: vi.fn()
           }
         }
       ]
@@ -178,7 +178,7 @@ describe('AuthService', () => {
         password: await bcrypt.hash(userData.password, 12)
       };
 
-      jest.spyOn(usersService, 'create').mockResolvedValue(mockUser);
+      vi.spyOn(usersService, 'create').mockResolvedValue(mockUser);
 
       const result = await service.register(userData);
 
@@ -189,7 +189,7 @@ describe('AuthService', () => {
     });
 
     it('should throw if email already exists', async () => {
-      jest.spyOn(usersService, 'create').mockRejectedValue(
+      vi.spyOn(usersService, 'create').mockRejectedValue(
         new Error('Email already exists')
       );
 
@@ -213,7 +213,7 @@ describe('AuthService', () => {
         verified: true
       };
 
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(user);
+      vi.spyOn(usersService, 'findByEmail').mockResolvedValue(user);
 
       const result = await service.login({
         email: 'test@example.com',
@@ -226,7 +226,7 @@ describe('AuthService', () => {
     });
 
     it('should throw for invalid credentials', async () => {
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(null);
+      vi.spyOn(usersService, 'findByEmail').mockResolvedValue(null);
 
       await expect(
         service.login({
@@ -241,8 +241,8 @@ describe('AuthService', () => {
     it('should return user for valid token', async () => {
       const user = { id: 'uuid', email: 'test@example.com' };
       
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(usersService, 'findOne').mockResolvedValue(user);
+      vi.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
+      vi.spyOn(usersService, 'findOne').mockResolvedValue(user);
 
       const result = await service.validateUser('valid-token');
 
@@ -756,7 +756,7 @@ describe('EventBus', () => {
 
   describe('emit and on', () => {
     it('should emit and receive events', async () => {
-      const handler = jest.fn();
+      const handler = vi.fn();
       
       eventBus.on('user.created', handler);
       
@@ -775,8 +775,8 @@ describe('EventBus', () => {
 
   describe('multiple handlers', () => {
     it('should call all handlers for same event', async () => {
-      const handler1 = jest.fn();
-      const handler2 = jest.fn();
+      const handler1 = vi.fn();
+      const handler2 = vi.fn();
 
       eventBus.on('user.created', handler1);
       eventBus.on('user.created', handler2);

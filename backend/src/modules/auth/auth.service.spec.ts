@@ -1,27 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
-import { UsersService } from '../users/users.service.js';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PasswordHasher } from '../../common/utils/password.util.js';
 import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.js';
 import { ValkeyService } from '../../common/services/valkey.service.js';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
 import { AccountType } from '../../common/constants/roles.js';
+import type { IUsersRepository } from '../users/interfaces/users-repository.interface.js';
+import { USERS_REPOSITORY } from '../users/interfaces/users-repository.interface.js';
 import type { User } from '../users/interfaces/users-repository.interface.js';
-import type { UserResponseDto } from '../users/dto/users.dto.js';
 
-type MockUsersService = {
-  findByEmail: ReturnType<typeof vi.fn>;
-  findByUsername: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
-  updateLastLogin: ReturnType<typeof vi.fn>;
-  findByGoogleId: ReturnType<typeof vi.fn>;
-  findByFacebookId: ReturnType<typeof vi.fn>;
-  findByTwitterId: ReturnType<typeof vi.fn>;
-  findByGithubId: ReturnType<typeof vi.fn>;
-  findByAppleId: ReturnType<typeof vi.fn>;
-  findByTiktokId: ReturnType<typeof vi.fn>;
-};
+type MockUsersRepository = Partial<IUsersRepository>;
 
 type MockPasswordHasher = {
   hash: ReturnType<typeof vi.fn>;
@@ -37,6 +26,8 @@ type MockJwtHelper = {
 type MockValkeyService = {
   exists: ReturnType<typeof vi.fn>;
   set: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+  del: ReturnType<typeof vi.fn>;
 };
 
 type MockWinstonLoggerService = {
@@ -48,21 +39,25 @@ type MockWinstonLoggerService = {
   verbose: ReturnType<typeof vi.fn>;
 };
 
+type MockEventEmitter = {
+  emit: ReturnType<typeof vi.fn>;
+};
+
 describe('AuthService', () => {
   let authService: AuthService;
-  let usersService: MockUsersService;
+  let usersRepository: MockUsersRepository;
   let passwordHasher: MockPasswordHasher;
   let jwtHelper: MockJwtHelper;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
+  let eventEmitter: MockEventEmitter;
 
   beforeEach(() => {
-    usersService = {
+    usersRepository = {
+      findById: vi.fn(),
       findByEmail: vi.fn(),
       findByUsername: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn(),
-      updateLastLogin: vi.fn(),
       findByGoogleId: vi.fn(),
       findByFacebookId: vi.fn(),
       findByTwitterId: vi.fn(),
@@ -85,6 +80,8 @@ describe('AuthService', () => {
     valkeyService = {
       exists: vi.fn(),
       set: vi.fn(),
+      get: vi.fn(),
+      del: vi.fn(),
     };
 
     winstonLoggerService = {
@@ -96,12 +93,17 @@ describe('AuthService', () => {
       verbose: vi.fn(),
     };
 
+    eventEmitter = {
+      emit: vi.fn(),
+    };
+
     authService = new AuthService(
-      usersService as unknown as UsersService,
+      usersRepository as unknown as IUsersRepository,
       passwordHasher as unknown as PasswordHasher,
       jwtHelper as unknown as JwtHelper,
       valkeyService as unknown as ValkeyService,
       winstonLoggerService as unknown as WinstonLoggerService,
+      eventEmitter as unknown as EventEmitter2,
     );
   });
 
@@ -114,10 +116,10 @@ describe('AuthService', () => {
         username: 'testuser',
       };
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue(null);
-      vi.mocked(usersService.findByUsername).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByUsername).mockResolvedValue(null);
       vi.mocked(passwordHasher.hash).mockResolvedValue('hashed-password');
-      vi.mocked(usersService.create).mockResolvedValue({
+      vi.mocked(usersRepository.create).mockResolvedValue({
         id: 'user-123',
         email: registerDto.email,
         username: registerDto.username,
@@ -153,13 +155,17 @@ describe('AuthService', () => {
       expect(result.tokens.accessToken).toBe('access-token');
       expect(result.tokens.refreshToken).toBe('refresh-token');
       expect(passwordHasher.hash).toHaveBeenCalledWith(registerDto.password);
-      expect(usersService.create).toHaveBeenCalledWith(
+      expect(usersRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: registerDto.email,
           username: registerDto.username,
           passwordHash: 'hashed-password',
           accountType: AccountType.READER,
         }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'user.registered',
+        expect.any(Object),
       );
     });
 
@@ -171,7 +177,7 @@ describe('AuthService', () => {
         username: 'testuser',
       };
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue({
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue({
         id: 'existing-user',
         email: registerDto.email,
         username: 'existinguser',
@@ -207,8 +213,8 @@ describe('AuthService', () => {
         username: 'existinguser',
       };
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue(null);
-      vi.mocked(usersService.findByUsername).mockResolvedValue({
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByUsername).mockResolvedValue({
         id: 'existing-user',
         email: 'existing@example.com',
         username: registerDto.username,
@@ -234,6 +240,33 @@ describe('AuthService', () => {
       } as User);
 
       await expect(authService.register(registerDto)).rejects.toThrow('Username already exists');
+    });
+
+    it('should propagate repository error when checking email', async () => {
+      const registerDto = {
+        email: 'test@example.com',
+        password: 'SecurePass123!',
+        name: 'Test User',
+        username: 'testuser',
+      };
+
+      vi.mocked(usersRepository.findByEmail).mockRejectedValue(new Error('DB error'));
+
+      await expect(authService.register(registerDto)).rejects.toThrow('DB error');
+    });
+
+    it('should propagate repository error when checking username', async () => {
+      const registerDto = {
+        email: 'test@example.com',
+        password: 'SecurePass123!',
+        name: 'Test User',
+        username: 'testuser',
+      };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByUsername).mockRejectedValue(new Error('DB error'));
+
+      await expect(authService.register(registerDto)).rejects.toThrow('DB error');
     });
   });
 
@@ -269,7 +302,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       } as User;
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue(user);
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
       vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
       vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
@@ -288,7 +321,7 @@ describe('AuthService', () => {
         password: 'WrongPassword123!',
       };
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
 
       await expect(authService.login(loginDto)).rejects.toThrow('Invalid email or password');
     });
@@ -324,7 +357,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       } as User;
 
-      vi.mocked(usersService.findByEmail).mockResolvedValue(user);
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
 
       await expect(authService.login(loginDto)).rejects.toThrow('Account has been disabled');
@@ -344,7 +377,7 @@ describe('AuthService', () => {
         type: 'refresh',
       } as JwtPayload & { type: string });
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
-      vi.mocked(usersService.findById).mockResolvedValue({
+      vi.mocked(usersRepository.findById).mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         username: 'testuser',
@@ -367,7 +400,7 @@ describe('AuthService', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as UserResponseDto);
+      } as User);
       vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
       vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
@@ -392,8 +425,8 @@ describe('AuthService', () => {
   });
 
   describe('session', () => {
-    it('should return session with fresh tokens', async () => {
-      vi.mocked(usersService.findById).mockResolvedValue({
+    it('should return session data', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         username: 'testuser',
@@ -416,9 +449,7 @@ describe('AuthService', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as UserResponseDto);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      } as User);
 
       const result = await authService.session('user-123');
 
@@ -457,48 +488,65 @@ describe('AuthService', () => {
     });
   });
 
-  describe('oauthLogin', () => {
-    it('should login existing OAuth user', async () => {
-      vi.mocked(usersService.findByGoogleId).mockResolvedValue({
-        id: 'user-123',
-        email: 'test@example.com',
-        username: 'testuser',
-        name: 'Test User',
-        accountType: AccountType.READER,
-        passwordHash: null,
-        adminRole: null,
-        avatar: null,
-        bio: null,
-        googleId: 'google-id-123',
-        facebookId: null,
-        twitterId: null,
-        githubId: null,
-        appleId: null,
-        tiktokId: null,
-        isVerified: false,
-        onboardingCompleted: false,
-        accessBlocked: false,
-        lastLoginAt: null,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as User);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+  describe('getAuthorizationUrl', () => {
+    it('should generate Google authorization URL', () => {
+      process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+      process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3001/api/v1/auth/oauth/google/callback';
 
-      const result = await authService.oauthLogin('google', {
-        id: 'google-id-123',
-        email: 'test@example.com',
-        name: 'Test User',
-      });
+      const url = authService.getAuthorizationUrl('google');
 
-      expect(result).toHaveProperty('tokens');
-      expect(result.user.id).toBe('user-123');
+      expect(url).toContain('accounts.google.com/o/oauth2/v2/auth');
+      expect(url).toContain('client_id=test-client-id');
+      expect(url).toContain('redirect_uri=');
+      expect(url).toContain('state=');
     });
 
-    it('should create new OAuth user when not exists', async () => {
-      vi.mocked(usersService.findByGoogleId).mockResolvedValue(null);
-      vi.mocked(usersService.create).mockResolvedValue({
+    it('should generate Facebook authorization URL', () => {
+      process.env.FACEBOOK_APP_ID = 'test-fb-app-id';
+      process.env.FACEBOOK_CALLBACK_URL = 'http://localhost:3001/api/v1/auth/oauth/facebook/callback';
+
+      const url = authService.getAuthorizationUrl('facebook');
+
+      expect(url).toContain('facebook.com');
+      expect(url).toContain('client_id=test-fb-app-id');
+    });
+
+    it('should generate GitHub authorization URL', () => {
+      process.env.GITHUB_CLIENT_ID = 'test-gh-client-id';
+      process.env.GITHUB_CALLBACK_URL = 'http://localhost:3001/api/v1/auth/oauth/github/callback';
+
+      const url = authService.getAuthorizationUrl('github');
+
+      expect(url).toContain('github.com/login/oauth/authorize');
+      expect(url).toContain('client_id=test-gh-client-id');
+    });
+
+    it('should throw BadRequestException for unsupported provider', () => {
+      expect(() => authService.getAuthorizationUrl('unknown')).toThrow('Unsupported OAuth provider: unknown');
+    });
+  });
+
+  describe('handleOAuthCallback', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn();
+      vi.mocked(valkeyService.get).mockResolvedValue(null as unknown as string);
+      vi.mocked(valkeyService.del).mockResolvedValue(undefined);
+    });
+
+    it('should create new OAuth user and return tokens', async () => {
+      const state = 'state-123';
+      vi.mocked(valkeyService.get).mockResolvedValue('google');
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: 'google-access-token' }),
+      } as Response).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sub: 'google-id-123', email: 'test@example.com', name: 'Test User' }),
+      } as Response);
+
+      vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(null);
+      vi.mocked(usersRepository.create).mockResolvedValue({
         id: 'new-user-123',
         email: 'test@example.com',
         username: 'test',
@@ -525,34 +573,41 @@ describe('AuthService', () => {
       vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
       vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
-      const result = await authService.oauthLogin('google', {
-        id: 'google-id-123',
+      const result = await authService.handleOAuthCallback('google', 'valid-code', state);
+
+      expect(result).toHaveProperty('accessToken', 'access-token');
+      expect(result).toHaveProperty('refreshToken', 'refresh-token');
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'user.registered',
+        expect.any(Object),
+      );
+      expect(valkeyService.del).toHaveBeenCalledWith('oauth:state:state-123');
+    });
+
+    it('should login existing OAuth user and return tokens', async () => {
+      const state = 'state-123';
+      vi.mocked(valkeyService.get).mockResolvedValue('google');
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: 'google-access-token' }),
+      } as Response).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sub: 'user-123', email: 'test@example.com', name: 'Test User' }),
+      } as Response);
+
+      vi.mocked(usersRepository.findByGoogleId).mockResolvedValue({
+        id: 'user-123',
         email: 'test@example.com',
+        username: 'testuser',
         name: 'Test User',
-      });
-
-      expect(result).toHaveProperty('tokens');
-      expect(result.user.id).toBe('new-user-123');
-    });
-
-    it('should throw BadRequestException for unsupported provider', async () => {
-      await expect(authService.oauthLogin('unknown', { id: '1', email: 'test@example.com', name: 'Test' }))
-        .rejects.toThrow('Unsupported OAuth provider: unknown');
-    });
-
-    it('should login existing Facebook OAuth user', async () => {
-      vi.mocked(usersService.findByFacebookId).mockResolvedValue({
-        id: 'user-456',
-        email: 'fbuser@example.com',
-        username: 'fbuser',
-        name: 'FB User',
         accountType: AccountType.READER,
         passwordHash: null,
         adminRole: null,
         avatar: null,
         bio: null,
-        googleId: null,
-        facebookId: 'fb-id-123',
+        googleId: 'google-id-123',
+        facebookId: null,
         twitterId: null,
         githubId: null,
         appleId: null,
@@ -568,14 +623,29 @@ describe('AuthService', () => {
       vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
       vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
-      const result = await authService.oauthLogin('facebook', {
-        id: 'fb-id-123',
-        email: 'fbuser@example.com',
-        name: 'FB User',
-      });
+      const result = await authService.handleOAuthCallback('google', 'valid-code', state);
 
-      expect(result).toHaveProperty('tokens');
-      expect(result.user.id).toBe('user-456');
+      expect(result).toHaveProperty('accessToken', 'access-token');
+      expect(result).toHaveProperty('refreshToken', 'refresh-token');
+      expect(valkeyService.del).toHaveBeenCalledWith('oauth:state:state-123');
+    });
+
+    it('should throw BadRequestException for missing state', async () => {
+      await expect(authService.handleOAuthCallback('google', 'valid-code')).rejects.toThrow('Invalid or expired state parameter');
+    });
+
+    it('should throw BadRequestException for mismatched state provider', async () => {
+      const state = 'state-123';
+      vi.mocked(valkeyService.get).mockResolvedValue('google');
+
+      await expect(authService.handleOAuthCallback('facebook', 'valid-code', state)).rejects.toThrow('State parameter does not match provider');
+    });
+
+    it('should throw BadRequestException for unsupported provider', async () => {
+      const state = 'state-123';
+      vi.mocked(valkeyService.get).mockResolvedValue('google');
+
+      await expect(authService.handleOAuthCallback('unknown', 'valid-code', state)).rejects.toThrow('Unsupported OAuth provider: unknown');
     });
   });
 });

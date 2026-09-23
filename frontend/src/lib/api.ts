@@ -62,7 +62,7 @@ export const api = {
     name: string;
     username: string;
   }) =>
-    apiRequest<{ user: { id: string; email: string; name: string }; token: AuthTokens }>(
+    apiRequest<{ user: { id: string; email: string; name: string }; tokens: AuthTokens }>(
       "/auth/register",
       {
         method: "POST",
@@ -71,7 +71,7 @@ export const api = {
     ),
 
   login: (data: { email: string; password: string }) =>
-    apiRequest<{ user: { id: string; email: string }; token: AuthTokens }>("/auth/login", {
+    apiRequest<{ user: { id: string; email: string }; tokens: AuthTokens }>("/auth/login", {
       method: "POST",
       body: JSON.stringify(data),
     }),

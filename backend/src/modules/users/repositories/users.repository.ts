@@ -1,13 +1,14 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+
 import { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../interfaces/users-repository.interface.ts';
 import { users } from '../../../db/schema/users.schema.ts';
-import { eq, and } from 'drizzle-orm';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 
 @Injectable()
 export class UsersRepository implements IUsersRepository {
-  constructor(private readonly logger: WinstonLoggerService) {}
+  constructor(@Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService) {}
 
   async findById(id: string): Promise<User | null> {
     this.logger.debug(`Finding user by id: ${id}`);
