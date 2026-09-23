@@ -25,6 +25,15 @@ async function bootstrap() {
   const winstonLogger = app.get(WinstonLoggerService);
   const logger = new Logger('Bootstrap');
 
+  if (process.env.SENTRY_DSN) {
+    try {
+      const { SentryModule } = await import('@sentry/nestjs');
+      app.use(SentryModule.HTTP_HANDLER);
+    } catch {
+      winstonLogger.warn('Sentry DSN configured but @sentry/nestjs is not installed', 'Bootstrap');
+    }
+  }
+
   const wafMiddleware = new WafMiddleware(winstonLogger);
   app.use((request: Request, response: Response, next: NextFunction) => wafMiddleware.use(request, response, next));
 

@@ -1,6 +1,9 @@
 
 
 node_modules/
+dist/
+coverage/
+*.tsbuildinfo
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md

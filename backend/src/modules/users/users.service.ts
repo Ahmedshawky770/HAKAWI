@@ -4,9 +4,9 @@ import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
+import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
 
-import type { IUsersRepository } from './interfaces/users-repository.interface.ts';
-import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
 import type { User, CreateUserInput, UpdateUserInput } from './types.ts';
 
 @Injectable()

@@ -13,6 +13,8 @@ import appConfig from '../config/app.config.ts';
 import databaseConfig from '../config/database.config.ts';
 import jwtConfig from '../config/jwt.config.ts';
 import valkeyConfig from '../config/valkey.config.ts';
+import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
+import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
 
 import { WinstonLoggerService } from './services/winston-logger.service.ts';
 import { ValkeyService } from './services/valkey.service.ts';
@@ -65,6 +67,11 @@ import { JwtHelper } from './utils/jwt.util.ts';
     RolesGuard,
     PasswordHasher,
     JwtHelper,
+    UsersRepository,
+    {
+      provide: USERS_REPOSITORY,
+      useExisting: UsersRepository,
+    },
     {
       provide: 'APP_GUARD',
       useFactory: (options: ThrottlerModuleOptions, storage: ThrottlerStorage, reflector: Reflector) => {
@@ -77,6 +84,6 @@ import { JwtHelper } from './utils/jwt.util.ts';
       useValue: new Reflector(),
     },
   ],
-  exports: [WinstonLoggerService, ValkeyService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, ConfigModule, ThrottlerModule],
+  exports: [WinstonLoggerService, ValkeyService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, ConfigModule, ThrottlerModule, USERS_REPOSITORY],
 })
 export class CommonModule {}

@@ -8,5 +8,8 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     setupFiles: ['./src/e2e/setup.ts'],
+    transform: {
+      '^.+\\.ts$': '@swc/transform',
+    },
   },
 });

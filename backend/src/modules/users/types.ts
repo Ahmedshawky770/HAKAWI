@@ -50,4 +50,5 @@ export type UpdateUserInput = Partial<{
   isVerified: boolean;
   onboardingCompleted: boolean;
   accessBlocked: boolean;
+  lastLoginAt: Date;
 }>;

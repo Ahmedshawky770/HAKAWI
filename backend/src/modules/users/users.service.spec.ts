@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UsersService } from './users.service.js';
-import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from './interfaces/users-repository.interface.js';
+import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../../common/users/users-repository.interface.js';
+import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.js';
 import { PasswordHasher } from '../../common/utils/password.util.js';
 import { ValkeyService } from '../../common/services/valkey.service.js';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';

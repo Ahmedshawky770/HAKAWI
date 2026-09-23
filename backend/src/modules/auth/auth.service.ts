@@ -7,9 +7,9 @@ import { fetchJson } from '../../common/utils/fetch.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { USERS_REPOSITORY } from '../users/interfaces/users-repository.interface.ts';
-import type { IUsersRepository } from '../users/interfaces/users-repository.interface.ts';
-import { UserRegisteredEvent } from '../users/events/users.event-handler.ts';
+import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
+import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
+import { UserRegisteredEvent } from '../../common/events/users.events.ts';
 
 import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto } from './dto/auth.dto.ts';
 
@@ -56,7 +56,7 @@ interface GithubTokenResponse {
 }
 
 interface GithubUserResponse {
-  id: number;
+  id: string;
   email?: string;
   name?: string;
   login: string;
@@ -619,58 +619,5 @@ export class AuthService {
     const refreshToken = await this.jwtHelper.generateRefreshToken(payload);
     return { accessToken, refreshToken };
   }
-}
-
-interface GoogleTokenResponse {
-  access_token: string;
-}
-
-interface GoogleUserResponse {
-  sub: string;
-  email: string;
-  name: string;
-}
-
-interface FacebookTokenResponse {
-  access_token: string;
-}
-
-interface FacebookUserResponse {
-  id: string;
-  email?: string;
-  name: string;
-}
-
-interface GithubTokenResponse {
-  access_token: string;
-}
-
-interface GithubUserResponse {
-  id: number;
-  email?: string;
-  name?: string;
-  login: string;
-}
-
-interface AppleTokenResponse {
-  id_token: string;
-}
-
-interface TiktokTokenResponse {
-  access_token: string;
-}
-
-interface TiktokTokenResponse {
-  access_token: string;
-}
-
-interface TiktokUserResponse {
-  data: {
-    user: {
-      user_id?: string;
-      open_id?: string;
-      display_name?: string;
-    };
-  };
 }
 

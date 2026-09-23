@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UsersEventHandler } from './users.event-handler.js';
-import type { UsersRepository } from '../repositories/users.repository.js';
+import type { UsersRepository } from '../../../auth/repositories/users.repository.js';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.js';
-import { UserRegisteredEvent, UserUpdatedEvent } from './users.event-handler.js';
+import { UserRegisteredEvent, UserUpdatedEvent } from '../../../common/events/users.events.js';
 
 type MockUsersRepository = Partial<UsersRepository>;
 type MockWinstonLoggerService = Partial<WinstonLoggerService>;
@@ -75,7 +75,7 @@ describe('UsersEventHandler', () => {
     it('should log updated event', async () => {
       await usersEventHandler.handleUserUpdated(new UserUpdatedEvent('user-123', { name: 'Updated' }));
 
-      expect(logger.info).toHaveBeenCalledWith('Handling user updated event: user-123');
+      expect(logger.info).toHaveBeenCalledWith('Handling user updated event: user-123', 'UsersEventHandler');
     });
   });
 });
