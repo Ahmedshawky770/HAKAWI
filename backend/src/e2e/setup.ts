@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { beforeAll, afterAll, afterEach } from 'vitest';
+import { beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
@@ -17,25 +17,10 @@ beforeAll(async () => {
   }
 });
 
-afterEach(async () => {
-  if (databaseAvailable) {
-    try {
-      await db.delete(users).where(sql`1=1`);
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-});
-
 afterAll(async () => {
-  if (databaseAvailable) {
-    try {
-      const pool = (db as unknown as { pool: { end: () => Promise<void> } }).pool;
-      if (pool && typeof pool.end === 'function') {
-        await pool.end();
-      }
-    } catch {
-      // ignore cleanup errors
-    }
+  try {
+    await db.delete(users).where(sql`email LIKE '%-int@example.com' OR email LIKE '%-register@example.com' OR email LIKE '%-login@example.com' OR email LIKE '%-session@example.com' OR email LIKE '%-forgot@example.com' OR email LIKE '%-reset@example.com' OR email LIKE '%-e2e@example.com'`);
+  } catch {
+    // ignore cleanup errors
   }
 });

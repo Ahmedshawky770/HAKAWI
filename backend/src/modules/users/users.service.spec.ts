@@ -380,4 +380,41 @@ describe('UsersService', () => {
       await expect(usersService.findByTiktokId('tiktok-123')).rejects.toThrow('User not found');
     });
   });
+
+  describe('getUserStats', () => {
+    it('should return stats from cache when available', async () => {
+      const cachedStats = { storiesCount: 5, totalViews: 100, totalReactions: 20, followersCount: 10, followingCount: 3 };
+      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(cachedStats));
+
+      const result = await usersService.getUserStats('user-123');
+
+      expect(result).toEqual(cachedStats);
+      expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should return cached stats without hitting repository', async () => {
+      const cachedStats = { storiesCount: 0, totalViews: 0, totalReactions: 0, followersCount: 0, followingCount: 0 };
+      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(cachedStats));
+
+      const result = await usersService.getUserStats('user-123');
+
+      expect(result.storiesCount).toBe(0);
+      expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
+      vi.mocked(usersRepository.findById).mockResolvedValue(null);
+
+      await expect(usersService.getUserStats('user-123')).rejects.toThrow('User not found');
+    });
+
+    it('should throw NotFoundException when user is soft deleted', async () => {
+      const deletedUser = createMockUser({ deletedAt: new Date() });
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
+      vi.mocked(usersRepository.findById).mockResolvedValue(deletedUser);
+
+      await expect(usersService.getUserStats('user-123')).rejects.toThrow('User not found');
+    });
+  });
 });

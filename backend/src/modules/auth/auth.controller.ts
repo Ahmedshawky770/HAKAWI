@@ -5,7 +5,7 @@ import { Public } from '../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 
 import { AuthService } from './auth.service.ts';
-import { RegisterDto, LoginDto, RefreshTokenDto, LogoutResponseDto } from './dto/auth.dto.ts';
+import { RegisterDto, LoginDto, RefreshTokenDto, LogoutResponseDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto.ts';
 
 @Controller('auth')
 export class AuthController {
@@ -42,6 +42,22 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   logout(@Body('refreshToken') refreshToken: string): Promise<LogoutResponseDto> {
     return this.authService.logout(refreshToken);
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto.email);
+    return { message: 'If the email exists, a reset link has been sent' };
+  }
+
+  @Post('reset-password')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.token, dto.password);
+    return { message: 'Password reset successfully' };
   }
 
   @Get('oauth/:provider')

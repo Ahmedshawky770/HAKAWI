@@ -78,7 +78,7 @@ aws s3 cp media_backup_$(date +%Y%m%d).tar.gz s3://hakawi-backups/media/
 ### What to Backup
 
 ```
-├── docker-compose.yml
+├── docker compose.yml
 ├── nginx.conf
 ├── .env.production (encrypted)
 ├── SSL certificates
@@ -89,7 +89,7 @@ aws s3 cp media_backup_$(date +%Y%m%d).tar.gz s3://hakawi-backups/media/
 
 ```bash
 # Encrypt and backup configuration
-tar -czf config_backup.tar.gz docker-compose.yml nginx.conf scripts/
+tar -czf config_backup.tar.gz docker compose.yml nginx.conf scripts/
 gpg --encrypt --recipient admin@hakawi.com config_backup.tar.gz
 ```
 
@@ -103,7 +103,7 @@ gpg --encrypt --recipient admin@hakawi.com config_backup.tar.gz
 
 ```bash
 # 1. Stop application
-docker-compose down
+docker compose down
 
 # 2. Restore database
 psql -h localhost -U postgres hakawi < backup_latest.sql
@@ -112,14 +112,14 @@ psql -h localhost -U postgres hakawi < backup_latest.sql
 npm run migration:run
 
 # 4. Start application
-docker-compose up -d
+docker compose up -d
 ```
 
 #### Point-in-Time Recovery
 
 ```bash
 # 1. Stop application
-docker-compose down
+docker compose down
 
 # 2. Restore base backup
 psql -h localhost -U postgres hakawi < backup_base.sql
@@ -128,7 +128,7 @@ psql -h localhost -U postgres hakawi < backup_base.sql
 pg_waldump /var/lib/postgresql/wal_archive/ | psql -h localhost -U postgres hakawi
 
 # 4. Start application
-docker-compose up -d
+docker compose up -d
 ```
 
 ### File Recovery
@@ -308,7 +308,7 @@ gpg --decrypt backup.sql.gpg > backup.sql
 
 ```bash
 # 1. Stop application
-docker-compose down
+docker compose down
 
 # 2. Restore database
 psql -U postgres hakawi < /backups/latest.sql
@@ -318,7 +318,7 @@ aws s3 cp s3://hakawi-backups/media/latest.tar.gz .
 tar -xzf latest.tar.gz -C /app/media
 
 # 4. Start application
-docker-compose up -d
+docker compose up -d
 
 # 5. Verify
 curl https://api.hakawi.com/health

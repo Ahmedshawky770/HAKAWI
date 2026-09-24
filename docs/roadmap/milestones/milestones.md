@@ -63,7 +63,7 @@ Establish project foundation with authentication, database, and basic infrastruc
 ### Verification Steps
 ```bash
 # 1. Start Docker Compose
-docker-compose up -d
+docker compose up -d
 
 # 2. Run migrations
 npm run migration:run

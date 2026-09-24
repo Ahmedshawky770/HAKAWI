@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, Inject } from '@nestjs/common';
+import { sql, eq, and } from 'drizzle-orm';
 
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
@@ -6,8 +7,13 @@ import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
+import { db } from '../../db/index.ts';
+import { stories } from '../../db/schema/stories.schema.ts';
+import { follows } from '../../db/schema/social.schema.ts';
+import { reactions } from '../../db/schema/social.schema.ts';
 
-import type { User, CreateUserInput, UpdateUserInput } from './types.ts';
+import { UserStatsDto } from './dto/users.dto.ts';
+import type { User, CreateUserInput, UpdateUserInput, UserStats } from './types.ts';
 
 @Injectable()
 export class UsersService {
@@ -170,5 +176,36 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  async getUserStats(id: string): Promise<UserStatsDto> {
+    const cached = await this.valkeyService.get(`user:stats:${id}`);
+    if (cached) {
+      return JSON.parse(cached) as UserStatsDto;
+    }
+
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [storiesResult, viewsResult, reactionsResult, followersResult, followingResult] = await Promise.all([
+      db.select({ total: sql<number>`count(*)` }).from(stories).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db.select({ total: sql<number>`sum(${stories.viewCount})` }).from(stories).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db.select({ total: sql<number>`count(*)` }).from(reactions).innerJoin(stories, eq(stories.id, reactions.storyId)).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followingId, id)),
+      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followerId, id)),
+    ]);
+
+    const stats: UserStatsDto = {
+      storiesCount: Number(storiesResult[0]?.total ?? 0),
+      totalViews: Number(viewsResult[0]?.total ?? 0),
+      totalReactions: Number(reactionsResult[0]?.total ?? 0),
+      followersCount: Number(followersResult[0]?.total ?? 0),
+      followingCount: Number(followingResult[0]?.total ?? 0),
+    };
+
+    await this.valkeyService.set(`user:stats:${id}`, JSON.stringify(stats), 120);
+    return stats;
   }
 }

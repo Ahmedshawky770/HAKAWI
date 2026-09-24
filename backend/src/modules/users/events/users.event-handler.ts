@@ -14,7 +14,9 @@ export class UsersEventHandler {
 
   @OnEvent('user.registered')
   async handleUserRegistered(event: UserRegisteredEvent): Promise<void> {
-    this.logger.info(`Handling user registered event: ${event.userId}`, 'UsersEventHandler');
+    if (this.logger) {
+      this.logger.info(`Handling user registered event: ${event.userId}`, 'UsersEventHandler');
+    }
 
     const user = await this.usersRepository.findById(event.userId);
     if (!user) {
@@ -26,6 +28,8 @@ export class UsersEventHandler {
 
   @OnEvent('user.updated')
   async handleUserUpdated(event: UserUpdatedEvent): Promise<void> {
-    this.logger.info(`Handling user updated event: ${event.userId}`, 'UsersEventHandler');
+    if (this.logger) {
+      this.logger.info(`Handling user updated event: ${event.userId}`, 'UsersEventHandler');
+    }
   }
 }

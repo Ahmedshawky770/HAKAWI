@@ -18,15 +18,20 @@ import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.i
 
 import { WinstonLoggerService } from './services/winston-logger.service.ts';
 import { ValkeyService } from './services/valkey.service.ts';
+import { EventSchemaRegistry } from './events/event-schema-registry.ts';
+import { DLQService } from './events/dlq.service.ts';
+import { EventValidatorService } from './events/event-validator.service.ts';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
 import { PasswordHasher } from './utils/password.util.ts';
 import { JwtHelper } from './utils/jwt.util.ts';
+import { ResilienceModule } from './resilience/resilience.module.js';
 
 @Global()
 @Module({
   imports: [
     DatabaseModule,
+    ResilienceModule,
     EventEmitterModule.forRoot({
       wildcard: false,
       delimiter: '.',
@@ -63,6 +68,9 @@ import { JwtHelper } from './utils/jwt.util.ts';
   providers: [
     WinstonLoggerService,
     ValkeyService,
+    EventSchemaRegistry,
+    DLQService,
+    EventValidatorService,
     JwtAuthGuard,
     RolesGuard,
     PasswordHasher,
@@ -84,6 +92,6 @@ import { JwtHelper } from './utils/jwt.util.ts';
       useValue: new Reflector(),
     },
   ],
-  exports: [WinstonLoggerService, ValkeyService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, ConfigModule, ThrottlerModule, USERS_REPOSITORY],
+  exports: [WinstonLoggerService, ValkeyService, EventSchemaRegistry, DLQService, EventValidatorService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, ConfigModule, ThrottlerModule, USERS_REPOSITORY, ResilienceModule],
 })
 export class CommonModule {}

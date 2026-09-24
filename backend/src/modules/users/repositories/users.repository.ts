@@ -12,8 +12,16 @@ export class UsersRepository implements IUsersRepository {
 
   async findById(id: string): Promise<User | null> {
     this.logger.debug(`Finding user by id: ${id}`);
-    const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-    return user ?? null;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      return user ?? null;
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === '22P02') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async findByEmail(email: string): Promise<User | null> {

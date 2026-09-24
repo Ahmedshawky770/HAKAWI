@@ -3,10 +3,17 @@ import { type Server } from 'http';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
 import { AppModule } from '../app.module.ts';
 import { WinstonLoggerService } from '../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../common/services/valkey.service.ts';
+import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
+import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
+import { db } from '../db/index.ts';
+import { users } from '../db/schema/users.schema.ts';
 
 interface RegisterResponseBody {
   user: {
@@ -35,6 +42,12 @@ describe('Auth E2E', () => {
   let httpServer: Server;
 
   beforeAll(async () => {
+    try {
+      await db.delete(users).where(sql`email LIKE 'e2e-%' OR email LIKE '%@example.com'`);
+    } catch {
+      // ignore cleanup errors
+    }
+
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       providers: [
@@ -43,6 +56,13 @@ describe('Auth E2E', () => {
           useValue: new Reflector(),
         },
         WinstonLoggerService,
+        ValkeyService,
+        EventEmitter2,
+        UsersRepository,
+        {
+          provide: USERS_REPOSITORY,
+          useExisting: UsersRepository,
+        },
       ],
     }).compile();
 
@@ -52,7 +72,14 @@ describe('Auth E2E', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      try {
+        await db.delete(users).where(sql`email LIKE 'e2e-%' OR email LIKE '%@example.com'`);
+      } catch {
+        // ignore cleanup errors
+      }
+      await app.close();
+    }
   });
 
   describe('/auth/register (POST)', () => {

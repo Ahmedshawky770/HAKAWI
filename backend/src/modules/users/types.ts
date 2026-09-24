@@ -19,6 +19,8 @@ export type User = {
   accessBlocked: boolean | null;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
+  emailVerified: boolean | null;
+  emailVerificationToken: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -52,3 +54,11 @@ export type UpdateUserInput = Partial<{
   accessBlocked: boolean;
   lastLoginAt: Date;
 }>;
+
+export type UserStats = {
+  storiesCount: number;
+  totalViews: number;
+  totalReactions: number;
+  followersCount: number;
+  followingCount: number;
+};

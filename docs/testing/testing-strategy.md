@@ -326,7 +326,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 20
-      - run: docker-compose up -d
+      - run: docker compose up -d
       - run: npm install
       - run: npm run test:e2e
 ```
@@ -887,7 +887,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 20
-      - run: docker-compose up -d
+      - run: docker compose up -d
       - run: npm install
       - run: npm run db:migrate
       - run: npm run test:e2e

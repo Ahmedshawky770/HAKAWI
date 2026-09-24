@@ -31,6 +31,8 @@ export const users = pgTable(
     accessBlocked: boolean('access_blocked').default(false),
     lastLoginAt: timestamp('last_login_at'),
     deletedAt: timestamp('deleted_at'),
+    emailVerified: boolean('email_verified').default(false),
+    emailVerificationToken: varchar('email_verification_token', { length: 255 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -44,6 +46,7 @@ export const users = pgTable(
     usernameUnique: index('users_username_idx').on(table.username),
     emailUnique: index('users_email_idx').on(table.email),
     accountTypeIdx: index('users_account_type_idx').on(table.accountType),
+    emailVerificationTokenIdx: index('users_email_verification_token_idx').on(table.emailVerificationToken),
   })
 );
 

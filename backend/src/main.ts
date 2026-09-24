@@ -5,6 +5,8 @@ import { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module.ts';
 import { WinstonLoggerService } from './common/services/winston-logger.service.ts';
 import { WafMiddleware } from './common/middleware/waf.middleware.ts';
+import { RedisIoAdapter } from './redis-io.adapter.ts';
+import { setupSwagger } from './common/swagger/swagger.config.ts';
 
 
 async function bootstrap() {
@@ -54,6 +56,13 @@ async function bootstrap() {
       },
     }),
   );
+
+  const { ModuleRef } = await import('@nestjs/core');
+  const moduleRef = app.get(ModuleRef);
+  const redisIoAdapter = new RedisIoAdapter(moduleRef);
+  app.useWebSocketAdapter(redisIoAdapter);
+
+  setupSwagger(app);
 
   await app.listen(port);
   logger.log(`Application is running on: http://localhost:${port}/api/v1`);

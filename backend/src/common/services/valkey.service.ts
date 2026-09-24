@@ -89,4 +89,53 @@ export class ValkeyService implements OnModuleInit, OnModuleDestroy {
     }
     return this.client.ping();
   }
+
+  async sadd(key: string, member: string): Promise<number> {
+    if (!this.client) {
+      return 0;
+    }
+    return this.client.sadd(key, member);
+  }
+
+  async smembers(key: string): Promise<string[]> {
+    if (!this.client) {
+      return [];
+    }
+    return this.client.smembers(key);
+  }
+
+  async srem(key: string, member: string): Promise<number> {
+    if (!this.client) {
+      return 0;
+    }
+    return this.client.srem(key, member);
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    if (!this.client) {
+      return [];
+    }
+    const result: string[] = [];
+    let cursor = '0';
+    do {
+      const scanResult = await this.client.scan(cursor, 'MATCH', pattern, 'COUNT', '100');
+      cursor = scanResult[0];
+      result.push(...scanResult[1]);
+    } while (cursor !== '0');
+    return result;
+  }
+
+  async hSet(key: string, field: string, value: string): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+    await this.client.hset(key, field, value);
+  }
+
+  async hSetMultiple(key: string, values: Record<string, string>): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+    await this.client.hmset(key, values);
+  }
 }

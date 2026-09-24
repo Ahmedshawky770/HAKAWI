@@ -1,5 +1,5 @@
 # Implementation Roadmap
-## Hakawi - 20-Week Build Plan (Corrected)
+## Hakawi - 18-Week Build Plan
 
 ---
 

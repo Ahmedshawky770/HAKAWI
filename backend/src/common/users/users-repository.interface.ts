@@ -28,6 +28,8 @@ export type UpdateUserInput = Partial<{
   onboardingCompleted: boolean;
   accessBlocked: boolean;
   lastLoginAt: Date;
+  emailVerified: boolean;
+  emailVerificationToken: string | null;
 }>;
 
 export type User = {
@@ -51,6 +53,8 @@ export type User = {
   accessBlocked: boolean | null;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
+  emailVerified: boolean | null;
+  emailVerificationToken: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

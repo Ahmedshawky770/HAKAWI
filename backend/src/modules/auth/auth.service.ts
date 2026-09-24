@@ -1,17 +1,19 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.ts';
 import { fetchJson } from '../../common/utils/fetch.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
 import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { UserRegisteredEvent } from '../../common/events/users.events.ts';
+import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
 
-import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto } from './dto/auth.dto.ts';
+import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto.ts';
 
 const OAUTH_PROVIDERS = ['google', 'facebook', 'github', 'apple', 'tiktok'] as const;
 type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
@@ -92,7 +94,9 @@ export class AuthService {
     @Inject(JwtHelper) private readonly jwtHelper: JwtHelper,
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(WinstonLoggerService) private readonly winstonLoggerService: WinstonLoggerService,
-    @Inject(EventEmitter2) private readonly eventEmitter: EventEmitter2,
+    @Inject(CircuitBreakerService) private readonly circuitBreaker: CircuitBreakerService,
+    @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    @Inject(EmailVerificationService) private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
   getAuthorizationUrl(provider: string, state?: string): string {
@@ -135,7 +139,10 @@ export class AuthService {
 
     await this.valkeyService.del(this.OAUTH_STATE_PREFIX + state);
 
-    const profile = await this.fetchProviderProfile(provider, code);
+    const profile = await this.circuitBreaker.execute(
+      `oauth-${provider}`,
+      () => this.fetchProviderProfile(provider, code),
+    );
     const user = await this.findOrCreateOAuthUser(provider, profile);
 
     return this.generateTokens(user);
@@ -445,7 +452,7 @@ export class AuthService {
 
     const createData: OAuthUserCreateData = { ...baseData, [mapping.field]: profile.id };
     const user = await this.usersRepository.create(createData);
-    this.eventEmitter.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
+    await this.eventBus.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
 
     return user;
   }
@@ -475,7 +482,9 @@ export class AuthService {
       accountType: AccountType.READER,
     });
 
-    this.eventEmitter.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
+    await this.eventBus.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
+
+    await this.emailVerificationService.generateToken(dto.email);
 
     const tokens = await this.generateTokens(user);
 
@@ -618,6 +627,35 @@ export class AuthService {
     const accessToken = await this.jwtHelper.generateAccessToken(payload);
     const refreshToken = await this.jwtHelper.generateRefreshToken(payload);
     return { accessToken, refreshToken };
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.usersRepository.findByEmail(email);
+    if (!user) {
+      return;
+    }
+
+    const resetToken = crypto.randomUUID();
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+
+    await this.usersRepository.update(user.id, {
+      emailVerificationToken: resetToken,
+    });
+
+    await this.valkeyService.set(`password:reset:${resetToken}`, user.id, 3600);
+    await this.eventBus.emit('password.reset.requested', { userId: user.id, email: user.email });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const userId = await this.valkeyService.get(`password:reset:${token}`);
+    if (!userId) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const passwordHash = await this.passwordHasher.hash(newPassword);
+    await this.usersRepository.update(userId, { passwordHash });
+    await this.valkeyService.del(`password:reset:${token}`);
+    await this.eventBus.emit('password.reset.completed', { userId });
   }
 }
 

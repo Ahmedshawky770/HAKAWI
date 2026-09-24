@@ -5,10 +5,12 @@ import { PasswordHasher } from '../../common/utils/password.util.js';
 import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.js';
 import { ValkeyService } from '../../common/services/valkey.service.js';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { AccountType } from '../../common/constants/roles.js';
+import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
+import { AccountType } from '../../common/constants/roles.ts';
 import type { IUsersRepository } from '../users/interfaces/users-repository.interface.js';
 import { USERS_REPOSITORY } from '../users/interfaces/users-repository.interface.js';
 import type { User } from '../users/interfaces/users-repository.interface.js';
+import { EmailVerificationService } from '../email-verification/email-verification.service.js';
 
 type MockUsersRepository = Partial<IUsersRepository>;
 
@@ -43,6 +45,14 @@ type MockEventEmitter = {
   emit: ReturnType<typeof vi.fn>;
 };
 
+type MockEmailVerificationService = {
+  generateToken: ReturnType<typeof vi.fn>;
+};
+
+type MockCircuitBreakerService = {
+  execute: ReturnType<typeof vi.fn>;
+};
+
 describe('AuthService', () => {
   let authService: AuthService;
   let usersRepository: MockUsersRepository;
@@ -51,6 +61,8 @@ describe('AuthService', () => {
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
   let eventEmitter: MockEventEmitter;
+  let emailVerificationService: MockEmailVerificationService;
+  let circuitBreaker: MockCircuitBreakerService;
 
   beforeEach(() => {
     usersRepository = {
@@ -97,13 +109,23 @@ describe('AuthService', () => {
       emit: vi.fn(),
     };
 
+    emailVerificationService = {
+      generateToken: vi.fn().mockResolvedValue('123456'),
+    };
+
+    circuitBreaker = {
+      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<any>) => fn()),
+    };
+
     authService = new AuthService(
       usersRepository as unknown as IUsersRepository,
       passwordHasher as unknown as PasswordHasher,
       jwtHelper as unknown as JwtHelper,
       valkeyService as unknown as ValkeyService,
       winstonLoggerService as unknown as WinstonLoggerService,
+      circuitBreaker as unknown as CircuitBreakerService,
       eventEmitter as unknown as EventEmitter2,
+      emailVerificationService as unknown as EmailVerificationService,
     );
   });
 

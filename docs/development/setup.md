@@ -48,7 +48,7 @@ hakawi/
 │   ├── package.json
 │   └── nest-cli.json
 │
-├── docker-compose.yml       # Local development services
+├── docker compose.yml       # Local development services
 └── package.json            # Root workspace config
 ```
 
@@ -79,7 +79,7 @@ cd backend && npm install && cd ..
 ### 3. Start Docker Services
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This starts:
@@ -345,23 +345,23 @@ lsof -ti:5432 | xargs kill -9
 
 ```bash
 # Check if PostgreSQL is running
-docker-compose ps
+docker compose ps
 
 # Restart PostgreSQL
-docker-compose restart postgres
+docker compose restart postgres
 
 # View PostgreSQL logs
-docker-compose logs postgres
+docker compose logs postgres
 ```
 
 ### Valkey Connection Issues
 
 ```bash
 # Check if Valkey is running
-docker-compose ps valkey
+docker compose ps valkey
 
 # Connect to Valkey CLI
-docker-compose exec valkey redis-cli ping
+docker compose exec valkey redis-cli ping
 ```
 
 ---

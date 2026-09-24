@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
-    include: ['**/*.e2e-spec.ts'],
+    include: ['src/e2e/**/*.e2e-spec.ts', 'test/**/*.e2e-spec.ts', 'test/**/*.integration-spec.ts'],
+    exclude: ['e2e/**/*.e2e-spec.ts'],
     setupFiles: ['./src/e2e/setup.ts'],
     transform: {
       '^.+\\.ts$': '@swc/transform',
