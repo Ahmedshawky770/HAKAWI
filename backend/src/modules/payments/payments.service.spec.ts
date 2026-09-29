@@ -1,13 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PaymentsService } from './payments.service.js';
-import type { IPaymentsRepository } from './interfaces/payments-repository.interface.js';
-import { PAYMENTS_REPOSITORY } from './interfaces/payments-repository.interface.js';
-import type { Payment, CreatePaymentInput, PaymentTransaction, Refund } from './types.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import * as crypto from 'crypto';
 
-type MockPaymentsRepository = Partial<IPaymentsRepository>;
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { PaymentsService } from './payments.service.ts';
+import type { IPaymentsRepository, Payment, PaymentTransaction, Refund, CreatePaymentInput } from './interfaces/payments-repository.interface.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockPaymentsRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Payment | null>>>;
+  findByOrderId: ReturnType<typeof vi.fn<(orderId: string) => Promise<Payment | null>>>;
+  findByTransactionId: ReturnType<typeof vi.fn<(transactionId: string) => Promise<Payment | null>>>;
+  findAll: ReturnType<typeof vi.fn<(params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<{ payments: Payment[]; total: number }>>>;
+  create: ReturnType<typeof vi.fn<(data: CreatePaymentInput) => Promise<Payment>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: Partial<Payment>) => Promise<Payment>>>;
+  softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  createTransaction: ReturnType<typeof vi.fn<(data: { paymentId: string; type: string; status: string; amount: number; currency: string; gatewayResponse?: string | null }) => Promise<PaymentTransaction>>>;
+  createRefund: ReturnType<typeof vi.fn<(data: { paymentId: string; amount: number; reason?: string | null; status?: string; paymobRefundId?: string | null; metadata?: string | null }) => Promise<Refund>>>;
+  findRefundsByPayment: ReturnType<typeof vi.fn<(paymentId: string) => Promise<Refund[]>>>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -25,8 +42,9 @@ type MockValkeyService = {
   del: ReturnType<typeof vi.fn>;
 };
 
-type MockEventEmitter = {
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
 
 describe('PaymentsService', () => {
@@ -34,7 +52,7 @@ describe('PaymentsService', () => {
   let paymentsRepository: MockPaymentsRepository;
   let logger: MockWinstonLoggerService;
   let valkeyService: MockValkeyService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   const mockPayment: Payment = {
     id: 'payment-123',
@@ -46,7 +64,7 @@ describe('PaymentsService', () => {
     paymobOrderId: 'order-123',
     paymobPaymentId: 'pay-123',
     paymobTransactionId: 'txn-123',
-    metadata: { description: 'Test payment' },
+    metadata: '{"description": "Test payment"}',
     description: 'Test payment',
     deletedAt: null,
     createdAt: new Date('2024-01-01'),
@@ -55,15 +73,16 @@ describe('PaymentsService', () => {
 
   beforeEach(() => {
     paymentsRepository = {
-      findById: vi.fn(),
-      findByOrderId: vi.fn(),
-      findAll: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
-      createTransaction: vi.fn(),
-      createRefund: vi.fn(),
-      findRefundsByPayment: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Payment | null>>(),
+      findByOrderId: vi.fn<(orderId: string) => Promise<Payment | null>>(),
+      findByTransactionId: vi.fn<(transactionId: string) => Promise<Payment | null>>(),
+      findAll: vi.fn<(params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<{ payments: Payment[]; total: number }>>(),
+      create: vi.fn<(data: CreatePaymentInput) => Promise<Payment>>(),
+      update: vi.fn<(id: string, data: Partial<Payment>) => Promise<Payment>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      createTransaction: vi.fn<(data: { paymentId: string; type: string; status: string; amount: number; currency: string; gatewayResponse?: string | null }) => Promise<PaymentTransaction>>(),
+      createRefund: vi.fn<(data: { paymentId: string; amount: number; reason?: string | null; status?: string; paymobRefundId?: string | null; metadata?: string | null }) => Promise<Refund>>(),
+      findRefundsByPayment: vi.fn<(paymentId: string) => Promise<Refund[]>>(),
     };
 
     logger = {
@@ -82,15 +101,16 @@ describe('PaymentsService', () => {
       del: vi.fn(),
     };
 
-    eventEmitter = {
+    eventValidatorService = {
       emit: vi.fn(),
+      validateEvent: vi.fn(),
     };
 
     paymentsService = new PaymentsService(
-      paymentsRepository as unknown as IPaymentsRepository,
+      paymentsRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -122,7 +142,7 @@ describe('PaymentsService', () => {
           status: 'pending',
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('payment.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('payment.created', expect.any(Object));
     });
   });
 
@@ -203,7 +223,7 @@ describe('PaymentsService', () => {
           currency: 'EGP',
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('refund.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.created', expect.any(Object));
     });
 
     it('should throw BadRequestException when payment is not completed', async () => {
@@ -234,9 +254,88 @@ describe('PaymentsService', () => {
 
       const result = await paymentsService.paymobInitializePayment('user-123', 1000, 'EGP', { description: 'Test' });
 
+      expect(result).toHaveProperty('paymentId', 'payment-new');
       expect(result).toHaveProperty('orderId');
       expect(result).toHaveProperty('paymobUrl');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('payment.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('payment.created', expect.any(Object));
+    });
+  });
+
+  describe('validateWebhookSignature', () => {
+    it('should pass with valid signature', () => {
+      const payload = { transaction_id: 'txn-123', status: 'success' };
+      const secret = 'test-webhook-secret';
+      const rawBody = JSON.stringify(payload);
+      const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+      expect(() => paymentsService.validateWebhookSignature(rawBody, signature, secret)).not.toThrow();
+    });
+
+    it('should throw when signature is missing', () => {
+      const rawBody = JSON.stringify({ transaction_id: 'txn-123' });
+
+      expect(() => paymentsService.validateWebhookSignature(rawBody, undefined, 'secret')).toThrow('Missing webhook signature');
+    });
+
+    it('should throw when secret is not configured', () => {
+      const rawBody = JSON.stringify({ transaction_id: 'txn-123' });
+
+      expect(() => paymentsService.validateWebhookSignature(rawBody, 'sig', undefined)).toThrow('Webhook secret is not configured');
+    });
+
+    it('should throw when signature is invalid', () => {
+      const rawBody = JSON.stringify({ transaction_id: 'txn-123' });
+
+      expect(() => paymentsService.validateWebhookSignature(rawBody, 'invalid-signature', 'secret')).toThrow('Invalid webhook signature');
+    });
+  });
+
+  describe('handlePaymobWebhook', () => {
+    const secret = 'test-webhook-secret';
+
+    beforeEach(() => {
+      process.env.PAYMOB_WEBHOOK_SECRET = secret;
+    });
+
+    afterEach(() => {
+      delete process.env.PAYMOB_WEBHOOK_SECRET;
+    });
+
+    it('should process webhook with valid signature', async () => {
+      const payload = { transaction_id: 'txn-123', order_id: 'order-123', status: 'success', payment_id: 'pay-123' };
+      const rawBody = JSON.stringify(payload);
+      const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+      vi.mocked(paymentsRepository.findByTransactionId).mockResolvedValue(null);
+      vi.mocked(paymentsRepository.findByOrderId).mockResolvedValue(mockPayment);
+      vi.mocked(paymentsRepository.update).mockResolvedValue({ ...mockPayment, status: 'completed' });
+      vi.mocked(valkeyService.del).mockResolvedValue(undefined);
+
+      const result = await paymentsService.handlePaymobWebhook(rawBody, signature);
+
+      expect(result.status).toBe('processed');
+      expect(paymentsRepository.update).toHaveBeenCalledWith(
+        'payment-123',
+        expect.objectContaining({ status: 'completed', paymobTransactionId: 'txn-123' })
+      );
+    });
+
+    it('should reject webhook with invalid signature', async () => {
+      const rawBody = JSON.stringify({ transaction_id: 'txn-123' });
+
+      await expect(paymentsService.handlePaymobWebhook(rawBody, 'invalid-signature')).rejects.toThrow('Invalid webhook signature');
+    });
+
+    it('should return already_processed for duplicate transaction', async () => {
+      const payload = { transaction_id: 'txn-123', order_id: 'order-123', status: 'success' };
+      const rawBody = JSON.stringify(payload);
+      const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+      vi.mocked(paymentsRepository.findByTransactionId).mockResolvedValue({ ...mockPayment, status: 'completed' });
+
+      const result = await paymentsService.handlePaymobWebhook(rawBody, signature);
+
+      expect(result.status).toBe('already_processed');
     });
   });
 
@@ -259,7 +358,7 @@ describe('PaymentsService', () => {
       const result = await paymentsService.paymobCallback('order-123', 'pay-123', 'txn-123', 'success');
 
       expect(result.status).toBe('completed');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('payment.completed', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('payment.completed', expect.any(Object));
     });
 
     it('should handle failed Paymob callback', async () => {
@@ -280,7 +379,7 @@ describe('PaymentsService', () => {
       const result = await paymentsService.paymobCallback('order-123', 'pay-123', 'txn-123', 'failed');
 
       expect(result.status).toBe('failed');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('payment.failed', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('payment.failed', expect.any(Object));
     });
   });
 

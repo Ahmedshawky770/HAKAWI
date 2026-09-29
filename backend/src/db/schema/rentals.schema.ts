@@ -23,6 +23,7 @@ export const rentals = pgTable(
     userIdx: index('rentals_user_id_idx').on(table.userId),
     bookIdx: index('rentals_book_id_idx').on(table.bookId),
     statusIdx: index('rentals_status_idx').on(table.status),
+    userBookUnique: index('rentals_user_book_unique_idx').on(table.userId, table.bookId),
   })
 );
 

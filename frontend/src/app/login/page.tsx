@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, setStoredUser } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -21,10 +21,11 @@ export default function LoginPage() {
 
     try {
       const response = await api.login({ email, password });
-      localStorage.setItem("hakawi_tokens", JSON.stringify(response.tokens));
+      const session = await api.getSession();
+      setStoredUser(session);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "فشل تسجيل الدخول");
     } finally {
       setLoading(false);
     }
@@ -36,16 +37,16 @@ export default function LoginPage() {
         <div>
           <Link href="/" className="flex items-center justify-center gap-2 mb-6">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">H</span>
+              <span className="text-white font-bold text-xl">ح</span>
             </div>
           </Link>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
+            تسجيل الدخول
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Or{" "}
+            ليس لديك حساب؟{" "}
             <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              create a new account
+              إنشاء حساب جديد
             </Link>
           </p>
         </div>
@@ -57,15 +58,15 @@ export default function LoginPage() {
           )}
           <div className="space-y-4">
             <Input
-              label="Email address"
+              label="البريد الإلكتروني"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder="example@mail.com"
             />
             <Input
-              label="Password"
+              label="كلمة المرور"
               type="password"
               required
               value={password}
@@ -76,12 +77,12 @@ export default function LoginPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm">
               <Link href="/forgot-password" className="font-medium text-blue-600 hover:text-blue-500">
-                Forgot your password?
+                نسيت كلمة المرور؟
               </Link>
             </div>
           </div>
           <Button type="submit" loading={loading} className="w-full">
-            Sign in
+            تسجيل الدخول
           </Button>
         </form>
       </div>

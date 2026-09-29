@@ -1,25 +1,43 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
 
-import { NotificationsController } from './notifications.controller.ts';
 import { NotificationsService } from '../notifications.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+
+import { NotificationsController } from './notifications.controller.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
+
+type MockNotificationsService = {
+  findByUser: ReturnType<typeof vi.fn>;
+  findUnread: ReturnType<typeof vi.fn>;
+  countUnread: ReturnType<typeof vi.fn>;
+  markAsRead: ReturnType<typeof vi.fn>;
+  markAllAsRead: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  getPreferences: ReturnType<typeof vi.fn>;
+  updatePreferences: ReturnType<typeof vi.fn>;
+};
 
 describe('NotificationsController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let notificationsService: Partial<NotificationsService>;
+  let notificationsService: MockNotificationsService;
 
   beforeAll(async () => {
     notificationsService = {
@@ -44,7 +62,7 @@ describe('NotificationsController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -71,7 +89,7 @@ describe('NotificationsController', () => {
       vi.mocked(notificationsService.findByUser).mockResolvedValue({
         notifications: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/notifications')
@@ -88,7 +106,7 @@ describe('NotificationsController', () => {
     it('should return unread notifications', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(notificationsService.findUnread).mockResolvedValue([] as any);
+      vi.mocked(notificationsService.findUnread).mockResolvedValue([]);
 
       const res = await request(httpServer)
         .get('/notifications/unread')
@@ -128,7 +146,7 @@ describe('NotificationsController', () => {
         follows: true,
         mentions: true,
         system: true,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/notifications/preferences')
@@ -153,7 +171,7 @@ describe('NotificationsController', () => {
         follows: true,
         mentions: true,
         system: true,
-      } as any);
+      });
 
       vi.mocked(notificationsService.updatePreferences).mockResolvedValue({
         emailEnabled: false,
@@ -163,7 +181,7 @@ describe('NotificationsController', () => {
         follows: true,
         mentions: true,
         system: true,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .patch('/notifications/preferences')
@@ -191,7 +209,7 @@ describe('NotificationsController', () => {
         isRead: true,
         readAt: new Date(),
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .patch('/notifications/notification-1/read')

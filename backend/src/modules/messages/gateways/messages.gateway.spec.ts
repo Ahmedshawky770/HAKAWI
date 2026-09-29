@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MessagesGateway } from './messages.gateway.js';
-import { JwtHelper } from '../../common/utils/jwt.util.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { MessagesService } from '../messages.service.js';
+import { Socket } from 'socket.io';
+
+import { JwtHelper } from '../../../common/utils/jwt.util.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { MessagesService } from '../messages.service.ts';
+
+import { MessagesGateway } from './messages.gateway.ts';
 
 type MockJwtHelper = {
   verifyAccessToken: ReturnType<typeof vi.fn>;
@@ -77,7 +80,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         disconnect: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       await gateway.handleConnection(client);
 
@@ -97,7 +100,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         disconnect: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       await gateway.handleConnection(client);
 
@@ -118,7 +121,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         disconnect: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       await gateway.handleConnection(client);
 
@@ -134,7 +137,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         disconnect: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       await gateway.handleConnection(client);
 
@@ -149,7 +152,7 @@ describe('MessagesGateway', () => {
       const client = {
         userId: 'user-123',
         id: 'socket-1',
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       gateway.handleDisconnect(client);
 
@@ -163,7 +166,7 @@ describe('MessagesGateway', () => {
       const client = {
         userId: 'user-123',
         id: 'socket-1',
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       gateway.handleDisconnect(client);
 
@@ -175,7 +178,7 @@ describe('MessagesGateway', () => {
       const client = {
         userId: undefined,
         id: 'socket-1',
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       gateway.handleDisconnect(client);
 
@@ -190,7 +193,7 @@ describe('MessagesGateway', () => {
         id: 'socket-1',
         join: vi.fn(),
         leave: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       messagesService.getMessages.mockResolvedValue({
         messages: [],
@@ -208,7 +211,7 @@ describe('MessagesGateway', () => {
         userId: 'user-123',
         id: 'socket-1',
         join: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       messagesService.getMessages.mockRejectedValue(new Error('Conversation not found'));
 
@@ -220,7 +223,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         join: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       await expect(gateway.handleJoinConversation(client, { conversationId: 'conv-123' })).rejects.toThrow('Unauthorized');
     });
@@ -232,7 +235,7 @@ describe('MessagesGateway', () => {
         userId: 'user-123',
         id: 'socket-1',
         leave: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       const result = gateway.handleLeaveConversation(client, { conversationId: 'conv-123' });
 
@@ -245,7 +248,7 @@ describe('MessagesGateway', () => {
         userId: undefined,
         id: 'socket-1',
         leave: vi.fn(),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       expect(() => gateway.handleLeaveConversation(client, { conversationId: 'conv-123' })).toThrow('Unauthorized');
     });
@@ -253,7 +256,7 @@ describe('MessagesGateway', () => {
 
   describe('handleSendMessage', () => {
     it('should send message via service', async () => {
-      const client = { userId: 'user-123', id: 'socket-1' } as unknown as Socket;
+      const client = { userId: 'user-123', id: 'socket-1' } as unknown as Socket & { userId?: string };
       messagesService.sendMessage.mockResolvedValue({
         id: 'msg-123',
         conversationId: 'conv-123',
@@ -271,7 +274,7 @@ describe('MessagesGateway', () => {
     });
 
     it('should reject sending without userId', async () => {
-      const client = { userId: undefined, id: 'socket-1' } as unknown as Socket;
+      const client = { userId: undefined, id: 'socket-1' } as unknown as Socket & { userId?: string };
 
       await expect(gateway.handleSendMessage(client, { conversationId: 'conv-123', content: 'Hello' })).rejects.toThrow('Unauthorized');
     });
@@ -279,7 +282,7 @@ describe('MessagesGateway', () => {
 
   describe('handleMarkAsRead', () => {
     it('should mark message as read', async () => {
-      const client = { userId: 'user-123', id: 'socket-1' } as unknown as Socket;
+      const client = { userId: 'user-123', id: 'socket-1' } as unknown as Socket & { userId?: string };
       messagesService.markAsRead.mockResolvedValue({
         id: 'msg-123',
         conversationId: 'conv-123',
@@ -297,7 +300,7 @@ describe('MessagesGateway', () => {
     });
 
     it('should reject marking as read without userId', async () => {
-      const client = { userId: undefined, id: 'socket-1' } as unknown as Socket;
+      const client = { userId: undefined, id: 'socket-1' } as unknown as Socket & { userId?: string };
 
       await expect(gateway.handleMarkAsRead(client, { messageId: 'msg-123' })).rejects.toThrow('Unauthorized');
     });
@@ -309,7 +312,7 @@ describe('MessagesGateway', () => {
         userId: 'user-123',
         id: 'socket-1',
         to: vi.fn().mockReturnValue({ emit: vi.fn() }),
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       gateway.handleUserTyping(client, { conversationId: 'conv-123', isTyping: true });
 
@@ -320,7 +323,7 @@ describe('MessagesGateway', () => {
       const client = {
         userId: undefined,
         id: 'socket-1',
-      } as unknown as Socket;
+      } as unknown as Socket & { userId?: string };
 
       expect(() => gateway.handleUserTyping(client, { conversationId: 'conv-123', isTyping: true })).toThrow('Unauthorized');
     });

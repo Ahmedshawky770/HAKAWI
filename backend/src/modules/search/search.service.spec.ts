@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SearchService } from './search.service.js';
-import type { ISearchRepository } from './interfaces/search-repository.interface.js';
-import { SEARCH_REPOSITORY } from './interfaces/search-repository.interface.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
+
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 
-type MockSearchRepository = Partial<ISearchRepository>;
+import { SearchService } from './search.service.ts';
+import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
+
+type MockSearchRepository = {
+  searchStories: ReturnType<typeof vi.fn<(filters: { query?: string; category?: string; tag?: string; authorId?: string; status?: string; page: number; limit: number; sortBy: string }) => Promise<{ results: { id: string; title: string; slug: string; excerpt: string | null; status: string; category: string | null; tags: string[]; author: { id: string; name: string }; views: number; reactions: number; createdAt: string }[]; total: number }>>>;
+  searchAuthors: ReturnType<typeof vi.fn<(query: string, page: number, limit: number) => Promise<{ authors: { id: string; name: string; storiesCount: number }[]; total: number }>>>;
+  searchCategories: ReturnType<typeof vi.fn<(query: string) => Promise<{ id: string; name: string; slug: string; storiesCount: number }[]>>>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -53,7 +58,7 @@ describe('SearchService', () => {
     };
 
     searchService = new SearchService(
-      searchRepository as unknown as ISearchRepository,
+      searchRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
     );
@@ -78,6 +83,54 @@ describe('SearchService', () => {
       expect(result.query).toBe('test');
       expect(searchRepository.searchStories).toHaveBeenCalledWith({
         query: 'test',
+        category: undefined,
+        tag: undefined,
+        authorId: undefined,
+        status: undefined,
+        page: 1,
+        limit: 20,
+        sortBy: 'relevance',
+      });
+    });
+
+    it('should search with Arabic query', async () => {
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
+      vi.mocked(searchRepository.searchStories).mockResolvedValue({
+        results: [],
+        total: 0,
+      });
+
+      const result = await searchService.search({ query: 'قصة' });
+
+      expect(result).toHaveProperty('results');
+      expect(result).toHaveProperty('total');
+      expect(result.query).toBe('قصة');
+      expect(searchRepository.searchStories).toHaveBeenCalledWith({
+        query: 'قصة',
+        category: undefined,
+        tag: undefined,
+        authorId: undefined,
+        status: undefined,
+        page: 1,
+        limit: 20,
+        sortBy: 'relevance',
+      });
+    });
+
+    it('should search with mixed Arabic and English query', async () => {
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
+      vi.mocked(searchRepository.searchStories).mockResolvedValue({
+        results: [],
+        total: 0,
+      });
+
+      const result = await searchService.search({ query: 'story قصة' });
+
+      expect(result).toHaveProperty('results');
+      expect(result).toHaveProperty('total');
+      expect(result.query).toBe('story قصة');
+      expect(searchRepository.searchStories).toHaveBeenCalledWith({
+        query: 'story قصة',
         category: undefined,
         tag: undefined,
         authorId: undefined,

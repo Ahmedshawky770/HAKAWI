@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsIn, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsUUID, IsIn, IsInt, Min, Max } from 'class-validator';
 
 export class AddToLibraryDto {
   @IsUUID('4', { message: 'Book ID must be a valid UUID' })

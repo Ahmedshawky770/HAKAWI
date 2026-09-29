@@ -1,20 +1,51 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MessagesEventHandler } from './messages.event-handler.js';
-import type { IMessagesRepository } from '../interfaces/messages-repository.interface.js';
-import { MESSAGES_REPOSITORY } from '../interfaces/messages-repository.interface.js';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.js';
-import { MessageSentEvent, MessageReadEvent } from '../../../common/events/social.events.js';
-import { MessagesGateway } from '../gateways/messages.gateway.js';
+
+import type { IMessagesRepository, Message } from '../interfaces/messages-repository.interface.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { MessageSentEvent, MessageReadEvent } from '../../../common/events/social.events.ts';
+import { MessagesGateway } from '../gateways/messages.gateway.ts';
+
+import { MessagesEventHandler } from './messages.event-handler.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockMessagesRepository = {
+  findById: ReturnType<typeof vi.fn>;
+  findByConversation: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  markAsRead: ReturnType<typeof vi.fn>;
+  markAllAsRead: ReturnType<typeof vi.fn>;
+  countUnread: ReturnType<typeof vi.fn>;
+};
+type MockWinstonLoggerService = {
+  info: ReturnType<typeof vi.fn>;
+  log: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  debug: ReturnType<typeof vi.fn>;
+  verbose: ReturnType<typeof vi.fn>;
+};
+type MockMessagesGateway = {
+  emitMessageReceived: ReturnType<typeof vi.fn>;
+  emitMessageRead: ReturnType<typeof vi.fn>;
+};
 
 describe('MessagesEventHandler', () => {
   let messagesEventHandler: MessagesEventHandler;
-  let messagesRepository: Partial<IMessagesRepository>;
-  let logger: Partial<WinstonLoggerService>;
-  let messagesGateway: Partial<MessagesGateway>;
+  let messagesRepository: MockMessagesRepository;
+  let logger: MockWinstonLoggerService;
+  let messagesGateway: MockMessagesGateway;
 
   beforeEach(() => {
     messagesRepository = {
       findById: vi.fn(),
+      findByConversation: vi.fn(),
+      create: vi.fn(),
+      markAsRead: vi.fn(),
+      markAllAsRead: vi.fn(),
+      countUnread: vi.fn(),
     };
 
     logger = {

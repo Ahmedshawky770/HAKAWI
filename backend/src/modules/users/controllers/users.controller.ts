@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Patch, UseGuards, Body, Inject, Request, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, Patch, UseGuards, Body, Inject, Request, ParseUUIDPipe, ForbiddenException } from '@nestjs/common';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { UpdateUserDto, UserStatsDto } from '../dto/users.dto.ts';
+import { AdminRole } from '../../../common/constants/roles.ts';
+import { UpdateUserDto } from '../dto/users.dto.ts';
 import { UsersService } from '../users.service.ts';
 
 @Controller('users')
@@ -29,11 +30,18 @@ export class UsersController {
   @Public()
   @Get(':id')
   async findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.findById(id);
+    return this.usersService.findPublicProfile(id);
   }
 
   @Patch(':id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() updateUserDto: UpdateUserDto) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: { user: { sub: string; adminRole?: string } }) {
+    const isOwn = req.user.sub === id;
+    const isAdmin = req.user.adminRole === AdminRole.SUPER_ADMIN || req.user.adminRole === AdminRole.MODERATOR;
+
+    if (!isOwn && !isAdmin) {
+      throw new ForbiddenException('You can only update your own profile');
+    }
+
     return this.usersService.update(id, updateUserDto);
   }
 }

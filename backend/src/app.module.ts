@@ -20,6 +20,7 @@ import { PaymentsModule } from './modules/payments/payments.module.ts';
 import { RentalsModule } from './modules/rentals/rentals.module.ts';
 import { LibraryModule } from './modules/library/library.module.ts';
 import { ContestsModule } from './modules/contests/contests.module.ts';
+import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module.ts';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ContestsModule } from './modules/contests/contests.module.ts';
     RentalsModule,
     LibraryModule,
     ContestsModule,
+    ReadingProgressModule,
   ],
 })
 export class AppModule {}

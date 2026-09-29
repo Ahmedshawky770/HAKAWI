@@ -4,7 +4,6 @@ import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { INotificationsRepository, Notification, CreateNotificationInput, NotificationPreferencesResponseDto, UpsertNotificationPreferencesInput } from '../interfaces/notifications-repository.interface.ts';
-import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
 import { notifications, notificationPreferences } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 

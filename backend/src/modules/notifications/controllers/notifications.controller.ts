@@ -1,6 +1,5 @@
 import { Controller, Get, Patch, Delete, Param, Query, UseGuards, Inject, Request, Body, Put } from '@nestjs/common';
 
-import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { NotificationsService } from '../notifications.service.ts';
 import { NotificationPreferencesDto } from '../dto/preferences.dto.ts';

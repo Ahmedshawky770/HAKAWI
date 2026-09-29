@@ -1,12 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module.ts';
 import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
+import { ValkeyService } from '../src/common/services/valkey.service.ts';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EncryptionService } from '../src/common/utils/encryption.util.ts';
 import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
 import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
+import { db } from '../src/db/index.ts';
+import { users } from '../src/db/schema/users.schema.ts';
 
 describe('Messages Integration', () => {
   let app: INestApplication;
@@ -24,17 +30,9 @@ describe('Messages Integration', () => {
           provide: 'REFLECTOR',
           useValue: new Reflector(),
         },
-        {
-          provide: WinstonLoggerService,
-          useValue: {
-            info: () => {},
-            log: () => {},
-            error: () => {},
-            warn: () => {},
-            debug: () => {},
-            verbose: () => {},
-          },
-        },
+        WinstonLoggerService,
+        ValkeyService,
+        EventEmitter2,
         {
           provide: SanityService,
           useValue: {
@@ -49,6 +47,10 @@ describe('Messages Integration', () => {
     .overrideProvider(UsersEventHandler).useValue({
       handleUserRegistered: () => Promise.resolve(),
       handleUserUpdated: () => Promise.resolve(),
+    })
+    .overrideProvider(EncryptionService).useValue({
+      encrypt: (plaintext: string) => plaintext,
+      decrypt: (ciphertext: string) => ciphertext,
     })
     .compile();
 
@@ -82,7 +84,9 @@ describe('Messages Integration', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   describe('POST /messages/conversations', () => {
@@ -94,7 +98,7 @@ describe('Messages Integration', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.participantIds).toEqual(expect.arrayContaining([userId2]));
+      expect([res.body.participant1Id, res.body.participant2Id]).toEqual(expect.arrayContaining([userId1, userId2]));
     });
   });
 

@@ -1,25 +1,42 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
 
-import { MessagesController } from './messages.controller.ts';
 import { MessagesService } from '../messages.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+
+import { MessagesController } from './messages.controller.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
+
+type MockMessagesService = {
+  getOrCreateConversation: ReturnType<typeof vi.fn>;
+  getConversations: ReturnType<typeof vi.fn>;
+  getMessages: ReturnType<typeof vi.fn>;
+  sendMessage: ReturnType<typeof vi.fn>;
+  markAsRead: ReturnType<typeof vi.fn>;
+  markAllAsRead: ReturnType<typeof vi.fn>;
+  getUnreadCount: ReturnType<typeof vi.fn>;
+};
 
 describe('MessagesController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let messagesService: Partial<MessagesService>;
+  let messagesService: MockMessagesService;
 
   beforeAll(async () => {
     messagesService = {
@@ -43,7 +60,7 @@ describe('MessagesController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -73,7 +90,7 @@ describe('MessagesController', () => {
         participant2Id: 'user-2',
         lastMessageAt: null,
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .post('/messages/conversations')
@@ -95,7 +112,7 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.getConversations).mockResolvedValue({
         conversations: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/messages/conversations')
@@ -115,7 +132,7 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.getMessages).mockResolvedValue({
         messages: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/messages/conversations/conv-1/messages')
@@ -140,7 +157,7 @@ describe('MessagesController', () => {
         isRead: false,
         readAt: null,
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .post('/messages/conversations/conv-1/messages')
@@ -166,7 +183,7 @@ describe('MessagesController', () => {
         isRead: true,
         readAt: new Date(),
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .patch('/messages/messages/msg-1/read')

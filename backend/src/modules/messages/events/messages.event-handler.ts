@@ -11,7 +11,7 @@ import { MessagesGateway } from '../gateways/messages.gateway.ts';
 export class MessagesEventHandler {
   constructor(
     @Inject(MESSAGES_REPOSITORY) private readonly messagesRepository: IMessagesRepository,
-    private readonly logger: WinstonLoggerService,
+    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     private readonly messagesGateway: MessagesGateway,
   ) {}
 

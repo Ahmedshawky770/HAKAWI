@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, like, count, sql } from 'drizzle-orm';
+import { eq, and, desc, like, count, sql, isNull } from 'drizzle-orm';
 
 import { IStoriesRepository, Story, CreateStoryInput, UpdateStoryInput } from '../interfaces/stories-repository.interface.ts';
 import { stories } from '../../../db/schema/stories.schema.ts';
@@ -43,7 +43,7 @@ export class StoriesRepository implements IStoriesRepository {
     const limit = params.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    const conditions = [eq(stories.deletedAt, null as unknown as Date)];
+    const conditions = [isNull(stories.deletedAt)];
 
     if (params.authorId) {
       conditions.push(eq(stories.authorId, params.authorId));

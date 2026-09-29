@@ -20,7 +20,7 @@ export default function StoriesPage() {
         const data = await api.listStories({ page: 1, limit: 20, category: category || undefined });
         setStories(data.stories);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load stories");
+        setError(err instanceof Error ? err.message : "فشل تحميل القصص");
       } finally {
         setLoading(false);
       }
@@ -34,9 +34,9 @@ export default function StoriesPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Stories</h1>
+        <h1 className="text-3xl font-bold text-gray-900">القصص</h1>
         <Link href="/stories/create">
-          <Button>Create Story</Button>
+          <Button>إنشاء قصة</Button>
         </Link>
       </div>
       <div className="mb-6">
@@ -45,11 +45,11 @@ export default function StoriesPage() {
           onChange={(e) => setCategory(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All categories</option>
-          <option value="fiction">Fiction</option>
-          <option value="non-fiction">Non-Fiction</option>
-          <option value="poetry">Poetry</option>
-          <option value="fantasy">Fantasy</option>
+          <option value="">جميع التصنيفات</option>
+          <option value="fiction">خيال</option>
+          <option value="non-fiction">واقعي</option>
+          <option value="poetry">شعر</option>
+          <option value="fantasy">فانتازيا</option>
         </select>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -60,10 +60,10 @@ export default function StoriesPage() {
                 <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
                   {story.title}
                 </h3>
-                <p className="text-sm text-gray-600 mt-1">By {story.author.name}</p>
+                <p className="text-sm text-gray-600 mt-1">بواسطة {story.author.name}</p>
                 <div className="flex gap-4 mt-3 text-sm text-gray-500">
-                  <span>{story.views.toLocaleString()} views</span>
-                  <span>{story.reactions} reactions</span>
+                  <span>{story.views.toLocaleString()} مشاهدة</span>
+                  <span>{story.reactions} تفاعل</span>
                 </div>
                 <span className="inline-block mt-3 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded capitalize">
                   {story.category}

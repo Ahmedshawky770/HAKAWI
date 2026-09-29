@@ -26,13 +26,13 @@ export default function ResetPasswordPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("كلمتا المرور غير متطابقتين");
       return;
     }
 
     const token = getToken();
     if (!token) {
-      setError("Invalid reset token");
+      setError("رابط إعادة التعيين غير صالح");
       return;
     }
 
@@ -48,7 +48,7 @@ export default function ResetPasswordPage() {
         router.push("/login");
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reset failed");
+      setError(err instanceof Error ? err.message : "فشل إعادة تعيين كلمة المرور");
     } finally {
       setLoading(false);
     }
@@ -60,11 +60,11 @@ export default function ResetPasswordPage() {
         <div>
           <Link href="/" className="flex items-center justify-center gap-2 mb-6">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">H</span>
+              <span className="text-white font-bold text-xl">ح</span>
             </div>
           </Link>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Reset your password
+            إعادة تعيين كلمة المرور
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -76,13 +76,13 @@ export default function ResetPasswordPage() {
           {success ? (
             <div className="rounded-md bg-green-50 p-4">
               <p className="text-sm text-green-800">
-                Password reset successful! Redirecting to login...
+                تم إعادة تعيين كلمة المرور بنجاح! جاري التحويل لتسجيل الدخول...
               </p>
             </div>
           ) : (
             <div className="space-y-4">
               <Input
-                label="New password"
+                label="كلمة المرور الجديدة"
                 type="password"
                 required
                 value={password}
@@ -90,7 +90,7 @@ export default function ResetPasswordPage() {
                 placeholder="••••••••"
               />
               <Input
-                label="Confirm new password"
+                label="تأكيد كلمة المرور الجديدة"
                 type="password"
                 required
                 value={confirmPassword}
@@ -98,13 +98,13 @@ export default function ResetPasswordPage() {
                 placeholder="••••••••"
               />
               <Button type="submit" loading={loading} className="w-full">
-                Reset password
+                إعادة تعيين كلمة المرور
               </Button>
             </div>
           )}
           <div className="text-center">
             <Link href="/login" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-              Back to login
+              العودة لتسجيل الدخول
             </Link>
           </div>
         </form>

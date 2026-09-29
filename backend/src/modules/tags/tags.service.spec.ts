@@ -1,11 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TagsService } from './tags.service';
-import type { ITagsRepository } from './interfaces/tags-repository.interface';
-import { TAGS_REPOSITORY } from './interfaces/tags-repository.interface';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 
-type MockTagsRepository = Partial<ITagsRepository>;
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
+import { TagsService } from './tags.service.ts';
+import type { ITagsRepository, Tag, CreateTagInput, UpdateTagInput } from './interfaces/tags-repository.interface.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockTagsRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Tag | null>>>;
+  findBySlug: ReturnType<typeof vi.fn<(slug: string) => Promise<Tag | null>>>;
+  findAll: ReturnType<typeof vi.fn<() => Promise<Tag[]>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateTagInput) => Promise<Tag>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: UpdateTagInput) => Promise<Tag>>>;
+};
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
@@ -29,11 +40,11 @@ describe('TagsService', () => {
 
   beforeEach(() => {
     tagsRepository = {
-      findById: vi.fn(),
-      findBySlug: vi.fn(),
-      findAll: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Tag | null>>(),
+      findBySlug: vi.fn<(slug: string) => Promise<Tag | null>>(),
+      findAll: vi.fn<() => Promise<Tag[]>>(),
+      create: vi.fn<(data: CreateTagInput) => Promise<Tag>>(),
+      update: vi.fn<(id: string, data: UpdateTagInput) => Promise<Tag>>(),
     };
 
     logger = {
@@ -46,7 +57,7 @@ describe('TagsService', () => {
     };
 
     tagsService = new TagsService(
-      tagsRepository as unknown as ITagsRepository,
+      tagsRepository,
       logger as unknown as WinstonLoggerService,
     );
   });

@@ -1,10 +1,9 @@
-import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { eq, and, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { IFollowsRepository, Follow } from '../interfaces/follows-repository.interface.ts';
-import { FOLLOWS_REPOSITORY } from '../interfaces/follows-repository.interface.ts';
 import { follows } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 

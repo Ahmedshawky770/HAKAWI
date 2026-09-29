@@ -1,8 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CircuitBreakerService, CircuitBreakerState } from './circuit-breaker.service.js';
-import type { ValkeyService } from '../../services/valkey.service.js';
+
+import type { ValkeyService } from '../services/valkey.service.ts';
+
+import { CircuitBreakerService, CircuitBreakerState } from './circuit-breaker.service.ts';
+
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockValkeyService = Partial<ValkeyService>;
+
+type CircuitBreakerTestHelper = {
+  logger: {
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+  };
+  states: Map<string, unknown>;
+};
 
 describe('CircuitBreakerService', () => {
   let circuitBreaker: CircuitBreakerService;
@@ -17,9 +30,9 @@ describe('CircuitBreakerService', () => {
     };
 
     circuitBreaker = new CircuitBreakerService(valkeyService as ValkeyService);
-    (circuitBreaker as any).logger.info = vi.fn();
-    (circuitBreaker as any).logger.warn = vi.fn();
-    (circuitBreaker as any).logger.error = vi.fn();
+    (circuitBreaker as unknown as CircuitBreakerTestHelper).logger.info = vi.fn();
+    (circuitBreaker as unknown as CircuitBreakerTestHelper).logger.warn = vi.fn();
+    (circuitBreaker as unknown as CircuitBreakerTestHelper).logger.error = vi.fn();
   });
 
   describe('execute', () => {
@@ -65,7 +78,7 @@ describe('CircuitBreakerService', () => {
       const stateBefore = await circuitBreaker.getState('test-recovery-half');
       expect(stateBefore).toBe(CircuitBreakerState.OPEN);
 
-      (circuitBreaker as any).states.delete('test-recovery-half');
+      (circuitBreaker as unknown as CircuitBreakerTestHelper).states.delete('test-recovery-half');
       const mockState = {
         state: CircuitBreakerState.OPEN,
         failures: 5,
@@ -77,7 +90,7 @@ describe('CircuitBreakerService', () => {
         totalSuccesses: 0,
         rejectedCalls: 0,
       };
-      vi.mocked(valkeyService.get).mockResolvedValueOnce(JSON.stringify(mockState));
+      vi.mocked(valkeyService.get!).mockResolvedValueOnce(JSON.stringify(mockState));
 
       const successFn = vi.fn().mockResolvedValue('recovered');
       await circuitBreaker.execute('test-recovery-half', successFn);

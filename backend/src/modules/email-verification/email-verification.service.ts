@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
@@ -26,7 +28,7 @@ export class EmailVerificationService {
       throw new NotFoundException('User not found');
     }
 
-    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    const token = crypto.randomInt(10000000, 100000000).toString();
     await this.valkeyService.set(`${VERIFICATION_TOKEN_PREFIX}${token}`, user.id, VERIFICATION_TOKEN_TTL);
     await this.valkeyService.set(`${VERIFICATION_TOKEN_PREFIX}email:${email}`, token, VERIFICATION_TOKEN_TTL);
     return token;

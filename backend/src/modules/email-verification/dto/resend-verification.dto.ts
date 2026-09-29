@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail } from 'class-validator';
 
 export class ResendVerificationDto {
   @IsEmail({}, { message: 'Invalid email format' })

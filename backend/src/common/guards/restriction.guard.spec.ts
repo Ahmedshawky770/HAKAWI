@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+
 import { ValkeyService } from '../../common/services/valkey.service.ts';
+
 import { RestrictionGuard } from './restriction.guard.ts';
 
 describe('RestrictionGuard', () => {
   let guard: RestrictionGuard;
   let mockValkeyService: { exists: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
-  let mockContext: { switchToHttp: () => { getRequest: () => { user: { sub: string } } } };
+  let mockContext: ExecutionContext;
 
   beforeEach(() => {
     mockValkeyService = {
@@ -19,8 +21,10 @@ describe('RestrictionGuard', () => {
     mockContext = {
       switchToHttp: vi.fn(() => ({
         getRequest: vi.fn(),
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
       })),
-    };
+    } as unknown as ExecutionContext;
   });
 
   describe('canActivate', () => {
@@ -28,11 +32,13 @@ describe('RestrictionGuard', () => {
       const req = { user: { sub: 'user-1' } };
       mockContext.switchToHttp = vi.fn(() => ({
         getRequest: vi.fn(() => req),
-      }));
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
+      })) as unknown as ExecutionContext['switchToHttp'];
 
       mockValkeyService.exists.mockResolvedValue(false);
 
-      const result = await guard.canActivate(mockContext as unknown as ExecutionContext);
+      const result = await guard.canActivate(mockContext);
       expect(result).toBe(true);
       expect(mockValkeyService.exists).toHaveBeenCalledWith('restriction:user-1');
     });
@@ -41,21 +47,25 @@ describe('RestrictionGuard', () => {
       const req = { user: { sub: 'user-1' } };
       mockContext.switchToHttp = vi.fn(() => ({
         getRequest: vi.fn(() => req),
-      }));
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
+      })) as unknown as ExecutionContext['switchToHttp'];
 
       mockValkeyService.exists.mockResolvedValue(true);
       mockValkeyService.get.mockResolvedValue('ban');
 
-      await expect(guard.canActivate(mockContext as unknown as ExecutionContext)).rejects.toThrow(ForbiddenException);
+      await expect(guard.canActivate(mockContext)).rejects.toThrow(ForbiddenException);
     });
 
     it('should return true when user is null', async () => {
       const req = { user: null };
       mockContext.switchToHttp = vi.fn(() => ({
         getRequest: vi.fn(() => req),
-      }));
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
+      })) as unknown as ExecutionContext['switchToHttp'];
 
-      const result = await guard.canActivate(mockContext as unknown as ExecutionContext);
+      const result = await guard.canActivate(mockContext);
       expect(result).toBe(true);
     });
 
@@ -63,9 +73,11 @@ describe('RestrictionGuard', () => {
       const req = { user: {} };
       mockContext.switchToHttp = vi.fn(() => ({
         getRequest: vi.fn(() => req),
-      }));
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
+      })) as unknown as ExecutionContext['switchToHttp'];
 
-      const result = await guard.canActivate(mockContext as unknown as ExecutionContext);
+      const result = await guard.canActivate(mockContext);
       expect(result).toBe(true);
     });
 
@@ -73,12 +85,14 @@ describe('RestrictionGuard', () => {
       const req = { user: { sub: 'user-1' } };
       mockContext.switchToHttp = vi.fn(() => ({
         getRequest: vi.fn(() => req),
-      }));
+        getResponse: vi.fn(),
+        getNext: vi.fn(),
+      })) as unknown as ExecutionContext['switchToHttp'];
 
       mockValkeyService.exists.mockResolvedValue(true);
       mockValkeyService.get.mockResolvedValue('mute');
 
-      await expect(guard.canActivate(mockContext as unknown as ExecutionContext)).rejects.toThrow(ForbiddenException);
+      await expect(guard.canActivate(mockContext)).rejects.toThrow(ForbiddenException);
     });
   });
 });

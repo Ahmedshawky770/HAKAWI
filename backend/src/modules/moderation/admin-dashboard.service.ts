@@ -1,5 +1,5 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { sql, eq, and, gt, or, desc, count, lt, isNull } from 'drizzle-orm';
+import { Injectable, Inject } from '@nestjs/common';
+import { eq, and, or, gt, isNull, desc, count, lt } from 'drizzle-orm';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';

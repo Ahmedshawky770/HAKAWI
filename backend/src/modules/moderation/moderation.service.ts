@@ -1,15 +1,13 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { eq, desc, count, and, sql, or, gt, isNull } from 'drizzle-orm';
+import { Injectable, Inject } from '@nestjs/common';
+import { eq, desc, count, and, sql } from 'drizzle-orm';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { reports, moderationActions, userRestrictions } from '../../db/schema/moderation.schema.ts';
 import { db } from '../../db/index.ts';
-import { AdminRole } from '../../common/constants/roles.ts';
 
 import type { CreateReportDto, UpdateReportStatusDto, ModerationActionDto, ReportQueryDto } from './dto/report.dto.ts';
-import type { AdminDashboardStatsDto } from './dto/admin-dashboard.dto.ts';
 
 
 export interface Report {
@@ -139,9 +137,15 @@ export class ModerationService {
     );
 
     if (Number(total) >= 3) {
+      const [report] = await db.select().from(reports).where(eq(reports.id, reportId)).limit(1);
       await db.update(reports).set({ escalatedAt: new Date(), status: 'in_review', updatedAt: new Date() }).where(eq(reports.targetId, targetId));
       this.logger.warn(`Auto-escalated ${total} reports for target ${targetId}`, 'ModerationService');
-      await this.eventBus.emit('moderation.report.escalated', { targetId, reportCount: Number(total) });
+      await this.eventBus.emit('moderation.report.escalated', {
+        reportId,
+        targetId,
+        previousStatus: report?.status ?? 'open',
+        previousUpdatedAt: report?.updatedAt ?? new Date(),
+      });
     }
   }
 

@@ -14,22 +14,70 @@ export class AuthController {
   @Post('register')
   @Public()
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(@Body() dto: RegisterDto, @Res() res: Response) {
+    const result = await this.authService.register(dto);
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', result.tokens.accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+    res.cookie('refresh_token', result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+    return res.json(result);
   }
 
   @Post('login')
   @Public()
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Res() res: Response) {
+    const result = await this.authService.login(dto);
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', result.tokens.accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+    res.cookie('refresh_token', result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+    return res.json(result);
   }
 
   @Post('refresh')
   @Public()
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshTokens(dto);
+  async refresh(@Body() dto: RefreshTokenDto, @Res() res: Response) {
+    const result = await this.authService.refreshTokens(dto);
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', result.tokens.accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+    res.cookie('refresh_token', result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+    return res.json(result);
   }
 
   @Get('session')
@@ -40,8 +88,11 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Body('refreshToken') refreshToken: string): Promise<LogoutResponseDto> {
-    return this.authService.logout(refreshToken);
+  async logout(@Body('refreshToken') refreshToken: string, @Res() res: Response): Promise<LogoutResponseDto> {
+    const result = await this.authService.logout(refreshToken);
+    res.clearCookie('access_token', { path: '/' });
+    res.clearCookie('refresh_token', { path: '/' });
+    return res.json(result);
   }
 
   @Post('forgot-password')
@@ -86,8 +137,22 @@ export class AuthController {
 
     try {
       const tokens = await this.authService.handleOAuthCallback(provider, code, state);
-      const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?access_token=${tokens.accessToken}&refresh_token=${tokens.refreshToken}`;
-      return res.redirect(redirectUrl);
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.cookie('access_token', tokens.accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: 15 * 60 * 1000,
+        path: '/',
+      });
+      res.cookie('refresh_token', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback`);
     } catch (err) {
       Logger.error('OAuth callback failed', err, 'AuthController');
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/error?error=oauth_failed`);

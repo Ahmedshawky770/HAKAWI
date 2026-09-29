@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { sql, desc, eq, and, like } from 'drizzle-orm';
+import { sql, desc, eq, and, isNull } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { db } from '../../../db/index.ts';
@@ -50,10 +50,12 @@ export class SearchRepository implements ISearchRepository {
     this.logger.debug('Searching stories');
     const offset = (filters.page - 1) * filters.limit;
 
-    const conditions = [eq(stories.deletedAt, null as unknown as Date)];
+    const conditions = [isNull(stories.deletedAt)];
 
     if (filters.query) {
-      conditions.push(like(stories.title, `%${filters.query}%`));
+      conditions.push(
+        sql`to_tsvector('simple', ${stories.title} || ' ' || COALESCE(${stories.excerpt}, '')) @@ websearch_to_tsquery('simple', ${filters.query})`,
+      );
     }
 
     if (filters.category) {
@@ -152,12 +154,12 @@ export class SearchRepository implements ISearchRepository {
         })
         .from(users)
         .leftJoin(stories, eq(stories.authorId, users.id))
-        .where(and(like(users.name, `%${query}%`), eq(users.deletedAt, null as unknown as Date)))
+        .where(and(sql`to_tsvector('simple', ${users.name}) @@ websearch_to_tsquery('simple', ${query})`, isNull(users.deletedAt)))
         .groupBy(users.id, users.name)
         .orderBy(desc(sql<number>`count(${stories.id})`))
         .limit(limit)
         .offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(users).where(and(like(users.name, `%${query}%`), eq(users.deletedAt, null as unknown as Date))),
+      db.select({ total: sql<number>`count(*)` }).from(users).where(and(sql`to_tsvector('english', ${users.name}) @@ websearch_to_tsquery('english', ${query})`, isNull(users.deletedAt))),
     ]);
 
     return {
@@ -182,7 +184,7 @@ export class SearchRepository implements ISearchRepository {
       })
       .from(categories)
       .leftJoin(stories, eq(stories.categoryId, categories.id))
-      .where(and(like(categories.name, `%${query}%`), eq(categories.isActive, true)))
+      .where(and(sql`to_tsvector('simple', ${categories.name}) @@ websearch_to_tsquery('simple', ${query})`, eq(categories.isActive, true)))
       .groupBy(categories.id, categories.name, categories.slug)
       .orderBy(desc(sql<number>`count(${stories.id})`))
       .limit(10);

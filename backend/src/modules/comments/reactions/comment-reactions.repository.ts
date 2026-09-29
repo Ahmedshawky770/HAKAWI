@@ -4,7 +4,6 @@ import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { ICommentReactionsRepository, CommentReaction } from '../interfaces/comments-repository.interface.ts';
-import { COMMENT_REACTIONS_REPOSITORY } from '../interfaces/comments-repository.interface.ts';
 import { commentReactions } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 

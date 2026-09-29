@@ -24,7 +24,7 @@ export default function ForgotPasswordPage() {
       });
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(err instanceof Error ? err.message : "فشل إرسال رابط إعادة التعيين");
     } finally {
       setLoading(false);
     }
@@ -36,14 +36,14 @@ export default function ForgotPasswordPage() {
         <div>
           <Link href="/" className="flex items-center justify-center gap-2 mb-6">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">H</span>
+              <span className="text-white font-bold text-xl">ح</span>
             </div>
           </Link>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Reset your password
+            استعادة كلمة المرور
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Enter your email and we&apos;ll send you a reset link
+            أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -55,27 +55,27 @@ export default function ForgotPasswordPage() {
           {success ? (
             <div className="rounded-md bg-green-50 p-4">
               <p className="text-sm text-green-800">
-                If an account with that email exists, we&apos;ve sent a password reset link.
+                إذا كان هناك حساب بهذا البريد الإلكتروني، فقد أرسلنا رابط إعادة تعيين كلمة المرور.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
               <Input
-                label="Email address"
+                label="البريد الإلكتروني"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="example@mail.com"
               />
               <Button type="submit" loading={loading} className="w-full">
-                Send reset link
+                إرسال رابط إعادة التعيين
               </Button>
             </div>
           )}
           <div className="text-center">
             <Link href="/login" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-              Back to login
+              العودة لتسجيل الدخول
             </Link>
           </div>
         </form>

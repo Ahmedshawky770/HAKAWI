@@ -301,8 +301,10 @@ export const UserRestrictedSchema = z.object({
 });
 
 export const ModerationEscalatedSchema = z.object({
+  reportId: z.string(),
   targetId: z.string(),
-  reportCount: z.number(),
+  previousStatus: z.string(),
+  previousUpdatedAt: z.coerce.date(),
 });
 
 export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: string }> = {
@@ -348,10 +350,8 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'book.published': { schema: BookPublishedSchema, version: 'v1' },
   'book.archived': { schema: BookArchivedSchema, version: 'v1' },
   'book.deleted': { schema: BookDeletedSchema, version: 'v1' },
-  'payment.initiated': { schema: PaymentInitiatedSchema, version: 'v1' },
   'payment.completed': { schema: PaymentCompletedSchema, version: 'v1' },
   'payment.failed': { schema: PaymentFailedSchema, version: 'v1' },
-  'payment.refunded': { schema: PaymentRefundedSchema, version: 'v1' },
   'rental.created': { schema: RentalCreatedSchema, version: 'v1' },
   'rental.extended': { schema: RentalExtendedSchema, version: 'v1' },
   'rental.returned': { schema: RentalReturnedSchema, version: 'v1' },

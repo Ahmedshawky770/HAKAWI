@@ -1,98 +1,31 @@
 export const CONTESTS_REPOSITORY = Symbol('CONTESTS_REPOSITORY');
 
-export type Contest = {
-  id: string;
-  title: string;
-  description: string | null;
-  categoryId: string | null;
-  startDate: Date;
-  endDate: Date;
-  submissionDeadline: Date;
-  status: string;
-  createdBy: string;
-  winnerId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
+import type {
+  Contest,
+  ContestSubmission,
+  ContestVote,
+  ContestPrize,
+  CreateContestInput,
+  UpdateContestInput,
+  CreateSubmissionInput,
+  ReviewSubmissionInput,
+  CastVoteInput,
+  SelectWinnerInput,
+  DistributePrizeInput,
+} from '../types.ts';
 
-export type ContestSubmission = {
-  id: string;
-  contestId: string;
-  storyId: string;
-  authorId: string;
-  status: string;
-  submittedAt: Date;
-  reviewedAt: Date | null;
-  reviewedBy: string | null;
-};
-
-export type ContestVote = {
-  id: string;
-  contestId: string;
-  submissionId: string;
-  userId: string;
-  createdAt: Date;
-};
-
-export type ContestPrize = {
-  id: string;
-  contestId: string;
-  submissionId: string;
-  winnerId: string;
-  prizeType: string;
-  prizeDescription: string | null;
-  distributedAt: Date | null;
-  createdAt: Date;
-};
-
-export type CreateContestInput = {
-  title: string;
-  description?: string | null;
-  categoryId?: string | null;
-  startDate: Date;
-  endDate: Date;
-  submissionDeadline: Date;
-};
-
-export type UpdateContestInput = Partial<{
-  title: string;
-  description: string | null;
-  categoryId: string | null;
-  startDate: Date;
-  endDate: Date;
-  submissionDeadline: Date;
-  status: string;
-  winnerId: string | null;
-}>;
-
-export type CreateSubmissionInput = {
-  contestId: string;
-  storyId: string;
-  authorId: string;
-};
-
-export type ReviewSubmissionInput = {
-  status: 'approved' | 'rejected';
-};
-
-export type CastVoteInput = {
-  contestId: string;
-  submissionId: string;
-  userId: string;
-};
-
-export type SelectWinnerInput = {
-  contestId: string;
-  submissionId: string;
-  winnerId: string;
-};
-
-export type DistributePrizeInput = {
-  contestId: string;
-  submissionId: string;
-  winnerId: string;
-  prizeType: string;
-  prizeDescription?: string | null;
+export type {
+  Contest,
+  ContestSubmission,
+  ContestVote,
+  ContestPrize,
+  CreateContestInput,
+  UpdateContestInput,
+  CreateSubmissionInput,
+  ReviewSubmissionInput,
+  CastVoteInput,
+  SelectWinnerInput,
+  DistributePrizeInput,
 };
 
 export interface IContestsRepository {
@@ -113,7 +46,10 @@ export interface IContestsRepository {
   reviewSubmission(id: string, status: string, reviewedBy: string): Promise<ContestSubmission>;
   findVoteById(id: string): Promise<ContestVote | null>;
   findVoteByUserContestSubmission(contestId: string, submissionId: string, userId: string): Promise<ContestVote | null>;
+  findVotesBySubmission(submissionId: string): Promise<ContestVote[]>;
+  findVotesByContest(contestId: string, limit: number, offset: number): Promise<ContestVote[]>;
   countVotesBySubmission(submissionId: string): Promise<number>;
+  countVotesByContest(contestId: string): Promise<{ total: string }>;
   castVote(data: CastVoteInput): Promise<ContestVote>;
   findPrizeById(id: string): Promise<ContestPrize | null>;
   createPrize(data: DistributePrizeInput): Promise<ContestPrize>;

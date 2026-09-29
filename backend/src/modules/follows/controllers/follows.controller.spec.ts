@@ -1,25 +1,36 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
+
+import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { FollowsService } from '../follows.service.ts';
 
 import { FollowsController } from './follows.controller.ts';
-import { FollowsService } from '../follows.service.ts';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+
+type MockFollowsService = {
+  follow: ReturnType<typeof vi.fn>;
+  unfollow: ReturnType<typeof vi.fn>;
+  getFollowers: ReturnType<typeof vi.fn>;
+  getFollowing: ReturnType<typeof vi.fn>;
+  getStats: ReturnType<typeof vi.fn>;
+  isFollowing: ReturnType<typeof vi.fn>;
+};
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
 describe('FollowsController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let followsService: Partial<FollowsService>;
+  let followsService: MockFollowsService;
 
   beforeAll(async () => {
     followsService = {
@@ -42,7 +53,7 @@ describe('FollowsController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -71,7 +82,7 @@ describe('FollowsController', () => {
         followerId: 'user-1',
         followingId: 'user-2',
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .post('/follows')
@@ -107,7 +118,7 @@ describe('FollowsController', () => {
       vi.mocked(followsService.getFollowers).mockResolvedValue({
         follows: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/followers')
@@ -124,7 +135,7 @@ describe('FollowsController', () => {
       vi.mocked(followsService.getFollowing).mockResolvedValue({
         follows: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/following')
@@ -142,7 +153,7 @@ describe('FollowsController', () => {
         followersCount: 10,
         followingCount: 3,
         isFollowing: false,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats')

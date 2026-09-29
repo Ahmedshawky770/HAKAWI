@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, timestamp, index, integer } from 'drizzle-orm/pg-core';
 
-import { users, stories } from './index.ts';
+import { users } from './index.ts';
 
 export const reports = pgTable(
   'reports',

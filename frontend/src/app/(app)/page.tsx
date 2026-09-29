@@ -19,7 +19,7 @@ export default function DashboardPage() {
         const data = await api.listStories({ page: 1, limit: 20 });
         setStories(data.stories);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load stories");
+        setError(err instanceof Error ? err.message : "فشل تحميل القصص");
       } finally {
         setLoading(false);
       }
@@ -33,22 +33,22 @@ export default function DashboardPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-gray-900">لوحة التحكم</h1>
         <Link href="/stories/create">
-          <Button>Create Story</Button>
+          <Button>إنشاء قصة</Button>
         </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardBody>
-            <p className="text-sm font-medium text-gray-600">Total Stories</p>
+            <p className="text-sm font-medium text-gray-600">إجمالي القصص</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">{stories.length}</p>
           </CardBody>
         </Card>
         <Card>
           <CardBody>
-            <p className="text-sm font-medium text-gray-600">Total Views</p>
+            <p className="text-sm font-medium text-gray-600">إجمالي المشاهدات</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">
               {stories.reduce((sum, s) => sum + s.views, 0).toLocaleString()}
             </p>
@@ -56,7 +56,7 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardBody>
-            <p className="text-sm font-medium text-gray-600">Total Reactions</p>
+            <p className="text-sm font-medium text-gray-600">إجمالي التفاعلات</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">
               {stories.reduce((sum, s) => sum + s.reactions, 0).toLocaleString()}
             </p>
@@ -65,7 +65,7 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Stories</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">أحدث القصص</h2>
         <div className="space-y-4">
           {stories.map((story) => (
             <Card key={story.id}>
@@ -74,10 +74,10 @@ export default function DashboardPage() {
                   <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
                     {story.title}
                   </h3>
-                  <p className="text-sm text-gray-600 mt-1">By {story.author.name}</p>
+                  <p className="text-sm text-gray-600 mt-1">بواسطة {story.author.name}</p>
                   <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                    <span>{story.views.toLocaleString()} views</span>
-                    <span>{story.reactions} reactions</span>
+                    <span>{story.views.toLocaleString()} مشاهدة</span>
+                    <span>{story.reactions} تفاعل</span>
                     <span className="capitalize">{story.category}</span>
                   </div>
                 </Link>

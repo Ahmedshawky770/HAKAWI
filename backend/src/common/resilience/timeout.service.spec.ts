@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TimeoutService } from './timeout.service.js';
+
+import { TimeoutService } from './timeout.service.ts';
 
 describe('TimeoutService', () => {
   let timeoutService: TimeoutService;

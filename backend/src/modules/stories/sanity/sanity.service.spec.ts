@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { SanityClient } from '@sanity/client';
+
+import type { CircuitBreakerService } from '../../../common/resilience/circuit-breaker.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 
 import { SanityService } from './sanity.service.ts';
 import type { SanityStoryDocument } from './sanity.types.ts';
-import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
 
 describe('SanityService', () => {
   let sanityService: SanityService;
@@ -29,7 +32,7 @@ describe('SanityService', () => {
     };
 
     mockCircuitBreaker = {
-      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<any>) => fn()),
+      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
     mockClient = {
@@ -39,7 +42,11 @@ describe('SanityService', () => {
       fetch: vi.fn(),
     };
 
-    sanityService = new SanityService(mockLogger as any, mockCircuitBreaker as any, mockClient as any);
+    sanityService = new SanityService(
+      mockLogger as unknown as WinstonLoggerService,
+      mockCircuitBreaker as unknown as CircuitBreakerService,
+      mockClient as unknown as SanityClient,
+    );
   });
 
   describe('syncStoryToSanity', () => {
@@ -47,7 +54,7 @@ describe('SanityService', () => {
       mockClient.fetch.mockResolvedValue(null);
       mockClient.create.mockResolvedValue({ _id: 'story-story-123', _type: 'story' });
 
-      const story = { id: 'story-123', title: 'Test', slug: 'test', status: 'published', authorId: 'author-1', hakawiId: 'story-123' } as SanityStoryDocument;
+      const story = { id: 'story-123', title: 'Test', slug: 'test', status: 'published', authorId: 'author-1', hakawiId: 'story-123' } as unknown as SanityStoryDocument;
       const result = await sanityService.syncStoryToSanity(story);
       expect(result.success).toBe(true);
       expect(result.documentId).toBe('story-story-123');

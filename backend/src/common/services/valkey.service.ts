@@ -12,15 +12,17 @@ export class ValkeyService implements OnModuleInit, OnModuleDestroy {
       const port = parseInt(process.env.VALKEY_PORT || process.env.REDIS_PORT || '6379', 10);
       const password = process.env.VALKEY_PASSWORD || process.env.REDIS_PASSWORD || undefined;
 
-      this.client = new Redis({
+      const client = new Redis({
         host,
         port,
         password,
       });
 
-      await this.client.ping();
+      await client.ping();
       this.logger.log('Valkey connected');
+      this.client = client;
     } catch (error) {
+      this.client = null;
       const errorMessage = error instanceof Error ? error.stack : String(error);
       this.logger.error('Failed to connect to Valkey', errorMessage);
       if (process.env.NODE_ENV !== 'test') {

@@ -21,6 +21,7 @@ export type User = {
   deletedAt: Date | null;
   emailVerified: boolean | null;
   emailVerificationToken: string | null;
+  passwordResetToken: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

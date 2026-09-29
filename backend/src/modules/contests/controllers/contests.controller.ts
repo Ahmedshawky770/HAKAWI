@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
@@ -27,7 +26,6 @@ import {
   CastVoteDto,
   SelectWinnerDto,
   DistributePrizeDto,
-  ReviewSubmissionDto,
 } from '../dto/contests.dto.ts';
 import type { CreateContestInput } from '../types.ts';
 
@@ -51,38 +49,47 @@ export class ContestsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateContestDto, @Request() req: ExpressRequest & { user: { sub: string } }) {
-    return this.contestsService.create(req.user.sub, dto as unknown as CreateContestInput);
+    return this.contestsService.create(req.user.sub, {
+      title: dto.title,
+      description: dto.description,
+      categoryId: dto.categoryId,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+      submissionDeadline: dto.submissionDeadline,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateContestDto) {
-    return this.contestsService.update(id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateContestDto, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.update(id, dto, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/start')
-  async start(@Param('id') id: string) {
-    return this.contestsService.start(id);
+  @HttpCode(HttpStatus.OK)
+  async start(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.start(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/cancel')
-  async cancel(@Param('id') id: string) {
-    return this.contestsService.cancel(id);
+  @HttpCode(HttpStatus.OK)
+  async cancel(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.cancel(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/complete')
-  async complete(@Param('id') id: string) {
-    return this.contestsService.complete(id);
+  async complete(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.complete(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/submissions')
   @HttpCode(HttpStatus.CREATED)
   async submitStory(@Param('id') contestId: string, @Body() dto: SubmitStoryDto, @Request() req: ExpressRequest & { user: { sub: string } }) {
-    return this.contestsService.submitStory(contestId, req.user.sub, dto.storyId);
+    return this.contestsService.submitStory(contestId, req.user.sub, dto.storyId, req.user.sub);
   }
 
   @Public()
@@ -112,14 +119,16 @@ export class ContestsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/submissions/:submissionId/approve')
-  async approveSubmission(@Param('id') contestId: string, @Param('submissionId', ParseUUIDPipe) submissionId: string) {
-    return this.contestsService.approveSubmission(submissionId, contestId);
+  @HttpCode(HttpStatus.OK)
+  async approveSubmission(@Param('id') contestId: string, @Param('submissionId', ParseUUIDPipe) submissionId: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.approveSubmission(submissionId, contestId, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/submissions/:submissionId/reject')
-  async rejectSubmission(@Param('id') contestId: string, @Param('submissionId', ParseUUIDPipe) submissionId: string) {
-    return this.contestsService.rejectSubmission(submissionId, contestId);
+  @HttpCode(HttpStatus.OK)
+  async rejectSubmission(@Param('id') contestId: string, @Param('submissionId', ParseUUIDPipe) submissionId: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.rejectSubmission(submissionId, contestId, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -133,5 +142,23 @@ export class ContestsController {
   @Get(':id/prizes')
   async getPrizes(@Param('id') contestId: string) {
     return this.contestsService.getPrizes(contestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('publisher/stats')
+  async getPublisherStats(@Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.getPublisherStats(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('publisher/:id/submissions')
+  async getPublisherSubmissionsOverview(@Param('id') contestId: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.getPublisherSubmissionsOverview(contestId, req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('publisher/:id/votes')
+  async getPublisherVotesOverview(@Param('id') contestId: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
+    return this.contestsService.getPublisherVotesOverview(contestId, req.user.sub);
   }
 }

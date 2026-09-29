@@ -18,8 +18,8 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["node"]
+    "types": ["node", "vitest"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "test", "migrations", "seeds", "src/e2e", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "test", "migrations", "seeds", "src/e2e", "src/**/e2e"]
 }

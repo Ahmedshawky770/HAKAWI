@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { EventSchemaRegistry } from './event-schema-registry.ts';
 import type { DLQService } from './dlq.service.ts';
-import { UserRegisteredSchema, UserDeletedSchema } from './event-schemas.ts';
-import { z } from 'zod';
+import { UserRegisteredSchema } from './event-schemas.ts';
+
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockDLQService = {
   add: ReturnType<typeof vi.fn>;
@@ -82,7 +84,7 @@ describe('EventSchemaRegistry', () => {
 
   describe('retryDLQ', () => {
     it('should retry and delete from DLQ if valid', async () => {
-      vi.mocked(dlqService.get).mockResolvedValue({
+      vi.mocked(dlqService.get!).mockResolvedValue({
         id: 'dlq-1',
         eventName: 'user.registered',
         payload: { userId: '1', email: 'test@example.com', name: 'Test' },
@@ -97,7 +99,7 @@ describe('EventSchemaRegistry', () => {
     });
 
     it('should increment retry count if invalid', async () => {
-      vi.mocked(dlqService.get).mockResolvedValue({
+      vi.mocked(dlqService.get!).mockResolvedValue({
         id: 'dlq-1',
         eventName: 'user.registered',
         payload: { invalid: true },
@@ -112,7 +114,7 @@ describe('EventSchemaRegistry', () => {
     });
 
     it('should return false if DLQ event not found', async () => {
-      vi.mocked(dlqService.get).mockResolvedValue(null);
+      vi.mocked(dlqService.get!).mockResolvedValue(null);
       const result = await registry.retryDLQ('dlq-1');
       expect(result).toBe(false);
     });
@@ -120,7 +122,7 @@ describe('EventSchemaRegistry', () => {
 
   describe('getDLQStats', () => {
     it('should return DLQ stats', async () => {
-      vi.mocked(dlqService.list).mockResolvedValue([
+      vi.mocked(dlqService.list!).mockResolvedValue([
         {
           id: 'dlq-1',
           eventName: 'user.registered',

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
   UserRegisteredSchema,
@@ -145,10 +146,9 @@ describe('event-schemas', () => {
         'book.published',
         'book.archived',
         'book.deleted',
-        'payment.initiated',
+        'payment.created',
         'payment.completed',
         'payment.failed',
-        'payment.refunded',
         'rental.created',
         'rental.extended',
         'rental.returned',

@@ -8,7 +8,7 @@ import type { IConversationsRepository } from './interfaces/messages-repository.
 import { CONVERSATIONS_REPOSITORY } from './interfaces/messages-repository.interface.ts';
 import type { IMessagesRepository } from './interfaces/messages-repository.interface.ts';
 import { MESSAGES_REPOSITORY } from './interfaces/messages-repository.interface.ts';
-import type { Conversation, Message, CreateMessageInput, ConversationResponse, MessageResponse } from './types.ts';
+import type { Conversation, Message, ConversationResponse, MessageResponse } from './types.ts';
 
 interface ConversationRow {
   id: string;

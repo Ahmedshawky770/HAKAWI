@@ -35,7 +35,7 @@ export class ContestsEventHandler {
 
   @OnEvent('contest.completed')
   async handleContestCompleted(event: ContestCompletedEvent): Promise<void> {
-    this.logger.info(`Contest completed: ${event.contestId}, winner: ${event.winnerId}`, 'ContestsEventHandler');
+    this.logger.info(`Contest completed: ${event.contestId}, winner: ${event.winnerId ?? 'none'}`, 'ContestsEventHandler');
   }
 
   @OnEvent('submission.submitted')

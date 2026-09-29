@@ -1,11 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotificationsService } from './notifications.service.js';
-import type { INotificationsRepository } from './interfaces/notifications-repository.interface.js';
-import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockNotificationsRepository = Partial<INotificationsRepository>;
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { NotificationsService } from './notifications.service.ts';
+import type { INotificationsRepository, Notification, CreateNotificationInput } from './interfaces/notifications-repository.interface.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockNotificationsRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Notification | null>>>;
+  findByUser: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>>;
+  findUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<Notification[]>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateNotificationInput) => Promise<Notification>>>;
+  markAsRead: ReturnType<typeof vi.fn<(id: string) => Promise<Notification>>>;
+  markAllAsRead: ReturnType<typeof vi.fn<(userId: string) => Promise<void>>>;
+  delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  countUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
+  findPreferences: ReturnType<typeof vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
+  upsertPreferences: ReturnType<typeof vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
+};
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
@@ -14,36 +30,38 @@ type MockWinstonLoggerService = {
   debug: ReturnType<typeof vi.fn>;
   verbose: ReturnType<typeof vi.fn>;
 };
-type MockEventEmitter = { emit: ReturnType<typeof vi.fn> };
+type MockEventValidatorService = { emit: ReturnType<typeof vi.fn>; validateEvent: ReturnType<typeof vi.fn> };
 
 describe('NotificationsService', () => {
   let notificationsService: NotificationsService;
   let notificationsRepository: MockNotificationsRepository;
   let logger: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   beforeEach(() => {
     notificationsRepository = {
-      findById: vi.fn(),
-      findByUser: vi.fn(),
-      findUnread: vi.fn(),
-      create: vi.fn(),
-      markAsRead: vi.fn(),
-      markAllAsRead: vi.fn(),
-      delete: vi.fn(),
-      countUnread: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Notification | null>>(),
+      findByUser: vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>(),
+      findUnread: vi.fn<(userId: string) => Promise<Notification[]>>(),
+      create: vi.fn<(data: CreateNotificationInput) => Promise<Notification>>(),
+      markAsRead: vi.fn<(id: string) => Promise<Notification>>(),
+      markAllAsRead: vi.fn<(userId: string) => Promise<void>>(),
+      delete: vi.fn<(id: string) => Promise<void>>(),
+      countUnread: vi.fn<(userId: string) => Promise<number>>(),
+      findPreferences: vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
+      upsertPreferences: vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
     };
 
     logger = {
       info: vi.fn(), log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn(),
     };
 
-    eventEmitter = { emit: vi.fn() };
+    eventValidatorService = { emit: vi.fn(), validateEvent: vi.fn() };
 
     notificationsService = new NotificationsService(
-      notificationsRepository as unknown as INotificationsRepository,
+      notificationsRepository,
       logger as unknown as WinstonLoggerService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -56,7 +74,7 @@ describe('NotificationsService', () => {
       const result = await notificationsService.create({ userId: 'user-1', type: 'follow', title: 'New Follower', message: 'Someone followed you' });
 
       expect(result.title).toBe('New Follower');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('notification.created', { notificationId: 'notif-123', userId: 'user-1', type: 'follow' });
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('notification.created', { notificationId: 'notif-123', userId: 'user-1', type: 'follow' });
     });
   });
 

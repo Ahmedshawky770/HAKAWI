@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { RolesGuard } from './roles.guard';
-import { IS_PUBLIC_KEY } from '../decorators/roles.decorator';
-import { AccountType, AdminRole } from '../constants/roles';
-import type { AuthRequest } from '../types/auth-request.interface';
+import { Reflector } from '@nestjs/core';
+
+import { IS_PUBLIC_KEY } from '../decorators/roles.decorator.ts';
+import { AccountType, AdminRole } from '../constants/roles.ts';
+import type { AuthRequest } from '../types/auth-request.interface.ts';
+import type { JwtPayload } from '../../common/utils/jwt.util.ts';
+
+import { RolesGuard } from './roles.guard.ts';
 
 describe('RolesGuard', () => {
   let guard: RolesGuard;
@@ -13,7 +17,7 @@ describe('RolesGuard', () => {
     mockGetAllAndOverride = vi.fn();
     guard = new RolesGuard({
       getAllAndOverride: mockGetAllAndOverride,
-    } as any);
+    } as unknown as Reflector);
   });
 
   const createMockContext = (overrides: {
@@ -42,11 +46,11 @@ describe('RolesGuard', () => {
       sub: 'user-1',
       email: 'test@example.com',
       accountType: AccountType.READER,
-      adminRole: null,
+      adminRole: undefined,
     };
 
     const mockRequest: Partial<AuthRequest> = {
-      user: overrides.user !== undefined ? overrides.user : defaultUser,
+      user: (overrides.user !== undefined ? overrides.user : defaultUser) as JwtPayload,
     };
 
     return {
@@ -113,7 +117,7 @@ describe('RolesGuard', () => {
         user: {
           sub: 'user-1',
           email: 'test@example.com',
-          adminRole: null,
+          adminRole: undefined,
         } as Partial<AuthRequest['user']>,
       });
 
@@ -188,7 +192,7 @@ describe('RolesGuard', () => {
           sub: 'user-1',
           email: 'test@example.com',
           accountType: AccountType.READER,
-          adminRole: null,
+          adminRole: undefined,
         },
       });
 
@@ -205,7 +209,7 @@ describe('RolesGuard', () => {
           sub: 'user-1',
           email: 'test@example.com',
           accountType: AccountType.WRITER,
-          adminRole: null,
+          adminRole: undefined,
         },
       });
 

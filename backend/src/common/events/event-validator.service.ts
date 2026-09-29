@@ -1,18 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 
 import { EventSchemaRegistry, ValidationResult } from './event-schema-registry.ts';
-import type { DLQService } from './dlq.service.ts';
+import { DLQService } from './dlq.service.ts';
 
 @Injectable()
 export class EventValidatorService {
   constructor(
-    private readonly registry: EventSchemaRegistry,
-    private readonly dlqService: DLQService,
-    private readonly eventEmitter: EventEmitter2,
-    private readonly logger: WinstonLoggerService,
+    @Inject(EventSchemaRegistry) private readonly registry: EventSchemaRegistry,
+    @Inject(DLQService) private readonly dlqService: DLQService,
+    @Inject(EventEmitter2) private readonly eventEmitter: EventEmitter2,
+    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
   ) {}
 
   async emit(eventName: string, payload: unknown): Promise<void> {

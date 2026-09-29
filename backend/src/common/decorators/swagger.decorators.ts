@@ -1,5 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiOkResponse, ApiCreatedResponse, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiBadRequestResponse, ApiConflictResponse, ApiNoContentResponse, ApiInternalServerErrorResponse, ApiTooManyRequestsResponse, ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { ApiOkResponse, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiBadRequestResponse, ApiConflictResponse, ApiInternalServerErrorResponse, ApiTooManyRequestsResponse, ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 
 export const ApiCommonResponses = applyDecorators(
   ApiOkResponse({ description: 'Successful response' }),
@@ -39,8 +39,7 @@ export const ApiAuth = () => ApiBearerAuth('access-token');
 export const ApiAuthOperation = (summary: string, description?: string) => ApiOperation({ summary, description });
 export const ApiIdParam = () => ApiParam({ name: 'id', description: 'Resource UUID', type: String });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const ApiPaginatedResponse = (model: new (...args: any[]) => any) =>
+export const ApiPaginatedResponse = <T extends { name: string }>(model: new () => T) =>
   applyDecorators(
     ApiOkResponse({
       description: 'Paginated list of resources',

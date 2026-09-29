@@ -15,7 +15,11 @@ export class TimeoutService {
     if (!this.configs.has(name)) {
       this.configs.set(name, { timeoutMs: DEFAULT_TIMEOUT_MS });
     }
-    return this.configs.get(name)!;
+    const config = this.configs.get(name);
+    if (!config) {
+      throw new Error(`Configuration not found for operation: ${name}`);
+    }
+    return config;
   }
 
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, Optional } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -6,8 +6,9 @@ import type { NotificationCreatedEvent } from '../../common/events/social.events
 
 import type { INotificationsRepository } from './interfaces/notifications-repository.interface.ts';
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
-import type { Notification, CreateNotificationInput, NotificationResponse, NotificationPreferences } from './types.ts';
+import type { Notification, CreateNotificationInput, NotificationResponse } from './types.ts';
 import type { NotificationPreferencesResponseDto, NotificationPreferencesDto } from './dto/preferences.dto.ts';
+import { NotificationsEmailService } from './email/notifications-email.service.ts';
 
 @Injectable()
 export class NotificationsService {
@@ -15,6 +16,7 @@ export class NotificationsService {
     @Inject(NOTIFICATIONS_REPOSITORY) private readonly notificationsRepository: INotificationsRepository,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    @Optional() @Inject(NotificationsEmailService) private readonly emailService?: NotificationsEmailService,
   ) {}
 
   async findByUser(userId: string, page = 1, limit = 20): Promise<{ notifications: NotificationResponse[]; total: number }> {
@@ -33,6 +35,9 @@ export class NotificationsService {
   async create(input: CreateNotificationInput): Promise<Notification> {
     const notification = await this.notificationsRepository.create(input);
     await this.eventBus.emit('notification.created', { notificationId: notification.id, userId: notification.userId, type: notification.type } as NotificationCreatedEvent);
+    if (this.emailService) {
+      void this.emailService.sendNotificationEmail(notification.userId, notification.type, notification.title, notification.message);
+    }
     return notification;
   }
 
@@ -91,7 +96,7 @@ export class NotificationsService {
       type: notification.type,
       title: notification.title,
       message: notification.message,
-      data: notification.data ? JSON.parse(notification.data) : null,
+      data: notification.data ? JSON.parse(notification.data) as Record<string, unknown> : null,
       isRead: notification.isRead,
       readAt: notification.readAt?.toISOString() || null,
       createdAt: notification.createdAt.toISOString(),

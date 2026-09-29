@@ -1,13 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { StoriesService } from './stories.service.js';
-import type { IStoriesRepository } from './interfaces/stories-repository.interface.js';
-import { STORIES_REPOSITORY } from './interfaces/stories-repository.interface.js';
-import type { Story, CreateStoryInput, UpdateStoryInput } from './types.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockStoriesRepository = Partial<IStoriesRepository>;
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { StoriesService } from './stories.service.ts';
+import type { IStoriesRepository } from './interfaces/stories-repository.interface.ts';
+import type { Story, CreateStoryInput, UpdateStoryInput } from './types.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockStoriesRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Story | null>>>;
+  findBySlug: ReturnType<typeof vi.fn<(slug: string) => Promise<Story | null>>>;
+  findAll: ReturnType<typeof vi.fn<(params: { page?: number; limit?: number; authorId?: string; categoryId?: string; status?: string; search?: string }) => Promise<{ stories: Story[]; total: number }>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateStoryInput) => Promise<Story>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: UpdateStoryInput) => Promise<Story>>>;
+  softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  incrementViewCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -25,8 +40,9 @@ type MockValkeyService = {
   del: ReturnType<typeof vi.fn>;
 };
 
-type MockEventEmitter = {
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
 
 describe('StoriesService', () => {
@@ -34,11 +50,11 @@ describe('StoriesService', () => {
   let storiesRepository: MockStoriesRepository;
   let logger: MockWinstonLoggerService;
   let valkeyService: MockValkeyService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   const mockStory: Story = {
     id: 'story-123',
-    authorId: 'author-123',
+    authorId: 'user-123',
     title: 'Test Story',
     slug: 'test-story',
     excerpt: 'Test excerpt',
@@ -58,13 +74,13 @@ describe('StoriesService', () => {
 
   beforeEach(() => {
     storiesRepository = {
-      findById: vi.fn(),
-      findBySlug: vi.fn(),
-      findAll: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
-      incrementViewCount: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Story | null>>(),
+      findBySlug: vi.fn<(slug: string) => Promise<Story | null>>(),
+      findAll: vi.fn<(params: { page?: number; limit?: number; authorId?: string; categoryId?: string; status?: string; search?: string }) => Promise<{ stories: Story[]; total: number }>>(),
+      create: vi.fn<(data: CreateStoryInput) => Promise<Story>>(),
+      update: vi.fn<(id: string, data: UpdateStoryInput) => Promise<Story>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      incrementViewCount: vi.fn<(id: string) => Promise<void>>(),
     };
 
     logger = {
@@ -83,15 +99,16 @@ describe('StoriesService', () => {
       del: vi.fn(),
     };
 
-    eventEmitter = {
+    eventValidatorService = {
       emit: vi.fn(),
+      validateEvent: vi.fn(),
     };
 
     storiesService = new StoriesService(
-      storiesRepository as unknown as IStoriesRepository,
+      storiesRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -126,7 +143,7 @@ describe('StoriesService', () => {
           status: 'draft',
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('story.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('story.created', expect.any(Object));
     });
 
     it('should throw ConflictException when slug already exists', async () => {
@@ -240,7 +257,7 @@ describe('StoriesService', () => {
         ...updateInput,
       });
 
-      const result = await storiesService.update('story-123', updateInput);
+      const result = await storiesService.update('story-123', updateInput, 'user-123');
 
       expect(result.title).toBe('Updated Title');
       expect(result.content).toBe('<p>Updated content</p>');
@@ -250,7 +267,7 @@ describe('StoriesService', () => {
     it('should throw NotFoundException when story not found', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(null);
 
-      await expect(storiesService.update('story-999', { title: 'New Title' })).rejects.toThrow('Story not found');
+      await expect(storiesService.update('story-999', { title: 'New Title' }, 'user-123')).rejects.toThrow('Story not found');
     });
   });
 
@@ -262,7 +279,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(draftStory);
       vi.mocked(storiesRepository.update).mockResolvedValue(publishedStory);
 
-      const result = await storiesService.publish('story-123');
+      const result = await storiesService.publish('story-123', 'user-123');
 
       expect(result.status).toBe('published');
       expect(result.publishedAt).not.toBeNull();
@@ -276,14 +293,14 @@ describe('StoriesService', () => {
       const publishedStory = { ...mockStory, status: 'published' };
       vi.mocked(storiesRepository.findById).mockResolvedValue(publishedStory);
 
-      await expect(storiesService.publish('story-123')).rejects.toThrow('Story is already published');
+      await expect(storiesService.publish('story-123', 'user-123')).rejects.toThrow('Story is already published');
     });
 
     it('should throw ForbiddenException when story is archived', async () => {
       const archivedStory = { ...mockStory, status: 'archived' };
       vi.mocked(storiesRepository.findById).mockResolvedValue(archivedStory);
 
-      await expect(storiesService.publish('story-123')).rejects.toThrow('Cannot publish an archived story');
+      await expect(storiesService.publish('story-123', 'user-123')).rejects.toThrow('Cannot publish an archived story');
     });
   });
 
@@ -295,7 +312,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(publishedStory);
       vi.mocked(storiesRepository.update).mockResolvedValue(archivedStory);
 
-      const result = await storiesService.archive('story-123');
+      const result = await storiesService.archive('story-123', 'user-123');
 
       expect(result.status).toBe('archived');
       expect(storiesRepository.update).toHaveBeenCalledWith(
@@ -308,7 +325,7 @@ describe('StoriesService', () => {
       const archivedStory = { ...mockStory, status: 'archived' };
       vi.mocked(storiesRepository.findById).mockResolvedValue(archivedStory);
 
-      await expect(storiesService.archive('story-123')).rejects.toThrow('Story is already archived');
+      await expect(storiesService.archive('story-123', 'user-123')).rejects.toThrow('Story is already archived');
     });
   });
 
@@ -317,16 +334,16 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
       vi.mocked(storiesRepository.softDelete).mockResolvedValue(undefined);
 
-      await storiesService.delete('story-123');
+      await storiesService.delete('story-123', 'user-123');
 
       expect(storiesRepository.softDelete).toHaveBeenCalledWith('story-123');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('story.deleted', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('story.deleted', expect.any(Object));
     });
 
     it('should throw NotFoundException when story not found', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(null);
 
-      await expect(storiesService.delete('story-999')).rejects.toThrow('Story not found');
+      await expect(storiesService.delete('story-999', 'user-123')).rejects.toThrow('Story not found');
     });
   });
 

@@ -1,6 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
 
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { DatabaseModule } from '../../db/database.module.ts';
 import { CommonModule } from '../../common/common.module.ts';
 

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsIn, MaxLength, MinLength, IsBoolean, IsDate, Min, Max, IsArray, IsInt } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsIn, MaxLength, MinLength, IsDate, Min, Max, IsInt } from 'class-validator';
 
 export class CreateContestDto {
   @IsString()

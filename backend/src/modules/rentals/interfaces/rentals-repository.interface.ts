@@ -18,7 +18,7 @@ export type Rental = {
 export type CreateRentalInput = {
   userId: string;
   bookId: string;
-  durationDays?: number;
+  durationDays: number;
 };
 
 export type RentalExtension = {

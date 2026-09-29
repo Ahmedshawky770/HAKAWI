@@ -1,11 +1,25 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CommentsService } from './comments.service.js';
-import type { ICommentsRepository } from './interfaces/comments-repository.interface.js';
-import { COMMENTS_REPOSITORY } from './interfaces/comments-repository.interface.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockCommentsRepository = Partial<ICommentsRepository>;
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
+import type { EventValidatorService } from '../../common/events/event-validator.service.js';
+
+import { CommentsService } from './comments.service.js';
+import type { ICommentsRepository, CreateCommentInput, UpdateCommentInput } from './interfaces/comments-repository.interface.js';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockCommentsRepository = {
+  findById: ReturnType<typeof vi.fn>;
+  findByStory: ReturnType<typeof vi.fn>;
+  findReplies: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  softDelete: ReturnType<typeof vi.fn>;
+  incrementReplyCount: ReturnType<typeof vi.fn>;
+  countReplies: ReturnType<typeof vi.fn>;
+};
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
@@ -14,35 +28,35 @@ type MockWinstonLoggerService = {
   debug: ReturnType<typeof vi.fn>;
   verbose: ReturnType<typeof vi.fn>;
 };
-type MockEventEmitter = { emit: ReturnType<typeof vi.fn> };
 
 describe('CommentsService', () => {
   let commentsService: CommentsService;
   let commentsRepository: MockCommentsRepository;
   let logger: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
+  let eventEmitter: EventValidatorService;
 
   beforeEach(() => {
     commentsRepository = {
-      create: vi.fn(),
-      findById: vi.fn(),
-      findByStory: vi.fn(),
-      findReplies: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
-      incrementReplyCount: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Comment | null>>(),
+      findByStory: vi.fn<(storyId: string, page: number, limit: number) => Promise<{ comments: Comment[]; total: number }>>(),
+      findReplies: vi.fn<(parentId: string, page: number, limit: number) => Promise<{ replies: Comment[]; total: number }>>(),
+      create: vi.fn<(data: CreateCommentInput) => Promise<Comment>>(),
+      update: vi.fn<(id: string, data: UpdateCommentInput) => Promise<Comment>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      incrementReplyCount: vi.fn<(parentId: string) => Promise<void>>(),
+      countReplies: vi.fn<(parentId: string) => Promise<number>>(),
     };
 
     logger = {
       info: vi.fn(), log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn(),
     };
 
-    eventEmitter = { emit: vi.fn() };
+    eventEmitter = { emit: vi.fn() } as unknown as EventValidatorService;
 
     commentsService = new CommentsService(
       commentsRepository as unknown as ICommentsRepository,
       logger as unknown as WinstonLoggerService,
-      eventEmitter as unknown as EventEmitter2,
+      eventEmitter,
     );
   });
 

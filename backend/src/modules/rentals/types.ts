@@ -16,7 +16,12 @@ export type Rental = {
 export type CreateRentalInput = {
   userId: string;
   bookId: string;
-  durationDays?: number;
+  durationDays: number;
+};
+
+export type CreateRentalRequest = {
+  bookId: string;
+  durationDays: number;
 };
 
 export type RentalExtension = {
@@ -59,3 +64,14 @@ export type RentalsListResponse = {
 };
 
 export type RentalStatus = 'active' | 'expired' | 'returned' | 'cancelled';
+
+export const RENTAL_DURATION_PRESETS = [
+  { label: '1 day', days: 1 },
+  { label: '3 days', days: 3 },
+  { label: '1 week', days: 7 },
+  { label: '2 weeks', days: 14 },
+  { label: '1 month', days: 30 },
+  { label: '3 months', days: 90 },
+] as const;
+
+export type RentalDurationPreset = typeof RENTAL_DURATION_PRESETS[number]['days'];

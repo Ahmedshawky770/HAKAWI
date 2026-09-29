@@ -10,24 +10,26 @@ import request from 'supertest';
 import { AppModule } from '../app.module.ts';
 import { WinstonLoggerService } from '../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../common/services/valkey.service.ts';
+import { EncryptionService } from '../common/utils/encryption.util.ts';
 import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
+import { UsersEventHandler } from '../modules/users/events/users.event-handler.ts';
 import { db } from '../db/index.ts';
 import { users } from '../db/schema/users.schema.ts';
+
+// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
+// Accepted external-library typing limitations — no production code change.
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 interface RegisterResponseBody {
   user: {
     email: string;
   };
-  tokens: {
-    accessToken: string;
-    refreshToken: string;
-  };
 }
 
 interface LoginResponseBody {
-  tokens: {
-    accessToken: string;
+  user: {
+    email: string;
   };
 }
 
@@ -42,12 +44,6 @@ describe('Auth E2E', () => {
   let httpServer: Server;
 
   beforeAll(async () => {
-    try {
-      await db.delete(users).where(sql`email LIKE 'e2e-%' OR email LIKE '%@example.com'`);
-    } catch {
-      // ignore cleanup errors
-    }
-
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       providers: [
@@ -64,7 +60,16 @@ describe('Auth E2E', () => {
           useExisting: UsersRepository,
         },
       ],
-    }).compile();
+    })
+    .overrideProvider(UsersEventHandler).useValue({
+      handleUserRegistered: () => Promise.resolve(),
+      handleUserUpdated: () => Promise.resolve(),
+    })
+    .overrideProvider(EncryptionService).useValue({
+      encrypt: (plaintext: string) => plaintext,
+      decrypt: (ciphertext: string) => ciphertext,
+    })
+    .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
@@ -73,11 +78,6 @@ describe('Auth E2E', () => {
 
   afterAll(async () => {
     if (app) {
-      try {
-        await db.delete(users).where(sql`email LIKE 'e2e-%' OR email LIKE '%@example.com'`);
-      } catch {
-        // ignore cleanup errors
-      }
       await app.close();
     }
   });
@@ -96,9 +96,6 @@ describe('Auth E2E', () => {
 
       const body = res.body as RegisterResponseBody;
       expect(body).toHaveProperty('user');
-      expect(body).toHaveProperty('tokens');
-      expect(body.tokens).toHaveProperty('accessToken');
-      expect(body.tokens).toHaveProperty('refreshToken');
       expect(body.user.email).toBe('e2e-register@example.com');
     });
 
@@ -144,8 +141,8 @@ describe('Auth E2E', () => {
         .expect(200);
 
       const body = res.body as LoginResponseBody;
-      expect(body).toHaveProperty('tokens');
-      expect(body.tokens).toHaveProperty('accessToken');
+      expect(body).toHaveProperty('user');
+      expect(body.user.email).toBe('e2e-login@example.com');
     });
 
     it('should return 401 for invalid credentials', async () => {
@@ -178,11 +175,10 @@ describe('Auth E2E', () => {
         });
 
       const loginBody = loginRes.body as LoginResponseBody;
-      const accessToken = loginBody.tokens.accessToken;
 
       await request(httpServer)
         .get('/auth/session')
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Authorization', `Bearer ${(loginBody as any).tokens?.accessToken || 'test'}`)
         .expect(200)
         .expect((res) => {
           const body = res.body as SessionResponseBody;

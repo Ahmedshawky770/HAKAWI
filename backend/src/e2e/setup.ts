@@ -1,26 +1,31 @@
 import 'reflect-metadata';
-import { beforeAll, afterAll } from 'vitest';
+import { beforeAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
-import { users } from '../db/schema/users.schema.ts';
-
-let databaseAvailable = false;
+import { runMigrations } from '../db/migrations/migration-runner.ts';
 
 beforeAll(async () => {
   try {
     await db.execute(sql.raw('SELECT 1'));
-    databaseAvailable = true;
     await db.execute(sql.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'));
-  } catch {
-    databaseAvailable = false;
-  }
-});
 
-afterAll(async () => {
-  try {
-    await db.delete(users).where(sql`email LIKE '%-int@example.com' OR email LIKE '%-register@example.com' OR email LIKE '%-login@example.com' OR email LIKE '%-session@example.com' OR email LIKE '%-forgot@example.com' OR email LIKE '%-reset@example.com' OR email LIKE '%-e2e@example.com'`);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql.raw(`
+        DO $$
+        DECLARE
+          r RECORD;
+        BEGIN
+          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
+          END LOOP;
+        END
+        $$;
+      `));
+    });
+
+    await runMigrations();
   } catch {
-    // ignore cleanup errors
+    // ignore
   }
 });

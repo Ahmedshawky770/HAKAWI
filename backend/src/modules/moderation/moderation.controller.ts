@@ -23,6 +23,7 @@ export class ModerationController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @RequireAdminRole(AdminRole.MODERATOR)
   @Get('reports')
   async findAllReports(@Query() query: ReportQueryDto) {
     return this.moderationService.findAllReports(query);
@@ -45,7 +46,7 @@ export class ModerationController {
   @UseGuards(JwtAuthGuard)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @Get('stats')
-  async getStats(@Request() req: { user: { sub: string } }): Promise<AdminDashboardStatsDto> {
+  async getStats(): Promise<AdminDashboardStatsDto> {
     return this.adminDashboardService.getStats();
   }
 

@@ -30,6 +30,7 @@ export type UpdateUserInput = Partial<{
   lastLoginAt: Date;
   emailVerified: boolean;
   emailVerificationToken: string | null;
+  passwordResetToken: string | null;
 }>;
 
 export type User = {
@@ -55,6 +56,7 @@ export type User = {
   deletedAt: Date | null;
   emailVerified: boolean | null;
   emailVerificationToken: string | null;
+  passwordResetToken: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

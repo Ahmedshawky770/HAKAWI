@@ -8,11 +8,12 @@ import { NotificationsController } from './controllers/notifications.controller.
 import { NotificationsRepository } from './repositories/notifications.repository.ts';
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
 import { NotificationsEventHandler } from './events/notifications.event-handler.ts';
+import { NotificationsEmailService } from './email/notifications-email.service.ts';
 
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [NotificationsController],
-  providers: [NotificationsService, NotificationsRepository, NotificationsEventHandler, { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository }],
+  providers: [NotificationsService, NotificationsRepository, NotificationsEventHandler, NotificationsEmailService, { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository }],
   exports: [NotificationsService],
 })
 export class NotificationsModule {}

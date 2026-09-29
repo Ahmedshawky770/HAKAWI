@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+
 import { EventValidatorService } from './event-validator.service.ts';
 import { EventSchemaRegistry } from './event-schema-registry.ts';
 import type { DLQService } from './dlq.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 
 type MockDLQService = {
   add: ReturnType<typeof vi.fn>;

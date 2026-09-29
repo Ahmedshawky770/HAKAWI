@@ -4,7 +4,6 @@ import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { IConversationsRepository, Conversation, CreateConversationInput } from '../interfaces/messages-repository.interface.ts';
-import { CONVERSATIONS_REPOSITORY } from '../interfaces/messages-repository.interface.ts';
 import { conversations } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 

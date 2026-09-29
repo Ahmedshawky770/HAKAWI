@@ -25,8 +25,10 @@ export class WinstonLoggerService {
           const stack = typeof info.stack === 'string' ? info.stack : undefined;
           const contextStr = context ? '[' + context + ']' : '';
           const stackStr = stack ? '\n' + stack : '';
-          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-          return `${info.timestamp} ${info.level.toUpperCase()} ${contextStr} ${info.message}${stackStr}`;
+          const level = typeof info.level === 'string' ? info.level : String(info.level);
+          const message = typeof info.message === 'string' ? info.message : String(info.message);
+          const timestamp = typeof info.timestamp === 'string' ? info.timestamp : String(info.timestamp);
+          return `${timestamp} ${level.toUpperCase()} ${contextStr} ${message}${stackStr}`;
         }),
       ),
       transports: [
@@ -36,8 +38,10 @@ export class WinstonLoggerService {
             winston.format.printf((info) => {
               const context = typeof info.context === 'string' ? info.context : undefined;
               const contextStr = context ? '[' + context + ']' : '';
-              // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-              return `${info.timestamp} ${info.level} ${contextStr} ${info.message}`;
+              const level = typeof info.level === 'string' ? info.level : String(info.level);
+              const message = typeof info.message === 'string' ? info.message : String(info.message);
+              const timestamp = typeof info.timestamp === 'string' ? info.timestamp : String(info.timestamp);
+              return `${timestamp} ${level} ${contextStr} ${message}`;
             }),
           ),
         }),

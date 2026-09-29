@@ -13,7 +13,7 @@ import { follows } from '../../db/schema/social.schema.ts';
 import { reactions } from '../../db/schema/social.schema.ts';
 
 import { UserStatsDto } from './dto/users.dto.ts';
-import type { User, CreateUserInput, UpdateUserInput, UserStats } from './types.ts';
+import type { User, CreateUserInput, UpdateUserInput } from './types.ts';
 
 @Injectable()
 export class UsersService {
@@ -43,6 +43,32 @@ export class UsersService {
     }
     await this.valkeyService.set(`user:${id}`, JSON.stringify(safeUser), 300);
     return safeUser;
+  }
+
+  async findPublicProfile(id: string): Promise<{ id: string; username: string; name: string; avatar: string | null; bio: string | null; accountType: string; isVerified: boolean; createdAt: Date }> {
+    const cached = await this.valkeyService.get(`user:public:${id}`);
+    if (cached) {
+      return JSON.parse(cached) as { id: string; username: string; name: string; avatar: string | null; bio: string | null; accountType: string; isVerified: boolean; createdAt: Date };
+    }
+
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    const publicProfile = {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      avatar: user.avatar,
+      bio: user.bio,
+      accountType: user.accountType,
+      isVerified: user.isVerified ?? false,
+      createdAt: user.createdAt,
+    };
+
+    await this.valkeyService.set(`user:public:${id}`, JSON.stringify(publicProfile), 300);
+    return publicProfile;
   }
 
   async findByEmail(email: string): Promise<User> {

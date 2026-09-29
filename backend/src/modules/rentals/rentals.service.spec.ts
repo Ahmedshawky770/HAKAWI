@@ -1,13 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { RentalsService } from './rentals.service.js';
-import type { IRentalsRepository } from './interfaces/rentals-repository.interface.js';
-import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.js';
-import type { Rental, CreateRentalInput, RentalExtension } from './types.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockRentalsRepository = Partial<IRentalsRepository>;
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { RentalsService } from './rentals.service.ts';
+import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
+import type { Rental, CreateRentalInput, RentalExtension } from './types.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockRentalsRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Rental | null>>>;
+  findByUserAndBook: ReturnType<typeof vi.fn<(userId: string, bookId: string) => Promise<Rental | null>>>;
+  findActiveByUser: ReturnType<typeof vi.fn<(userId: string) => Promise<Rental[]>>>;
+  findAll: ReturnType<typeof vi.fn<(params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<{ rentals: Rental[]; total: number }>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateRentalInput) => Promise<Rental>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: Partial<Rental>) => Promise<Rental>>>;
+  softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  createExtension: ReturnType<typeof vi.fn<(data: { rentalId: string; previousEndDate: Date; newEndDate: Date; extensionDays: number }) => Promise<RentalExtension>>>;
+  findExtensionsByRental: ReturnType<typeof vi.fn<(rentalId: string) => Promise<RentalExtension[]>>>;
+  findOverdue: ReturnType<typeof vi.fn<() => Promise<Rental[]>>>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -25,8 +43,9 @@ type MockValkeyService = {
   del: ReturnType<typeof vi.fn>;
 };
 
-type MockEventEmitter = {
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
 
 describe('RentalsService', () => {
@@ -34,7 +53,7 @@ describe('RentalsService', () => {
   let rentalsRepository: MockRentalsRepository;
   let logger: MockWinstonLoggerService;
   let valkeyService: MockValkeyService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   const mockRental: Rental = {
     id: 'rental-123',
@@ -53,16 +72,16 @@ describe('RentalsService', () => {
 
   beforeEach(() => {
     rentalsRepository = {
-      findById: vi.fn(),
-      findByUserAndBook: vi.fn(),
-      findActiveByUser: vi.fn(),
-      findAll: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
-      createExtension: vi.fn(),
-      findExtensionsByRental: vi.fn(),
-      findOverdue: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Rental | null>>(),
+      findByUserAndBook: vi.fn<(userId: string, bookId: string) => Promise<Rental | null>>(),
+      findActiveByUser: vi.fn<(userId: string) => Promise<Rental[]>>(),
+      findAll: vi.fn<(params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<{ rentals: Rental[]; total: number }>>(),
+      create: vi.fn<(data: CreateRentalInput) => Promise<Rental>>(),
+      update: vi.fn<(id: string, data: Partial<Rental>) => Promise<Rental>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      createExtension: vi.fn<(data: { rentalId: string; previousEndDate: Date; newEndDate: Date; extensionDays: number }) => Promise<RentalExtension>>(),
+      findExtensionsByRental: vi.fn<(rentalId: string) => Promise<RentalExtension[]>>(),
+      findOverdue: vi.fn<() => Promise<Rental[]>>(),
     };
 
     logger = {
@@ -81,15 +100,16 @@ describe('RentalsService', () => {
       del: vi.fn(),
     };
 
-    eventEmitter = {
+    eventValidatorService = {
       emit: vi.fn(),
+      validateEvent: vi.fn(),
     };
 
     rentalsService = new RentalsService(
-      rentalsRepository as unknown as IRentalsRepository,
+      rentalsRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -119,13 +139,14 @@ describe('RentalsService', () => {
           durationDays: 14,
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('rental.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.created', expect.any(Object));
     });
 
     it('should throw ConflictException when user already has an active rental', async () => {
       const createInput: CreateRentalInput = {
         userId: 'user-123',
         bookId: 'book-123',
+        durationDays: 7,
       };
 
       vi.mocked(rentalsRepository.findByUserAndBook).mockResolvedValue(mockRental);
@@ -139,7 +160,7 @@ describe('RentalsService', () => {
       vi.mocked(rentalsRepository.findById).mockResolvedValue(mockRental);
       vi.mocked(valkeyService.get).mockResolvedValue(null);
 
-      const result = await rentalsService.findById('rental-123');
+      const result = await rentalsService.findById('rental-123', 'user-123');
 
       expect(result).toEqual(mockRental);
       expect(rentalsRepository.findById).toHaveBeenCalledWith('rental-123');
@@ -148,7 +169,7 @@ describe('RentalsService', () => {
     it('should throw NotFoundException when rental not found', async () => {
       vi.mocked(rentalsRepository.findById).mockResolvedValue(null);
 
-      await expect(rentalsService.findById('rental-999')).rejects.toThrow('Rental not found');
+      await expect(rentalsService.findById('rental-999', 'user-123')).rejects.toThrow('Rental not found');
     });
   });
 
@@ -169,7 +190,7 @@ describe('RentalsService', () => {
       vi.mocked(rentalsRepository.createExtension).mockResolvedValue(extension);
       vi.mocked(rentalsRepository.update).mockResolvedValue({ ...activeRental, endDate: newEndDate, extendedCount: 1 });
 
-      const result = await rentalsService.extendRental('rental-123', 14);
+      const result = await rentalsService.extendRental('rental-123', 14, 'user-123');
 
       expect(result).toEqual(extension);
       expect(rentalsRepository.createExtension).toHaveBeenCalledWith(
@@ -178,21 +199,21 @@ describe('RentalsService', () => {
           extensionDays: 14,
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('rental.extended', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.extended', expect.any(Object));
     });
 
     it('should throw ForbiddenException when rental is not active', async () => {
       const returnedRental = { ...mockRental, status: 'returned' as const };
       vi.mocked(rentalsRepository.findById).mockResolvedValue(returnedRental);
 
-      await expect(rentalsService.extendRental('rental-123', 14)).rejects.toThrow('Cannot extend a non-active rental');
+      await expect(rentalsService.extendRental('rental-123', 14, 'user-123')).rejects.toThrow('Cannot extend a non-active rental');
     });
 
     it('should throw ForbiddenException when max extensions reached', async () => {
       const maxExtensionsRental = { ...mockRental, extendedCount: 2, maxExtensions: 2 };
       vi.mocked(rentalsRepository.findById).mockResolvedValue(maxExtensionsRental);
 
-      await expect(rentalsService.extendRental('rental-123', 14)).rejects.toThrow('Maximum extensions reached for this rental');
+      await expect(rentalsService.extendRental('rental-123', 14, 'user-123')).rejects.toThrow('Maximum extensions reached for this rental');
     });
   });
 
@@ -201,7 +222,7 @@ describe('RentalsService', () => {
       vi.mocked(rentalsRepository.findById).mockResolvedValue(mockRental);
       vi.mocked(rentalsRepository.update).mockResolvedValue({ ...mockRental, status: 'returned', returnedAt: new Date() });
 
-      const result = await rentalsService.returnRental('rental-123');
+      const result = await rentalsService.returnRental('rental-123', 'user-123');
 
       expect(result.status).toBe('returned');
       expect(result.returnedAt).not.toBeNull();
@@ -209,14 +230,14 @@ describe('RentalsService', () => {
         'rental-123',
         expect.objectContaining({ status: 'returned', returnedAt: expect.any(Date) }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('rental.returned', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.returned', expect.any(Object));
     });
 
     it('should throw ForbiddenException when rental already returned', async () => {
       const returnedRental = { ...mockRental, status: 'returned' as const };
       vi.mocked(rentalsRepository.findById).mockResolvedValue(returnedRental);
 
-      await expect(rentalsService.returnRental('rental-123')).rejects.toThrow('Rental has already been returned');
+      await expect(rentalsService.returnRental('rental-123', 'user-123')).rejects.toThrow('Rental has already been returned');
     });
   });
 
@@ -242,7 +263,7 @@ describe('RentalsService', () => {
 
       expect(rentalsRepository.findOverdue).toHaveBeenCalled();
       expect(rentalsRepository.update).toHaveBeenCalledWith('rental-123', { status: 'expired' });
-      expect(eventEmitter.emit).toHaveBeenCalledWith('rental.expired', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.expired', expect.any(Object));
     });
   });
 });

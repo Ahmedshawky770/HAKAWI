@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import { Injectable, Inject, Optional, ForbiddenException } from '@nestjs/common';
 import type { S3 } from '@aws-sdk/client-s3';
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -35,12 +37,18 @@ export class UploadService {
   }
 
   async generatePresignedUrl(filename: string, contentType: string, folder = 'uploads'): Promise<UploadResponse> {
+    const normalizedContentType = contentType.toLowerCase().trim();
+    const isAllowed = this.allowedImageTypes.includes(normalizedContentType) || this.allowedPdfTypes.includes(normalizedContentType);
+    if (!isAllowed) {
+      throw new ForbiddenException(`File type ${contentType} is not allowed`);
+    }
+
     const uniqueFilename = `${folder}/${Date.now()}-${crypto.randomUUID()}-${filename.replace(/[^a-zA-Z0-9._-]/g, '')}`;
 
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: uniqueFilename,
-      ContentType: contentType,
+      ContentType: normalizedContentType,
     });
 
     const url = await this.circuitBreaker.execute(
@@ -52,7 +60,7 @@ export class UploadService {
     return {
       filename: uniqueFilename,
       originalName: filename,
-      mimetype: contentType,
+      mimetype: normalizedContentType,
       size: 0,
       url,
       cdnUrl,

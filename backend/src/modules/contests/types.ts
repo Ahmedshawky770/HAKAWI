@@ -50,7 +50,6 @@ export type CreateContestInput = {
   startDate: Date;
   endDate: Date;
   submissionDeadline: Date;
-  createdBy: string;
 };
 
 export type UpdateContestInput = Partial<{
@@ -67,11 +66,17 @@ export type UpdateContestInput = Partial<{
 export type CreateSubmissionInput = {
   contestId: string;
   storyId: string;
+  authorId: string;
+};
+
+export type ReviewSubmissionInput = {
+  status: 'approved' | 'rejected';
 };
 
 export type CastVoteInput = {
   contestId: string;
   submissionId: string;
+  userId: string;
 };
 
 export type SelectWinnerInput = {
@@ -141,4 +146,38 @@ export type ContestsListResponse = {
   total: number;
   page: number;
   limit: number;
+};
+
+export type PublisherStatsResponse = {
+  totalContests: number;
+  activeContests: number;
+  completedContests: number;
+  totalSubmissions: number;
+  pendingSubmissions: number;
+  approvedSubmissions: number;
+  rejectedSubmissions: number;
+  totalVotes: number;
+  totalPrizes: number;
+};
+
+export type PublisherSubmissionOverview = {
+  id: string;
+  storyId: string;
+  authorId: string;
+  status: string;
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  votes: number;
+  storyTitle?: string;
+  authorName?: string;
+};
+
+export type PublisherVoteOverview = {
+  id: string;
+  submissionId: string;
+  userId: string;
+  createdAt: string;
+  submissionTitle?: string;
+  userName?: string;
 };

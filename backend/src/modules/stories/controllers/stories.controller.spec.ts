@@ -1,25 +1,45 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
 
-import { StoriesController } from './stories.controller.ts';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+
 import { StoriesService } from '../stories.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+import type { Story } from '../types.ts';
+
+import { StoriesController } from './stories.controller.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
+
+type MockStoriesService = {
+  findAll: ReturnType<typeof vi.fn>;
+  findById: ReturnType<typeof vi.fn>;
+  findBySlug: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  publish: ReturnType<typeof vi.fn>;
+  archive: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+};
 
 describe('StoriesController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let storiesService: Partial<StoriesService>;
+  let storiesService: MockStoriesService;
 
   beforeAll(async () => {
     storiesService = {
@@ -44,7 +64,7 @@ describe('StoriesController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -88,7 +108,7 @@ describe('StoriesController', () => {
         total: 1,
         page: 1,
         limit: 20,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/stories')
@@ -120,7 +140,7 @@ describe('StoriesController', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         publishedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .get('/stories/story-1')
@@ -151,7 +171,7 @@ describe('StoriesController', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         publishedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .get('/stories/slug/test-story')
@@ -183,7 +203,7 @@ describe('StoriesController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .post('/stories')
@@ -217,7 +237,7 @@ describe('StoriesController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .patch('/stories/story-1')
@@ -226,7 +246,7 @@ describe('StoriesController', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('title', 'Updated Story');
-      expect(storiesService.update).toHaveBeenCalledWith('story-1', { title: 'Updated Story' });
+      expect(storiesService.update).toHaveBeenCalledWith('story-1', { title: 'Updated Story' }, 'user-1');
     });
   });
 
@@ -251,7 +271,7 @@ describe('StoriesController', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         publishedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .post('/stories/story-1/publish')
@@ -259,7 +279,7 @@ describe('StoriesController', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('status', 'published');
-      expect(storiesService.publish).toHaveBeenCalledWith('story-1');
+      expect(storiesService.publish).toHaveBeenCalledWith('story-1', 'user-1');
     });
   });
 
@@ -283,7 +303,7 @@ describe('StoriesController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+       } as unknown as Story);
 
       const res = await request(httpServer)
         .post('/stories/story-1/archive')
@@ -291,7 +311,7 @@ describe('StoriesController', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('status', 'archived');
-      expect(storiesService.archive).toHaveBeenCalledWith('story-1');
+      expect(storiesService.archive).toHaveBeenCalledWith('story-1', 'user-1');
     });
   });
 
@@ -307,7 +327,7 @@ describe('StoriesController', () => {
         .expect(204);
 
       expect(res.body).toEqual({});
-      expect(storiesService.delete).toHaveBeenCalledWith('story-1');
+      expect(storiesService.delete).toHaveBeenCalledWith('story-1', 'user-1');
     });
   });
 });

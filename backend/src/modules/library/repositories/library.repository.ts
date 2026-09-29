@@ -2,7 +2,6 @@ import { Injectable, Inject } from '@nestjs/common';
 import { eq, and, desc, count } from 'drizzle-orm';
 
 import { ILibraryRepository, LibraryItem } from '../interfaces/library-repository.interface.ts';
-import { LIBRARY_REPOSITORY } from '../interfaces/library-repository.interface.ts';
 import { library } from '../../../db/schema/library.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';

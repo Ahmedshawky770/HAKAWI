@@ -1,18 +1,36 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AuthService } from './auth.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { PasswordHasher } from '../../common/utils/password.util.js';
-import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
-import { AccountType } from '../../common/constants/roles.ts';
-import type { IUsersRepository } from '../users/interfaces/users-repository.interface.js';
-import { USERS_REPOSITORY } from '../users/interfaces/users-repository.interface.js';
-import type { User } from '../users/interfaces/users-repository.interface.js';
-import { EmailVerificationService } from '../email-verification/email-verification.service.js';
 
-type MockUsersRepository = Partial<IUsersRepository>;
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { PasswordHasher } from '../../common/utils/password.util.ts';
+import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.ts';
+import { EncryptionService } from '../../common/utils/encryption.util.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.ts';
+import { AccountType } from '../../common/constants/roles.ts';
+import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../users/interfaces/users-repository.interface.ts';
+import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
+
+import { AuthService } from './auth.service.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockUsersRepository = {
+  findById: ReturnType<typeof vi.fn>;
+  findByEmail: ReturnType<typeof vi.fn>;
+  findByUsername: ReturnType<typeof vi.fn>;
+  findByGoogleId: ReturnType<typeof vi.fn>;
+  findByFacebookId: ReturnType<typeof vi.fn>;
+  findByTwitterId: ReturnType<typeof vi.fn>;
+  findByGithubId: ReturnType<typeof vi.fn>;
+  findByAppleId: ReturnType<typeof vi.fn>;
+  findByTiktokId: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  softDelete: ReturnType<typeof vi.fn>;
+};
 
 type MockPasswordHasher = {
   hash: ReturnType<typeof vi.fn>;
@@ -41,12 +59,18 @@ type MockWinstonLoggerService = {
   verbose: ReturnType<typeof vi.fn>;
 };
 
-type MockEventEmitter = {
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
 
 type MockEmailVerificationService = {
   generateToken: ReturnType<typeof vi.fn>;
+};
+
+type MockEncryptionService = {
+  encrypt: ReturnType<typeof vi.fn>;
+  decrypt: ReturnType<typeof vi.fn>;
 };
 
 type MockCircuitBreakerService = {
@@ -60,22 +84,25 @@ describe('AuthService', () => {
   let jwtHelper: MockJwtHelper;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
   let emailVerificationService: MockEmailVerificationService;
+  let encryptionService: MockEncryptionService;
   let circuitBreaker: MockCircuitBreakerService;
 
   beforeEach(() => {
     usersRepository = {
-      findById: vi.fn(),
-      findByEmail: vi.fn(),
-      findByUsername: vi.fn(),
-      create: vi.fn(),
-      findByGoogleId: vi.fn(),
-      findByFacebookId: vi.fn(),
-      findByTwitterId: vi.fn(),
-      findByGithubId: vi.fn(),
-      findByAppleId: vi.fn(),
-      findByTiktokId: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
+      findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
+      create: vi.fn<(data: CreateUserInput) => Promise<User>>(),
+      update: vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>(),
+      findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),
+      findByFacebookId: vi.fn<(facebookId: string) => Promise<User | null>>(),
+      findByTwitterId: vi.fn<(twitterId: string) => Promise<User | null>>(),
+      findByGithubId: vi.fn<(githubId: string) => Promise<User | null>>(),
+      findByAppleId: vi.fn<(appleId: string) => Promise<User | null>>(),
+      findByTiktokId: vi.fn<(tiktokId: string) => Promise<User | null>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
     };
 
     passwordHasher = {
@@ -105,16 +132,22 @@ describe('AuthService', () => {
       verbose: vi.fn(),
     };
 
-    eventEmitter = {
-      emit: vi.fn(),
-    };
+    eventValidatorService = {
+    emit: vi.fn(),
+    validateEvent: vi.fn(),
+  };
 
     emailVerificationService = {
-      generateToken: vi.fn().mockResolvedValue('123456'),
+      generateToken: vi.fn().mockResolvedValue('12345678'),
+    };
+
+    encryptionService = {
+      encrypt: vi.fn().mockImplementation((token: string) => `encrypted_${token}`),
+      decrypt: vi.fn().mockImplementation((token: string) => token.replace('encrypted_', '')),
     };
 
     circuitBreaker = {
-      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<any>) => fn()),
+      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
     authService = new AuthService(
@@ -124,8 +157,9 @@ describe('AuthService', () => {
       valkeyService as unknown as ValkeyService,
       winstonLoggerService as unknown as WinstonLoggerService,
       circuitBreaker as unknown as CircuitBreakerService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
       emailVerificationService as unknown as EmailVerificationService,
+      encryptionService as unknown as EncryptionService,
     );
   });
 
@@ -165,8 +199,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
 
       const result = await authService.register(registerDto);
 
@@ -185,7 +219,7 @@ describe('AuthService', () => {
           accountType: AccountType.READER,
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
+      expect(eventValidatorService.emit).toHaveBeenCalledWith(
         'user.registered',
         expect.any(Object),
       );
@@ -326,8 +360,8 @@ describe('AuthService', () => {
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
 
       const result = await authService.login(loginDto);
 
@@ -392,7 +426,7 @@ describe('AuthService', () => {
         refreshToken: 'valid-refresh-token',
       };
 
-      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -423,8 +457,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
 
       const result = await authService.refreshTokens(refreshTokenDto);
 
@@ -437,7 +471,7 @@ describe('AuthService', () => {
         refreshToken: 'invalid-token',
       };
 
-      vi.mocked(jwtHelper.verifyRefreshToken).mockImplementation(() => {
+      vi.mocked(jwtHelper.verifyRefreshToken!).mockImplementation(() => {
         throw new Error('Invalid token');
       });
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
@@ -483,7 +517,7 @@ describe('AuthService', () => {
 
   describe('logout', () => {
     it('should blacklist refresh token', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -502,7 +536,7 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException with invalid refresh token', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken).mockImplementation(() => {
+      vi.mocked(jwtHelper.verifyRefreshToken!).mockImplementation(() => {
         throw new Error('Invalid token');
       });
 
@@ -559,7 +593,7 @@ describe('AuthService', () => {
       const state = 'state-123';
       vi.mocked(valkeyService.get).mockResolvedValue('google');
 
-      vi.mocked(global.fetch).mockResolvedValueOnce({
+      vi.mocked(global.fetch!).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ access_token: 'google-access-token' }),
       } as Response).mockResolvedValueOnce({
@@ -592,14 +626,14 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
 
       const result = await authService.handleOAuthCallback('google', 'valid-code', state);
 
       expect(result).toHaveProperty('accessToken', 'access-token');
       expect(result).toHaveProperty('refreshToken', 'refresh-token');
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
+      expect(eventValidatorService.emit).toHaveBeenCalledWith(
         'user.registered',
         expect.any(Object),
       );
@@ -610,7 +644,7 @@ describe('AuthService', () => {
       const state = 'state-123';
       vi.mocked(valkeyService.get).mockResolvedValue('google');
 
-      vi.mocked(global.fetch).mockResolvedValueOnce({
+      vi.mocked(global.fetch!).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ access_token: 'google-access-token' }),
       } as Response).mockResolvedValueOnce({
@@ -642,8 +676,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
 
       const result = await authService.handleOAuthCallback('google', 'valid-code', state);
 

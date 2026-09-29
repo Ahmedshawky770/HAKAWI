@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
 import { ModerationService } from './moderation.service.ts';
 
 vi.mock('../../db/index.ts', () => {
+  type MockDbChain = {
+    returning: ReturnType<typeof vi.fn>;
+    where: ReturnType<typeof vi.fn>;
+  };
+
   const makeChain = (result: unknown) => {
-    const chain: any = {
+    const chain: MockDbChain & Record<string, ReturnType<typeof vi.fn>> = {
       returning: vi.fn(() => Promise.resolve(result)),
       where: vi.fn(() => Promise.resolve(result)),
     };
@@ -41,7 +50,11 @@ describe('ModerationService', () => {
       debug: vi.fn(),
     };
 
-    moderationService = new ModerationService(mockLogger as any, null, null);
+    moderationService = new ModerationService(
+      mockLogger as unknown as WinstonLoggerService,
+      null as unknown as ValkeyService,
+      null as unknown as EventValidatorService,
+    );
   });
 
   describe('createReport', () => {

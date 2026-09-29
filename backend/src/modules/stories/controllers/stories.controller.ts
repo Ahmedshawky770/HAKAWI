@@ -37,26 +37,26 @@ export class StoriesController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateStoryDto) {
-    return this.storiesService.update(id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateStoryDto, @Request() req: Request & { user: { sub: string } }) {
+    return this.storiesService.update(id, dto, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/publish')
-  async publish(@Param('id') id: string) {
-    return this.storiesService.publish(id);
+  async publish(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    return this.storiesService.publish(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/archive')
-  async archive(@Param('id') id: string) {
-    return this.storiesService.archive(id);
+  async archive(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    return this.storiesService.archive(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    await this.storiesService.delete(id);
+  async delete(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    await this.storiesService.delete(id, req.user.sub);
   }
 }

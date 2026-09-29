@@ -85,10 +85,14 @@ export class StoriesService {
     };
   }
 
-  async update(id: string, input: UpdateStoryInput): Promise<Story> {
+  async update(id: string, input: UpdateStoryInput, userId: string): Promise<Story> {
     const existing = await this.storiesRepository.findById(id);
     if (!existing || existing.deletedAt) {
       throw new NotFoundException('Story not found');
+    }
+
+    if (existing.authorId !== userId) {
+      throw new ForbiddenException('You can only update your own stories');
     }
 
     if (input.slug && input.slug !== existing.slug) {
@@ -106,10 +110,14 @@ export class StoriesService {
     return story;
   }
 
-  async publish(id: string): Promise<Story> {
+  async publish(id: string, userId: string): Promise<Story> {
     const story = await this.storiesRepository.findById(id);
     if (!story || story.deletedAt) {
       throw new NotFoundException('Story not found');
+    }
+
+    if (story.authorId !== userId) {
+      throw new ForbiddenException('You can only publish your own stories');
     }
 
     if (story.status === 'published') {
@@ -130,10 +138,14 @@ export class StoriesService {
     return updated;
   }
 
-  async archive(id: string): Promise<Story> {
+  async archive(id: string, userId: string): Promise<Story> {
     const story = await this.storiesRepository.findById(id);
     if (!story || story.deletedAt) {
       throw new NotFoundException('Story not found');
+    }
+
+    if (story.authorId !== userId) {
+      throw new ForbiddenException('You can only archive your own stories');
     }
 
     if (story.status === 'archived') {
@@ -147,10 +159,14 @@ export class StoriesService {
     return updated;
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId: string): Promise<void> {
     const story = await this.storiesRepository.findById(id);
     if (!story || story.deletedAt) {
       throw new NotFoundException('Story not found');
+    }
+
+    if (story.authorId !== userId) {
+      throw new ForbiddenException('You can only delete your own stories');
     }
 
     await this.storiesRepository.softDelete(id);

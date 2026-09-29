@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Inject } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -41,7 +41,9 @@ export class LibraryService {
     const limit = query.limit ?? 20;
 
     const result = await this.libraryRepository.findByUser(userId, { status: query.status, page, limit });
-    const items = result.items.map((item) => this.toLibraryItemResponse(item));
+    const items = await Promise.all(
+      result.items.map(async (item) => this.toLibraryItemResponse(item))
+    );
 
     return {
       items,
@@ -56,10 +58,14 @@ export class LibraryService {
     return { count };
   }
 
-  async accessItem(id: string): Promise<LibraryItem> {
+  async accessItem(id: string, userId: string): Promise<LibraryItem> {
     const item = await this.libraryRepository.findById(id);
     if (!item) {
       throw new NotFoundException('Library item not found');
+    }
+
+    if (item.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this library item');
     }
 
     const updated = await this.libraryRepository.update(id, {

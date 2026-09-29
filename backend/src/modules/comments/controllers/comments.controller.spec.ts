@@ -1,25 +1,37 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
 
-import { CommentsController } from './comments.controller.ts';
 import { CommentsService } from '../comments.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+import type { CommentResponse } from '../types.ts';
+
+import { CommentsController } from './comments.controller.ts';
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JwtService accepts strict JwtModuleOptions; test secret is a plain string
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
+
+type MockCommentsService = {
+  findByStory: ReturnType<typeof vi.fn>;
+  findReplies: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+};
 
 describe('CommentsController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let commentsService: Partial<CommentsService>;
+  let commentsService: MockCommentsService;
 
   beforeAll(async () => {
     commentsService = {
@@ -41,7 +53,7 @@ describe('CommentsController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -66,7 +78,7 @@ describe('CommentsController', () => {
       vi.mocked(commentsService.findByStory).mockResolvedValue({
         comments: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/comments/story/123e4567-e89b-12d3-a456-426614174000')
@@ -83,7 +95,7 @@ describe('CommentsController', () => {
       vi.mocked(commentsService.findReplies).mockResolvedValue({
         replies: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/comments/123e4567-e89b-12d3-a456-426614174000/replies')
@@ -103,14 +115,15 @@ describe('CommentsController', () => {
         id: 'comment-1',
         storyId: '00000000-0000-0000-0000-000000000001',
         authorId: 'user-1',
+        authorName: 'Test User',
         parentId: null,
         content: 'Great story!',
         likeCount: 0,
         replyCount: 0,
         isDeleted: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as any);
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      } as unknown as CommentResponse);
 
       const res = await request(httpServer)
         .post('/comments')
@@ -138,14 +151,15 @@ describe('CommentsController', () => {
         id: 'comment-1',
         storyId: '00000000-0000-0000-0000-000000000001',
         authorId: 'user-1',
+        authorName: 'Test User',
         parentId: null,
         content: 'Updated comment',
         likeCount: 0,
         replyCount: 0,
         isDeleted: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as any);
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      } as unknown as CommentResponse);
 
       const res = await request(httpServer)
         .patch('/comments/123e4567-e89b-12d3-a456-426614174000')

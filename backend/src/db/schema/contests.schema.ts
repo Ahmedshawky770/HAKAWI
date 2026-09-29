@@ -5,11 +5,10 @@ import {
   text,
   timestamp,
   index,
-  primaryKey,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-import { categories } from './stories.schema.ts';
+import { categories, stories } from './stories.schema.ts';
 import { users } from './users.schema.ts';
 
 export const contests = pgTable(
@@ -42,7 +41,7 @@ export const contestSubmissions = pgTable(
   {
     id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
     contestId: uuid('contest_id').notNull().references(() => contests.id, { onDelete: 'cascade' }),
-    storyId: uuid('story_id').notNull().references(() => users.id),
+    storyId: uuid('story_id').notNull().references(() => stories.id),
     authorId: uuid('author_id').notNull().references(() => users.id),
     status: varchar('status', { length: 20 }).notNull().default('pending'),
     submittedAt: timestamp('submitted_at').defaultNow().notNull(),

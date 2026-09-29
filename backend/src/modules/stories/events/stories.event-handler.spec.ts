@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { StoriesEventHandler } from './stories.event-handler.js';
-import type { IStoriesRepository } from '../interfaces/stories-repository.interface.js';
-import { STORIES_REPOSITORY } from '../interfaces/stories-repository.interface.js';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.js';
 
-type MockStoriesRepository = Partial<IStoriesRepository>;
+import type { IStoriesRepository, Story } from '../interfaces/stories-repository.interface.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+import { StoriesEventHandler } from './stories.event-handler.ts';
+
+type MockStoriesRepository = {
+  findById: ReturnType<typeof vi.fn>;
+  findBySlug: ReturnType<typeof vi.fn>;
+  findAll: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  softDelete: ReturnType<typeof vi.fn>;
+  incrementViewCount: ReturnType<typeof vi.fn>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -23,7 +32,12 @@ describe('StoriesEventHandler', () => {
   beforeEach(() => {
     storiesRepository = {
       findById: vi.fn(),
+      findBySlug: vi.fn(),
+      findAll: vi.fn(),
+      create: vi.fn(),
       update: vi.fn(),
+      softDelete: vi.fn(),
+      incrementViewCount: vi.fn(),
     };
 
     logger = {

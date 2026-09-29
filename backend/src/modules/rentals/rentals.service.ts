@@ -7,7 +7,7 @@ import type { RentalCreatedEvent, RentalExtendedEvent, RentalReturnedEvent, Rent
 
 import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.ts';
-import type { Rental, CreateRentalInput, RentalExtension, RentalResponse, RentalsListResponse, RentalExtensionResponse } from './types.ts';
+import type { Rental, CreateRentalInput, RentalExtension, RentalResponse, RentalsListResponse, RentalExtensionResponse, CreateRentalRequest } from './types.ts';
 
 @Injectable()
 export class RentalsService {
@@ -18,16 +18,21 @@ export class RentalsService {
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
   ) {}
 
-  async createRental(userId: string, input: CreateRentalInput): Promise<Rental> {
+  async createRental(userId: string, input: CreateRentalRequest): Promise<Rental> {
     const existing = await this.rentalsRepository.findByUserAndBook(userId, input.bookId);
     if (existing && existing.status === 'active') {
       throw new ConflictException('You already have an active rental for this book');
     }
 
     const durationDays = input.durationDays ?? 14;
+    const allowedDurations = [1, 3, 7, 14, 30, 90];
+    if (!allowedDurations.includes(durationDays)) {
+      throw new BadRequestException('Invalid rental duration. Allowed values: 1, 3, 7, 14, 30, 90 days');
+    }
+
     const data: CreateRentalInput = {
-      ...input,
       userId,
+      bookId: input.bookId,
       durationDays,
     };
 
@@ -36,15 +41,23 @@ export class RentalsService {
     return rental;
   }
 
-  async findById(id: string): Promise<Rental> {
+  async findById(id: string, userId?: string): Promise<Rental> {
     const cached = await this.valkeyService.get(`rental:${id}`);
     if (cached) {
-      return JSON.parse(cached) as Rental;
+      const rental = JSON.parse(cached) as Rental;
+      if (userId && rental.userId !== userId) {
+        throw new ForbiddenException('You do not have access to this rental');
+      }
+      return rental;
     }
 
     const rental = await this.rentalsRepository.findById(id);
     if (!rental || rental.deletedAt) {
       throw new NotFoundException('Rental not found');
+    }
+
+    if (userId && rental.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this rental');
     }
 
     await this.valkeyService.set(`rental:${id}`, JSON.stringify(rental), 300);
@@ -66,10 +79,14 @@ export class RentalsService {
     };
   }
 
-  async extendRental(id: string, extensionDays: number): Promise<RentalExtension> {
+  async extendRental(id: string, extensionDays: number, userId: string): Promise<RentalExtension> {
     const rental = await this.rentalsRepository.findById(id);
     if (!rental || rental.deletedAt) {
       throw new NotFoundException('Rental not found');
+    }
+
+    if (rental.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this rental');
     }
 
     if (rental.status !== 'active') {
@@ -102,10 +119,14 @@ export class RentalsService {
     return extension;
   }
 
-  async returnRental(id: string): Promise<Rental> {
+  async returnRental(id: string, userId: string): Promise<Rental> {
     const rental = await this.rentalsRepository.findById(id);
     if (!rental || rental.deletedAt) {
       throw new NotFoundException('Rental not found');
+    }
+
+    if (rental.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this rental');
     }
 
     if (rental.status === 'returned') {

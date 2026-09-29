@@ -1,19 +1,54 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UsersService } from './users.service.js';
-import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../../common/users/users-repository.interface.js';
-import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.js';
-import { PasswordHasher } from '../../common/utils/password.util.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AccountType } from '../../common/constants/roles.js';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
-type MockUsersRepository = Partial<IUsersRepository>;
-type MockPasswordHasher = Partial<PasswordHasher>;
-type MockValkeyService = Partial<ValkeyService>;
-type MockWinstonLoggerService = Partial<WinstonLoggerService>;
-type MockEventEmitter = Partial<EventEmitter2>;
+import type { User, CreateUserInput, UpdateUserInput } from '../../common/users/users-repository.interface.ts';
+import { AccountType } from '../../common/constants/roles.ts';
+import { PasswordHasher } from '../../common/utils/password.util.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
+
+import { UsersService } from './users.service.ts';
+
+type MockUsersRepository = {
+  findById: Mock<(id: string) => Promise<User | null>>;
+  findByEmail: Mock<(email: string) => Promise<User | null>>;
+  findByUsername: Mock<(username: string) => Promise<User | null>>;
+  findByGoogleId: Mock<(googleId: string) => Promise<User | null>>;
+  findByFacebookId: Mock<(facebookId: string) => Promise<User | null>>;
+  findByTwitterId: Mock<(twitterId: string) => Promise<User | null>>;
+  findByGithubId: Mock<(githubId: string) => Promise<User | null>>;
+  findByAppleId: Mock<(appleId: string) => Promise<User | null>>;
+  findByTiktokId: Mock<(tiktokId: string) => Promise<User | null>>;
+  create: Mock<(data: CreateUserInput) => Promise<User>>;
+  update: Mock<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>;
+  softDelete: Mock<(id: string) => Promise<void>>;
+  getUserStats: Mock<(id: string) => Promise<{ storiesCount: number; totalViews: number; totalReactions: number; followersCount: number; followingCount: number }>>;
+};
+
+type MockPasswordHasher = {
+  hash: ReturnType<typeof vi.fn>;
+  compare: ReturnType<typeof vi.fn>;
+};
+
+type MockValkeyService = {
+  exists: ReturnType<typeof vi.fn>;
+  set: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+  del: ReturnType<typeof vi.fn>;
+};
+
+type MockWinstonLoggerService = {
+  info: ReturnType<typeof vi.fn>;
+  log: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  debug: ReturnType<typeof vi.fn>;
+  verbose: ReturnType<typeof vi.fn>;
+};
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unsafe-assignment */
 
 const createMockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-123',
@@ -36,6 +71,9 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
   accessBlocked: false,
   lastLoginAt: null,
   deletedAt: null,
+  emailVerified: false,
+  emailVerificationToken: null,
+  passwordResetToken: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -47,22 +85,22 @@ describe('UsersService', () => {
   let passwordHasher: MockPasswordHasher;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
 
   beforeEach(() => {
     usersRepository = {
-      findById: vi.fn(),
-      findByEmail: vi.fn(),
-      findByUsername: vi.fn(),
-      findByGoogleId: vi.fn(),
-      findByFacebookId: vi.fn(),
-      findByTwitterId: vi.fn(),
-      findByGithubId: vi.fn(),
-      findByAppleId: vi.fn(),
-      findByTiktokId: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
+      findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
+      findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),
+      findByFacebookId: vi.fn<(facebookId: string) => Promise<User | null>>(),
+      findByTwitterId: vi.fn<(twitterId: string) => Promise<User | null>>(),
+      findByGithubId: vi.fn<(githubId: string) => Promise<User | null>>(),
+      findByAppleId: vi.fn<(appleId: string) => Promise<User | null>>(),
+      findByTiktokId: vi.fn<(tiktokId: string) => Promise<User | null>>(),
+      create: vi.fn<(data: CreateUserInput) => Promise<User>>(),
+      update: vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      getUserStats: vi.fn<(id: string) => Promise<{ storiesCount: number; totalViews: number; totalReactions: number; followersCount: number; followingCount: number }>>(),
     };
 
     passwordHasher = {
@@ -79,21 +117,18 @@ describe('UsersService', () => {
 
     winstonLoggerService = {
       info: vi.fn(),
+      log: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
-    };
-
-    eventEmitter = {
-      emit: vi.fn(),
+      verbose: vi.fn(),
     };
 
     usersService = new UsersService(
-      usersRepository as IUsersRepository,
-      passwordHasher as PasswordHasher,
-      valkeyService as ValkeyService,
-      eventEmitter as EventEmitter2,
-      winstonLoggerService as WinstonLoggerService,
+      usersRepository,
+      passwordHasher as unknown as PasswordHasher,
+      valkeyService as unknown as ValkeyService,
+      winstonLoggerService as unknown as WinstonLoggerService,
     );
   });
 
@@ -181,6 +216,7 @@ describe('UsersService', () => {
         name: 'New User',
         password: 'SecurePass123!',
         accountType: AccountType.READER,
+        passwordHash: null,
       };
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
@@ -208,6 +244,8 @@ describe('UsersService', () => {
         username: 'newuser',
         name: 'New User',
         password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
       };
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(createMockUser());
@@ -221,6 +259,8 @@ describe('UsersService', () => {
         username: 'existinguser',
         name: 'New User',
         password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
       };
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
@@ -235,6 +275,8 @@ describe('UsersService', () => {
         username: 'newuser',
         name: 'New User',
         password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
       };
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);

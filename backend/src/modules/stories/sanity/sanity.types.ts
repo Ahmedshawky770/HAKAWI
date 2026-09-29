@@ -1,5 +1,3 @@
-import { SanityClient } from '@sanity/client';
-
 export interface SanityConfig {
   projectId: string;
   dataset: string;

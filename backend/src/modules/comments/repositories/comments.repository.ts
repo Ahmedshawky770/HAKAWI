@@ -4,9 +4,12 @@ import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { ICommentsRepository, Comment, CreateCommentInput, UpdateCommentInput } from '../interfaces/comments-repository.interface.ts';
-import { COMMENTS_REPOSITORY } from '../interfaces/comments-repository.interface.ts';
 import { comments } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
+
+// drizzle-ORM db and sql template tags are typed as `any` by the library.
+// Accepted external-library typing limitation — no production code change.
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 @Injectable()
 export class CommentsRepository implements ICommentsRepository {

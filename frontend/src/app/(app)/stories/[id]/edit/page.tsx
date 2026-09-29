@@ -33,7 +33,7 @@ export default function EditStoryPage() {
         setCategory(data.category);
         setTags((data.tags || []).join(", "));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load story");
+        setError(err instanceof Error ? err.message : "فشل تحميل القصة");
       } finally {
         setLoading(false);
       }
@@ -55,7 +55,7 @@ export default function EditStoryPage() {
       });
       router.push(`/stories/${id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update story");
+      setError(err instanceof Error ? err.message : "فشل تحديث القصة");
     } finally {
       setSaving(false);
     }
@@ -63,24 +63,24 @@ export default function EditStoryPage() {
 
   if (loading) return <Loading />;
   if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!story) return <div className="p-6">Story not found</div>;
+  if (!story) return <div className="p-6">القصة غير موجودة</div>;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Edit Story</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">تعديل القصة</h1>
       <Card>
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && <ErrorMessage error={error} />}
             <Input
-              label="Title"
+              label="العنوان"
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
             <div className="w-full">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">المحتوى</label>
               <textarea
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={10}
@@ -89,30 +89,30 @@ export default function EditStoryPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">التصنيف</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="fiction">Fiction</option>
-                <option value="non-fiction">Non-Fiction</option>
-                <option value="poetry">Poetry</option>
-                <option value="fantasy">Fantasy</option>
+                <option value="fiction">خيال</option>
+                <option value="non-fiction">واقعي</option>
+                <option value="poetry">شعر</option>
+                <option value="fantasy">فانتازيا</option>
               </select>
             </div>
             <Input
-              label="Tags (comma-separated)"
+              label="الوسوم (مفصولة بفاصلة)"
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
             />
             <div className="flex gap-3">
               <Button type="submit" loading={saving}>
-                Save changes
+                حفظ التغييرات
               </Button>
               <Button variant="secondary" type="button" onClick={() => router.back()}>
-                Cancel
+                إلغاء
               </Button>
             </div>
           </form>

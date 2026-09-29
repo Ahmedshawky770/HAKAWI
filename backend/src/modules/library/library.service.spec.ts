@@ -1,13 +1,29 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { LibraryService } from './library.service.js';
-import type { ILibraryRepository } from './interfaces/library-repository.interface.js';
-import { LIBRARY_REPOSITORY } from './interfaces/library-repository.interface.js';
-import type { LibraryItem } from './types.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockLibraryRepository = Partial<ILibraryRepository>;
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { LibraryService } from './library.service.ts';
+import type { ILibraryRepository } from './interfaces/library-repository.interface.ts';
+import type { LibraryItem } from './types.ts';
+import type { LibraryQuery } from './types.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockLibraryRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<LibraryItem | null>>>;
+  findByUser: ReturnType<typeof vi.fn<(userId: string, params: { status?: string; page?: number; limit?: number }) => Promise<{ items: LibraryItem[]; total: number }>>>;
+  findByUserAndBook: ReturnType<typeof vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>>;
+  create: ReturnType<typeof vi.fn<(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: Partial<LibraryItem>) => Promise<LibraryItem>>>;
+  delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  countByUser: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -25,8 +41,9 @@ type MockValkeyService = {
   del: ReturnType<typeof vi.fn>;
 };
 
-type MockEventEmitter = {
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
 
 describe('LibraryService', () => {
@@ -34,7 +51,7 @@ describe('LibraryService', () => {
   let libraryRepository: MockLibraryRepository;
   let logger: MockWinstonLoggerService;
   let valkeyService: MockValkeyService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   const mockLibraryItem: LibraryItem = {
     id: 'library-123',
@@ -44,19 +61,17 @@ describe('LibraryService', () => {
     status: 'owned',
     addedAt: new Date('2024-01-01'),
     lastAccessedAt: null,
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
   };
 
   beforeEach(() => {
     libraryRepository = {
-      findById: vi.fn(),
-      findByUser: vi.fn(),
-      findByUserAndBook: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      countByUser: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<LibraryItem | null>>(),
+      findByUser: vi.fn<(userId: string, params: { status?: string; page?: number; limit?: number }) => Promise<{ items: LibraryItem[]; total: number }>>(),
+      findByUserAndBook: vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>(),
+      create: vi.fn<(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>>(),
+      update: vi.fn<(id: string, data: Partial<LibraryItem>) => Promise<LibraryItem>>(),
+      delete: vi.fn<(id: string) => Promise<void>>(),
+      countByUser: vi.fn<(userId: string) => Promise<number>>(),
     };
 
     logger = {
@@ -75,15 +90,16 @@ describe('LibraryService', () => {
       del: vi.fn(),
     };
 
-    eventEmitter = {
+    eventValidatorService = {
       emit: vi.fn(),
+      validateEvent: vi.fn(),
     };
 
     libraryService = new LibraryService(
-      libraryRepository as unknown as ILibraryRepository,
+      libraryRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -106,7 +122,7 @@ describe('LibraryService', () => {
           status: 'owned',
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('library.item.added', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('library.item.added', expect.any(Object));
     });
 
     it('should add a rented book to library', async () => {
@@ -136,7 +152,7 @@ describe('LibraryService', () => {
       const mockItems = [mockLibraryItem];
       vi.mocked(libraryRepository.findByUser).mockResolvedValue({ items: mockItems, total: 1 });
 
-      const result = await libraryService.findMyLibrary('user-123', { page: 1, limit: 20 });
+      const result = await libraryService.findMyLibrary('user-123', { page: 1, limit: 20 } as unknown as LibraryQuery);
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -165,7 +181,7 @@ describe('LibraryService', () => {
         status: 'reading',
       });
 
-      const result = await libraryService.accessItem('library-123');
+      const result = await libraryService.accessItem('library-123', 'user-123');
 
       expect(result.lastAccessedAt).not.toBeNull();
       expect(result.status).toBe('reading');
@@ -173,13 +189,13 @@ describe('LibraryService', () => {
         'library-123',
         expect.objectContaining({ status: 'reading', lastAccessedAt: expect.any(Date) }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith('library.item.accessed', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('library.item.accessed', expect.any(Object));
     });
 
     it('should throw NotFoundException when library item not found', async () => {
       vi.mocked(libraryRepository.findById).mockResolvedValue(null);
 
-      await expect(libraryService.accessItem('library-999')).rejects.toThrow('Library item not found');
+      await expect(libraryService.accessItem('library-999', 'user-123')).rejects.toThrow('Library item not found');
     });
   });
 
@@ -192,7 +208,7 @@ describe('LibraryService', () => {
 
       expect(libraryRepository.delete).toHaveBeenCalledWith('library-123');
       expect(valkeyService.del).toHaveBeenCalledWith('library:library-123');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('library.item.removed', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('library.item.removed', expect.any(Object));
     });
 
     it('should throw NotFoundException when library item not found', async () => {

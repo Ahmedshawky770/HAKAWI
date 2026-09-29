@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Inject, Request, BadRequestException } from '@nestjs/common';
 
-import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { MessagesService } from '../messages.service.ts';
 

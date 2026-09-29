@@ -163,3 +163,16 @@ export class BooksQueryDto {
   @Max(100)
   limit?: number;
 }
+
+export class PurchaseBookDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Payment method ID must not exceed 255 characters' })
+  paymentMethodId?: string;
+}
+
+export class RentBookDto {
+  @IsInt()
+  @IsIn([1, 3, 7, 14, 30, 90], { message: 'Duration must be one of: 1, 3, 7, 14, 30, 90 days' })
+  durationDays: number;
+}

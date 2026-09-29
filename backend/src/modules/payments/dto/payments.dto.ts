@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, MaxLength, IsBoolean, IsInt, Min, Max, IsNumber, Min as MinNumber, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsUUID, MaxLength, IsInt, Min, Max, IsNumber, Min as MinNumber, IsIn } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsUUID('4', { message: 'User ID must be a valid UUID' })

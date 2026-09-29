@@ -53,6 +53,7 @@ export type Refund = {
 export interface IPaymentsRepository {
   findById(id: string): Promise<Payment | null>;
   findByOrderId(orderId: string): Promise<Payment | null>;
+  findByTransactionId(transactionId: string): Promise<Payment | null>;
   findAll(params: {
     userId?: string;
     status?: string;

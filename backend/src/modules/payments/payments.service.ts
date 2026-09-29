@@ -1,18 +1,32 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
+import * as crypto from 'crypto';
+
+import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
-import type { PaymentCreatedEvent, PaymentCompletedEvent, PaymentFailedEvent, RefundCreatedEvent, RefundCompletedEvent } from '../../common/events/payments.events.ts';
+import type { PaymentCreatedEvent, PaymentCompletedEvent, PaymentFailedEvent, RefundCreatedEvent } from '../../common/events/payments.events.ts';
 
 import type { IPaymentsRepository, Payment, CreatePaymentInput, PaymentTransaction, Refund } from './interfaces/payments-repository.interface.ts';
 import { PAYMENTS_REPOSITORY } from './interfaces/payments-repository.interface.ts';
-import type { PaymentResponse, PaymentsListResponse, PaymentTransactionResponse, RefundResponse } from './types.ts';
+import type { PaymentResponse, PaymentsListResponse, RefundResponse } from './types.ts';
 
 interface PaymobOrderResponse {
+  paymentId: string;
   orderId: string;
   paymobUrl: string;
 }
+
+type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'refunded';
+
+const PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  pending: ['processing', 'completed', 'failed', 'cancelled'],
+  processing: ['completed', 'failed'],
+  completed: ['refunded'],
+  failed: [],
+  cancelled: [],
+  refunded: [],
+};
 
 @Injectable()
 export class PaymentsService {
@@ -22,6 +36,29 @@ export class PaymentsService {
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
   ) {}
+
+  validateStatusTransition(currentStatus: PaymentStatus, newStatus: PaymentStatus): void {
+    const allowed = PAYMENT_TRANSITIONS[currentStatus] ?? [];
+    if (!allowed.includes(newStatus)) {
+      throw new BadRequestException(`Invalid payment status transition from ${currentStatus} to ${newStatus}`);
+    }
+  }
+
+  validateWebhookSignature(rawBody: string, signature: string | undefined, secret: string | undefined): void {
+    if (!secret) {
+      throw new BadRequestException('Webhook secret is not configured');
+    }
+
+    if (!signature) {
+      throw new BadRequestException('Missing webhook signature');
+    }
+
+    const expectedSignature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+    if (signature !== expectedSignature) {
+      throw new BadRequestException('Invalid webhook signature');
+    }
+  }
 
   async createPayment(input: CreatePaymentInput): Promise<Payment> {
     this.logger.info(`Creating payment for user: ${input.userId}, amount: ${input.amount}`);
@@ -77,6 +114,8 @@ export class PaymentsService {
     if (!existing || existing.deletedAt) {
       throw new NotFoundException('Payment not found');
     }
+
+    this.validateStatusTransition(existing.status as PaymentStatus, status as PaymentStatus);
 
     const payment = await this.paymentsRepository.update(id, { status });
     await this.valkeyService.del(`payment:${id}`);
@@ -150,7 +189,7 @@ export class PaymentsService {
     });
 
     this.logger.info(`Paymob payment initialized: ${orderId}`);
-    return { orderId, paymobUrl };
+    return { paymentId: payment.id, orderId, paymobUrl };
   }
 
   async paymobCallback(orderId: string, paymentId: string, transactionId: string, status: string): Promise<Payment> {
@@ -186,6 +225,54 @@ export class PaymentsService {
       paymobRefundId: refund.paymobRefundId,
       createdAt: refund.createdAt.toISOString(),
     }));
+  }
+
+  async handlePaymobWebhook(rawBody: string, signature?: string): Promise<{ status: string }> {
+    const webhookSecret = process.env.PAYMOB_WEBHOOK_SECRET;
+    this.validateWebhookSignature(rawBody, signature, webhookSecret);
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      throw new BadRequestException('Invalid webhook payload');
+    }
+
+    const transactionId = payload.transaction_id as string | undefined;
+    if (!transactionId) {
+      throw new BadRequestException('Missing transaction_id in webhook payload');
+    }
+
+    const existing = await this.paymentsRepository.findByTransactionId(transactionId);
+    if (existing?.status === 'completed') {
+      return { status: 'already_processed' };
+    }
+
+    const payment = existing ?? (await this.paymentsRepository.findByOrderId(payload.order_id as string));
+    if (!payment) {
+      throw new NotFoundException('Payment not found for webhook');
+    }
+
+    const status = payload.status === 'success' ? 'completed' : 'failed';
+    this.validateStatusTransition(payment.status as PaymentStatus, status as PaymentStatus);
+
+    await this.paymentsRepository.update(payment.id, {
+      status,
+      paymobPaymentId: (payload.payment_id as string | null) ?? payment.paymobPaymentId,
+      paymobTransactionId: transactionId,
+      metadata: JSON.stringify(payload),
+    });
+
+    await this.valkeyService.del(`payment:${payment.id}`);
+
+    if (status === 'completed') {
+      await this.eventBus.emit('payment.completed', { paymentId: payment.id } as PaymentCompletedEvent);
+    } else if (status === 'failed') {
+      await this.eventBus.emit('payment.failed', { paymentId: payment.id } as PaymentFailedEvent);
+    }
+
+    this.logger.info(`Paymob webhook processed: transactionId=${transactionId}, status=${status}`, 'PaymentsService');
+    return { status: 'processed' };
   }
 
   private toPaymentResponse(payment: Payment): PaymentResponse {

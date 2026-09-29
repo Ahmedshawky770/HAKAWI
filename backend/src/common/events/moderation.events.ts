@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 export class ModerationActionTakenEvent {
   constructor(
     public readonly actionId: string,

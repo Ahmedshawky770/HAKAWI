@@ -35,11 +35,23 @@ const DEFAULT_CIRCUIT_BREAKER_CONFIG: Omit<CircuitBreakerConfig, 'name'> = {
   monitoringPeriodMs: parseInt(process.env.CIRCUIT_BREAKER_MONITORING_PERIOD_MS || '60000', 10),
 };
 
+type CircuitBreakerStateRecord = {
+  state: CircuitBreakerState;
+  failures: number;
+  successes: number;
+  lastFailureTime: number | null;
+  lastSuccessTime: number | null;
+  totalCalls: number;
+  totalFailures: number;
+  totalSuccesses: number;
+  rejectedCalls: number;
+};
+
 @Injectable()
 export class CircuitBreakerService {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly configs = new Map<string, CircuitBreakerConfig>();
-  private readonly states = new Map<string, { state: CircuitBreakerState; failures: number; successes: number; lastFailureTime: number | null; lastSuccessTime: number | null; totalCalls: number; totalFailures: number; totalSuccesses: number; rejectedCalls: number }>();
+  private readonly states = new Map<string, CircuitBreakerStateRecord>();
 
   constructor(@Inject(ValkeyService) private readonly valkeyService: ValkeyService) {}
 
@@ -47,19 +59,23 @@ export class CircuitBreakerService {
     if (!this.configs.has(name)) {
       this.configs.set(name, { name, ...DEFAULT_CIRCUIT_BREAKER_CONFIG });
     }
-    return this.configs.get(name)!;
+    const config = this.configs.get(name);
+    if (!config) {
+      throw new Error(`Configuration not found for circuit breaker: ${name}`);
+    }
+    return config;
   }
 
   private getStateKey(name: string): string {
     return `circuit-breaker:${name}:state`;
   }
 
-  private async loadState(name: string): Promise<{ state: CircuitBreakerState; failures: number; successes: number; lastFailureTime: number | null; lastSuccessTime: number | null; totalCalls: number; totalFailures: number; totalSuccesses: number; rejectedCalls: number }> {
+  private async loadState(name: string): Promise<CircuitBreakerStateRecord> {
     const key = this.getStateKey(name);
     const cached = await this.valkeyService.get(key);
     if (cached) {
       try {
-        const parsed = JSON.parse(cached);
+        const parsed = JSON.parse(cached) as CircuitBreakerStateRecord;
         this.states.set(name, parsed);
         return parsed;
       } catch {
@@ -67,7 +83,7 @@ export class CircuitBreakerService {
       }
     }
 
-    const initialState = {
+    const initialState: CircuitBreakerStateRecord = {
       state: CircuitBreakerState.CLOSED,
       failures: 0,
       successes: 0,
@@ -84,7 +100,7 @@ export class CircuitBreakerService {
     return initialState;
   }
 
-  private async persistState(name: string, state: { state: CircuitBreakerState; failures: number; successes: number; lastFailureTime: number | null; lastSuccessTime: number | null; totalCalls: number; totalFailures: number; totalSuccesses: number; rejectedCalls: number }): Promise<void> {
+  private async persistState(name: string, state: CircuitBreakerStateRecord): Promise<void> {
     const key = this.getStateKey(name);
     const config = this.getConfig(name);
     await this.valkeyService.set(key, JSON.stringify(state), config.monitoringPeriodMs / 1000);
@@ -109,7 +125,7 @@ export class CircuitBreakerService {
   }
 
   async reset(name: string): Promise<void> {
-    const initialState = {
+    const initialState: CircuitBreakerStateRecord = {
       state: CircuitBreakerState.CLOSED,
       failures: 0,
       successes: 0,

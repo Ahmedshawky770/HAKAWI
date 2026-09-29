@@ -17,7 +17,13 @@ export default function PublicUserPage() {
   React.useEffect(() => {
     async function load() {
       try {
-        const data = await api.getUser(id);
+        const resolvedId = Array.isArray(id) ? id[0] : id;
+        if (!resolvedId) {
+          setError("معرف المستخدم مفقود");
+          setLoading(false);
+          return;
+        }
+        const data = await api.getUser(resolvedId);
         setUser(data as unknown as User);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load user");

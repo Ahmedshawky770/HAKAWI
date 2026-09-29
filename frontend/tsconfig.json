@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@hakawi/shared-types": ["../packages/shared-types/src/index.ts"]
     }
   },
   "include": [

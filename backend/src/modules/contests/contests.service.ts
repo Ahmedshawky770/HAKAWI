@@ -5,8 +5,10 @@ import { WinstonLoggerService } from '../../common/services/winston-logger.servi
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import type {
   ContestCreatedEvent,
+  ContestUpdatedEvent,
   ContestStartedEvent,
   ContestCompletedEvent,
+  ContestCancelledEvent,
   SubmissionSubmittedEvent,
   SubmissionApprovedEvent,
   SubmissionRejectedEvent,
@@ -24,15 +26,14 @@ import type {
   ContestPrize,
   CreateContestInput,
   UpdateContestInput,
-  CreateSubmissionInput,
-  CastVoteInput,
-  SelectWinnerInput,
-  DistributePrizeInput,
   ContestResponse,
   ContestSubmissionResponse,
   ContestVoteResponse,
   ContestPrizeResponse,
   ContestsListResponse,
+  PublisherStatsResponse,
+  PublisherSubmissionOverview,
+  PublisherVoteOverview,
 } from './types.ts';
 
 @Injectable()
@@ -45,21 +46,24 @@ export class ContestsService {
   ) {}
 
   async create(createdBy: string, input: CreateContestInput): Promise<Contest> {
-    const title = input.title.trim();
+    const title: string = input.title.trim();
     const existing = await this.contestsRepository.findAllContests({ search: title, limit: 1 });
     const duplicate = existing.contests.find((c) => c.title.toLowerCase() === title.toLowerCase());
     if (duplicate) {
       throw new ConflictException('Contest title already exists');
     }
 
-    const data: CreateContestInput & { status: string } = {
+    const data: CreateContestInput & { createdBy: string; status: string } = {
       ...input,
       createdBy,
       status: 'draft',
+      startDate: input.startDate instanceof Date ? input.startDate : new Date(input.startDate),
+      endDate: input.endDate instanceof Date ? input.endDate : new Date(input.endDate),
+      submissionDeadline: input.submissionDeadline instanceof Date ? input.submissionDeadline : new Date(input.submissionDeadline),
     };
 
     const contest = await this.contestsRepository.createContest(data);
-    await this.eventBus.emit('contest.created', { contestId: contest.id, createdBy } as ContestCreatedEvent);
+    this.eventBus.emit('contest.created', { contestId: contest.id, createdBy });
     return contest;
   }
 
@@ -93,10 +97,14 @@ export class ContestsService {
     };
   }
 
-  async update(id: string, input: UpdateContestInput): Promise<Contest> {
+  async update(id: string, input: UpdateContestInput, userId: string): Promise<Contest> {
     const existing = await this.contestsRepository.findContestById(id);
     if (!existing) {
       throw new NotFoundException('Contest not found');
+    }
+
+    if (existing.createdBy !== userId) {
+      throw new ForbiddenException('You can only update your own contests');
     }
 
     if (existing.status === 'completed' || existing.status === 'cancelled') {
@@ -106,14 +114,18 @@ export class ContestsService {
     const contest = await this.contestsRepository.updateContest(id, input);
     await this.valkeyService.del(`contest:${id}`);
 
-    await this.eventBus.emit('contest.updated', { contestId: id, updatedFields: input } as unknown as ContestCreatedEvent);
+    this.eventBus.emit('contest.updated', { contestId: id, updatedFields: input });
     return contest;
   }
 
-  async start(id: string): Promise<Contest> {
+  async start(id: string, userId: string): Promise<Contest> {
     const contest = await this.contestsRepository.findContestById(id);
     if (!contest) {
       throw new NotFoundException('Contest not found');
+    }
+
+    if (contest.createdBy !== userId) {
+      throw new ForbiddenException('You can only start your own contests');
     }
 
     if (contest.status !== 'draft') {
@@ -123,14 +135,18 @@ export class ContestsService {
     const updated = await this.contestsRepository.updateContest(id, { status: 'active' });
     await this.valkeyService.del(`contest:${id}`);
 
-    await this.eventBus.emit('contest.started', { contestId: id } as ContestStartedEvent);
+    this.eventBus.emit('contest.started', { contestId: id });
     return updated;
   }
 
-  async cancel(id: string): Promise<Contest> {
+  async cancel(id: string, userId: string): Promise<Contest> {
     const contest = await this.contestsRepository.findContestById(id);
     if (!contest) {
       throw new NotFoundException('Contest not found');
+    }
+
+    if (contest.createdBy !== userId) {
+      throw new ForbiddenException('You can only cancel your own contests');
     }
 
     if (contest.status === 'completed' || contest.status === 'cancelled') {
@@ -140,34 +156,49 @@ export class ContestsService {
     const updated = await this.contestsRepository.updateContest(id, { status: 'cancelled' });
     await this.valkeyService.del(`contest:${id}`);
 
-    await this.eventBus.emit('contest.cancelled', { contestId: id } as unknown as ContestCreatedEvent);
+    this.eventBus.emit('contest.cancelled', { contestId: id });
     return updated;
   }
 
-  async complete(id: string): Promise<Contest> {
+  async complete(id: string, userId: string): Promise<Contest> {
     const contest = await this.contestsRepository.findContestById(id);
     if (!contest) {
       throw new NotFoundException('Contest not found');
+    }
+
+    if (contest.createdBy !== userId) {
+      throw new ForbiddenException('You can only complete your own contests');
     }
 
     if (contest.status === 'completed' || contest.status === 'cancelled') {
       throw new ForbiddenException('Cannot complete an already completed or cancelled contest');
     }
 
-    const updated = await this.contestsRepository.updateContest(id, { status: 'completed' });
-    await this.valkeyService.del(`contest:${id}`);
-
     const winningSubmission = await this.contestsRepository.findWinningSubmission(id);
-    if (winningSubmission) {
-      await this.contestsRepository.updateContest(id, { winnerId: winningSubmission.authorId });
-      await this.eventBus.emit('winner.selected', { contestId: id, submissionId: winningSubmission.id, winnerId: winningSubmission.authorId } as WinnerSelectedEvent);
+    const hasWinner = !!winningSubmission;
+
+    const updateData: UpdateContestInput = { status: 'completed' };
+    if (hasWinner) {
+      const winning = winningSubmission;
+      updateData.winnerId = winning.authorId;
     }
 
-    await this.eventBus.emit('contest.completed', { contestId: id, winnerId: winningSubmission?.authorId ?? null } as ContestCompletedEvent);
+    const updated = await this.contestsRepository.updateContest(id, updateData);
+    await this.valkeyService.del(`contest:${id}`);
+
+    if (hasWinner) {
+      const winning = winningSubmission;
+      this.eventBus.emit('winner.selected', { contestId: id, submissionId: winning.id, winnerId: winning.authorId });
+    }
+    this.eventBus.emit('contest.completed', { contestId: id, winnerId: updateData.winnerId ?? null });
     return updated;
   }
 
-  async submitStory(contestId: string, authorId: string, storyId: string): Promise<ContestSubmission> {
+  async submitStory(contestId: string, authorId: string, storyId: string, userId: string): Promise<ContestSubmission> {
+    if (authorId !== userId) {
+      throw new ForbiddenException('You can only submit stories as yourself');
+    }
+
     const contest = await this.contestsRepository.findContestById(contestId);
     if (!contest) {
       throw new NotFoundException('Contest not found');
@@ -188,7 +219,7 @@ export class ContestsService {
     }
 
     const submission = await this.contestsRepository.createSubmission({ contestId, storyId, authorId });
-    await this.eventBus.emit('submission.submitted', { submissionId: submission.id, contestId, authorId } as SubmissionSubmittedEvent);
+    this.eventBus.emit('submission.submitted', { submissionId: submission.id, contestId, authorId });
     return submission;
   }
 
@@ -202,7 +233,7 @@ export class ContestsService {
     };
   }
 
-  async approveSubmission(submissionId: string, contestId: string): Promise<ContestSubmission> {
+  async approveSubmission(submissionId: string, contestId: string, userId: string): Promise<ContestSubmission> {
     const submission = await this.contestsRepository.findSubmissionById(submissionId);
     if (!submission) {
       throw new NotFoundException('Submission not found');
@@ -217,19 +248,19 @@ export class ContestsService {
       throw new ForbiddenException('Contest is not in a state to approve submissions');
     }
 
-    const updated = await this.contestsRepository.reviewSubmission(submissionId, 'approved', contestId);
-    await this.eventBus.emit('submission.approved', { submissionId, contestId, authorId: submission.authorId } as SubmissionApprovedEvent);
+    const updated = await this.contestsRepository.reviewSubmission(submissionId, 'approved', userId);
+    this.eventBus.emit('submission.approved', { submissionId, contestId, authorId: submission.authorId });
     return updated;
   }
 
-  async rejectSubmission(submissionId: string, contestId: string): Promise<ContestSubmission> {
+  async rejectSubmission(submissionId: string, contestId: string, userId: string): Promise<ContestSubmission> {
     const submission = await this.contestsRepository.findSubmissionById(submissionId);
     if (!submission) {
       throw new NotFoundException('Submission not found');
     }
 
-    const updated = await this.contestsRepository.reviewSubmission(submissionId, 'rejected', contestId);
-    await this.eventBus.emit('submission.rejected', { submissionId, contestId, authorId: submission.authorId } as SubmissionRejectedEvent);
+    const updated = await this.contestsRepository.reviewSubmission(submissionId, 'rejected', userId);
+    this.eventBus.emit('submission.rejected', { submissionId, contestId, authorId: submission.authorId });
     return updated;
   }
 
@@ -249,7 +280,7 @@ export class ContestsService {
     }
 
     const vote = await this.contestsRepository.castVote({ contestId, submissionId, userId });
-    await this.eventBus.emit('vote.cast', { voteId: vote.id, contestId, submissionId, userId } as VoteCastEvent);
+    this.eventBus.emit('vote.cast', { voteId: vote.id, contestId, submissionId, userId });
     return vote;
   }
 
@@ -259,26 +290,40 @@ export class ContestsService {
       if (!submission || submission.contestId !== contestId) {
         throw new NotFoundException('Submission not found in this contest');
       }
-      const vote = await this.contestsRepository.findVoteByUserContestSubmission(contestId, submissionId, '');
-      return { votes: vote ? [{ id: vote.id, contestId: vote.contestId, submissionId: vote.submissionId, userId: vote.userId, createdAt: vote.createdAt.toISOString() }] : [], total: vote ? 1 : 0 };
+
+      const votes = await this.contestsRepository.findVotesBySubmission(submissionId);
+      const mapped = votes.map((vote) => ({
+        id: vote.id,
+        contestId: vote.contestId,
+        submissionId: vote.submissionId,
+        userId: vote.userId,
+        createdAt: vote.createdAt.toISOString(),
+      }));
+
+      return {
+        votes: mapped.slice((page - 1) * limit, page * limit),
+        total: mapped.length,
+      };
     }
 
-    const allSubmissions = await this.contestsRepository.findSubmissionsByContest(contestId, 1, 1000);
-    const votes: ContestVoteResponse[] = [];
-    for (const submission of allSubmissions.submissions) {
-      const count = await this.contestsRepository.countVotesBySubmission(submission.id);
-      votes.push({
-        id: crypto.randomUUID(),
-        contestId,
-        submissionId: submission.id,
-        userId: '',
-        createdAt: submission.submittedAt.toISOString(),
-      });
-    }
+    const pageNum = Math.max(page, 1);
+    const limitNum = Math.max(limit, 1);
+    const offset = (pageNum - 1) * limitNum;
+
+    const [votesPage, { total }] = await Promise.all([
+      this.contestsRepository.findVotesByContest(contestId, limitNum, offset),
+      this.contestsRepository.countVotesByContest(contestId),
+    ]);
 
     return {
-      votes: votes.slice((page - 1) * limit, page * limit),
-      total: votes.length,
+      votes: votesPage.map((vote) => ({
+        id: vote.id,
+        contestId: vote.contestId,
+        submissionId: vote.submissionId,
+        userId: vote.userId,
+        createdAt: vote.createdAt.toISOString(),
+      })),
+      total: Number(total),
     };
   }
 
@@ -292,11 +337,20 @@ export class ContestsService {
       throw new ForbiddenException('Contest is not in voting phase');
     }
 
-    const updated = await this.contestsRepository.updateContest(contestId, { winnerId, status: 'completed' } as UpdateContestInput);
+    const submission = await this.contestsRepository.findSubmissionById(submissionId);
+    if (!submission || submission.contestId !== contestId) {
+      throw new NotFoundException('Submission not found in this contest');
+    }
+
+    if (submission.authorId !== winnerId) {
+      throw new ForbiddenException('Winner must be the author of the selected submission');
+    }
+
+    const updated = await this.contestsRepository.updateContest(contestId, { winnerId, status: 'completed' });
     await this.valkeyService.del(`contest:${contestId}`);
 
-    await this.eventBus.emit('winner.selected', { contestId, submissionId, winnerId } as WinnerSelectedEvent);
-    await this.eventBus.emit('contest.completed', { contestId, winnerId } as ContestCompletedEvent);
+    this.eventBus.emit('winner.selected', { contestId, submissionId, winnerId });
+    this.eventBus.emit('contest.completed', { contestId, winnerId });
     return updated;
   }
 
@@ -318,7 +372,7 @@ export class ContestsService {
       prizeDescription: prizeDescription ?? null,
     });
 
-    await this.eventBus.emit('prize.distributed', { prizeId: prize.id, contestId, winnerId } as PrizeDistributedEvent);
+    this.eventBus.emit('prize.distributed', { prizeId: prize.id, contestId, winnerId });
     return prize;
   }
 
@@ -330,6 +384,97 @@ export class ContestsService {
 
     const prizes = await this.contestsRepository.findPrizesByContest(contestId);
     return prizes.map((prize) => this.toPrizeResponse(prize));
+  }
+
+  async getPublisherStats(publisherId: string): Promise<PublisherStatsResponse> {
+    const contests = await this.contestsRepository.findAllContests({});
+    const publisherContests = contests.contests.filter((c) => c.createdBy === publisherId);
+
+    const totalContests = publisherContests.length;
+    const activeContests = publisherContests.filter((c) => c.status === 'active' || c.status === 'voting').length;
+    const completedContests = publisherContests.filter((c) => c.status === 'completed').length;
+
+    let totalSubmissions = 0;
+    let pendingSubmissions = 0;
+    let approvedSubmissions = 0;
+    let rejectedSubmissions = 0;
+    let totalVotes = 0;
+    let totalPrizes = 0;
+
+    for (const contest of publisherContests) {
+      const submissionsResult = await this.contestsRepository.findSubmissionsByContest(contest.id, 1, 1000);
+      totalSubmissions += submissionsResult.total;
+      pendingSubmissions += submissionsResult.submissions.filter((s) => s.status === 'pending').length;
+      approvedSubmissions += submissionsResult.submissions.filter((s) => s.status === 'approved').length;
+      rejectedSubmissions += submissionsResult.submissions.filter((s) => s.status === 'rejected').length;
+
+      const votesCount = await this.contestsRepository.countVotesByContest(contest.id);
+      totalVotes += Number(votesCount.total);
+
+      const prizes = await this.contestsRepository.findPrizesByContest(contest.id);
+      totalPrizes += prizes.length;
+    }
+
+    return {
+      totalContests,
+      activeContests,
+      completedContests,
+      totalSubmissions,
+      pendingSubmissions,
+      approvedSubmissions,
+      rejectedSubmissions,
+      totalVotes,
+      totalPrizes,
+    };
+  }
+
+  async getPublisherSubmissionsOverview(contestId: string, publisherId: string): Promise<PublisherSubmissionOverview[]> {
+    const contest = await this.contestsRepository.findContestById(contestId);
+    if (!contest) {
+      throw new NotFoundException('Contest not found');
+    }
+
+    if (contest.createdBy !== publisherId) {
+      throw new ForbiddenException('You do not have access to this contest');
+    }
+
+    const result = await this.contestsRepository.findSubmissionsByContest(contestId, 1, 1000);
+    const overview: PublisherSubmissionOverview[] = [];
+
+    for (const submission of result.submissions) {
+      const votesCount = await this.contestsRepository.countVotesBySubmission(submission.id);
+      overview.push({
+        id: submission.id,
+        storyId: submission.storyId,
+        authorId: submission.authorId,
+        status: submission.status,
+        submittedAt: submission.submittedAt.toISOString(),
+        reviewedAt: submission.reviewedAt?.toISOString() ?? null,
+        reviewedBy: submission.reviewedBy,
+        votes: votesCount,
+      });
+    }
+
+    return overview;
+  }
+
+  async getPublisherVotesOverview(contestId: string, publisherId: string): Promise<PublisherVoteOverview[]> {
+    const contest = await this.contestsRepository.findContestById(contestId);
+    if (!contest) {
+      throw new NotFoundException('Contest not found');
+    }
+
+    if (contest.createdBy !== publisherId) {
+      throw new ForbiddenException('You do not have access to this contest');
+    }
+
+    const votes = await this.contestsRepository.findVotesByContest(contestId, 1000, 0);
+    return votes.map((vote) => ({
+      id: vote.id,
+      submissionId: vote.submissionId,
+      userId: vote.userId,
+      createdAt: vote.createdAt.toISOString(),
+    }));
   }
 
   private toContestResponse(contest: Contest): ContestResponse {

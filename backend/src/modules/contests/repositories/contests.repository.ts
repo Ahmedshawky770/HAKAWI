@@ -168,6 +168,28 @@ export class ContestsRepository implements IContestsRepository {
     return Number(total);
   }
 
+  async countVotesByContest(contestId: string): Promise<{ total: string }> {
+    this.logger.debug(`Counting votes for contest: ${contestId}`);
+    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(contestVotes).where(eq(contestVotes.contestId, contestId));
+    return { total: String(total) };
+  }
+
+  async findVotesBySubmission(submissionId: string): Promise<ContestVote[]> {
+    this.logger.debug(`Finding votes for submission: ${submissionId}`);
+    return db.select().from(contestVotes).where(eq(contestVotes.submissionId, submissionId)).orderBy(desc(contestVotes.createdAt));
+  }
+
+  async findVotesByContest(contestId: string, limit: number, offset: number): Promise<ContestVote[]> {
+    this.logger.debug(`Finding votes for contest: ${contestId}`);
+    return db
+      .select()
+      .from(contestVotes)
+      .where(eq(contestVotes.contestId, contestId))
+      .orderBy(desc(contestVotes.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
   async castVote(data: CastVoteInput): Promise<ContestVote> {
     this.logger.info(`Casting vote for submission ${data.submissionId} in contest ${data.contestId} by user ${data.userId}`);
     const [vote] = await db.insert(contestVotes).values(data).returning();

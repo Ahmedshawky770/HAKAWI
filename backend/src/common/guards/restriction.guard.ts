@@ -1,5 +1,4 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Inject } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
 
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 
@@ -10,8 +9,8 @@ export class RestrictionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const request = context.switchToHttp().getRequest() as { user?: { sub: string } };
+    const user = request.user as { sub: string } | undefined;
 
     if (!user || !user.sub) {
       return true;

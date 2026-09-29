@@ -18,10 +18,16 @@ export default function ProfilePage() {
   useEffect(() => {
     async function load() {
       try {
-        const data = await api.getUser(id);
+        const resolvedId = Array.isArray(id) ? id[0] : id;
+        if (!resolvedId) {
+          setError("معرف المستخدم مفقود");
+          setLoading(false);
+          return;
+        }
+        const data = await api.getUser(resolvedId);
         setUser(data as unknown as User);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load profile");
+        setError(err instanceof Error ? err.message : "فشل تحميل الملف الشخصي");
       } finally {
         setLoading(false);
       }
@@ -31,7 +37,7 @@ export default function ProfilePage() {
 
   if (loading) return <Loading />;
   if (error) return <ErrorMessage error={error} />;
-  if (!user) return <div className="p-6">User not found</div>;
+  if (!user) return <div className="p-6">المستخدم غير موجود</div>;
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -48,19 +54,19 @@ export default function ProfilePage() {
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">{user.name}</h1>
               <p className="text-gray-600">@{user.username}</p>
-              <p className="text-gray-500 mt-2">{user.bio || "No bio yet"}</p>
+              <p className="text-gray-500 mt-2">{user.bio || "لا توجد نبذة شخصية بعد"}</p>
               <div className="flex gap-6 mt-4">
                 <div>
                   <span className="font-semibold">{user.stats?.storiesCount ?? 0}</span>
-                  <span className="text-gray-600 ml-1">Stories</span>
+                  <span className="text-gray-600 ml-1">قصة</span>
                 </div>
                 <div>
                   <span className="font-semibold">{user.stats?.followersCount ?? 0}</span>
-                  <span className="text-gray-600 ml-1">Followers</span>
+                  <span className="text-gray-600 ml-1">متابع</span>
                 </div>
                 <div>
                   <span className="font-semibold">{user.stats?.followingCount ?? 0}</span>
-                  <span className="text-gray-600 ml-1">Following</span>
+                  <span className="text-gray-600 ml-1">متابَع</span>
                 </div>
               </div>
             </div>

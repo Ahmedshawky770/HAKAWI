@@ -6,6 +6,7 @@ import {
   timestamp,
   boolean,
   index,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
@@ -33,6 +34,7 @@ export const users = pgTable(
     deletedAt: timestamp('deleted_at'),
     emailVerified: boolean('email_verified').default(false),
     emailVerificationToken: varchar('email_verification_token', { length: 255 }),
+    passwordResetToken: varchar('password_reset_token', { length: 255 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -40,14 +42,16 @@ export const users = pgTable(
     googleIdUnique: index('users_google_id_idx').on(table.googleId),
     facebookIdUnique: index('users_facebook_id_idx').on(table.facebookId),
     twitterIdUnique: index('users_twitter_id_idx').on(table.twitterId),
-    githubIdUnique: index('users_github_id_idx').on(table.githubId),
     appleIdUnique: index('users_apple_id_idx').on(table.appleId),
     tiktokIdUnique: index('users_tiktok_id_idx').on(table.tiktokId),
     usernameUnique: index('users_username_idx').on(table.username),
     emailUnique: index('users_email_idx').on(table.email),
     accountTypeIdx: index('users_account_type_idx').on(table.accountType),
     emailVerificationTokenIdx: index('users_email_verification_token_idx').on(table.emailVerificationToken),
-  })
+    passwordResetTokenIdx: index('users_password_reset_token_idx').on(table.passwordResetToken),
+    usernameUniqueConstraint: unique('users_username_unique').on(table.username),
+    emailUniqueConstraint: unique('users_email_unique').on(table.email),
+  }),
 );
 
 export type User = typeof users.$inferSelect;

@@ -5,9 +5,8 @@ import { eq } from 'drizzle-orm';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { ModerationActionTakenEvent, ModerationReportEscalatedEvent, UserRestrictedEvent } from '../../../common/events/moderation.events.ts';
-import { reports, userRestrictions } from '../../../db/schema/moderation.schema.ts';
+import { userRestrictions } from '../../../db/schema/moderation.schema.ts';
 import { db } from '../../../db/index.ts';
-import { AdminRole } from '../../../common/constants/roles.ts';
 
 @Injectable()
 export class ModerationEventHandler {

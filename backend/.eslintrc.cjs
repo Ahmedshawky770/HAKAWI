@@ -2,7 +2,7 @@ module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: './tsconfig.json',
+    project: ['./tsconfig.json', './tsconfig.spec.json', './tsconfig.e2e.json'],
     tsconfigRootDir: __dirname,
   },
   plugins: ['@typescript-eslint', 'import'],
@@ -10,7 +10,7 @@ module.exports = {
   env: {
     node: true,
   },
-  ignorePatterns: ['test/**/*.ts', '**/*.spec.ts', 'src/e2e/**/*.ts', 'dist/**', 'node_modules/**'],
+  ignorePatterns: ['test/**/*.ts', 'dist/**', 'node_modules/**'],
   rules: {
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unsafe-assignment': 'warn',

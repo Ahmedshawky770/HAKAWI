@@ -1,12 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module.ts';
 import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
+import { ValkeyService } from '../src/common/services/valkey.service.ts';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EncryptionService } from '../src/common/utils/encryption.util.ts';
 import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
 import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
+import { db } from '../src/db/index.ts';
+import { users } from '../src/db/schema/users.schema.ts';
 
 describe('Reactions Integration', () => {
   let app: INestApplication;
@@ -22,17 +28,9 @@ describe('Reactions Integration', () => {
           provide: 'REFLECTOR',
           useValue: new Reflector(),
         },
-        {
-          provide: WinstonLoggerService,
-          useValue: {
-            info: () => {},
-            log: () => {},
-            error: () => {},
-            warn: () => {},
-            debug: () => {},
-            verbose: () => {},
-          },
-        },
+        WinstonLoggerService,
+        ValkeyService,
+        EventEmitter2,
         {
           provide: SanityService,
           useValue: {
@@ -47,6 +45,10 @@ describe('Reactions Integration', () => {
     .overrideProvider(UsersEventHandler).useValue({
       handleUserRegistered: () => Promise.resolve(),
       handleUserUpdated: () => Promise.resolve(),
+    })
+    .overrideProvider(EncryptionService).useValue({
+      encrypt: (plaintext: string) => plaintext,
+      decrypt: (ciphertext: string) => ciphertext,
     })
     .compile();
 
@@ -78,7 +80,9 @@ describe('Reactions Integration', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   describe('POST /reactions/stories/:storyId', () => {
@@ -193,7 +197,7 @@ describe('Reactions Integration', () => {
         .set('Authorization', `Bearer ${accessToken2}`)
         .expect(200);
 
-      expect(res.body).toBeNull();
+      expect(res.body).toEqual({});
     });
   });
 });

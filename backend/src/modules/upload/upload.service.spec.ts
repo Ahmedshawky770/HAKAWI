@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+
 import { UploadService } from './upload.service.ts';
-import type { UploadResponse } from '../dto/upload-response.dto.ts';
-import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
 
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(() => Promise.resolve('https://signed-url.test')),
@@ -21,10 +23,15 @@ describe('UploadService', () => {
     process.env.STORAGE_CDN_URL = 'https://cdn.test';
 
     mockCircuitBreaker = {
-      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<any>) => fn()),
+      execute: vi.fn().mockImplementation((_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
-    uploadService = new UploadService(null, null, mockCircuitBreaker as CircuitBreakerService, undefined as any);
+    uploadService = new UploadService(
+      null as unknown as WinstonLoggerService,
+      null as unknown as ValkeyService,
+      mockCircuitBreaker as CircuitBreakerService,
+      undefined,
+    );
   });
 
   describe('generatePresignedUrl', () => {

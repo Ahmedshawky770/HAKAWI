@@ -1,10 +1,32 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ContestsEventHandler } from './contests.event-handler.js';
-import type { IContestsRepository } from '../interfaces/contests-repository.interface.js';
-import { CONTESTS_REPOSITORY } from '../interfaces/contests-repository.interface.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
 
-type MockContestsRepository = Partial<IContestsRepository>;
+import type { IContestsRepository } from '../interfaces/contests-repository.interface.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+import { ContestsEventHandler } from './contests.event-handler.ts';
+
+type MockContestsRepository = {
+  findContestById: ReturnType<typeof vi.fn>;
+  findAllContests: ReturnType<typeof vi.fn>;
+  createContest: ReturnType<typeof vi.fn>;
+  updateContest: ReturnType<typeof vi.fn>;
+  findSubmissionById: ReturnType<typeof vi.fn>;
+  findSubmissionsByContest: ReturnType<typeof vi.fn>;
+  findSubmissionByContestAndAuthor: ReturnType<typeof vi.fn>;
+  createSubmission: ReturnType<typeof vi.fn>;
+  reviewSubmission: ReturnType<typeof vi.fn>;
+  findVoteById: ReturnType<typeof vi.fn>;
+  findVoteByUserContestSubmission: ReturnType<typeof vi.fn>;
+  countVotesBySubmission: ReturnType<typeof vi.fn>;
+  castVote: ReturnType<typeof vi.fn>;
+  findPrizeById: ReturnType<typeof vi.fn>;
+  createPrize: ReturnType<typeof vi.fn>;
+  findWinningSubmission: ReturnType<typeof vi.fn>;
+  findPrizesByContest: ReturnType<typeof vi.fn>;
+  findVotesBySubmission: ReturnType<typeof vi.fn>;
+  findVotesByContest: ReturnType<typeof vi.fn>;
+  countVotesByContest: ReturnType<typeof vi.fn>;
+};
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -21,7 +43,28 @@ describe('ContestsEventHandler', () => {
   let logger: MockWinstonLoggerService;
 
   beforeEach(() => {
-    contestsRepository = {};
+    contestsRepository = {
+      findContestById: vi.fn(),
+      findAllContests: vi.fn(),
+      createContest: vi.fn(),
+      updateContest: vi.fn(),
+      findSubmissionById: vi.fn(),
+      findSubmissionsByContest: vi.fn(),
+      findSubmissionByContestAndAuthor: vi.fn(),
+      createSubmission: vi.fn(),
+      reviewSubmission: vi.fn(),
+      findVoteById: vi.fn(),
+      findVoteByUserContestSubmission: vi.fn(),
+      countVotesBySubmission: vi.fn(),
+      castVote: vi.fn(),
+      findPrizeById: vi.fn(),
+      createPrize: vi.fn(),
+      findWinningSubmission: vi.fn(),
+      findPrizesByContest: vi.fn(),
+      findVotesBySubmission: vi.fn(),
+      findVotesByContest: vi.fn(),
+      countVotesByContest: vi.fn(),
+    };
     logger = {
       info: vi.fn(),
       log: vi.fn(),

@@ -1,11 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import { ModerationEventHandler } from './moderation.event-handler.ts';
 import { ModerationActionTakenEvent, ModerationReportEscalatedEvent, UserRestrictedEvent } from '../../../common/events/moderation.events.ts';
 
+import { ModerationEventHandler } from './moderation.event-handler.ts';
+
 const makeChain = (result: unknown) => {
-  const chain: any = {
+  type MockDbChain = {
+    returning: ReturnType<typeof vi.fn>;
+    where: ReturnType<typeof vi.fn>;
+    orderBy: ReturnType<typeof vi.fn>;
+  };
+
+  const chain: MockDbChain & Record<string, ReturnType<typeof vi.fn>> = {
     returning: vi.fn(() => Promise.resolve(result)),
     where: vi.fn(() => Promise.resolve(result)),
     orderBy: vi.fn(() => Promise.resolve(result)),

@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CategoriesService } from './categories.service';
-import type { ICategoriesRepository } from './interfaces/categories-repository.interface';
-import { CATEGORIES_REPOSITORY } from './interfaces/categories-repository.interface';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 
-type MockCategoriesRepository = Partial<ICategoriesRepository>;
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
+import { CategoriesService } from './categories.service.ts';
+import type { ICategoriesRepository, Category, CreateCategoryInput, UpdateCategoryInput } from './interfaces/categories-repository.interface.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockCategoriesRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Category | null>>>;
+  findBySlug: ReturnType<typeof vi.fn<(slug: string) => Promise<Category | null>>>;
+  findAll: ReturnType<typeof vi.fn<() => Promise<Category[]>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateCategoryInput) => Promise<Category>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: UpdateCategoryInput) => Promise<Category>>>;
+  softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+};
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
@@ -34,12 +46,12 @@ describe('CategoriesService', () => {
 
   beforeEach(() => {
     categoriesRepository = {
-      findById: vi.fn(),
-      findBySlug: vi.fn(),
-      findAll: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      softDelete: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<Category | null>>(),
+      findBySlug: vi.fn<(slug: string) => Promise<Category | null>>(),
+      findAll: vi.fn<() => Promise<Category[]>>(),
+      create: vi.fn<(data: CreateCategoryInput) => Promise<Category>>(),
+      update: vi.fn<(id: string, data: UpdateCategoryInput) => Promise<Category>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
     };
 
     logger = {
@@ -52,7 +64,7 @@ describe('CategoriesService', () => {
     };
 
     categoriesService = new CategoriesService(
-      categoriesRepository as unknown as ICategoriesRepository,
+      categoriesRepository,
       logger as unknown as WinstonLoggerService,
     );
   });

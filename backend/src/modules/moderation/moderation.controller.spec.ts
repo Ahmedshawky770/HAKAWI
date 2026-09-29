@@ -1,27 +1,46 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import type { Server } from 'http';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
+
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 
 import { ModerationController } from './moderation.controller.ts';
 import { ModerationService } from './moderation.service.ts';
 import { AdminDashboardService } from './admin-dashboard.service.ts';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
-import { ConfigModule } from '@nestjs/config';
+
+type MockModerationService = {
+  createReport: ReturnType<typeof vi.fn>;
+  findAllReports: ReturnType<typeof vi.fn>;
+  updateReportStatus: ReturnType<typeof vi.fn>;
+  takeAction: ReturnType<typeof vi.fn>;
+  checkAutoEscalation: ReturnType<typeof vi.fn>;
+  autoEscalateReports: ReturnType<typeof vi.fn>;
+};
+
+type MockAdminDashboardService = {
+  getStats: ReturnType<typeof vi.fn>;
+  getReportTrends: ReturnType<typeof vi.fn>;
+  getUserRestrictions: ReturnType<typeof vi.fn>;
+  getModerationActions: ReturnType<typeof vi.fn>;
+  autoEscalateReports: ReturnType<typeof vi.fn>;
+};
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET } as any).signAsync({ sub, email, accountType } as any);
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
 describe('ModerationController', () => {
   let app: INestApplication;
   let httpServer: Server;
-  let moderationService: Partial<ModerationService>;
-  let adminDashboardService: Partial<AdminDashboardService>;
+  let moderationService: MockModerationService;
+  let adminDashboardService: MockAdminDashboardService;
 
   beforeAll(async () => {
     moderationService = {
@@ -29,6 +48,8 @@ describe('ModerationController', () => {
       findAllReports: vi.fn(),
       updateReportStatus: vi.fn(),
       takeAction: vi.fn(),
+      checkAutoEscalation: vi.fn(),
+      autoEscalateReports: vi.fn(),
     };
 
     adminDashboardService = {
@@ -36,6 +57,7 @@ describe('ModerationController', () => {
       getReportTrends: vi.fn(),
       getUserRestrictions: vi.fn(),
       getModerationActions: vi.fn(),
+      autoEscalateReports: vi.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -53,7 +75,7 @@ describe('ModerationController', () => {
         JwtAuthGuard,
         {
           provide: JwtService,
-          useValue: new JwtService({ secret: JWT_SECRET } as any),
+          useValue: new JwtService({ secret: JWT_SECRET }),
         },
       ],
     }).compile();
@@ -89,7 +111,7 @@ describe('ModerationController', () => {
         resolvedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .post('/moderation/reports')
@@ -115,7 +137,7 @@ describe('ModerationController', () => {
       vi.mocked(moderationService.findAllReports).mockResolvedValue({
         reports: [],
         total: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/moderation/reports')
@@ -144,7 +166,7 @@ describe('ModerationController', () => {
         resolvedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .patch('/moderation/reports/report-1')
@@ -170,7 +192,7 @@ describe('ModerationController', () => {
         durationMinutes: null,
         targetUserId: 'user-2',
         createdAt: new Date(),
-      } as any);
+      });
 
       const res = await request(httpServer)
         .post('/moderation/reports/report-1/actions')
@@ -190,7 +212,7 @@ describe('ModerationController', () => {
 
   describe('GET /moderation/stats', () => {
     it('should return admin stats', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'admin', 'super_admin');
+      const token = await generateToken('user-1', 'test@example.com', 'admin');
 
       vi.mocked(adminDashboardService.getStats).mockResolvedValue({
         totalReports: 0,
@@ -203,7 +225,7 @@ describe('ModerationController', () => {
         totalRestrictions: 0,
         activeRestrictions: 0,
         avgResolutionMinutes: 0,
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/moderation/stats')
@@ -221,7 +243,7 @@ describe('ModerationController', () => {
 
       vi.mocked(adminDashboardService.getUserRestrictions).mockResolvedValue({
         restrictions: [],
-      } as any);
+      });
 
       const res = await request(httpServer)
         .get('/moderation/users/user-1/restrictions')
@@ -234,7 +256,7 @@ describe('ModerationController', () => {
 
   describe('GET /moderation/reports/trends', () => {
     it('should return report trends', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'admin', 'super_admin');
+      const token = await generateToken('user-1', 'test@example.com', 'admin');
 
       vi.mocked(adminDashboardService.getReportTrends).mockResolvedValue({});
 

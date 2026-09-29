@@ -22,7 +22,7 @@ export default function PaymentDetailPage() {
         const data = await api.getPayment(id);
         setPayment(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load payment");
+        setError(err instanceof Error ? err.message : "فشل تحميل تفاصيل الدفع");
       } finally {
         setLoading(false);
       }
@@ -32,38 +32,50 @@ export default function PaymentDetailPage() {
 
   if (loading) return <Loading />;
   if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!payment) return <div className="p-6">Payment not found</div>;
+  if (!payment) return <div className="p-6">تفاصيل الدفع غير موجودة</div>;
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
         <Link href="/payments" className="text-blue-600 hover:text-blue-500">
-          ← Back to payments
+          ← العودة للمدفوعات
         </Link>
       </div>
       <Card>
         <CardBody>
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">Payment Details</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">تفاصيل الدفع</h1>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-600">Payment ID</p>
+              <p className="text-sm text-gray-600">معرّف الدفع</p>
               <p className="font-mono text-sm">{payment.id}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Book ID</p>
-              <p className="font-mono text-sm">{payment.bookId}</p>
+              <p className="text-sm text-gray-600">معرّف المستخدم</p>
+              <p className="font-mono text-sm">{payment.userId}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Buyer ID</p>
-              <p className="font-mono text-sm">{payment.buyerId}</p>
+              <p className="text-sm text-gray-600">الحالة</p>
+              <p className="font-mono text-sm">{payment.status}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Amount</p>
-              <p className="text-2xl font-bold text-gray-900">${payment.salePrice.toFixed(2)}</p>
+              <p className="text-sm text-gray-600">طريقة الدفع</p>
+              <p className="font-mono text-sm">{payment.paymentMethod}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Purchased At</p>
-              <p className="text-sm">{new Date(payment.purchasedAt).toLocaleString()}</p>
+              <p className="text-sm text-gray-600">المبلغ</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {payment.amount} {payment.currency}
+              </p>
+            </div>
+            {payment.description && (
+              <div>
+                <p className="text-sm text-gray-600">الوصف</p>
+                <p className="text-sm">{payment.description}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-sm text-gray-600">تاريخ الإنشاء</p>
+              <p className="text-sm">{new Date(payment.createdAt).toLocaleString()}</p>
             </div>
           </div>
         </CardBody>

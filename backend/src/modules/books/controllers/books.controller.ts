@@ -3,7 +3,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, In
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { BooksService } from '../books.service.ts';
-import { CreateBookDto, UpdateBookDto, BooksQueryDto } from '../dto/books.dto.ts';
+import { CreateBookDto, UpdateBookDto, BooksQueryDto, PurchaseBookDto, RentBookDto } from '../dto/books.dto.ts';
 import type { CreateBookInput } from '../types.ts';
 
 @Controller('books')
@@ -37,20 +37,21 @@ export class BooksController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateBookDto) {
-    return this.booksService.update(id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateBookDto, @Request() req: Request & { user: { sub: string } }) {
+    return this.booksService.update(id, dto, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/publish')
-  async publish(@Param('id') id: string) {
-    return this.booksService.publish(id);
+  @HttpCode(HttpStatus.OK)
+  async publish(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    return this.booksService.publish(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/archive')
-  async archive(@Param('id') id: string) {
-    return this.booksService.archive(id);
+  async archive(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    return this.booksService.archive(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -63,9 +64,23 @@ export class BooksController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post(':id/purchase')
+  @HttpCode(HttpStatus.CREATED)
+  async purchase(@Param('id') id: string, @Body() dto: PurchaseBookDto, @Request() req: Request & { user: { sub: string } }) {
+    return this.booksService.purchase(req.user.sub, id, dto.paymentMethodId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/rent')
+  @HttpCode(HttpStatus.CREATED)
+  async rent(@Param('id') id: string, @Body() dto: RentBookDto, @Request() req: Request & { user: { sub: string } }) {
+    return this.booksService.rent(req.user.sub, id, dto.durationDays);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    await this.booksService.delete(id);
+  async delete(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    await this.booksService.delete(id, req.user.sub);
   }
 }

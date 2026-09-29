@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { z } from 'zod';
 
 import { EVENT_SCHEMAS } from './event-schemas.ts';
-import type { DLQService } from './dlq.service.ts';
+import { DLQService } from './dlq.service.ts';
 
 export interface ValidationResult {
   success: boolean;
@@ -15,7 +15,7 @@ export class EventSchemaRegistry {
   private readonly schemas: Map<string, { schema: z.ZodSchema; version: string }> = new Map();
   private readonly defaultVersions: Map<string, string> = new Map();
 
-  constructor(private readonly dlqService?: DLQService) {
+  constructor(@Optional() @Inject(DLQService) private readonly dlqService?: DLQService) {
     for (const [eventName, { schema, version }] of Object.entries(EVENT_SCHEMAS)) {
       this.registerSchema(eventName, schema, version);
     }

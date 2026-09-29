@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { RetryService } from './retry.service.js';
+
+import { RetryService } from './retry.service.ts';
 
 describe('RetryService', () => {
   let retryService: RetryService;
@@ -85,7 +86,6 @@ describe('RetryService', () => {
   describe('executeWithBackoff', () => {
     it('should use custom config when provided', async () => {
       const fn = vi.fn().mockRejectedValue(new Error('fail'));
-      const shouldRetry = vi.fn().mockReturnValue(false);
 
       await expect(retryService.executeWithBackoff('custom', fn, {
         maxRetries: 1,
@@ -93,7 +93,7 @@ describe('RetryService', () => {
         maxDelayMs: 100,
         backoffMultiplier: 2,
         jitterMs: 0,
-      }, shouldRetry)).rejects.toThrow('fail');
+      })).rejects.toThrow('fail');
 
       expect(fn).toHaveBeenCalledTimes(2);
     });

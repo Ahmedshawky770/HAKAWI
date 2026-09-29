@@ -6,6 +6,9 @@ import request from 'supertest';
 
 import { AppModule } from '../src/app.module.ts';
 import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
+import { ValkeyService } from '../src/common/services/valkey.service.ts';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EncryptionService } from '../src/common/utils/encryption.util.ts';
 import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
 import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
 import { db } from '../src/db/index.ts';
@@ -18,12 +21,6 @@ describe('Auth Integration', () => {
   let registeredUsername: string;
 
   beforeAll(async () => {
-    try {
-      await db.delete(users).where(sql`email LIKE '%-int@example.com' OR email LIKE '%-register@example.com' OR email LIKE '%-login@example.com' OR email LIKE '%-session@example.com' OR email LIKE '%-forgot@example.com' OR email LIKE '%-reset@example.com' OR email LIKE '%-e2e@example.com'`);
-    } catch {
-      // ignore cleanup errors
-    }
-
     const timestamp = Date.now();
     registeredEmail = `auth-int-${timestamp}@example.com`;
     registeredUsername = `authint-${timestamp}`;
@@ -35,17 +32,9 @@ describe('Auth Integration', () => {
           provide: 'REFLECTOR',
           useValue: new Reflector(),
         },
-        {
-          provide: WinstonLoggerService,
-          useValue: {
-            info: () => {},
-            log: () => {},
-            error: () => {},
-            warn: () => {},
-            debug: () => {},
-            verbose: () => {},
-          },
-        },
+        WinstonLoggerService,
+        ValkeyService,
+        EventEmitter2,
         {
           provide: SanityService,
           useValue: {
@@ -61,6 +50,10 @@ describe('Auth Integration', () => {
       handleUserRegistered: () => Promise.resolve(),
       handleUserUpdated: () => Promise.resolve(),
     })
+    .overrideProvider(EncryptionService).useValue({
+      encrypt: (plaintext: string) => plaintext,
+      decrypt: (ciphertext: string) => ciphertext,
+    })
     .compile();
 
     app = moduleRef.createNestApplication();
@@ -69,12 +62,9 @@ describe('Auth Integration', () => {
   });
 
   afterAll(async () => {
-    try {
-      await db.delete(users).where(sql`email LIKE '%-int@example.com' OR email LIKE '%-register@example.com' OR email LIKE '%-login@example.com' OR email LIKE '%-session@example.com' OR email LIKE '%-forgot@example.com' OR email LIKE '%-reset@example.com' OR email LIKE '%-e2e@example.com'`);
-    } catch {
-      // ignore cleanup errors
+    if (app) {
+      await app.close();
     }
-    await app.close();
   });
 
   describe('POST /auth/register', () => {
@@ -91,8 +81,6 @@ describe('Auth Integration', () => {
 
       expect(res.body).toHaveProperty('user');
       expect(res.body.user.email).toBe(registeredEmail);
-      expect(res.body).toHaveProperty('tokens');
-      expect(res.body.tokens).toHaveProperty('accessToken');
     });
 
     it('should return 409 when email is already registered', async () => {
@@ -172,8 +160,7 @@ describe('Auth Integration', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('user');
-      expect(res.body).toHaveProperty('tokens');
-      expect(res.body.tokens).toHaveProperty('accessToken');
+      expect(res.body.user.email).toBe(email);
     });
 
     it('should return 401 with invalid email', async () => {
@@ -220,7 +207,9 @@ describe('Auth Integration', () => {
         })
         .expect(200);
 
-      const refreshToken = loginRes.body.tokens?.refreshToken;
+      const cookies = loginRes.headers['set-cookie'];
+      const refreshTokenCookie = cookies?.find((cookie: string) => cookie.startsWith('refresh_token='));
+      const refreshToken = refreshTokenCookie?.split(';')[0]?.split('=')[1];
       expect(refreshToken).toBeDefined();
 
       const res = await request(httpServer)
@@ -265,9 +254,9 @@ describe('Auth Integration', () => {
         .expect(200);
 
       const result = await db.execute(sql`
-        SELECT email_verification_token FROM users WHERE email = ${email}
+        SELECT password_reset_token FROM users WHERE email = ${email}
       `);
-      const token = result.rows?.[0]?.email_verification_token;
+      const token = result.rows?.[0]?.password_reset_token;
       expect(token).toBeDefined();
 
       const res = await request(httpServer)

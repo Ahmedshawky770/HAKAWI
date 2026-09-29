@@ -2,7 +2,7 @@ import { Injectable, Inject, Optional } from '@nestjs/common';
 import { createClient, type SanityClient } from '@sanity/client';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import { CircuitBreakerService, CircuitBreakerState } from '../../../common/resilience/circuit-breaker.service.js';
+import { CircuitBreakerService } from '../../../common/resilience/circuit-breaker.service.js';
 
 import type { SanityStoryDocument, SyncStoryResult } from './sanity.types.ts';
 
@@ -91,9 +91,12 @@ export class SanityService {
         hakawiId: story.hakawiId,
       };
 
-      const existing = await this.circuitBreaker.execute(
+      const existing = await this.circuitBreaker.execute<SanityStoryDocument | null>(
         'sanity-fetch',
-        () => this.client.fetch(`*[_type == "story" && hakawiId == $hakawiId][0]`, { hakawiId: story.hakawiId }).catch(() => null),
+        async () => {
+          const result = await this.client.fetch<SanityStoryDocument>(`*[_type == "story" && hakawiId == $hakawiId][0]`, { hakawiId: story.hakawiId });
+          return result ?? null;
+        },
       );
 
       if (existing) {

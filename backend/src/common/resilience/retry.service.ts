@@ -25,7 +25,11 @@ export class RetryService {
     if (!this.configs.has(name)) {
       this.configs.set(name, { ...DEFAULT_RETRY_CONFIG });
     }
-    return this.configs.get(name)!;
+    const config = this.configs.get(name);
+    if (!config) {
+      throw new Error(`Configuration not found for operation: ${name}`);
+    }
+    return config;
   }
 
   private calculateDelay(attempt: number, config: RetryConfig): number {

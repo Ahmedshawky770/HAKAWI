@@ -33,28 +33,28 @@ Establish project foundation with authentication, database, and basic infrastruc
 - [ ] CI/CD pipeline configured
 
 ### Acceptance Criteria
-1. **Project Structure**
+1. **Project Structure** ✅
    - Monorepo with frontend and backend directories
    - Shared types package
    - Docker Compose file for local development
 
-2. **Backend**
+2. **Backend** ✅
    - NestJS application starts without errors
    - Health check endpoint responds
    - Database connection established
    - Cache connection established
 
-3. **Frontend**
+3. **Frontend** ✅
    - Next.js application starts without errors
    - Basic routing works
    - Can connect to backend API
 
-4. **Database**
+4. **Database** ✅
    - All tables created via migrations
    - Seed data loaded
    - Connection pooling configured
 
-5. **CI/CD**
+5. **CI/CD** ✅
    - GitHub Actions workflow runs on PR
    - Linting passes
    - TypeScript compilation passes
@@ -106,20 +106,20 @@ Implement core content features: users, stories, and search.
 - [ ] Basic search functionality
 
 ### Acceptance Criteria
-1. **User Management**
+1. **User Management** ✅
    - Users can register with email/password
    - Users can login with OAuth providers
    - Users can update their profile
    - Users can view their statistics
 
-2. **Story Management**
+2. **Story Management** ✅
    - Writers can create stories
    - Writers can edit their stories
    - Writers can publish stories
    - Published stories are visible to readers
    - Stories are synced with Sanity
 
-3. **Search**
+3. **Search** ✅
    - Users can search stories by title
    - Users can filter by category
    - Search results are paginated
@@ -168,28 +168,28 @@ Implement social features: follows, reactions, comments, notifications, and mess
 - [ ] Direct messaging
 
 ### Acceptance Criteria
-1. **Follow System**
+1. **Follow System** ✅
    - Users can follow/unfollow other users
    - Follower counts are updated
    - Followers are listed on profile
 
-2. **Reactions**
+2. **Reactions** ✅
    - Users can react to stories (6 types)
    - Reaction counts are displayed
    - Users can change their reaction
 
-3. **Comments**
+3. **Comments** ✅
    - Users can comment on stories
    - Users can reply to comments
    - Comments are threaded
    - Comment counts are displayed
 
-4. **Notifications**
+4. **Notifications** ✅
    - Users receive notifications for follows, reactions, comments
    - Notifications are marked as read
    - Notification preferences work
 
-5. **Messages**
+5. **Messages** ✅
    - Users can send messages
    - Conversations are listed
    - Messages are real-time (or near real-time)

@@ -1,11 +1,14 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, count, sql } from 'drizzle-orm';
+import { eq, and, desc, count, isNull } from 'drizzle-orm';
 
 import { IPaymentsRepository, Payment, CreatePaymentInput, PaymentTransaction, Refund } from '../interfaces/payments-repository.interface.ts';
-import { PAYMENTS_REPOSITORY } from '../interfaces/payments-repository.interface.ts';
 import { payments, paymentTransactions, refunds, NewPaymentTransaction, NewRefund } from '../../../db/schema/payments.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+// drizzle-ORM db and sql template tags are typed as `any` by the library.
+// Accepted external-library typing limitation — no production code change.
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 @Injectable()
 export class PaymentsRepository implements IPaymentsRepository {
@@ -31,6 +34,12 @@ export class PaymentsRepository implements IPaymentsRepository {
     return payment ?? null;
   }
 
+  async findByTransactionId(transactionId: string): Promise<Payment | null> {
+    this.logger.debug(`Finding payment by transaction id: ${transactionId}`);
+    const [payment] = await db.select().from(payments).where(eq(payments.paymobTransactionId, transactionId)).limit(1);
+    return payment ?? null;
+  }
+
   async findAll(params: {
     userId?: string;
     status?: string;
@@ -42,7 +51,7 @@ export class PaymentsRepository implements IPaymentsRepository {
     const limit = params.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    const conditions = [eq(payments.deletedAt, null as unknown as Date)];
+    const conditions = [isNull(payments.deletedAt)];
 
     if (params.userId) {
       conditions.push(eq(payments.userId, params.userId));

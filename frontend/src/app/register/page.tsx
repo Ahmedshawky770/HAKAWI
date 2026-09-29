@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, setStoredUser } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -24,23 +24,24 @@ export default function RegisterPage() {
     setError("");
 
     if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
+      setError("كلمتا المرور غير متطابقتين");
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await api.register({
+      await api.register({
         name: formData.name,
         username: formData.username,
         email: formData.email,
         password: formData.password,
       });
-      localStorage.setItem("hakawi_tokens", JSON.stringify(response.tokens));
+      const session = await api.getSession();
+      setStoredUser(session);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : "فشل إنشاء الحساب");
     } finally {
       setLoading(false);
     }
@@ -60,12 +61,12 @@ export default function RegisterPage() {
             </div>
           </Link>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Create your account
+            إنشاء حساب جديد
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Or{" "}
+            لديك حساب بالفعل؟{" "}
             <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              sign in to existing account
+              تسجيل الدخول
             </Link>
           </p>
         </div>
@@ -77,34 +78,34 @@ export default function RegisterPage() {
           )}
           <div className="space-y-4">
             <Input
-              label="Full name"
+              label="الاسم الكامل"
               type="text"
               required
               name="name"
               value={formData.name}
               onChange={handleChange}
-              placeholder="John Doe"
+              placeholder="أحمد محمد"
             />
             <Input
-              label="Username"
+              label="اسم المستخدم"
               type="text"
               required
               name="username"
               value={formData.username}
               onChange={handleChange}
-              placeholder="johndoe"
+              placeholder="ahmed"
             />
             <Input
-              label="Email address"
+              label="البريد الإلكتروني"
               type="email"
               required
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="you@example.com"
+              placeholder="example@mail.com"
             />
             <Input
-              label="Password"
+              label="كلمة المرور"
               type="password"
               required
               name="password"
@@ -113,7 +114,7 @@ export default function RegisterPage() {
               placeholder="••••••••"
             />
             <Input
-              label="Confirm password"
+              label="تأكيد كلمة المرور"
               type="password"
               required
               name="confirmPassword"
@@ -123,7 +124,7 @@ export default function RegisterPage() {
             />
           </div>
           <Button type="submit" loading={loading} className="w-full">
-            Create account
+            إنشاء الحساب
           </Button>
         </form>
       </div>

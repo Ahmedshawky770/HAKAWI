@@ -2,12 +2,20 @@ export class ContestCreatedEvent {
   constructor(public readonly contestId: string, public readonly createdBy: string) {}
 }
 
+export class ContestUpdatedEvent {
+  constructor(public readonly contestId: string, public readonly updatedFields: Record<string, unknown>) {}
+}
+
 export class ContestStartedEvent {
   constructor(public readonly contestId: string) {}
 }
 
 export class ContestCompletedEvent {
-  constructor(public readonly contestId: string, public readonly winnerId: string) {}
+  constructor(public readonly contestId: string, public readonly winnerId: string | null) {}
+}
+
+export class ContestCancelledEvent {
+  constructor(public readonly contestId: string) {}
 }
 
 export class SubmissionSubmittedEvent {

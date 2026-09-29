@@ -1,8 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, like, count, sql } from 'drizzle-orm';
+import { eq, and, desc, like, count, sql, isNull } from 'drizzle-orm';
 
 import { IBooksRepository, Book, CreateBookInput, UpdateBookInput } from '../interfaces/books-repository.interface.ts';
-import { BOOKS_REPOSITORY } from '../interfaces/books-repository.interface.ts';
 import { books } from '../../../db/schema/books.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -44,7 +43,7 @@ export class BooksRepository implements IBooksRepository {
     const limit = params.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    const conditions = [eq(books.deletedAt, null as unknown as Date)];
+    const conditions = [isNull(books.deletedAt)];
 
     if (params.categoryId) {
       conditions.push(eq(books.categoryId, params.categoryId));
@@ -98,7 +97,7 @@ export class BooksRepository implements IBooksRepository {
 
   async findByCategory(categoryId: string): Promise<Book[]> {
     this.logger.debug(`Finding books by category: ${categoryId}`);
-    const result = await db.select().from(books).where(and(eq(books.categoryId, categoryId), eq(books.deletedAt, null as unknown as Date)));
+    const result = await db.select().from(books).where(and(eq(books.categoryId, categoryId), isNull(books.deletedAt)));
     return result;
   }
 }

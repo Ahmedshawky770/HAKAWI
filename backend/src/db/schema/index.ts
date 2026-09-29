@@ -8,3 +8,4 @@ export * from './payments.schema.ts';
 export * from './rentals.schema.ts';
 export * from './library.schema.ts';
 export * from './contests.schema.ts';
+export * from './badges.schema.ts';

@@ -1,86 +1,26 @@
+import crypto from 'crypto';
+
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { JwtHelper, JwtPayload } from '../../common/utils/jwt.util.ts';
 import { fetchJson } from '../../common/utils/fetch.util.ts';
+import { EncryptionService } from '../../common/utils/encryption.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
-import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
+import { USERS_REPOSITORY, type CreateUserInput } from '../../common/users/users-repository.interface.ts';
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { UserRegisteredEvent } from '../../common/events/users.events.ts';
 import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
+import type { GoogleTokenResponse, GoogleUserResponse, FacebookTokenResponse, FacebookUserResponse, GithubTokenResponse, GithubUserResponse, AppleTokenResponse, TiktokTokenResponse, TiktokUserResponse } from '../../common/types/oauth.types.ts';
 
-import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto.ts';
+import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, SessionResponseDto, LogoutResponseDto } from './dto/auth.dto.ts';
 
 const OAUTH_PROVIDERS = ['google', 'facebook', 'github', 'apple', 'tiktok'] as const;
 type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
-
-interface OAuthUserCreateData {
-  email: string;
-  name: string;
-  username: string;
-  accountType: string;
-  passwordHash: string | null;
-  googleId: string | null;
-  facebookId: string | null;
-  twitterId: string | null;
-  githubId: string | null;
-  appleId: string | null;
-  tiktokId: string | null;
-  [key: string]: string | null;
-}
-
-interface GoogleTokenResponse {
-  access_token: string;
-}
-
-interface GoogleUserResponse {
-  sub: string;
-  email: string;
-  name: string;
-}
-
-interface FacebookTokenResponse {
-  access_token: string;
-}
-
-interface FacebookUserResponse {
-  id: string;
-  email?: string;
-  name: string;
-}
-
-interface GithubTokenResponse {
-  access_token: string;
-}
-
-interface GithubUserResponse {
-  id: string;
-  email?: string;
-  name?: string;
-  login: string;
-}
-
-interface AppleTokenResponse {
-  id_token: string;
-}
-
-interface TiktokTokenResponse {
-  access_token: string;
-}
-
-interface TiktokUserResponse {
-  data: {
-    user: {
-      user_id?: string;
-      open_id?: string;
-      display_name?: string;
-    };
-  };
-}
 
 @Injectable()
 export class AuthService {
@@ -97,6 +37,7 @@ export class AuthService {
     @Inject(CircuitBreakerService) private readonly circuitBreaker: CircuitBreakerService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
     @Inject(EmailVerificationService) private readonly emailVerificationService: EmailVerificationService,
+    @Inject(EncryptionService) private readonly encryptionService: EncryptionService,
   ) {}
 
   getAuthorizationUrl(provider: string, state?: string): string {
@@ -149,7 +90,7 @@ export class AuthService {
   }
 
   private generateState(): string {
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return crypto.randomUUID();
   }
 
   private buildGoogleAuthUrl(state: string): string {
@@ -395,7 +336,6 @@ export class AuthService {
     const providerFieldMap: Record<string, { field: string }> = {
       google: { field: 'googleId' },
       facebook: { field: 'facebookId' },
-      twitter: { field: 'twitterId' },
       github: { field: 'githubId' },
       apple: { field: 'appleId' },
       tiktok: { field: 'tiktokId' },
@@ -415,9 +355,6 @@ export class AuthService {
       case 'facebook':
         existingUser = await this.usersRepository.findByFacebookId(profile.id);
         break;
-      case 'twitter':
-        existingUser = await this.usersRepository.findByTwitterId(profile.id);
-        break;
       case 'github':
         existingUser = await this.usersRepository.findByGithubId(profile.id);
         break;
@@ -436,7 +373,7 @@ export class AuthService {
     }
 
     const username = profile.username || profile.email.split('@')[0];
-    const baseData: OAuthUserCreateData = {
+    const baseData: CreateUserInput = {
       email: profile.email,
       name: profile.name,
       username,
@@ -444,13 +381,12 @@ export class AuthService {
       passwordHash: null,
       googleId: null,
       facebookId: null,
-      twitterId: null,
       githubId: null,
       appleId: null,
       tiktokId: null,
     };
 
-    const createData: OAuthUserCreateData = { ...baseData, [mapping.field]: profile.id };
+    const createData: CreateUserInput = { ...baseData, [mapping.field]: profile.id };
     const user = await this.usersRepository.create(createData);
     await this.eventBus.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
 
@@ -458,17 +394,17 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
-    this.winstonLoggerService.info(`Attempting registration for email: ${dto.email}`, 'AuthService');
+    this.winstonLoggerService.info('Attempting registration for a new user', 'AuthService');
 
     const existingEmail = await this.usersRepository.findByEmail(dto.email);
     if (existingEmail) {
-      this.winstonLoggerService.warn(`Registration failed: email ${dto.email} already exists`, 'AuthService');
+      this.winstonLoggerService.warn('Registration failed: email already exists', 'AuthService');
       throw new ConflictException('Email already exists');
     }
 
     const existingUsername = await this.usersRepository.findByUsername(dto.username);
     if (existingUsername) {
-      this.winstonLoggerService.warn(`Registration failed: username ${dto.username} already exists`, 'AuthService');
+      this.winstonLoggerService.warn('Registration failed: username already exists', 'AuthService');
       throw new ConflictException('Username already exists');
     }
 
@@ -503,23 +439,23 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
-    this.winstonLoggerService.info(`Login attempt for email: ${dto.email}`, 'AuthService');
+    this.winstonLoggerService.info('Login attempt for a user', 'AuthService');
 
     const user = await this.usersRepository.findByEmail(dto.email);
 
     if (!user || !user.passwordHash) {
-      this.winstonLoggerService.warn(`Login failed: invalid credentials for ${dto.email}`, 'AuthService');
+      this.winstonLoggerService.warn('Login failed: invalid credentials', 'AuthService');
       throw new UnauthorizedException('Invalid email or password');
     }
 
     const isPasswordValid = await this.passwordHasher.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
-      this.winstonLoggerService.warn(`Login failed: invalid password for ${dto.email}`, 'AuthService');
+      this.winstonLoggerService.warn('Login failed: invalid password', 'AuthService');
       throw new UnauthorizedException('Invalid email or password');
     }
 
     if (user.accessBlocked) {
-      this.winstonLoggerService.warn(`Login failed: account disabled for ${dto.email}`, 'AuthService');
+      this.winstonLoggerService.warn('Login failed: account disabled', 'AuthService');
       throw new UnauthorizedException('Account has been disabled');
     }
 
@@ -636,10 +572,10 @@ export class AuthService {
     }
 
     const resetToken = crypto.randomUUID();
-    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    const encryptedToken = this.encryptionService.encrypt(resetToken);
 
     await this.usersRepository.update(user.id, {
-      emailVerificationToken: resetToken,
+      passwordResetToken: encryptedToken,
     });
 
     await this.valkeyService.set(`password:reset:${resetToken}`, user.id, 3600);
@@ -652,8 +588,22 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
+    const user = await this.usersRepository.findById(userId);
+    if (!user || !user.passwordResetToken) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    try {
+      const decryptedToken = this.encryptionService.decrypt(user.passwordResetToken);
+      if (decryptedToken !== token) {
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+    } catch {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
     const passwordHash = await this.passwordHasher.hash(newPassword);
-    await this.usersRepository.update(userId, { passwordHash });
+    await this.usersRepository.update(userId, { passwordHash, passwordResetToken: null });
     await this.valkeyService.del(`password:reset:${token}`);
     await this.eventBus.emit('password.reset.completed', { userId });
   }

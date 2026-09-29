@@ -1,15 +1,44 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { EmailVerificationService } from './email-verification.service.js';
-import type { IUsersRepository, User } from '../../common/users/users-repository.interface.js';
-import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.js';
-import { ValkeyService } from '../../common/services/valkey.service.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-type MockUsersRepository = Partial<IUsersRepository>;
-type MockValkeyService = Partial<ValkeyService>;
-type MockWinstonLoggerService = Partial<WinstonLoggerService>;
-type MockEventEmitter = { emit: ReturnType<typeof vi.fn> };
+import type { IUsersRepository, User, CreateUserInput } from '../../common/users/users-repository.interface.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import { EmailVerificationService } from './email-verification.service.ts';
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+
+type MockUsersRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<User | null>>>;
+  findByEmail: ReturnType<typeof vi.fn<(email: string) => Promise<User | null>>>;
+  findByUsername: ReturnType<typeof vi.fn<(username: string) => Promise<User | null>>>;
+  findByGoogleId: ReturnType<typeof vi.fn<(googleId: string) => Promise<User | null>>>;
+  findByFacebookId: ReturnType<typeof vi.fn<(facebookId: string) => Promise<User | null>>>;
+  findByTwitterId: ReturnType<typeof vi.fn<(twitterId: string) => Promise<User | null>>>;
+  findByGithubId: ReturnType<typeof vi.fn<(githubId: string) => Promise<User | null>>>;
+  findByAppleId: ReturnType<typeof vi.fn<(appleId: string) => Promise<User | null>>>;
+  findByTiktokId: ReturnType<typeof vi.fn<(tiktokId: string) => Promise<User | null>>>;
+  create: ReturnType<typeof vi.fn<(data: CreateUserInput) => Promise<User>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: Partial<User>) => Promise<User>>>;
+  softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+};
+type MockValkeyService = {
+  get: ReturnType<typeof vi.fn<(key: string) => Promise<string | null>>>;
+  set: ReturnType<typeof vi.fn<(key: string, value: string, ttl?: number) => Promise<void>>>;
+  del: ReturnType<typeof vi.fn<(key: string) => Promise<void>>>;
+};
+type MockWinstonLoggerService = {
+  info: ReturnType<typeof vi.fn>;
+  log: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  debug: ReturnType<typeof vi.fn>;
+  verbose: ReturnType<typeof vi.fn>;
+};
+type MockEventValidatorService = { emit: ReturnType<typeof vi.fn>; validateEvent: ReturnType<typeof vi.fn> };
 
 const createMockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-123',
@@ -34,6 +63,7 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
   deletedAt: null,
   emailVerified: false,
   emailVerificationToken: null,
+  passwordResetToken: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -44,35 +74,46 @@ describe('EmailVerificationService', () => {
   let usersRepository: MockUsersRepository;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   beforeEach(() => {
     usersRepository = {
-      findByEmail: vi.fn(),
-      findById: vi.fn(),
-      update: vi.fn(),
+      findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
+      findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
+      create: vi.fn<(data: CreateUserInput) => Promise<User>>(),
+      update: vi.fn<(id: string, data: Partial<User>) => Promise<User>>(),
+      findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),
+      findByFacebookId: vi.fn<(facebookId: string) => Promise<User | null>>(),
+      findByTwitterId: vi.fn<(twitterId: string) => Promise<User | null>>(),
+      findByGithubId: vi.fn<(githubId: string) => Promise<User | null>>(),
+      findByAppleId: vi.fn<(appleId: string) => Promise<User | null>>(),
+      findByTiktokId: vi.fn<(tiktokId: string) => Promise<User | null>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
     };
 
     valkeyService = {
-      get: vi.fn(),
-      set: vi.fn(),
-      del: vi.fn(),
+      get: vi.fn<(key: string) => Promise<string | null>>(),
+      set: vi.fn<(key: string, value: string, ttl?: number) => Promise<void>>(),
+      del: vi.fn<(key: string) => Promise<void>>(),
     };
 
     winstonLoggerService = {
       info: vi.fn(),
+      log: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
+      verbose: vi.fn(),
     };
 
-    eventEmitter = { emit: vi.fn() };
+    eventValidatorService = { emit: vi.fn(), validateEvent: vi.fn() };
 
     emailVerificationService = new EmailVerificationService(
-      usersRepository as IUsersRepository,
-      valkeyService as ValkeyService,
-      winstonLoggerService as WinstonLoggerService,
-      eventEmitter as unknown as EventEmitter2,
+      usersRepository,
+      valkeyService as unknown as ValkeyService,
+      winstonLoggerService as unknown as WinstonLoggerService,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -84,7 +125,7 @@ describe('EmailVerificationService', () => {
 
       const token = await emailVerificationService.generateToken('test@example.com');
 
-      expect(token).toMatch(/^\d{6}$/);
+      expect(token).toMatch(/^\d{8}$/);
       expect(valkeyService.set).toHaveBeenCalledTimes(2);
     });
 
@@ -126,7 +167,7 @@ describe('EmailVerificationService', () => {
       const result = await emailVerificationService.resend('test@example.com');
 
       expect(result.message).toBe('Verification email sent');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('email.verification.requested', { userId: 'user-123', email: 'test@example.com' });
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('email.verification.requested', { userId: 'user-123', email: 'test@example.com' });
     });
 
     it('should throw NotFoundException when user not found', async () => {

@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, UseGuards, Inject, Request } from '@nest
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { RequireAdminRole } from '../../common/decorators/roles.decorator.ts';
-import { AdminRole, AccountType } from '../../common/constants/roles.ts';
+import { AdminRole } from '../../common/constants/roles.ts';
 
 import { AdminDashboardService } from './admin-dashboard.service.ts';
 import { AdminDashboardStatsDto, ReportTrendsQueryDto, UserRestrictionsQueryDto, ModerationActionsQueryDto } from './dto/admin-dashboard.dto.ts';
@@ -18,7 +18,7 @@ export class AdminDashboardController {
   @UseGuards(JwtAuthGuard)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @Get('stats')
-  async getStats(@Request() req: { user: { sub: string } }): Promise<AdminDashboardStatsDto> {
+  async getStats(): Promise<AdminDashboardStatsDto> {
     return this.adminDashboardService.getStats();
   }
 

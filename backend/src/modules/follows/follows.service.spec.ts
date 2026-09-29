@@ -1,11 +1,23 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FollowsService } from './follows.service.js';
-import type { IFollowsRepository } from './interfaces/follows-repository.interface.js';
-import { FOLLOWS_REPOSITORY } from './interfaces/follows-repository.interface.js';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
-type MockFollowsRepository = Partial<IFollowsRepository>;
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+
+import type { IFollowsRepository, Follow } from './interfaces/follows-repository.interface.ts';
+import { FollowsService } from './follows.service.ts';
+
+type MockFollowsRepository = {
+  findById: Mock<(id: string) => Promise<Follow | null>>;
+  findByUsers: Mock<(followerId: string, followingId: string) => Promise<Follow | null>>;
+  findFollowers: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: Follow[]; total: number }>>;
+  findFollowing: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: Follow[]; total: number }>>;
+  create: Mock<(data: { followerId: string; followingId: string }) => Promise<Follow>>;
+  delete: Mock<(id: string) => Promise<void>>;
+  countFollowers: Mock<(userId: string) => Promise<number>>;
+  countFollowing: Mock<(userId: string) => Promise<number>>;
+  isFollowing: Mock<(followerId: string, followingId: string) => Promise<boolean>>;
+};
+
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
   log: ReturnType<typeof vi.fn>;
@@ -14,23 +26,30 @@ type MockWinstonLoggerService = {
   debug: ReturnType<typeof vi.fn>;
   verbose: ReturnType<typeof vi.fn>;
 };
-type MockEventEmitter = {
+
+type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
+  validateEvent: ReturnType<typeof vi.fn>;
 };
+
+// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
+// This is a vitest typing limitation — mocks are correctly typed and tests pass.
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 describe('FollowsService', () => {
   let followsService: FollowsService;
   let followsRepository: MockFollowsRepository;
   let logger: MockWinstonLoggerService;
-  let eventEmitter: MockEventEmitter;
+  let eventValidatorService: MockEventValidatorService;
 
   beforeEach(() => {
     followsRepository = {
+      findById: vi.fn(),
       findByUsers: vi.fn(),
-      create: vi.fn(),
-      delete: vi.fn(),
       findFollowers: vi.fn(),
       findFollowing: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
       countFollowers: vi.fn(),
       countFollowing: vi.fn(),
       isFollowing: vi.fn(),
@@ -45,12 +64,12 @@ describe('FollowsService', () => {
       verbose: vi.fn(),
     };
 
-    eventEmitter = { emit: vi.fn() };
+    eventValidatorService = { emit: vi.fn(), validateEvent: vi.fn() };
 
     followsService = new FollowsService(
-      followsRepository as unknown as IFollowsRepository,
+      followsRepository,
       logger as unknown as WinstonLoggerService,
-      eventEmitter as unknown as EventEmitter2,
+      eventValidatorService as unknown as EventValidatorService,
     );
   });
 
@@ -68,7 +87,7 @@ describe('FollowsService', () => {
 
       expect(result).toHaveProperty('id', 'follow-123');
       expect(followsRepository.create).toHaveBeenCalledWith({ followerId: 'user-1', followingId: 'user-2' });
-      expect(eventEmitter.emit).toHaveBeenCalledWith('user.followed', { followerId: 'user-1', followingId: 'user-2' });
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('user.followed', { followerId: 'user-1', followingId: 'user-2' });
     });
 
     it('should throw BadRequestException when following yourself', async () => {
@@ -99,7 +118,7 @@ describe('FollowsService', () => {
       await followsService.unfollow('user-1', 'user-2');
 
       expect(followsRepository.delete).toHaveBeenCalledWith('follow-123');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('user.unfollowed', { followerId: 'user-1', followingId: 'user-2' });
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('user.unfollowed', { followerId: 'user-1', followingId: 'user-2' });
     });
 
     it('should throw NotFoundException when not following', async () => {

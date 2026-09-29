@@ -1,8 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, count, sql, lt } from 'drizzle-orm';
+import { eq, and, desc, count, lt, isNull } from 'drizzle-orm';
 
 import { IRentalsRepository, Rental, CreateRentalInput, RentalExtension } from '../interfaces/rentals-repository.interface.ts';
-import { RENTALS_REPOSITORY } from '../interfaces/rentals-repository.interface.ts';
 import { rentals, rentalExtensions } from '../../../db/schema/rentals.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -30,14 +29,14 @@ export class RentalsRepository implements IRentalsRepository {
     const [rental] = await db
       .select()
       .from(rentals)
-      .where(and(eq(rentals.userId, userId), eq(rentals.bookId, bookId), eq(rentals.deletedAt, null as unknown as Date)))
+      .where(and(eq(rentals.userId, userId), eq(rentals.bookId, bookId), isNull(rentals.deletedAt)))
       .limit(1);
     return rental ?? null;
   }
 
   async findActiveByUser(userId: string): Promise<Rental[]> {
     this.logger.debug(`Finding active rentals for user: ${userId}`);
-    return db.select().from(rentals).where(and(eq(rentals.userId, userId), eq(rentals.status, 'active'), eq(rentals.deletedAt, null as unknown as Date)));
+    return db.select().from(rentals).where(and(eq(rentals.userId, userId), eq(rentals.status, 'active'), isNull(rentals.deletedAt)));
   }
 
   async findAll(params: {
@@ -51,7 +50,7 @@ export class RentalsRepository implements IRentalsRepository {
     const limit = params.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    const conditions = [eq(rentals.deletedAt, null as unknown as Date)];
+    const conditions = [isNull(rentals.deletedAt)];
 
     if (params.userId) {
       conditions.push(eq(rentals.userId, params.userId));
@@ -118,6 +117,6 @@ export class RentalsRepository implements IRentalsRepository {
 
   async findOverdue(): Promise<Rental[]> {
     this.logger.debug('Finding overdue rentals');
-    return db.select().from(rentals).where(and(eq(rentals.status, 'active'), lt(rentals.endDate, new Date()), eq(rentals.deletedAt, null as unknown as Date)));
+    return db.select().from(rentals).where(and(eq(rentals.status, 'active'), lt(rentals.endDate, new Date()), isNull(rentals.deletedAt)));
   }
 }

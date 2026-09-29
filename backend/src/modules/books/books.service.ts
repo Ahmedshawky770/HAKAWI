@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Inject } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import type { BookCreatedEvent, BookUpdatedEvent, BookPublishedEvent, BookArchivedEvent, BookDeletedEvent } from '../../common/events/books.events.ts';
+import { PaymentsService } from '../payments/payments.service.ts';
+import { RentalsService } from '../rentals/rentals.service.ts';
+import type { Payment } from '../payments/interfaces/payments-repository.interface.ts';
+import type { Rental } from '../rentals/types.ts';
 
-import type { IBooksRepository } from './interfaces/books-repository.interface.ts';
-import { BOOKS_REPOSITORY } from './interfaces/books-repository.interface.ts';
 import type { Book, CreateBookInput, UpdateBookInput, BookResponse, BooksListResponse } from './types.ts';
+import { BOOKS_REPOSITORY } from './interfaces/books-repository.interface.ts';
+import type { IBooksRepository } from './interfaces/books-repository.interface.ts';
 
 @Injectable()
 export class BooksService {
@@ -16,6 +20,8 @@ export class BooksService {
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    @Inject(PaymentsService) private readonly paymentsService: PaymentsService,
+    @Inject(RentalsService) private readonly rentalsService: RentalsService,
   ) {}
 
   async create(userId: string, input: CreateBookInput): Promise<Book> {
@@ -77,10 +83,14 @@ export class BooksService {
     };
   }
 
-  async update(id: string, input: UpdateBookInput): Promise<Book> {
+  async update(id: string, input: UpdateBookInput, userId: string): Promise<Book> {
     const existing = await this.booksRepository.findById(id);
     if (!existing || existing.deletedAt) {
       throw new NotFoundException('Book not found');
+    }
+
+    if (existing.author !== userId) {
+      throw new ForbiddenException('You can only update your own books');
     }
 
     if (input.isbn && input.isbn !== existing.isbn) {
@@ -97,10 +107,14 @@ export class BooksService {
     return book;
   }
 
-  async publish(id: string): Promise<Book> {
+  async publish(id: string, userId: string): Promise<Book> {
     const book = await this.booksRepository.findById(id);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
+    }
+
+    if (book.author !== userId) {
+      throw new ForbiddenException('You can only publish your own books');
     }
 
     if (book.status === 'published') {
@@ -121,10 +135,14 @@ export class BooksService {
     return updated;
   }
 
-  async archive(id: string): Promise<Book> {
+  async archive(id: string, userId: string): Promise<Book> {
     const book = await this.booksRepository.findById(id);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
+    }
+
+    if (book.author !== userId) {
+      throw new ForbiddenException('You can only archive your own books');
     }
 
     if (book.status === 'archived') {
@@ -138,10 +156,47 @@ export class BooksService {
     return updated;
   }
 
-  async delete(id: string): Promise<void> {
+  async purchase(userId: string, bookId: string, paymentMethodId?: string): Promise<Payment> {
+    const book = await this.booksRepository.findById(bookId);
+    if (!book || book.deletedAt) {
+      throw new NotFoundException('Book not found');
+    }
+
+    if (book.author === userId) {
+      throw new ForbiddenException('Cannot purchase your own book');
+    }
+
+    if (book.isFree) {
+      throw new BadRequestException('This book is free, no purchase needed');
+    }
+
+    await this.booksRepository.incrementViewCount(bookId);
+    const payment = await this.paymentsService.paymobInitializePayment(userId, book.price ?? 0, 'EGP', { bookId, type: 'purchase', paymentMethodId });
+    return await this.paymentsService.findById(payment.paymentId);
+  }
+
+  async rent(userId: string, bookId: string, durationDays: number): Promise<Rental> {
+    const book = await this.booksRepository.findById(bookId);
+    if (!book || book.deletedAt) {
+      throw new NotFoundException('Book not found');
+    }
+
+    if (book.author === userId) {
+      throw new ForbiddenException('Cannot rent your own book');
+    }
+
+    await this.booksRepository.incrementViewCount(bookId);
+    return this.rentalsService.createRental(userId, { bookId, durationDays });
+  }
+
+  async delete(id: string, userId: string): Promise<void> {
     const book = await this.booksRepository.findById(id);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
+    }
+
+    if (book.author !== userId) {
+      throw new ForbiddenException('You can only delete your own books');
     }
 
     await this.booksRepository.softDelete(id);

@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ReactionsController } from './controllers/reactions.controller';
-import { ReactionsService } from './reactions.service';
-import type { Reaction } from './types';
+import type { Request as ExpressRequest } from 'express';
 
-type MockReactionsService = Partial<ReactionsService>;
+import { ReactionsController } from './controllers/reactions.controller.ts';
+import { ReactionsService } from './reactions.service.ts';
+import type { Reaction } from './types.ts';
+
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-non-null-assertion */
+
+type MockReactionsService = {
+  addReaction: ReturnType<typeof vi.fn>;
+  removeReaction: ReturnType<typeof vi.fn>;
+  getReactions: ReturnType<typeof vi.fn>;
+  getReactionCounts: ReturnType<typeof vi.fn>;
+  getUserReaction: ReturnType<typeof vi.fn>;
+};
 
 describe('ReactionsController', () => {
   let reactionsService: MockReactionsService;
@@ -18,7 +28,7 @@ describe('ReactionsController', () => {
       getUserReaction: vi.fn(),
     };
 
-    controller = new ReactionsController(reactionsService as ReactionsService);
+    controller = new ReactionsController(reactionsService as unknown as ReactionsService);
   });
 
   describe('addReaction', () => {
@@ -34,7 +44,7 @@ describe('ReactionsController', () => {
       const result = await controller.addReaction(
         'story-1',
         { type: 'like' },
-        { user: { sub: 'user-1' } } as any,
+        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
       );
 
       expect(result).toEqual({
@@ -54,7 +64,7 @@ describe('ReactionsController', () => {
 
       const result = await controller.removeReaction(
         'story-1',
-        { user: { sub: 'user-1' } } as any,
+        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
       );
 
       expect(result).toEqual({ message: 'Reaction removed' });
@@ -125,7 +135,7 @@ describe('ReactionsController', () => {
 
       const result = await controller.getUserReaction(
         'story-1',
-        { user: { sub: 'user-1' } } as any,
+        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
       );
 
       expect(result).toEqual({
@@ -143,7 +153,7 @@ describe('ReactionsController', () => {
 
       const result = await controller.getUserReaction(
         'story-1',
-        { user: { sub: 'user-1' } } as any,
+        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
       );
 
       expect(result).toBeNull();

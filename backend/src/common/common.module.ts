@@ -25,6 +25,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
 import { PasswordHasher } from './utils/password.util.ts';
 import { JwtHelper } from './utils/jwt.util.ts';
+import { EncryptionService } from './utils/encryption.util.ts';
+import { LoggingInterceptor } from './interceptors/logging.interceptor.ts';
 import { ResilienceModule } from './resilience/resilience.module.js';
 
 @Global()
@@ -75,6 +77,8 @@ import { ResilienceModule } from './resilience/resilience.module.js';
     RolesGuard,
     PasswordHasher,
     JwtHelper,
+    EncryptionService,
+    LoggingInterceptor,
     UsersRepository,
     {
       provide: USERS_REPOSITORY,
@@ -92,6 +96,6 @@ import { ResilienceModule } from './resilience/resilience.module.js';
       useValue: new Reflector(),
     },
   ],
-  exports: [WinstonLoggerService, ValkeyService, EventSchemaRegistry, DLQService, EventValidatorService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, ConfigModule, ThrottlerModule, USERS_REPOSITORY, ResilienceModule],
+  exports: [WinstonLoggerService, ValkeyService, EventSchemaRegistry, DLQService, EventValidatorService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, EncryptionService, ConfigModule, ThrottlerModule, USERS_REPOSITORY, ResilienceModule, LoggingInterceptor],
 })
 export class CommonModule {}

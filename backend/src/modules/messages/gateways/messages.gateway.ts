@@ -8,11 +8,14 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Inject } from '@nestjs/common';
 
 import { JwtHelper } from '../../../common/utils/jwt.util.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { MessagesService } from '../messages.service.ts';
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
 interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
@@ -31,9 +34,9 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly connectedUsers = new Map<string, Set<string>>();
 
   constructor(
-    private readonly jwtHelper: JwtHelper,
-    private readonly logger: WinstonLoggerService,
-    private readonly messagesService: MessagesService,
+    @Inject(JwtHelper) private readonly jwtHelper: JwtHelper,
+    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    @Inject(MessagesService) private readonly messagesService: MessagesService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket): Promise<void> {
@@ -95,7 +98,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       throw new Error('Conversation not found');
     }
 
-    client.join(conversationId);
+    await client.join(conversationId);
     this.logger.info(`User ${client.userId} joined conversation ${conversationId}`, 'MessagesGateway');
 
     return { event: 'joined', data: { conversationId } };
@@ -110,7 +113,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       throw new Error('Unauthorized');
     }
 
-    client.leave(data.conversationId);
+    void client.leave(data.conversationId);
     this.logger.info(`User ${client.userId} left conversation ${data.conversationId}`, 'MessagesGateway');
 
     return { event: 'left', data: { conversationId: data.conversationId } };

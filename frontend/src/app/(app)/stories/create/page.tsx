@@ -31,7 +31,7 @@ export default function CreateStoryPage() {
       });
       router.push(`/stories/${response.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create story");
+      setError(err instanceof Error ? err.message : "فشل إنشاء القصة");
     } finally {
       setLoading(false);
     }
@@ -39,56 +39,56 @@ export default function CreateStoryPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Create Story</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">إنشاء قصة</h1>
       <Card>
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && <ErrorMessage error={error} />}
             <Input
-              label="Title"
+              label="العنوان"
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter story title"
+              placeholder="أدخل عنوان القصة"
             />
             <div className="w-full">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">المحتوى</label>
               <textarea
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={10}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Write your story here..."
+                placeholder="اكتب قصتك هنا..."
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">التصنيف</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="fiction">Fiction</option>
-                <option value="non-fiction">Non-Fiction</option>
-                <option value="poetry">Poetry</option>
-                <option value="fantasy">Fantasy</option>
+                <option value="fiction">خيال</option>
+                <option value="non-fiction">واقعي</option>
+                <option value="poetry">شعر</option>
+                <option value="fantasy">فانتازيا</option>
               </select>
             </div>
             <Input
-              label="Tags (comma-separated)"
+              label="الوسوم (مفصولة بفاصلة)"
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="adventure, mystery"
+              placeholder="مغامرة، غموض"
             />
             <div className="flex gap-3">
               <Button type="submit" loading={loading}>
-                Create Story
+                إنشاء القصة
               </Button>
               <Button variant="secondary" type="button" onClick={() => router.back()}>
-                Cancel
+                إلغاء
               </Button>
             </div>
           </form>

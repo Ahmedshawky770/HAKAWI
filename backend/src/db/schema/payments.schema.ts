@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
 
@@ -24,6 +24,7 @@ export const payments = pgTable(
     userIdx: index('payments_user_id_idx').on(table.userId),
     statusIdx: index('payments_status_idx').on(table.status),
     orderIdx: index('payments_order_id_idx').on(table.paymobOrderId),
+    transactionUnique: uniqueIndex('payments_transaction_id_idx').on(table.paymobTransactionId),
   })
 );
 

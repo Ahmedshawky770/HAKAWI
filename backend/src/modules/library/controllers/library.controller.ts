@@ -32,8 +32,8 @@ export class LibraryController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/access')
   @HttpCode(HttpStatus.OK)
-  async accessItem(@Param('id') id: string) {
-    return this.libraryService.accessItem(id);
+  async accessItem(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    return this.libraryService.accessItem(id, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)

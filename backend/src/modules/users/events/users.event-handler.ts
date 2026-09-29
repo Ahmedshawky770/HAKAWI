@@ -9,7 +9,7 @@ import { UserRegisteredEvent, UserUpdatedEvent } from '../../../common/events/us
 export class UsersEventHandler {
   constructor(
     @Inject(USERS_REPOSITORY) private readonly usersRepository: IUsersRepository,
-    private readonly logger: WinstonLoggerService,
+    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
   ) {}
 
   @OnEvent('user.registered')

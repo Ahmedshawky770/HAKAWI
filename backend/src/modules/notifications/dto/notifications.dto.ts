@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max } from 'class-validator';
 
 export class NotificationQueryDto {
   @IsOptional()
