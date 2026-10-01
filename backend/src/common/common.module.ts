@@ -12,7 +12,9 @@ import { DatabaseModule } from '../db/database.module.ts';
 import appConfig from '../config/app.config.ts';
 import databaseConfig from '../config/database.config.ts';
 import jwtConfig from '../config/jwt.config.ts';
+import throttleConfig, { type ThrottleTier } from '../config/throttle.config.ts';
 import valkeyConfig from '../config/valkey.config.ts';
+import wafConfig, { type WafConfig } from '../config/waf.config.ts';
 import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
 
@@ -23,14 +25,34 @@ import { DLQService } from './events/dlq.service.ts';
 import { EventValidatorService } from './events/event-validator.service.ts';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
+import { PermissionsGuard } from './guards/permissions.guard.ts';
+import { OwnershipGuard } from './guards/ownership.guard.ts';
 import { PasswordHasher } from './utils/password.util.ts';
-import { JwtHelper } from './utils/jwt.util.ts';
+import { JwtHelper, AppleJwksService } from './utils/jwt.util.ts';
 import { EncryptionService } from './utils/encryption.util.ts';
 import { LoggingInterceptor } from './interceptors/logging.interceptor.ts';
-import { ResilienceModule } from './resilience/resilience.module.js';
+import { CacheInterceptor, CacheMetrics } from './interceptors/cache.interceptor.ts';
+import { CacheMetricsController } from './observability/metrics.controller.ts';
+import { WafMiddleware, WAF_CONFIG } from './middleware/waf.middleware.ts';
+import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
+import { ValkeyThrottlerStorage } from './throttler/valkey-throttler.storage.ts';
+import { createThrottlerOptions } from './throttler/throttler-options.ts';
+import { ResilienceModule } from './resilience/resilience.module.ts';
+import { ResilientHttpClient } from './resilience/resilient-http.client.ts';
+
+/**
+ * A single `Reflector` shared by the `'REFLECTOR'` provider below and by the throttle
+ * `skipIf` predicates, so the tier decision and the guard decisions read identical
+ * metadata. `Reflector` is stateless, so sharing one instance is safe.
+ *
+ * Declared before `@Module` because the provider's `useValue` is evaluated eagerly while
+ * the module decorator is being built, not lazily when DI resolves it.
+ */
+const appReflector = new Reflector();
 
 @Global()
 @Module({
+  controllers: [CacheMetricsController],
   imports: [
     DatabaseModule,
     ResilienceModule,
@@ -43,27 +65,30 @@ import { ResilienceModule } from './resilience/resilience.module.js';
       verboseMemoryLeak: true,
     }),
     ConfigModule.forRoot({
-      load: [appConfig, databaseConfig, jwtConfig, valkeyConfig],
+      load: [appConfig, databaseConfig, jwtConfig, valkeyConfig, throttleConfig, wafConfig],
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('jwt.secret'),
-        signOptions: { expiresIn: configService.get<string>('jwt.expiry', '15m') as StringValue },
+        // Pinned so the module-level service cannot sign or verify with any other algorithm.
+        // JwtHelper passes the same list on every call it owns.
+        signOptions: { expiresIn: configService.get<string>('jwt.expiry', '15m') as StringValue, algorithm: 'HS256' },
+        verifyOptions: { algorithms: ['HS256'] },
       }),
       inject: [ConfigService],
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        throttlers: [
-          {
-            ttl: configService.get<number>('app.throttler.ttl', 60000),
-            limit: configService.get<number>('app.throttler.limit', 10),
-          },
-        ],
-      }),
+      useFactory: (configService: ConfigService) => {
+        const tiers = configService.get<Record<string, ThrottleTier>>('throttle.tiers');
+        const trustProxy = configService.get<boolean>('throttle.trustProxy', false);
+        const resolved: Record<string, ThrottleTier> = tiers ?? {};
+        return {
+          throttlers: Object.values(resolved).map((tier) => createThrottlerOptions(tier, trustProxy, appReflector)),
+        };
+      },
       inject: [ConfigService],
     }),
   ],
@@ -75,14 +100,39 @@ import { ResilienceModule } from './resilience/resilience.module.js';
     EventValidatorService,
     JwtAuthGuard,
     RolesGuard,
+    PermissionsGuard,
+    OwnershipGuard,
     PasswordHasher,
     JwtHelper,
+    AppleJwksService,
     EncryptionService,
     LoggingInterceptor,
+    CacheInterceptor,
+    CacheMetrics,
+    IpBlocklistService,
+    WafMiddleware,
+    ResilientHttpClient,
     UsersRepository,
     {
       provide: USERS_REPOSITORY,
       useExisting: UsersRepository,
+    },
+    {
+      provide: WAF_CONFIG,
+      useFactory: (configService: ConfigService): WafConfig => {
+        const waf = configService.get<WafConfig>('waf');
+        if (!waf) {
+          throw new Error('WAF configuration is not registered under the "waf" config namespace');
+        }
+        return waf;
+      },
+      inject: [ConfigService],
+    },
+    {
+      provide: getStorageToken(),
+      useFactory: (valkeyService: ValkeyService, logger: WinstonLoggerService): ValkeyThrottlerStorage =>
+        new ValkeyThrottlerStorage(valkeyService, { logger }),
+      inject: [ValkeyService, WinstonLoggerService],
     },
     {
       provide: 'APP_GUARD',
@@ -92,10 +142,39 @@ import { ResilienceModule } from './resilience/resilience.module.js';
       inject: [getOptionsToken(), getStorageToken(), 'REFLECTOR'],
     },
     {
+      // Retained because the e2e suites and `src/test/helpers/test-context.ts` override
+      // this exact token to substitute a Reflector; the class token is used everywhere else.
       provide: 'REFLECTOR',
-      useValue: new Reflector(),
+      useValue: appReflector,
     },
   ],
-  exports: [WinstonLoggerService, ValkeyService, EventSchemaRegistry, DLQService, EventValidatorService, EventEmitterModule, DatabaseModule, JwtAuthGuard, RolesGuard, JwtModule, PasswordHasher, JwtHelper, EncryptionService, ConfigModule, ThrottlerModule, USERS_REPOSITORY, ResilienceModule, LoggingInterceptor],
+  exports: [
+    WinstonLoggerService,
+    ValkeyService,
+    EventSchemaRegistry,
+    DLQService,
+    EventValidatorService,
+    EventEmitterModule,
+    DatabaseModule,
+    JwtAuthGuard,
+    RolesGuard,
+    PermissionsGuard,
+    OwnershipGuard,
+    JwtModule,
+    PasswordHasher,
+    JwtHelper,
+    AppleJwksService,
+    EncryptionService,
+    ConfigModule,
+    ThrottlerModule,
+    USERS_REPOSITORY,
+    ResilienceModule,
+    LoggingInterceptor,
+    CacheInterceptor,
+    CacheMetrics,
+    IpBlocklistService,
+    WafMiddleware,
+    ResilientHttpClient,
+  ],
 })
 export class CommonModule {}
