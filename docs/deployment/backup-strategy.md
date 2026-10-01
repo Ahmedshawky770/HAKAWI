@@ -209,8 +209,9 @@ pg_restore -d hakawi_production /path/to/hakawi_20250924_020000.dump
 # Or from S3
 aws s3 cp s3://hakawi-backups/postgresql/hakawi_20250924_020000.dump - | pg_restore -d hakawi_production
 
-# Run migrations if needed
-npm run db:migrate
+# Apply any migrations the restored dump predates
+npm run migration:run
+npm run migration:verify
 
 # Start application
 systemctl start hakawi-backend

@@ -2,11 +2,27 @@
 
 ## Hakawi - Performance, Reliability, and Scalability Specifications
 
+> ## 📋 How to read this document
+>
+> An NFR is a **target**, not a description. This document mixes three very different things, and the
+> previous version did not distinguish them:
+>
+> 1. **Targets** — legitimate to state. "< 200ms p95" is a goal. The goal has never been measured.
+> 2. **Requirements** — legitimate to state. "Passwords use bcrypt cost 12" is a rule.
+> 3. **Claims of implementation** — these are marked inline. Where a line previously asserted
+>    something is *built* and it is not, it is now marked ⛔ or ⚠️ with the evidence.
+>
+> **A summary of every claim that was wrong is in
+> [§12 Verification Status](#12-verification-status) at the end of this document.**
+>
+> Reconciled against the code on 2026-09-30.
+
 ---
 
 ## 1. Overview
 
-This document defines the non-functional requirements for Hakawi. NFRs specify **how** the system should perform, not **what** it should do.
+This document defines the non-functional requirements for Hakawi. NFRs specify **how** the system
+should perform, not **what** it should do.
 
 ### NFR Categories
 
@@ -21,16 +37,19 @@ This document defines the non-functional requirements for Hakawi. NFRs specify *
 
 ## 2. Performance NFRs
 
-### Response Time Targets
+### Response Time Targets — ⛔ NONE OF THESE HAS BEEN MEASURED
 
-| Endpoint Type | Target | p95 | p99 |
-|---------------|--------|-----|-----|
-| **Auth endpoints** | < 200ms | < 300ms | < 500ms |
-| **Read endpoints** (stories, users) | < 100ms | < 200ms | < 400ms |
-| **Write endpoints** (create, update) | < 200ms | < 400ms | < 600ms |
-| **Search queries** | < 300ms | < 500ms | < 800ms |
-| **Payment webhooks** | < 500ms | < 800ms | < 1000ms |
-| **Static assets** | < 100ms | < 200ms | < 300ms |
+These are **goals**, not observations. There is no benchmark harness, no load test, no APM, and no
+recorded latency data anywhere in the repository. Nothing below may be cited as a measurement.
+
+| Endpoint Type | Target | p95 | p99 | Measured? |
+|---------------|--------|-----|-----|-----------|
+| **Auth endpoints** | < 200ms | < 300ms | < 500ms | ⛔ No |
+| **Read endpoints** (stories, users) | < 100ms | < 200ms | < 400ms | ⛔ No |
+| **Write endpoints** (create, update) | < 200ms | < 400ms | < 600ms | ⛔ No |
+| **Search queries** | < 300ms | < 500ms | < 800ms | ⛔ No |
+| **Payment webhooks** | < 500ms | < 800ms | < 1000ms | ⛔ No |
+| **Static assets** | < 100ms | < 200ms | < 300ms | ⛔ No |
 
 ### Throughput Targets
 
@@ -60,18 +79,34 @@ This document defines the non-functional requirements for Hakawi. NFRs specify *
 
 **Tool:** `@nestjs/throttler` + custom WAF middleware
 
-### Rate Limits by Endpoint Type
+### Rate Limits by Endpoint Type — ⚠️ rewritten: the table was fiction
 
-| Endpoint Type | Limit | Window | Scope |
-|---------------|-------|--------|-------|
-| **Auth endpoints** | 5 requests | 1 minute | Per IP |
-| **Auth endpoints** | 10 requests | 1 minute | Per user |
-| **API endpoints (authenticated)** | 100 requests | 1 minute | Per user |
-| **API endpoints (public)** | 50 requests | 1 minute | Per IP |
-| **Payment webhooks** | Unlimited | N/A | Whitelisted IPs |
-| **Upload endpoints** | 10 requests | 1 minute | Per user |
-| **Search endpoints** | 50 requests | 1 minute | Per IP |
-| **Comments** | 30 requests | 1 minute | Per user |
+**There are exactly four tiers**, defined in `backend/src/config/throttle.config.ts:26-63` and
+applied per route with `@ThrottleTier(...)`. The previous version listed eight endpoint-specific
+limits; **none of them matched the implementation.**
+
+| Tier | Limit | Window | Scope | `blockDurationMs` | Overrides |
+|------|-------|--------|-------|-------------------|-----------|
+| `default` | 100 | 60s | per user (IP when unauthenticated) | 0 | `THROTTLE_DEFAULT_LIMIT`, `THROTTLE_DEFAULT_TTL` |
+| `auth` | **10** | 60s | **per IP** | 60s | `THROTTLE_AUTH_LIMIT`, `THROTTLE_AUTH_TTL` |
+| `upload` | **5** | 60s | per user | 60s | `THROTTLE_UPLOAD_LIMIT`, `THROTTLE_UPLOAD_TTL` |
+| `search` | **50** | 60s | per user | 0 | `THROTTLE_SEARCH_LIMIT`, `THROTTLE_SEARCH_TTL` |
+
+Corrections to the previous table:
+- ⛔ **"Auth 5/min per IP"** → the real `auth` tier is **10/min per IP**
+- ⛔ **"Auth 10/min per user"** → the `auth` tier is **per IP only**; there is no per-user auth tier
+- ⛔ **"API endpoints (public) 50/min per IP"** → there is no separate public tier. The `default` tier
+  applies and keys on the IP only when unauthenticated
+- ⛔ **"Upload 10/min per user"** → the real `upload` tier is **5/min per user**
+- ⛔ **"Search 50/min per IP"** → the real `search` tier is **50/min per user**, not per IP
+- ⛔ **"Comments 30/min per user"** → **no such tier exists.** Comments are on the `default` tier
+- ⛔ **"Payment webhooks: unlimited, whitelisted IPs"** → there is no webhook whitelist. The webhook
+  route is `@Public()` and falls under the `default` tier like any other unauthenticated request
+- ⚠️ `THROTTLE_LIMIT` / `THROTTLE_TTL` override **every** tier at once. They exist so the e2e suite can
+  disable throttling (`backend/vitest.config.e2e.ts` sets `THROTTLE_LIMIT=100000`). Leave both unset
+  in production
+- ✅ Storage is `ValkeyThrottlerStorage` — shared across instances, so a limit is the real limit
+  behind a load balancer. Fail mode is **fail-open**
 
 ### WAF Rule Examples
 
@@ -111,7 +146,10 @@ if (pathTraversalPatterns.some(pattern => pattern.test(input))) {
 }
 ```
 
-### Resource Quotas per User/Tenant
+### Resource Quotas per User/Tenant — ⛔ NOT IMPLEMENTED
+
+**No quota system exists.** There is no tier, no balance, and no counter that deducts. The table
+below is a **retained requirement**, not a description.
 
 | Resource | Free Tier | Premium Tier | Enterprise |
 |----------|-----------|--------------|------------|
@@ -123,49 +161,51 @@ if (pathTraversalPatterns.some(pattern => pattern.test(input))) {
 | **Messages per day** | 50 | 500 | Unlimited |
 | **Search queries per minute** | 30 | 100 | 500 |
 
-**Enforcement:**
+**What exists instead:** the `@nestjs/throttler` tiers in §3, which limit a window in seconds, not a
+monthly allowance. They are rate limits, **not quotas** — they do not accumulate a balance and they
+reset every 60 seconds. A user can create an unbounded number of stories per month.
+
+**Retained requirement — the intended shape** (not implemented; `QuotaExceededException` does not
+exist, and `user.quota` is not a column):
+
 ```typescript
-// Check user quota before allowing action
+// Intended, NOT IMPLEMENTED
 async createStory(userId: string) {
   const user = await this.usersRepository.findById(userId);
   const storiesThisMonth = await this.storiesRepository.countThisMonth(userId);
-  
+
   if (storiesThisMonth >= user.quota.storiesPerMonth) {
-    throw new QuotaExceededException('Monthly story limit reached');
+    throw new QuotaExceededException('Monthly story limit reached');   // ⛔ no such class
   }
-  
+
   // ... create story
 }
 ```
 
-### Rate Limiting Strategy
+### Rate Limiting Strategy — ⚠️ the snippet below is not how it works
 
 ```typescript
-// WAF Middleware
-@Injectable()
-export class ThrottlerGuard implements CanActivate {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const ip = request.ip;
-    const userId = request.user?.id;
-    const endpoint = request.route.path;
+// ⛔ INTENDED, NOT IMPLEMENTED. There is no `ThrottlerGuard` in this codebase and no
+// `rate-limit:{user}:{endpoint}` key. The real implementation is Nest's stock ThrottlerGuard
+// paired with a custom Valkey storage adapter that it delegates to.
+```
 
-    // Get rate limit for endpoint
-    const limit = this.getRateLimit(endpoint);
-    
-    // Check rate limit
-    const key = `rate-limit:${userId || ip}:${endpoint}`;
-    const current = await this.cache.incr(key);
-    
-    if (current === 1) {
-      await this.cache.expire(key, limit.window);
-    }
-    
-    if (current > limit.requests) {
-      throw new ThrottlerException('Too many requests');
-    }
-    
-    return true;
+The real path:
+1. `ValkeyThrottlerStorage.increment()` (`backend/src/common/throttler/valkey-throttler.storage.ts`)
+   increments a fixed per-tier Valkey key and returns `{ totalHits, timeToExpire }`
+2. Nest's `@nestjs/throttler` `ThrottlerGuard` compares `totalHits` against the tier limit
+3. On breach it returns **429** with `Retry-After`, writing its own body and **bypassing
+   `AllExceptionsFilter`**
+4. The key is per tier, not per endpoint — so all routes on the `auth` tier share one counter
+
+There is **no per-endpoint key**, so the `endpoint = request.route.path` line in the previous
+snippet has no counterpart.
+
+### Rate Limit Headers
+
+The previous version listed them as a target. They are ✅ **real**, in
+`backend/src/common/waf/headers.ts:1-6`:
+`X-RateLimit-Limit` · `X-RateLimit-Remaining` · `X-RateLimit-Reset` · `Retry-After` (429 only)
   }
 }
 ```
@@ -186,15 +226,24 @@ X-RateLimit-Reset: 1700000000
 
 Prevent cascade failures when external services are unavailable.
 
-### External Services Requiring Circuit Breakers
+### External Services Requiring Circuit Breakers — ⚠️ 2 of 5 are wired
 
-| Service | Circuit Breaker | Threshold | Timeout | Fallback |
-|---------|----------------|-----------|---------|----------|
-| **Sanity CMS** | Yes | 50% failure rate | 5s | Return stub content |
-| **Paymob** | Yes | 50% failure rate | 10s | Return "Payment unavailable" |
-| **OAuth providers** | Yes | 50% failure rate | 3s | Return "Login unavailable" |
-| **Email service** | Yes | 50% failure rate | 5s | Queue email for later |
-| **Storage (R2/S3)** | Yes | 50% failure rate | 5s | Return "Upload unavailable" |
+`CircuitBreakerService` (`backend/src/common/resilience/circuit-breaker.service.ts`) and
+`ResilientHttpClient` exist and are real. **They are injected in only two places.**
+
+| Service | Wired? | Evidence |
+|---|---|---|
+| **Sanity CMS** | ✅ | `CircuitBreakerService` injected at `backend/src/modules/stories/sanity/sanity.service.ts` |
+| **Paymob** | ✅ | `ResilientHttpClient` at `backend/src/modules/payments/clients/paymob.client.ts:85` — retry + breaker + timeout + fallback |
+| **OAuth providers** | ✅ | `CircuitBreakerService` injected at `backend/src/modules/auth/auth.service.ts:59` |
+| **Email service** | ⛔ | **No SMTP client exists at all.** Only `EMAIL_FROM` is read |
+| **Storage (R2/S3)** | ⛔ | The S3 presigner is called with no breaker |
+| **PostgreSQL / Valkey** | ⛔ | No breaker. Both fail open, so an outage degrades protection rather than refusing service |
+
+Defaults are env-tunable, and the previous "50% failure rate" figure does not exist:
+`CIRCUIT_BREAKER_FAILURE_THRESHOLD=5` (absolute count, not a rate),
+`CIRCUIT_BREAKER_RECOVERY_TIMEOUT_MS=30000`, `CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3`,
+`CIRCUIT_BREAKER_MONITORING_PERIOD_MS=60000`.
 
 ### Circuit Breaker States
 
@@ -243,36 +292,31 @@ class SanityService {
 
 **Tool:** `pg-pool` (built into node-postgres)
 
-### Configuration
+### Configuration — ⚠️ pool sizing is NOT configurable
 
-```typescript
-// database.config.ts
-export const databaseConfig = {
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  
-  // Connection pool settings
-  pool: {
-    min: 5,              // Minimum connections
-    max: 20,             // Maximum connections
-    idleTimeoutMillis: 30000,  // Close idle connections after 30s
-    connectionTimeoutMillis: 5000,  // Wait 5s for connection
-    statement_timeout: 30000,  // Query timeout 30s
-  },
-};
-```
+**Tool:** `pg-pool` (built into node-postgres) — ✅ real.
 
-### Connection Pool by Environment
+⛔ **The previous version's `pool: { min, max, idleTimeoutMillis, connectionTimeoutMillis,
+statement_timeout }` block does not exist, and the `DB_POOL_MIN` / `DB_POOL_MAX` /
+`DB_POOL_IDLE_TIMEOUT` variables are read by nothing.** `backend/src/config/database.config.ts`
+validates only `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`.
+`DB_SSL` is likewise unread.
 
-| Environment | Min Connections | Max Connections | Rationale |
-|-------------|----------------|----------------|-----------|
-| **Development** | 2 | 5 | Low load |
-| **Staging** | 5 | 10 | Medium load |
-| **Production** | 10 | 20 | High load |
-| **Production (scaled)** | 20 | 50 | Very high load |
+Sizing is therefore a code constant in `backend/src/db/index.ts`, identical in every environment. The
+"by environment" table below is a **requirement, not current behaviour** — and with no deployment
+artifact there is no environment-specific configuration to change.
+
+### Connection Pool by Environment — ⛔ NOT IMPLEMENTED
+
+| Environment | Min Connections | Max Connections | Reality |
+|-------------|----------------|----------------|---------|
+| **Development** | 2 | 5 | ⛔ Not distinguished — one constant for all environments |
+| **Staging** | 5 | 10 | ⛔ Not distinguished |
+| **Production** | 10 | 20 | ⛔ Not distinguished |
+| **Production (scaled)** | 20 | 50 | ⛔ Not distinguished |
+
+⚠️ To make this real, add `DB_POOL_MAX` to the zod schema in `database.config.ts` and pass it to the
+`new Pool({...})` call. `docs/deployment/environment.md` → *Database* records the current state.
 
 ### Monitoring
 
@@ -287,59 +331,69 @@ export const databaseConfig = {
 
 ## 6. Valkey TTL and Invalidation Strategy
 
-### Cache TTL by Entity
+### Cache TTL by Entity — ⚠️ 3 real TTLs out of 21 documented rows
 
-| Entity | Cache Key Pattern | TTL | Invalidation Trigger | Rationale |
-|--------|-------------------|-----|---------------------|-----------|
-| **User Session** | `session:{userId}` | 7 days | Logout, password change, security event | Long-lived sessions |
-| **User Profile** | `user:profile:{userId}` | 1 hour | Profile update, verification change | Stale data acceptable for 1h |
-| **User Statistics** | `user:stats:{userId}` | 1 hour | New story published, new follower | Low freshness requirement |
-| **Story Content** | `story:content:{storyId}` | 24 hours | Story update, publish, delete | Content changes infrequently |
-| **Story Metadata** | `story:meta:{storyId}` | 5 minutes | Story update, publish, delete | Freshness important for feed |
-| **Story Feed** | `feed:{userId}:page:{page}` | 5 minutes | New story published, new follow | Freshness important |
-| **Story Views** | `story:views:{storyId}` | 1 minute | New view recorded | Real-time analytics |
-| **Search Results** | `search:{query}:page:{page}` | 10 minutes | New content indexed | Balance freshness/performance |
-| **Notifications (unread)** | `notifications:unread:{userId}` | 1 minute | New notification created | Real-time feel |
-| **Notifications (list)** | `notifications:list:{userId}` | 5 minutes | Notification read, created, deleted | Balance freshness/performance |
-| **Rate Limits** | `rate-limit:{key}:{endpoint}` | 1 minute | Window expiration | Security |
-| **WAF State** | `waf:block:{ip}` | 5 minutes | Block expires | Security |
-| **Trending Stories** | `trending:stories` | 30 minutes | Recalculate | Low freshness requirement |
-| **Categories** | `categories:all` | 1 hour | Category added, updated, deleted | Rarely changes |
-| **Tags** | `tags:all` | 1 hour | Tag added, removed | Rarely changes |
-| **Book Details** | `book:details:{bookId}` | 30 minutes | Book updated, price changed | Balance freshness/performance |
-| **User Library** | `library:{userId}` | 5 minutes | New purchase, rental, expiry | Freshness important |
-| **Contest Details** | `contest:details:{contestId}` | 10 minutes | Contest updated, status changed | Balance freshness/performance |
-| **Contest Submissions** | `contest:submissions:{contestId}` | 5 minutes | New submission, vote cast | Freshness important |
-| **Messages (list)** | `messages:{userId}:conversation:{otherId}` | 1 minute | New message sent | Real-time feel |
-| **Message Count** | `messages:unread:{userId}` | 1 minute | New message received | Real-time feel |
+The cache is `@Cacheable` / `@CacheInvalidateTags` driven, keyed by the decorated method's arguments
+— **not** by a hand-written key template. There is **no `cache.config.ts`**; the previous version's
+config block is fictional. And **there is no session cache**: `session:{userId}` does not exist,
+because there is no session store.
 
-### Valkey Configuration
+**Real TTLs** (compile-time constants, **not** configurable — no `CACHE_TTL_*` variable is read):
+
+| Entity | Tag | TTL | Constant |
+|---|---|---|---|
+| **Story** | `stories` | **600s (10 min)** | `STORY_CACHE_TTL_SECONDS` — `backend/src/modules/stories/stories.service.ts:26` |
+| **Book** | `books` | **600s (10 min)** | `BOOK_CACHE_TTL_SECONDS` — `backend/src/modules/books/books.service.ts:32` |
+| **Payment** | `payments` | **300s (5 min)** | `PAYMENT_CACHE_TTL_SECONDS` — `backend/src/modules/payments/payments.service.ts:42` |
+| *(any other `@Cacheable`)* | — | **3600s (1 h)** | `DEFAULT_CACHE_TTL_SECONDS` — `backend/src/common/decorators/cache.decorator.ts:9` |
+| **Paymob auth token** | — | 3000s | `PAYMOB_AUTH_TOKEN_CACHE_TTL_SECONDS` — clamped below Paymob's 3600s token lifetime |
+
+**Invalidation is tag-based, not key-based** — `@CacheInvalidateTags` on write, so no per-entity
+invalidation rules are needed:
 
 ```typescript
-// cache.config.ts
-export const cacheConfig = {
-  // Connection
-  host: process.env.VALKEY_HOST,
-  port: parseInt(process.env.VALKEY_PORT),
-  
-  // Memory
-  maxmemory: '2gb',
-  maxmemory-policy: 'allkeys-lru',  // Evict least recently used
-  
-  // Persistence
-  save: {
-    '900': 1,    // Save if 1 key changed in 15min
-    '300': 10,   // Save if 10 keys changed in 5min
-    '60': 10000, // Save if 10000 keys changed in 1min
-  },
-  
-  // Eviction
-  eviction-policy: 'volatile-lru',  // Evict keys with TTL first
-  
-  // Network
-  timeout: 5000,
-};
+// real pattern
+@CacheInvalidateTags({ tags: ['stories'] })
+async update(id: string, input: UpdateStoryInput, userId: string): Promise<Story> { /* ... */ }
 ```
+
+**⛔ Rows in the previous table that correspond to no cached entity:** User Session (no session
+store), User Profile, User Statistics, Story Content, Story Metadata, Story Feed, Story Views,
+Search Results, Notifications (unread / list), Trending Stories, Categories, Tags, User Library,
+Contest Details, Contest Submissions, Messages (list / count). Each of these would be a plausible
+cache to add, but none is cached today.
+
+**⚠️ Rows that are real but use a different mechanism:**
+
+| Documented row | Reality |
+|---|---|
+| **Rate Limits** `rate-limit:{key}:{endpoint}` | ⛔ Wrong shape. `ValkeyThrottlerStorage` keys on a fixed **per-tier** key, not per endpoint |
+| **WAF State** `waf:block:{ip}` | ⚠️ The concept is right; the key is a Valkey set, not a single string key, and the TTL is `WAF_TEMP_BLOCK_SECONDS` (default 3600), not 5 minutes. Permanent blocks have **no** TTL |
+
+### Valkey Configuration — ⚠️ only the connection is configured
+
+⛔ **There is no `cache.config.ts`.** The previous version's `maxmemory`, `save`, `eviction-policy`,
+and `timeout` block describes a `valkey.conf` the repository does not contain — `find . -name
+'valkey.conf'` returns nothing, and `docker-compose.yml` starts Valkey with **no** command
+override, so it runs the image default.
+
+The only Valkey configuration the application owns (`backend/src/config/valkey.config.ts`):
+
+```typescript
+const envSchema = z.object({
+  VALKEY_HOST: z.string().default('localhost'),
+  VALKEY_PORT: z.coerce.number().default(6379),
+  VALKEY_PASSWORD: z.string().optional(),
+});
+```
+
+⚠️ Memory, persistence, and eviction are therefore **operator responsibilities** with no in-repo
+policy. This is a real operational gap: `allkeys-lru` eviction on a Valkey instance also holding the
+refresh-token blacklist and the rate-limit counters would silently drop security state.
+
+⚠️ Separately, `backend/src/redis-io.adapter.ts` configures the Socket.IO Redis adapter from
+`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` — a **different variable family** from the
+`VALKEY_*` the cache uses. Both families exist and must both be set.
 
 ### Cache Invalidation Rules
 
@@ -530,32 +584,33 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 ### Authentication & Authorization
 
-| Requirement | Target |
-|-------------|--------|
-| **Password hashing** | bcrypt with cost factor 12 |
-| **JWT expiration** | 15 minutes (access token), 7 days (refresh token) |
-| **Session timeout** | 24 hours (remember me), 1 hour (default) |
-| **MFA support** | TOTP (Google Authenticator) |
-| **OAuth providers** | Google, Apple, Facebook, GitHub, TikTok |
+| Requirement | Target | Status |
+|-------------|--------|--------|
+| **Password hashing** | bcrypt, cost factor 12 | ✅ Real — `backend/src/common/utils/password.util.ts:7` |
+| **JWT expiration** | 15 min access / 7 d refresh | ✅ Real — `backend/src/config/jwt.config.ts` |
+| **Session timeout** | 24 h (remember me), 1 h (default) | ⛔ **NOT IMPLEMENTED.** There is no session store, no session timeout, and no "remember me". A session is a JWT pair; the only server-side state is the refresh-token blacklist |
+| **MFA support** | TOTP (Google Authenticator) | ⛔ **NOT IMPLEMENTED.** `grep -rn "mfa\|totp\|two.factor\|2fa"` across `backend/src`, `frontend/src`, `packages/` returns **zero** matches. No `POST /auth/mfa`, no TOTP secret, no recovery codes. An admin account is protected by authorization only |
+| **OAuth providers** | Google, Apple, Facebook, GitHub, TikTok | ✅ All 5 real. ⚠️ the variable names are `FACEBOOK_APP_ID`/`FACEBOOK_APP_SECRET` and `TIKTOK_CLIENT_KEY`, **not** the `FACEBOOK_CLIENT_ID` / `TIKTOK_CLIENT_ID` in `backend/.env.example` |
+| **Account lockout** | — | ⛔ **NOT IMPLEMENTED.** `auth.service.ts` keeps no attempt counter. The only brake on credential stuffing is the `auth` tier: 10/min per IP |
 
 ### Data Protection
 
-| Requirement | Implementation |
-|-------------|----------------|
-| **Encryption at rest** | PostgreSQL TDE, Valkey encryption |
-| **Encryption in transit** | TLS 1.3 everywhere |
-| **Sensitive data** | Encrypted in database (PII) |
-| **Secrets management** | Environment variables, Vault for production |
-| **Audit logging** | All sensitive operations logged |
+| Requirement | Implementation | Status |
+|-------------|----------------|--------|
+| **Encryption at rest** | PostgreSQL TDE, Valkey encryption | ⚠️ **Partial.** ✅ `EncryptionService` does AES-256-GCM on `password_reset_token` and `email_verification_token`. ⛔ **PostgreSQL TDE is not enabled** (there is no `valkey.conf`, and no Postgres config beyond the image default) |
+| **Encryption in transit** | TLS 1.3 everywhere | ⚠️ A **deployment** responsibility. The app sets no HTTPS redirect, calls no `trust proxy`, and configures no TLS. HSTS is emitted, but only when `NODE_ENV === 'production'` |
+| **Sensitive data** | Encrypted in database (PII) | ⚠️ Only the two token columns. ⛔ There is **no phone number** in the schema and **no other PII is encrypted** |
+| **Secrets management** | Environment variables, Vault for production | ⚠️ Environment variables only. ⛔ No Vault/AWS Secrets Manager integration exists |
+| **Audit logging** | All sensitive operations logged | ⚠️ Structured Winston logs + Sentry. ⛔ **No permission-decision audit trail** — see `docs/security-architecture/permissions/permissions-overview.md` |
 
 ### Rate Limiting
 
-| Requirement | Implementation |
-|-------------|----------------|
-| **API rate limits** | Per-user and per-IP limits |
-| **Login rate limits** | 5 attempts per minute per IP |
-| **Password reset** | 3 attempts per hour per email |
-| **API key rotation** | Every 90 days |
+| Requirement | Implementation | Status |
+|-------------|----------------|--------|
+| **API rate limits** | Per-user and per-IP limits | ✅ Real — 4 tiers, `ValkeyThrottlerStorage` |
+| **Login rate limits** | ~~5 attempts per minute per IP~~ | ✅ Real at **10/min per IP** (the `auth` tier). The previous figure was wrong |
+| **Password reset** | 3 attempts per hour per email | ⛔ **NOT IMPLEMENTED.** `/auth/forgot-password` is on the `auth` tier (10/min per IP) and nothing else |
+| **API key rotation** | Every 90 days | ⛔ No API keys exist; `ENCRYPTION_KEY`, `JWT_SECRET`, and `REFRESH_TOKEN_SECRET` are secrets but nothing rotates them |
 
 ---
 
@@ -571,22 +626,26 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 ### Disaster Recovery
 
-| Metric | Target |
-|--------|--------|
-| **RPO (Recovery Point Objective)** | 1 hour |
-| **RTO (Recovery Time Objective)** | 4 hours |
-| **Backup frequency** | Daily full backup, hourly incremental |
-| **Backup retention** | 30 days |
-| **Cross-region replication** | Yes (future) |
+| Metric | Target | Status |
+|--------|--------|--------|
+| **RPO (Recovery Point Objective)** | 1 hour | ⛔ Unachievable today — nothing backs the database up automatically |
+| **RTO (Recovery Time Objective)** | 4 hours | ⛔ Unachievable today — no restore drill, no artifact to restore onto |
+| **Backup frequency** | Daily full backup, hourly incremental | ⛔ **NOT IMPLEMENTED.** No backup job, no `pg_dump` schedule, no PITR config, no CI step. `pg_dump` appears only as a manual command inside a doc |
+| **Backup retention** | 30 days | ⛔ Nothing retains anything |
+| **Cross-region replication** | Yes (future) | ⛔ Not built, and marked "future" even here |
 
 ### Backup Strategy
 
-| Data Type | Backup Method | Frequency | Retention |
-|-----------|--------------|----------|-----------|
-| **PostgreSQL** | pg_dump + WAL archiving | Daily full, hourly incremental | 30 days |
-| **Valkey** | RDB snapshot | Every 6 hours | 7 days |
-| **Sanity content** | Sanity export | Daily | 30 days |
-| **File uploads** | R2/S3 replication | Real-time | 30 days |
+| Data Type | Backup Method | Frequency | Retention | Status |
+|-----------|--------------|----------|-----------|--------|
+| **PostgreSQL** | pg_dump + WAL archiving | Daily full, hourly incremental | 30 days | ⛔ **NOT AUTOMATED** — a manual procedure only |
+| **Valkey** | RDB snapshot | Every 6 hours | 7 days | ⛔ No configuration. ⚠️ note the state at risk: the refresh-token blacklist and the rate-limit counters |
+| **Sanity content** | Sanity export | Daily | 30 days | ⛔ No export job |
+| **File uploads** | R2/S3 replication | Real-time | 30 days | ⛔ Depends entirely on the storage provider; nothing configured in-repo |
+
+⚠️ `docs/deployment/backup.md` additionally backed up a `nginx.conf` and a root `scripts/` directory
+for the configuration backup. **Neither exists.** The `tar` command in that document could not have
+succeeded. See the changelog in `backup.md` for the corrected command.
 
 ---
 
@@ -628,21 +687,21 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 ### Code Quality
 
-| Requirement | Target |
-|-------------|--------|
-| **Code coverage** | > 80% overall, 90% for critical modules |
-| **Cyclomatic complexity** | < 10 per function |
-| **Technical debt ratio** | < 5% |
-| **Code review coverage** | 100% of changes |
+| Requirement | Target | Status |
+|-------------|--------|--------|
+| **Code coverage** | > 80% overall, 90% for critical modules | ⚠️ **Backend met:** S 80.56 / B 76.02 / F 72.60 / L 80.72 against floors 78/70/73/79 plus 9 per-path ratchets. **Frontend not met:** S 44.25 / B 87.05 / F 53.69 / L 44.25 against 42/85/51/42. ⛔ The "90% for critical modules" tier was never configured as a floor. **The unified roadmap target is ≥ 80% everywhere** — this "90% for critical modules" split is retired |
+| **Cyclomatic complexity** | < 10 per function | ⛔ No complexity rule is configured in `backend/.eslintrc.cjs` |
+| **Technical debt ratio** | < 5% | ⛔ Not measured; no tooling |
+| **Code review coverage** | 100% of changes | ⚠️ A 9-job CI pipeline gates every push and PR, but no `CODEOWNERS` file and no required-reviewer configuration exist in the repo |
 
 ### Documentation
 
-| Requirement | Target |
-|-------------|--------|
-| **API documentation** | 100% of endpoints |
-| **Code comments** | Complex logic only |
-| **README** | Every module |
-| **Changelog** | Updated with every release |
+| Requirement | Target | Status |
+|-------------|--------|--------|
+| **API documentation** | 100% of endpoints | ⚠️ `@nestjs/swagger` is served at `/api/docs` and `/api/docs-json`, but coverage is **not** 100% — the Zod DTOs in `moderation/dto/` are invisible to `class-validator`, so the decorators cannot see them. `docs/api-contract/openapi/rest-api-spec.md` is the hand-maintained fallback and was reconciled on 2026-09-30 |
+| **Code comments** | Complex logic only | ✅ Matches the repo convention |
+| **README** | Every module | ⛔ **NOT TRUE.** Only `backend/src/modules/search/README.md` exists. `c4-model/component/module-boundaries.md` previously told new joiners to read their module's README |
+| **Changelog** | Updated with every release | ⛔ **No CHANGELOG file exists in the repository** |
 
 ### Deployment
 
@@ -659,13 +718,13 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 ### Horizontal Scaling
 
-| Component | Scaling Strategy | Max Instances |
-|-----------|-----------------|---------------|
-| **Frontend** | Auto-scale (Vercel) | Unlimited |
-| **Backend** | Horizontal pod autoscaling | 10+ instances |
-| **PostgreSQL** | Read replicas | 1 primary + 3 replicas |
-| **Valkey** | Cluster mode | 3+ nodes |
-| **Sanity** | Managed service | Unlimited |
+| Component | Scaling Strategy | Max Instances | Status |
+|-----------|-----------------|---------------|--------|
+| **Frontend** | Auto-scale (Vercel) | Unlimited | ✅ `next build` succeeds. The root `build` script builds shared-types first |
+| **Backend** | Horizontal pod autoscaling | 10+ instances | ⚠️ **Stateless and horizontally safe** — no in-process session state, and the cache and rate-limit counters are in Valkey, so the previous per-instance in-memory throttler problem is gone. ⛔ But there is **no deployment artifact**, so no autoscaler has anything to scale. See `system-architecture/infrastructure/read-replicas.md` |
+| **PostgreSQL** | Read replicas | 1 primary + 3 replicas | ⛔ **NOT BUILT.** One primary. `grep -rni replica --include='*.ts' backend/src/` returns nothing, and there is no `DB_REPLICA_*` variable |
+| **Valkey** | Cluster mode | 3+ nodes | ⛔ Not configured. ⛔ Also a **single point of failure**: the cache, the refresh-token blacklist, the rate-limit counters, and the WAF blocklist all live in it, and both the cache and the throttler **fail open** |
+| **Sanity** | Managed service | Unlimited | ⚠️ Wrapped in a `CircuitBreakerService` with a PostgreSQL fallback |
 
 ### Vertical Scaling
 
@@ -677,36 +736,113 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 ---
 
-## 12. Summary
+## 12. Verification Status
 
-### NFR Checklist for Each Phase
+### The previous per-phase checklist — replaced
 
-| NFR | Phase 1 | Phase 2 | Phase 3 | Phase 4+ |
-|-----|---------|---------|---------|----------|
-| Response time < 200ms | ✅ | ✅ | ✅ | ✅ |
-| Rate limiting implemented | ✅ | ✅ | ✅ | ✅ |
-| Circuit breakers configured | ⏭️ | ✅ | ✅ | ✅ |
-| Connection pooling tuned | ✅ | ✅ | ✅ | ✅ |
-| Valkey TTLs configured | ✅ | ✅ | ✅ | ✅ |
-| Monitoring dashboards | ✅ | ✅ | ✅ | ✅ |
-| Error tracking (Sentry) | ✅ | ✅ | ✅ | ✅ |
-| Backup strategy | ✅ | ✅ | ✅ | ✅ |
-| Security audit | ⏭️ | ⏭️ | ✅ | ✅ |
-| Load testing | ⏭️ | ⏭️ | ⏭️ | ✅ |
+The old table claimed ✅ for **"Response time < 200ms"**, **"Monitoring dashboards"**, and
+**"Backup strategy"** in Phase 1, and ✅ for **"Load testing"** in Phase 4+. **None of those four is
+true.** A per-phase checklist that marks unmeasured or unbuilt work as done is worse than no
+checklist, so it is replaced by a status-per-claim table.
 
-**Legend:**
-- ✅ Implemented in this phase
-- ⏭️ Deferred to later phase
+### Status of every NFR, as of 2026-09-30
+
+| NFR | Status | Evidence |
+|---|---|---|
+| Response time < 200ms p95 | ⛔ **Never measured** | No benchmark harness, no load test, no APM. Targets are unverified |
+| Throughput targets | ⛔ Never measured | — |
+| Cache hit rate > 90% | 🔄 **Instrumented, not verified** | `GET /api/v1/metrics/cache` reports `hits`/`misses`/`hitRate`. No threshold is enforced and no value has been recorded |
+| Resource utilisation targets | ⛔ No metrics pipeline | No Prometheus endpoint, no metrics registry |
+| Rate limiting implemented | ✅ **Real** | 4 tiers over `ValkeyThrottlerStorage`; real 429 tests |
+| Rate limit values | ⚠️ **Corrected** | 100/10/5/50, not the 8-row table the previous version listed |
+| Resource quotas per user/tenant | ⛔ **Not implemented** | No tiers, no balances, no counters. Rate limits ≠ quotas |
+| Circuit breakers configured | ⚠️ **Partially** | Wired into Sanity, Paymob, and OAuth. Not into S3, email (doesn't exist), PostgreSQL, or Valkey |
+| Connection pooling tuned | ⛔ **Not configurable** | `DB_POOL_*` read by nothing. One constant for all environments |
+| Valkey TTLs configured | ⚠️ **3 real TTLs** | 600s stories/books, 300s payments, 3600s default — compile-time constants, not env vars |
+| Cache invalidation | ✅ **Real** | `@CacheInvalidateTags` on every write, tags `stories`/`books`/`payments` |
+| Monitoring dashboards | ⛔ **None exist** | Sentry receives errors; there is no dashboard definition in the repository |
+| Error tracking (Sentry) | ✅ **Real** | `@sentry/nestjs@11.1.0`; a no-op when `SENTRY_DSN` is unset |
+| Backup strategy | ⛔ **Documented, not automated** | No job, no schedule, no PITR, no restore drill |
+| Security audit | ✅ **CI only** | `npm audit --omit=dev` + `npm audit`. ⛔ No external penetration test |
+| Load testing | ⛔ **Not built** | No k6 / Locust / autocannon / Artillery config anywhere |
+| Password hashing | ✅ bcrypt 12 | — |
+| MFA | ⛔ **Not built** | Zero matches for `mfa`/`totp` |
+| Account lockout | ⛔ **Not built** | No attempt counter in `auth.service.ts` |
+| Session timeout / "remember me" | ⛔ **Not built** | No session store at all |
+| Permission audit trail | ⛔ **Not built** | Zero `audit` hits in `common/permissions/` and `common/guards/` |
+| Read replicas | ⛔ **Not built** | One primary; no `DB_REPLICA_*` |
+| Horizontal backend scaling | ⚠️ Safe in theory, no artifact | Stateless + Valkey-backed counters; ⛔ no `Dockerfile` |
+| Per-module README | ⛔ **Does not exist** | Only `backend/src/modules/search/README.md` |
+| CHANGELOG | ⛔ **Does not exist** | — |
+| Cyclomatic complexity limit | ⛔ No lint rule | — |
+| API docs coverage 100% | ⚠️ Partial | Zod DTOs are invisible to `class-validator` decorators |
+| Uptime 99.9% | ⛔ Not applicable | Not deployed |
+
+### What is genuinely satisfied
+
+A short and real list:
+
+- ✅ **Rate limiting** — 4 tiers, Valkey-backed, shared across instances, real 429 tests, fail-open by design
+- ✅ **Cache-aside with tag invalidation**, plus **hit-rate metrics** at `GET /api/v1/metrics/cache`
+- ✅ **Circuit breakers, retry with backoff, timeout, and fallback** — wired into the three external
+  services that exist
+- ✅ **Test depth** — 104 unit files / 1792 tests, 23 e2e files / 146 tests against a real cloned
+  database, 340 frontend tests, 2 real-browser Playwright suites with axe-core WCAG checks
+- ✅ **Backend coverage above its gate**; **frontend branches at 87.05**
+- ✅ **Error tracking**, structured logging, and correlation IDs
+- ✅ **The event schema registry and DLQ**, which shipped early
+- ✅ **bcrypt at cost 12**, separate JWT secrets, refresh-token rotation with reuse detection
+- ✅ **Fail-closed authorization** — `RolesGuard` + `PermissionsGuard` wired via `@Secured()`, unknown
+  roles demoted to `reader`
 
 ---
 
 ## Related Documentation
 
-- ADR-004: Caching Strategy
-- ADR-007: Security Architecture
-- ADR-015: Monitoring and Observability
-- Deployment Guide: `deployment/deployment.md`
+- ADR-003: `adr/003-use-valkey-cache.md` — the *actual* ADR-003 (⚠️ not "Caching Strategy")
+- ADR-004: `adr/004-use-event-emitter2.md` — the *actual* ADR-004 (⚠️ not "Monitoring and Observability")
+- ⛔ There is **no ADR-007 on security architecture** and **no ADR-015 on monitoring**; the previous
+  version cited both. The ADR set is four files: `001`–`004`
+- Security architecture: `security-architecture/overview/security-architecture.md`
+- Deployment: `deployment/deployment.md` — read its "Missing artifact" section first
+- Backups: `deployment/backup.md`, `deployment/backup-strategy.md`
+- Testing: `testing/testing-strategy.md`
+- Read replicas (a proposal, not built): `system-architecture/infrastructure/read-replicas.md`
 
 ---
 
-*This document defines the non-functional requirements for Hakawi. All NFRs must be met before production launch.*
+## Changelog — reconciliation (2026-09-30)
+
+| Previous claim | Reality |
+|---|---|
+| Per-phase checklist marking ✅ for response time, dashboards, backup strategy, and load testing | ⛔ **All four are false.** Replaced with a status-per-claim table plus a short "what is genuinely satisfied" list |
+| 8 rate-limit rows (auth 5/IP, auth 10/user, public 50/IP, upload 10/user, search 50/IP, comments 30/user, webhooks unlimited) | ✅ Reality is **4 tiers**: 100/user, 10/IP, 5/user, 50/user. Comments have no tier; webhooks are not whitelisted |
+| Resource quotas per user/tenant with 7 rows and a `QuotaExceededException` | ⛔ **No quota system exists.** Rate limits are not quotas |
+| A `ThrottlerGuard` keyed `rate-limit:{key}:{endpoint}` | ⛔ No such guard and no per-endpoint key. Nest's guard + `ValkeyThrottlerStorage`, keyed per tier |
+| Circuit breakers on 5 services at a 50% failure threshold | ⚠️ Wired on **3** (Sanity, Paymob, OAuth). Not on S3 or email. The threshold is an absolute count (`5`), not a rate |
+| `DB_POOL_MIN/MAX/IDLE_TIMEOUT` and a 4-row per-environment pool table | ⛔ Read by nothing. One constant for all environments |
+| 21 cache rows with hand-written key templates and a `cache.config.ts` | ⚠️ **3 real TTLs** (600/600/300 + 3600 default), tag-based invalidation, no config file |
+| `session:{userId}` with a 7-day TTL | ⛔ **No session cache exists** |
+| WAF block key `waf:block:{ip}` with a 5-minute TTL | ⚠️ A Valkey set; temp TTL 3600s, permanent has no TTL |
+| "MFA support: TOTP (Google Authenticator)" | ⛔ **Not implemented.** Zero matches across backend, frontend, and packages |
+| "Session timeout: 24 hours (remember me), 1 hour (default)" | ⛔ No session store, no timeout, no remember-me |
+| "Login rate limits: 5 attempts per minute per IP" | ✅ Rate limiting exists, but at **10/min per IP** |
+| "Password reset: 3 attempts per hour per email" | ⛔ Not implemented |
+| "Encryption at rest: PostgreSQL TDE, Valkey encryption" | ⚠️ AES-256-GCM on two token columns only. TDE is not enabled |
+| "Audit logging: all sensitive operations logged" | ⚠️ Winston + Sentry. ⛔ No permission-decision audit trail |
+| "Backup frequency: daily full, hourly incremental" / "retention 30 days" | ⛔ **Nothing backs up automatically** |
+| RPO 1 hour / RTO 4 hours | ⛔ Unachievable — nothing to restore from |
+| "PostgreSQL: read replicas, 1 primary + 3 replicas" | ⛔ **Not built** |
+| "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (80.56/76.02/72.60/80.72); frontend not (44.25/87.05/53.69/44.25). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
+| "Cyclomatic complexity < 10 per function" | ⛔ No such lint rule |
+| "README: every module" | ⛔ Only `modules/search/README.md` exists |
+| "Changelog: updated with every release" | ⛔ **No CHANGELOG in the repository** |
+| "Related: ADR-007, ADR-015" | ⛔ Neither exists. The ADR set is `001`–`004` |
+| `valkey.conf` maxmemory / allkeys-lru / save / eviction policy | ⛔ No `valkey.conf` in the repo; the container runs the image default. ⚠️ `allkeys-lru` would silently evict the token blacklist and rate-limit counters |
+| Horizontal backend scaling to 10+ instances | ⚠️ The code is stateless and Valkey-backed, so it is safe — but ⛔ there is no deployment artifact to scale |
+
+---
+
+*This document defines the non-functional requirements for Hakawi. Requirements are targets; the
+statuses above are measurements against the code as of 2026-09-30, and they are deliberately
+unflattering where the system does not yet meet them.*

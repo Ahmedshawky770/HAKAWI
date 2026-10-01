@@ -9,7 +9,7 @@
 graph TB
     subgraph "Hakawi Ecosystem"
         direction TB
-        Frontend[Next.js Frontend<br/>Shadcn UI + Tailwind]
+        Frontend[Next.js 16.3.5 Frontend<br/>Tailwind CSS 4]
         Backend[NestJS Backend<br/>REST API + Event Bus]
         Database[(PostgreSQL<br/>Primary Data Store)]
         Cache[(Valkey<br/>Cache Layer)]

@@ -4,11 +4,13 @@
 **Purpose:** Deliver the web UI for readers, writers, publishers, and admins.
 
 **Technology:**
-- Next.js 16 App Router
+- Next.js **16.3.5** App Router
 - TypeScript
-- Tailwind CSS
-- Shadcn UI
+- Tailwind CSS 4
+- 5 hand-written components in `components/ui/` — ⚠️ Shadcn and Radix are **not installed**
 - TanStack Query
+- ~50 Zod response schemas in `lib/schemas.ts`
+- `@hakawi/shared-types` (compiled package)
 
 **Responsibilities:**
 - SSR/SSG pages
