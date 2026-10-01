@@ -18,8 +18,16 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["node", "vitest"]
+    "types": ["node", "vitest/globals"]
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "test", "migrations", "seeds", "src/**/*.spec.ts"]
+  "include": [
+    "src/e2e/**/*.ts",
+    "src/test/**/*.ts",
+    "src/modules/**/e2e/**/*.ts",
+    "test/**/*.ts",
+    "e2e/**/*.ts",
+    "vitest.config.e2e.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "migrations", "seeds"]
 }
