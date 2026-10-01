@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Inject, Request, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Inject,
+  Request,
+  BadRequestException,
+} from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { MessagesService } from '../messages.service.ts';
@@ -9,7 +21,10 @@ export class MessagesController {
 
   @UseGuards(JwtAuthGuard)
   @Post('conversations')
-  async createConversation(@Body() body: { recipientId?: string; participantIds?: string[] }, @Request() req: { user: { sub: string } }) {
+  async createConversation(
+    @Body() body: { recipientId?: string; participantIds?: string[] },
+    @Request() req: { user: { sub: string } },
+  ) {
     const recipientId = body.recipientId || body.participantIds?.[0];
     if (!recipientId) {
       throw new BadRequestException('recipientId or participantIds is required');
@@ -20,19 +35,32 @@ export class MessagesController {
 
   @UseGuards(JwtAuthGuard)
   @Get('conversations')
-  async getConversations(@Request() req: { user: { sub: string } }, @Query('page') page?: string, @Query('limit') limit?: string) {
+  async getConversations(
+    @Request() req: { user: { sub: string } },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     return this.messagesService.getConversations(req.user.sub, Number(page) || 1, Number(limit) || 20);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('conversations/:conversationId/messages')
-  async getMessages(@Param('conversationId') conversationId: string, @Request() req: { user: { sub: string } }, @Query('page') page?: string, @Query('limit') limit?: string) {
+  async getMessages(
+    @Param('conversationId') conversationId: string,
+    @Request() req: { user: { sub: string } },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     return this.messagesService.getMessages(conversationId, req.user.sub, Number(page) || 1, Number(limit) || 50);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('conversations/:conversationId/messages')
-  async sendMessage(@Param('conversationId') conversationId: string, @Body('content') content: string, @Request() req: { user: { sub: string } }) {
+  async sendMessage(
+    @Param('conversationId') conversationId: string,
+    @Body('content') content: string,
+    @Request() req: { user: { sub: string } },
+  ) {
     return this.messagesService.sendMessage(conversationId, req.user.sub, content);
   }
 

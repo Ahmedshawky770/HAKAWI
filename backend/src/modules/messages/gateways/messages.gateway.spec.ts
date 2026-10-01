@@ -147,7 +147,10 @@ describe('MessagesGateway', () => {
 
   describe('handleDisconnect', () => {
     it('should remove user and emit offline event when last socket disconnects', () => {
-      (gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.set('user-123', new Set(['socket-1']));
+      (gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.set(
+        'user-123',
+        new Set(['socket-1']),
+      );
 
       const client = {
         userId: 'user-123',
@@ -156,12 +159,17 @@ describe('MessagesGateway', () => {
 
       gateway.handleDisconnect(client);
 
-      expect((gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.has('user-123')).toBe(false);
+      expect((gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.has('user-123')).toBe(
+        false,
+      );
       expect(mockServer.emit).toHaveBeenCalledWith('user.offline', { userId: 'user-123' });
     });
 
     it('should keep user online when other sockets are still connected', () => {
-      (gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.set('user-123', new Set(['socket-1', 'socket-2']));
+      (gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.set(
+        'user-123',
+        new Set(['socket-1', 'socket-2']),
+      );
 
       const client = {
         userId: 'user-123',
@@ -170,7 +178,9 @@ describe('MessagesGateway', () => {
 
       gateway.handleDisconnect(client);
 
-      expect((gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.has('user-123')).toBe(true);
+      expect((gateway as unknown as { connectedUsers: Map<string, Set<string>> }).connectedUsers.has('user-123')).toBe(
+        true,
+      );
       expect(mockServer.emit).not.toHaveBeenCalled();
     });
 
@@ -215,7 +225,9 @@ describe('MessagesGateway', () => {
 
       messagesService.getMessages.mockRejectedValue(new Error('Conversation not found'));
 
-      await expect(gateway.handleJoinConversation(client, { conversationId: 'conv-123' })).rejects.toThrow('Conversation not found');
+      await expect(gateway.handleJoinConversation(client, { conversationId: 'conv-123' })).rejects.toThrow(
+        'Conversation not found',
+      );
     });
 
     it('should reject joining without userId', async () => {
@@ -225,7 +237,9 @@ describe('MessagesGateway', () => {
         join: vi.fn(),
       } as unknown as Socket & { userId?: string };
 
-      await expect(gateway.handleJoinConversation(client, { conversationId: 'conv-123' })).rejects.toThrow('Unauthorized');
+      await expect(gateway.handleJoinConversation(client, { conversationId: 'conv-123' })).rejects.toThrow(
+        'Unauthorized',
+      );
     });
   });
 
@@ -276,7 +290,9 @@ describe('MessagesGateway', () => {
     it('should reject sending without userId', async () => {
       const client = { userId: undefined, id: 'socket-1' } as unknown as Socket & { userId?: string };
 
-      await expect(gateway.handleSendMessage(client, { conversationId: 'conv-123', content: 'Hello' })).rejects.toThrow('Unauthorized');
+      await expect(gateway.handleSendMessage(client, { conversationId: 'conv-123', content: 'Hello' })).rejects.toThrow(
+        'Unauthorized',
+      );
     });
   });
 
@@ -325,7 +341,9 @@ describe('MessagesGateway', () => {
         id: 'socket-1',
       } as unknown as Socket & { userId?: string };
 
-      expect(() => gateway.handleUserTyping(client, { conversationId: 'conv-123', isTyping: true })).toThrow('Unauthorized');
+      expect(() => gateway.handleUserTyping(client, { conversationId: 'conv-123', isTyping: true })).toThrow(
+        'Unauthorized',
+      );
     });
   });
 

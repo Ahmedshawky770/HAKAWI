@@ -16,7 +16,6 @@ import { MessagesController } from './messages.controller.ts';
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
@@ -101,7 +100,10 @@ describe('MessagesController', () => {
       expect(res.body).toHaveProperty('id', 'conv-1');
       expect(res.body).toHaveProperty('participant1Id', 'user-1');
       expect(res.body).toHaveProperty('participant2Id', 'user-2');
-      expect(messagesService.getOrCreateConversation).toHaveBeenCalledWith('user-1', '00000000-0000-0000-0000-000000000002');
+      expect(messagesService.getOrCreateConversation).toHaveBeenCalledWith(
+        'user-1',
+        '00000000-0000-0000-0000-000000000002',
+      );
     });
   });
 
