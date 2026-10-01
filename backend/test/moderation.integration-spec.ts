@@ -1,98 +1,38 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from './../src/app.module.ts';
-import { WinstonLoggerService } from './../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from './../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from './../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from './../src/modules/users/events/users.event-handler.ts';
-import { AdminDashboardController } from './../src/modules/moderation/admin-dashboard.controller.ts';
-import { ModerationController } from './../src/modules/moderation/moderation.controller.ts';
-import { db } from './../src/db/index.ts';
-import { users } from './../src/db/schema/users.schema.ts';
+import { AdminRole } from '../src/common/constants/roles.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext } from '../src/test/helpers/test-context.ts';
 
 describe('Moderation Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let adminToken: string;
-  let adminUserId: string;
-  let userToken: string;
-  let userId: string;
+  let context: TestContext;
+  let superAdminToken: string;
+  let readerToken: string;
+  let readerUserId: string;
   let reportId: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+    context = await createTestContext();
 
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
+    const superAdmin = await context.registerAndLogin({ prefix: 'superadmin', name: 'Super Admin' });
+    await context.promoteToAdmin(superAdmin.id);
+    superAdminToken = (await context.login(superAdmin.email)).accessToken;
 
-    const adminRegisterRes = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'admin-mod-int@example.com',
-        password: 'SecurePass123!',
-        name: 'Admin Mod Int',
-        username: 'adminmodint',
-        accountType: 'admin',
-      });
-
-    adminToken = adminRegisterRes.body.tokens.accessToken;
-    adminUserId = adminRegisterRes.body.user.id;
-
-    const userRegisterRes = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'user-mod-int@example.com',
-        password: 'SecurePass123!',
-        name: 'User Mod Int',
-        username: 'usermodint',
-      });
-
-    userToken = userRegisterRes.body.tokens.accessToken;
-    userId = userRegisterRes.body.user.id;
+    const reader = await context.registerAndLogin({ prefix: 'reader', name: 'Plain Reader' });
+    readerUserId = reader.id;
+    readerToken = reader.accessToken;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
-  });
-
-  afterEach(() => {
-    // no mocks to clear
+    await context.close();
   });
 
   describe('POST /moderation/reports', () => {
     it('should create a new report', async () => {
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .post('/moderation/reports')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ targetId: userId, targetType: 'user', reason: 'spam' })
+        .set('Authorization', `Bearer ${readerToken}`)
+        .send({ targetId: readerUserId, targetType: 'user', reason: 'spam' })
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
@@ -102,29 +42,46 @@ describe('Moderation Integration', () => {
 
   describe('GET /moderation/stats', () => {
     it('should return admin stats for super admin', async () => {
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .get('/moderation/stats')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('totalReports');
       expect(res.body).toHaveProperty('openReports');
       expect(res.body).toHaveProperty('totalActions');
+      expect(res.body.totalReports).toBeGreaterThanOrEqual(1);
     });
 
-    it('should return 403 for non-super-admin', async () => {
-      await request(httpServer)
+    it('should return 403 for a reader', async () => {
+      await request(context.httpServer)
         .get('/moderation/stats')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(403);
+    });
+
+    it('should reject a token minted before the promotion and accept a freshly minted one', async () => {
+      const promoted = await context.registerAndLogin({ prefix: 'stale', name: 'Stale Admin Token' });
+      await context.promoteToAdmin(promoted.id);
+
+      await request(context.httpServer)
+        .get('/moderation/stats')
+        .set('Authorization', `Bearer ${promoted.accessToken}`)
+        .expect(403);
+
+      const freshToken = await context.login(promoted.email);
+      await request(context.httpServer)
+        .get('/moderation/stats')
+        .set('Authorization', `Bearer ${freshToken.accessToken}`)
         .expect(200);
     });
   });
 
   describe('GET /moderation/users/:id/restrictions', () => {
     it('should return own restrictions', async () => {
-      const res = await request(httpServer)
-        .get(`/moderation/users/${userId}/restrictions`)
-        .set('Authorization', `Bearer ${userToken}`)
+      const res = await request(context.httpServer)
+        .get(`/moderation/users/${readerUserId}/restrictions`)
+        .set('Authorization', `Bearer ${readerToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('restrictions');
@@ -132,9 +89,9 @@ describe('Moderation Integration', () => {
     });
 
     it('should return restrictions for another user', async () => {
-      const res = await request(httpServer)
-        .get(`/moderation/users/${userId}/restrictions`)
-        .set('Authorization', `Bearer ${adminToken}`)
+      const res = await request(context.httpServer)
+        .get(`/moderation/users/${readerUserId}/restrictions`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('restrictions');
@@ -143,20 +100,42 @@ describe('Moderation Integration', () => {
   });
 
   describe('GET /moderation/reports/trends', () => {
-    it('should return report trends', async () => {
-      const res = await request(httpServer)
+    it('should return report trends for super admin', async () => {
+      const res = await request(context.httpServer)
         .get('/moderation/reports/trends?days=7')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
       expect(typeof res.body).toBe('object');
     });
 
-    it('should return 403 for non-admin', async () => {
-      await request(httpServer)
+    it('should return 403 for a reader', async () => {
+      await request(context.httpServer)
         .get('/moderation/reports/trends?days=7')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(403);
+    });
+  });
+
+  describe('GET /moderation/reports', () => {
+    it('should list reports for a content moderator', async () => {
+      const moderator = await context.registerAndLogin({ prefix: 'moderator', name: 'Content Moderator' });
+      await context.promoteToAdmin(moderator.id, AdminRole.CONTENT_MODERATOR);
+      const moderatorToken = (await context.login(moderator.email)).accessToken;
+
+      const res = await request(context.httpServer)
+        .get('/moderation/reports')
+        .set('Authorization', `Bearer ${moderatorToken}`)
         .expect(200);
+
+      expect(res.body).toHaveProperty('reports');
+    });
+
+    it('should return 403 for a reader', async () => {
+      await request(context.httpServer)
+        .get('/moderation/reports')
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(403);
     });
   });
 });

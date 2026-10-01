@@ -1,141 +1,102 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
-import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
 
 describe('Notifications Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let accessToken: string;
+  let context: TestContext;
+  let user: TestUser;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+    context = await createTestContext();
+    user = await context.registerAndLogin({ prefix: 'notified' });
 
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
-
-    const registerRes = await request(httpServer)
-      .post('/auth/register')
+    const category = await context.createCategory(user.accessToken, { name: 'Notifications Category' });
+    const now = Date.now();
+    const contestRes = await request(context.httpServer)
+      .post('/contests')
+      .set('Authorization', `Bearer ${user.accessToken}`)
       .send({
-        email: 'notifications-int@example.com',
-        password: 'SecurePass123!',
-        name: 'Notifications Integration User',
-        username: 'notificationsint',
-      });
+        title: 'Notifications Contest',
+        description: 'Creates a notification for the creator',
+        categoryId: category.id,
+        startDate: new Date(now + 86400000).toISOString(),
+        endDate: new Date(now + 7 * 86400000).toISOString(),
+        submissionDeadline: new Date(now + 3 * 86400000).toISOString(),
+      })
+      .expect(201);
 
-    accessToken = registerRes.body.tokens.accessToken;
+    expect(contestRes.body).toHaveProperty('id');
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
+
+  const listNotifications = async () => {
+    const res = await request(context.httpServer)
+      .get('/notifications')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .expect(200);
+    return res.body.notifications as { id: string; isRead: boolean; type: string }[];
+  };
 
   describe('GET /notifications', () => {
-    it('should get notifications for current user', async () => {
-      const res = await request(httpServer)
-        .get('/notifications')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+    it('should list the notification produced by the contest creation', async () => {
+      const notifications = await listNotifications();
 
-      expect(res.body).toHaveProperty('notifications');
-      expect(Array.isArray(res.body.notifications)).toBe(true);
-    });
-  });
-
-  describe('PUT /notifications/:id/read', () => {
-    it('should mark notification as read', async () => {
-      const listRes = await request(httpServer)
-        .get('/notifications')
-        .set('Authorization', `Bearer ${accessToken}`);
-
-      if (listRes.body.notifications.length === 0) {
-        await request(httpServer)
-          .get('/notifications')
-          .set('Authorization', `Bearer ${accessToken}`)
-          .expect(200);
-      }
-
-      const notificationId = listRes.body.notifications[0]?.id;
-      if (!notificationId) {
-        await request(httpServer)
-          .get('/notifications')
-          .set('Authorization', `Bearer ${accessToken}`)
-          .expect(200);
-        return;
-      }
-
-      const res = await request(httpServer)
-        .put(`/notifications/${notificationId}/read`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty('message');
-    });
-  });
-
-  describe('PUT /notifications/read-all', () => {
-    it('should mark all notifications as read', async () => {
-      const res = await request(httpServer)
-        .put('/notifications/read-all')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty('message');
+      expect(Array.isArray(notifications)).toBe(true);
+      expect(notifications.length).toBeGreaterThanOrEqual(1);
+      expect(notifications.some((notification) => notification.type === 'contest.created')).toBe(true);
     });
   });
 
   describe('GET /notifications/unread-count', () => {
-    it('should get unread count', async () => {
-      const res = await request(httpServer)
+    it('should count unread notifications', async () => {
+      const res = await request(context.httpServer)
         .get('/notifications/unread-count')
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Authorization', `Bearer ${user.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('count');
       expect(typeof res.body.count).toBe('number');
+      expect(res.body.count).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('PATCH /notifications/:id/read', () => {
+    it('should mark a notification as read', async () => {
+      const notifications = await listNotifications();
+      const unread = notifications.find((notification) => !notification.isRead);
+      expect(unread).toBeDefined();
+
+      const res = await request(context.httpServer)
+        .patch(`/notifications/${unread?.id ?? ''}/read`)
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('message');
+
+      const after = await listNotifications();
+      const updated = after.find((notification) => notification.id === unread?.id);
+      expect(updated?.isRead).toBe(true);
+    });
+  });
+
+  describe('PATCH /notifications/read-all', () => {
+    it('should mark all notifications as read', async () => {
+      const res = await request(context.httpServer)
+        .patch('/notifications/read-all')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('message');
+
+      const count = await request(context.httpServer)
+        .get('/notifications/unread-count')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+
+      expect(count.body.count).toBe(0);
     });
   });
 });

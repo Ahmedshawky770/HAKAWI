@@ -1,97 +1,39 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
-import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext } from '../src/test/helpers/test-context.ts';
 
 describe('Reactions Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let accessToken: string;
+  let context: TestContext;
+  let authorToken: string;
   let storyId: string;
+  let readerToken: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+    context = await createTestContext();
 
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
+    const author = await context.registerAndLogin({ prefix: 'reactionauthor' });
+    authorToken = author.accessToken;
+    const story = await context.createStory(authorToken, { title: 'Reactions Test Story' });
+    storyId = story.id;
 
-    const registerRes = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: `reactions-int-${Date.now()}@example.com`,
-        password: 'SecurePass123!',
-        name: 'Reactions Integration User',
-        username: `reactionsint${Date.now()}`,
-      });
-
-    accessToken = registerRes.body.tokens.accessToken;
-
-    const storyRes = await request(httpServer)
-      .post('/stories')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        title: 'Reactions Test Story',
-        slug: `reactions-test-story-${Date.now()}`,
-        content: '<p>Content</p>',
-      });
-
-    storyId = storyRes.body.id;
+    const reader = await context.registerAndLogin({ prefix: 'reactionreader' });
+    readerToken = reader.accessToken;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
+
+  const react = (type: string, token: string = authorToken) =>
+    request(context.httpServer)
+      .post(`/reactions/stories/${storyId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ type });
 
   describe('POST /reactions/stories/:storyId', () => {
     it('should add a reaction to a story', async () => {
-      const res = await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' })
-        .expect(201);
+      const res = await react('like').expect(201);
 
       expect(res.body).toHaveProperty('id');
       expect(res.body.userId).toBeDefined();
@@ -99,32 +41,24 @@ describe('Reactions Integration', () => {
       expect(res.body.type).toBe('like');
     });
 
-    it('should update existing reaction', async () => {
-      await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' });
+    it('should update an existing reaction instead of duplicating it', async () => {
+      await react('like').expect(201);
 
-      const res = await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'love' })
-        .expect(201);
+      const res = await react('love').expect(201);
 
       expect(res.body.type).toBe('love');
+      const list = await request(context.httpServer).get(`/reactions/stories/${storyId}`).expect(200);
+      expect(list.body.total).toBe(1);
     });
   });
 
   describe('DELETE /reactions/stories/:storyId', () => {
     it('should remove a reaction from a story', async () => {
-      await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' });
+      await react('like').expect(201);
 
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .delete(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Authorization', `Bearer ${authorToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('message');
@@ -133,70 +67,48 @@ describe('Reactions Integration', () => {
 
   describe('GET /reactions/stories/:storyId', () => {
     it('should get reactions for a story', async () => {
-      await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' });
+      await react('like').expect(201);
 
-      const res = await request(httpServer)
-        .get(`/reactions/stories/${storyId}`)
-        .expect(200);
+      const res = await request(context.httpServer).get(`/reactions/stories/${storyId}`).expect(200);
 
       expect(res.body).toHaveProperty('reactions');
       expect(res.body).toHaveProperty('total');
       expect(Array.isArray(res.body.reactions)).toBe(true);
+      expect(res.body.total).toBe(1);
     });
   });
 
   describe('GET /reactions/stories/:storyId/counts', () => {
     it('should get reaction counts for a story', async () => {
-      await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' });
+      await react('like').expect(201);
 
-      const res = await request(httpServer)
-        .get(`/reactions/stories/${storyId}/counts`)
-        .expect(200);
+      const res = await request(context.httpServer).get(`/reactions/stories/${storyId}/counts`).expect(200);
 
       expect(res.body).toHaveProperty('like');
-      expect(typeof res.body.like).toBe('number');
+      expect(res.body.like).toBe(1);
     });
   });
 
   describe('GET /reactions/stories/:storyId/me', () => {
-    it('should get current user reaction for a story', async () => {
-      await request(httpServer)
-        .post(`/reactions/stories/${storyId}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ type: 'like' });
+    it('should return the current user reaction', async () => {
+      await react('like').expect(201);
 
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .get(`/reactions/stories/${storyId}/me`)
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Authorization', `Bearer ${authorToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('type');
       expect(res.body.type).toBe('like');
     });
 
-    it('should return null when user has no reaction', async () => {
-      const registerRes2 = await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: 'reactions-int-2@example.com',
-          password: 'SecurePass123!',
-          name: 'Reactions Integration User 2',
-          username: 'reactionsint2',
-        });
-
-      const accessToken2 = registerRes2.body.tokens.accessToken;
-
-      const res = await request(httpServer)
+    it('should return 200 with an empty payload when the user has no reaction', async () => {
+      const res = await request(context.httpServer)
         .get(`/reactions/stories/${storyId}/me`)
-        .set('Authorization', `Bearer ${accessToken2}`)
+        .set('Authorization', `Bearer ${readerToken}`)
         .expect(200);
 
+      expect(res.text).toBe('');
       expect(res.body).toEqual({});
     });
   });

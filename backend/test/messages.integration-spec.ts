@@ -1,135 +1,99 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
-import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
 
 describe('Messages Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let accessToken1: string;
-  let accessToken2: string;
-  let userId1: string;
-  let userId2: string;
+  let context: TestContext;
+  let sender: TestUser;
+  let recipient: TestUser;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
-
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
-
-    const registerRes1 = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'messages-int-1@example.com',
-        password: 'SecurePass123!',
-        name: 'Messages Integration User 1',
-        username: 'messagesint1',
-      });
-
-    accessToken1 = registerRes1.body.tokens.accessToken;
-    userId1 = registerRes1.body.user.id;
-
-    const registerRes2 = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'messages-int-2@example.com',
-        password: 'SecurePass123!',
-        name: 'Messages Integration User 2',
-        username: 'messagesint2',
-      });
-
-    accessToken2 = registerRes2.body.tokens.accessToken;
-    userId2 = registerRes2.body.user.id;
+    context = await createTestContext();
+    sender = await context.registerAndLogin({ prefix: 'sender' });
+    recipient = await context.registerAndLogin({ prefix: 'recipient' });
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
 
   describe('POST /messages/conversations', () => {
     it('should create a conversation', async () => {
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .post('/messages/conversations')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ participantIds: [userId2] })
+        .set('Authorization', `Bearer ${sender.accessToken}`)
+        .send({ participantIds: [recipient.id] })
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect([res.body.participant1Id, res.body.participant2Id]).toEqual(expect.arrayContaining([userId1, userId2]));
+      expect([res.body.participant1Id, res.body.participant2Id]).toEqual(
+        expect.arrayContaining([sender.id, recipient.id]),
+      );
     });
   });
 
   describe('GET /messages/conversations', () => {
     it('should get conversations for current user', async () => {
-      const res = await request(httpServer)
+      await request(context.httpServer)
+        .post('/messages/conversations')
+        .set('Authorization', `Bearer ${sender.accessToken}`)
+        .send({ participantIds: [recipient.id] })
+        .expect(201);
+
+      const res = await request(context.httpServer)
         .get('/messages/conversations')
-        .set('Authorization', `Bearer ${accessToken1}`)
+        .set('Authorization', `Bearer ${sender.accessToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('conversations');
       expect(Array.isArray(res.body.conversations)).toBe(true);
+      expect(res.body.conversations.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should not leak conversations the user is not part of', async () => {
+      const outsider = await context.registerAndLogin({ prefix: 'outsider' });
+
+      const res = await request(context.httpServer)
+        .get('/messages/conversations')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(200);
+
+      expect(res.body.conversations).toEqual([]);
     });
   });
 
   describe('GET /messages/conversations/:conversationId/messages', () => {
     it('should get messages for a conversation', async () => {
-      const conversationRes = await request(httpServer)
+      const conversationRes = await request(context.httpServer)
         .post('/messages/conversations')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ participantIds: [userId2] });
+        .set('Authorization', `Bearer ${sender.accessToken}`)
+        .send({ participantIds: [recipient.id] })
+        .expect(201);
 
-      const conversationId = conversationRes.body.id;
+      const conversationId: string = conversationRes.body.id;
 
-      const res = await request(httpServer)
+      const empty = await request(context.httpServer)
         .get(`/messages/conversations/${conversationId}/messages`)
-        .set('Authorization', `Bearer ${accessToken1}`)
+        .set('Authorization', `Bearer ${sender.accessToken}`)
+        .expect(200);
+
+      expect(empty.body.messages).toEqual([]);
+
+      await request(context.httpServer)
+        .post(`/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.accessToken}`)
+        .send({ content: 'Hello from the integration suite' })
+        .expect(201);
+
+      const res = await request(context.httpServer)
+        .get(`/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.accessToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('messages');
-      expect(Array.isArray(res.body.messages)).toBe(true);
+      expect(res.body.messages.length).toBe(1);
+      expect(res.body.messages[0].content).toBe('Hello from the integration suite');
     });
   });
 });

@@ -1,6 +1,7 @@
 import type { Server } from 'http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -9,6 +10,8 @@ import { ConfigModule } from '@nestjs/config';
 
 import { CommentsService } from '../comments.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { OWNERSHIP_RESOLVER, OwnershipGuard } from '../../../common/guards/ownership.guard.ts';
+import type { OwnershipResolver } from '../../../common/guards/ownership.guard.ts';
 import type { CommentResponse } from '../types.ts';
 
 import { CommentsController } from './comments.controller.ts';
@@ -32,6 +35,7 @@ describe('CommentsController', () => {
   let app: INestApplication;
   let httpServer: Server;
   let commentsService: MockCommentsService;
+  let resolveOwnerId: Mock<OwnershipResolver['resolveOwnerId']>;
 
   beforeAll(async () => {
     commentsService = {
@@ -41,6 +45,7 @@ describe('CommentsController', () => {
       update: vi.fn(),
       delete: vi.fn(),
     };
+    resolveOwnerId = vi.fn<OwnershipResolver['resolveOwnerId']>().mockResolvedValue('user-1');
 
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, load: [] })],
@@ -51,6 +56,11 @@ describe('CommentsController', () => {
           useValue: commentsService,
         },
         JwtAuthGuard,
+        // Registered explicitly, and paired with a resolver, because that is what `CommentsModule`
+        // does in the application. A guard with no resolver fails closed, so a testing module that
+        // forgot the binding would see every write route answer 403 and mistake it for a policy.
+        OwnershipGuard,
+        { provide: OWNERSHIP_RESOLVER, useValue: { resolveOwnerId } satisfies OwnershipResolver },
         {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
@@ -71,6 +81,9 @@ describe('CommentsController', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` does not undo `mockResolvedValue`, so an IDOR case that installed a different
+    // owner would otherwise leak into every later test. Each test starts from "the caller owns it".
+    resolveOwnerId.mockResolvedValue('user-1');
   });
 
   describe('GET /comments/story/:storyId', () => {
@@ -80,9 +93,7 @@ describe('CommentsController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/comments/story/123e4567-e89b-12d3-a456-426614174000')
-        .expect(200);
+      const res = await request(httpServer).get('/comments/story/123e4567-e89b-12d3-a456-426614174000').expect(200);
 
       expect(res.body).toHaveProperty('comments');
       expect(res.body).toHaveProperty('total', 0);
@@ -97,9 +108,7 @@ describe('CommentsController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/comments/123e4567-e89b-12d3-a456-426614174000/replies')
-        .expect(200);
+      const res = await request(httpServer).get('/comments/123e4567-e89b-12d3-a456-426614174000/replies').expect(200);
 
       expect(res.body).toHaveProperty('replies');
       expect(res.body).toHaveProperty('total', 0);
@@ -168,7 +177,41 @@ describe('CommentsController', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('content', 'Updated comment');
-      expect(commentsService.update).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', 'user-1', { content: 'Updated comment' });
+      expect(commentsService.update).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', 'user-1', {
+        content: 'Updated comment',
+      });
+    });
+
+    /**
+     * The IDOR this route now refuses before the handler runs. `CommentsService.update` also checks
+     * the author, but it checks it *after* the request has been accepted and the row loaded; the
+     * guard is the property that a reader of the controller can see.
+     */
+    it('should refuse an edit by a caller who does not own the comment', async () => {
+      const token = await generateToken('user-2', 'test@example.com', 'reader');
+      resolveOwnerId.mockResolvedValue('user-1');
+
+      const res = await request(httpServer)
+        .patch('/comments/123e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content: 'Hijacked' })
+        .expect(403);
+
+      expect(res.body).toHaveProperty('message', 'You do not own this resource');
+      expect(commentsService.update).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an edit when ownership cannot be established at all', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      resolveOwnerId.mockResolvedValue(null);
+
+      await request(httpServer)
+        .patch('/comments/123e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content: 'Unknown owner' })
+        .expect(403);
+
+      expect(commentsService.update).not.toHaveBeenCalled();
     });
   });
 
@@ -185,6 +228,18 @@ describe('CommentsController', () => {
 
       expect(res.body).toEqual({ message: 'Comment deleted' });
       expect(commentsService.delete).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', 'user-1');
+    });
+
+    it('should refuse a delete by a caller who does not own the comment', async () => {
+      const token = await generateToken('user-2', 'test@example.com', 'reader');
+      resolveOwnerId.mockResolvedValue('user-1');
+
+      await request(httpServer)
+        .delete('/comments/123e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      expect(commentsService.delete).not.toHaveBeenCalled();
     });
   });
 });
