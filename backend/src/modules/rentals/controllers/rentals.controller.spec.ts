@@ -94,7 +94,7 @@ describe('RentalsController', () => {
         returnedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Rental);
+      } as unknown as Rental);
 
       const res = await request(httpServer)
         .post('/rentals')
@@ -118,10 +118,7 @@ describe('RentalsController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer)
-        .get('/rentals/my')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(httpServer).get('/rentals/my').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('rentals');
       expect(rentalsService.findMyRentals).toHaveBeenCalled();
@@ -144,7 +141,7 @@ describe('RentalsController', () => {
         returnedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Rental);
+      } as unknown as Rental);
 
       const res = await request(httpServer)
         .get('/rentals/rental-1')
@@ -196,7 +193,7 @@ describe('RentalsController', () => {
         returnedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Rental);
+      } as unknown as Rental);
 
       const res = await request(httpServer)
         .post('/rentals/rental-1/return')
@@ -207,5 +204,4 @@ describe('RentalsController', () => {
       expect(rentalsService.returnRental).toHaveBeenCalledWith('rental-1', 'user-1');
     });
   });
-
 });

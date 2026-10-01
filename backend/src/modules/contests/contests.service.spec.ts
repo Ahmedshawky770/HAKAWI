@@ -1,24 +1,118 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 
-import { ContestsService } from './contests.service.ts';
-import type { Contest, ContestSubmission, ContestVote, ContestPrize, CreateContestInput, UpdateContestInput, CreateSubmissionInput, CastVoteInput, DistributePrizeInput } from './types.ts';
+import { CONTEST_CACHE_NAMESPACE, ContestsService } from './contests.service.ts';
+import type {
+  Contest,
+  ContestCategorySummary,
+  ContestSubmission,
+  ContestVote,
+  ContestPrize,
+  CreateContestInput,
+  UpdateContestInput,
+  CreateSubmissionInput,
+  CastVoteInput,
+  DistributePrizeInput,
+} from './types.ts';
+
+/**
+ * An in-memory stand-in for `TaggedCacheService` that reproduces the behaviour these tests exist
+ * to pin down: it stores with `JSON.stringify` and reads back with `JSON.parse`, exactly like
+ * Valkey. A mock returning the very object it was handed would keep passing after the bug
+ * returned, because that object still holds real `Date`s. An entry whose revival throws is dropped
+ * and reported as a miss, the way the real service heals a corrupt payload.
+ */
+class FakeTaggedCache {
+  private readonly store = new Map<string, string>();
+  readonly invalidations: { namespace: string; key: string; tags: readonly string[] }[] = [];
+  loadCount = 0;
+
+  buildKey(namespace: string, key: string): string {
+    return `cache:${namespace}:${key}`;
+  }
+
+  seedRaw(namespace: string, key: string, raw: string): void {
+    this.store.set(this.buildKey(namespace, key), raw);
+  }
+
+  async get<T>(namespace: string, key: string, revive?: (value: T) => T): Promise<T | null> {
+    const cacheKey = this.buildKey(namespace, key);
+    const raw = this.store.get(cacheKey);
+    if (raw === undefined) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as T;
+      return revive === undefined ? parsed : revive(parsed);
+    } catch {
+      this.store.delete(cacheKey);
+      return null;
+    }
+  }
+
+  async set(namespace: string, key: string, value: unknown): Promise<void> {
+    this.store.set(this.buildKey(namespace, key), JSON.stringify(value));
+  }
+
+  async getOrSet<T>(options: {
+    namespace: string;
+    key: string;
+    load: () => Promise<T>;
+    revive?: (value: T) => T;
+  }): Promise<{ value: T; hit: boolean }> {
+    const cached = await this.get<T>(options.namespace, options.key, options.revive);
+    if (cached !== null) {
+      return { value: cached, hit: true };
+    }
+    this.loadCount += 1;
+    const loaded = await options.load();
+    await this.set(options.namespace, options.key, loaded);
+    return { value: loaded, hit: false };
+  }
+
+  async invalidateKey(namespace: string, key: string, tags: readonly string[] = []): Promise<void> {
+    this.store.delete(this.buildKey(namespace, key));
+    this.invalidations.push({ namespace, key, tags });
+  }
+}
 
 type MockContestsRepository = {
   findContestById: ReturnType<typeof vi.fn<(id: string) => Promise<Contest | null>>>;
-  findAllContests: ReturnType<typeof vi.fn<(params: { page?: number; limit?: number; categoryId?: string; status?: string; search?: string }) => Promise<{ contests: Contest[]; total: number }>>>;
-  createContest: ReturnType<typeof vi.fn<(data: CreateContestInput & { createdBy: string; status: string }) => Promise<Contest>>>;
+  findAllContests: ReturnType<
+    typeof vi.fn<
+      (params: {
+        page?: number;
+        limit?: number;
+        categoryId?: string;
+        status?: string;
+        search?: string;
+      }) => Promise<{ contests: Contest[]; total: number }>
+    >
+  >;
+  createContest: ReturnType<
+    typeof vi.fn<(data: CreateContestInput & { createdBy: string; status: string }) => Promise<Contest>>
+  >;
   updateContest: ReturnType<typeof vi.fn<(id: string, data: UpdateContestInput) => Promise<Contest>>>;
   findSubmissionById: ReturnType<typeof vi.fn<(id: string) => Promise<ContestSubmission | null>>>;
-  findSubmissionsByContest: ReturnType<typeof vi.fn<(contestId: string, page: number, limit: number) => Promise<{ submissions: ContestSubmission[]; total: number }>>>;
-  findSubmissionByContestAndAuthor: ReturnType<typeof vi.fn<(contestId: string, authorId: string) => Promise<ContestSubmission | null>>>;
+  findSubmissionsByContest: ReturnType<
+    typeof vi.fn<
+      (contestId: string, page: number, limit: number) => Promise<{ submissions: ContestSubmission[]; total: number }>
+    >
+  >;
+  findSubmissionByContestAndAuthor: ReturnType<
+    typeof vi.fn<(contestId: string, authorId: string) => Promise<ContestSubmission | null>>
+  >;
   createSubmission: ReturnType<typeof vi.fn<(data: CreateSubmissionInput) => Promise<ContestSubmission>>>;
-  reviewSubmission: ReturnType<typeof vi.fn<(id: string, status: string, reviewedBy: string) => Promise<ContestSubmission>>>;
+  reviewSubmission: ReturnType<
+    typeof vi.fn<(id: string, status: string, reviewedBy: string) => Promise<ContestSubmission>>
+  >;
   findVoteById: ReturnType<typeof vi.fn<(id: string) => Promise<ContestVote | null>>>;
-  findVoteByUserContestSubmission: ReturnType<typeof vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote | null>>>;
+  findVoteByUserContestSubmission: ReturnType<
+    typeof vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote | null>>
+  >;
   countVotesBySubmission: ReturnType<typeof vi.fn<(submissionId: string) => Promise<number>>>;
   castVote: ReturnType<typeof vi.fn<(data: CastVoteInput) => Promise<ContestVote>>>;
   findPrizeById: ReturnType<typeof vi.fn<(id: string) => Promise<ContestPrize | null>>>;
@@ -26,8 +120,11 @@ type MockContestsRepository = {
   findWinningSubmission: ReturnType<typeof vi.fn<(contestId: string) => Promise<ContestSubmission | null>>>;
   findPrizesByContest: ReturnType<typeof vi.fn<(contestId: string) => Promise<ContestPrize[]>>>;
   findVotesBySubmission: ReturnType<typeof vi.fn<(submissionId: string) => Promise<ContestVote[]>>>;
-  findVotesByContest: ReturnType<typeof vi.fn<(contestId: string, limit: number, offset: number) => Promise<ContestVote[]>>>;
+  findVotesByContest: ReturnType<
+    typeof vi.fn<(contestId: string, limit: number, offset: number) => Promise<ContestVote[]>>
+  >;
   countVotesByContest: ReturnType<typeof vi.fn<(contestId: string) => Promise<{ total: string }>>>;
+  findCategoriesByIds: ReturnType<typeof vi.fn<(categoryIds: string[]) => Promise<ContestCategorySummary[]>>>;
 };
 
 type MockWinstonLoggerService = {
@@ -39,13 +136,6 @@ type MockWinstonLoggerService = {
   verbose: ReturnType<typeof vi.fn>;
 };
 
-type MockValkeyService = {
-  exists: ReturnType<typeof vi.fn>;
-  set: ReturnType<typeof vi.fn>;
-  get: ReturnType<typeof vi.fn>;
-  del: ReturnType<typeof vi.fn>;
-};
-
 type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
   validateEvent: ReturnType<typeof vi.fn>;
@@ -55,7 +145,7 @@ describe('ContestsService', () => {
   let contestsService: ContestsService;
   let contestsRepository: MockContestsRepository;
   let logger: MockWinstonLoggerService;
-  let valkeyService: MockValkeyService;
+  let cache: FakeTaggedCache;
   let eventValidatorService: MockEventValidatorService;
 
   const mockContest: Contest = {
@@ -87,16 +177,34 @@ describe('ContestsService', () => {
   beforeEach(() => {
     contestsRepository = {
       findContestById: vi.fn<(id: string) => Promise<Contest | null>>(),
-      findAllContests: vi.fn<(params: { page?: number; limit?: number; categoryId?: string; status?: string; search?: string }) => Promise<{ contests: Contest[]; total: number }>>(),
+      findAllContests:
+        vi.fn<
+          (params: {
+            page?: number;
+            limit?: number;
+            categoryId?: string;
+            status?: string;
+            search?: string;
+          }) => Promise<{ contests: Contest[]; total: number }>
+        >(),
       createContest: vi.fn<(data: CreateContestInput & { createdBy: string; status: string }) => Promise<Contest>>(),
       updateContest: vi.fn<(id: string, data: UpdateContestInput) => Promise<Contest>>(),
       findSubmissionById: vi.fn<(id: string) => Promise<ContestSubmission | null>>(),
-      findSubmissionsByContest: vi.fn<(contestId: string, page: number, limit: number) => Promise<{ submissions: ContestSubmission[]; total: number }>>(),
-      findSubmissionByContestAndAuthor: vi.fn<(contestId: string, authorId: string) => Promise<ContestSubmission | null>>(),
+      findSubmissionsByContest:
+        vi.fn<
+          (
+            contestId: string,
+            page: number,
+            limit: number,
+          ) => Promise<{ submissions: ContestSubmission[]; total: number }>
+        >(),
+      findSubmissionByContestAndAuthor:
+        vi.fn<(contestId: string, authorId: string) => Promise<ContestSubmission | null>>(),
       createSubmission: vi.fn<(data: CreateSubmissionInput) => Promise<ContestSubmission>>(),
       reviewSubmission: vi.fn<(id: string, status: string, reviewedBy: string) => Promise<ContestSubmission>>(),
       findVoteById: vi.fn<(id: string) => Promise<ContestVote | null>>(),
-      findVoteByUserContestSubmission: vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote | null>>(),
+      findVoteByUserContestSubmission:
+        vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote | null>>(),
       countVotesBySubmission: vi.fn<(submissionId: string) => Promise<number>>(),
       castVote: vi.fn<(data: CastVoteInput) => Promise<ContestVote>>(),
       findPrizeById: vi.fn<(id: string) => Promise<ContestPrize | null>>(),
@@ -106,6 +214,7 @@ describe('ContestsService', () => {
       findVotesBySubmission: vi.fn<(submissionId: string) => Promise<ContestVote[]>>(),
       findVotesByContest: vi.fn<(contestId: string, limit: number, offset: number) => Promise<ContestVote[]>>(),
       countVotesByContest: vi.fn<(contestId: string) => Promise<{ total: string }>>(),
+      findCategoriesByIds: vi.fn<(categoryIds: string[]) => Promise<ContestCategorySummary[]>>(),
     };
 
     logger = {
@@ -117,22 +226,18 @@ describe('ContestsService', () => {
       verbose: vi.fn(),
     };
 
-    valkeyService = {
-      exists: vi.fn(),
-      set: vi.fn(),
-      get: vi.fn(),
-      del: vi.fn(),
-    };
+    cache = new FakeTaggedCache();
+    vi.mocked(contestsRepository.findCategoriesByIds).mockResolvedValue([]);
 
     eventValidatorService = {
-    emit: vi.fn(),
-    validateEvent: vi.fn(),
-  };
+      emit: vi.fn(),
+      validateEvent: vi.fn(),
+    };
 
     contestsService = new ContestsService(
       contestsRepository,
       logger as unknown as WinstonLoggerService,
-      valkeyService as unknown as ValkeyService,
+      cache as unknown as TaggedCacheService,
       eventValidatorService as unknown as EventValidatorService,
     );
   });
@@ -165,30 +270,32 @@ describe('ContestsService', () => {
     it('should throw ConflictException when title already exists', async () => {
       vi.mocked(contestsRepository.findAllContests).mockResolvedValue({ contests: [mockContest], total: 1 });
 
-       await expect(
-          contestsService.create('user-123', {
-            title: 'Test Contest',
-            startDate: new Date('2024-01-01'),
-            endDate: new Date('2024-12-31'),
-            submissionDeadline: new Date('2024-06-30'),
-          }),
-       ).rejects.toThrow('Contest title already exists');
+      await expect(
+        contestsService.create('user-123', {
+          title: 'Test Contest',
+          startDate: new Date('2024-01-01'),
+          endDate: new Date('2024-12-31'),
+          submissionDeadline: new Date('2024-06-30'),
+        }),
+      ).rejects.toThrow('Contest title already exists');
     });
   });
 
   describe('findById', () => {
     it('should return a contest by id', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
 
       const result = await contestsService.findById('contest-123');
 
-      expect(result).toEqual(mockContest);
+      expect(result).toMatchObject({ id: 'contest-123', title: 'Test Contest', status: 'draft' });
       expect(contestsRepository.findContestById).toHaveBeenCalledWith('contest-123');
     });
 
     it('should return cached contest', async () => {
-      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(mockContest));
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
+      await contestsService.findById('contest-123');
+      // The first call populated the cache; the repository must not be consulted again.
+      vi.mocked(contestsRepository.findContestById).mockClear();
 
       const result = await contestsService.findById('contest-123');
 
@@ -199,9 +306,83 @@ describe('ContestsService', () => {
 
     it('should throw NotFoundException when contest not found', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(null);
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
 
       await expect(contestsService.findById('contest-999')).rejects.toThrow('Contest not found');
+    });
+
+    /**
+     * The regression this module was fixed for, through a real serialize → deserialize round trip.
+     * The second call is served by an entry that went through `JSON.stringify` and `JSON.parse`,
+     * which is what the cache actually hands back.
+     *
+     * Without revival the warm value carries ISO strings in fields typed `Date`, and the response
+     * mapper — the very thing that builds the HTTP payload — dies with
+     * `TypeError: startDate.toISOString is not a function` on every cached key while the first
+     * request succeeds. The `.toISOString()` assertions are the point: checking `instanceof` alone
+     * would not reproduce the failure the client saw.
+     */
+    it('returns ISO date strings on a cache hit, so the response mapper cannot fail', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
+
+      const cold = await contestsService.findById('contest-123');
+      const warm = await contestsService.findById('contest-123');
+
+      expect(warm.startDate).toBe(cold.startDate);
+      expect(warm.endDate).toBe(cold.endDate);
+      expect(warm.submissionDeadline).toBe(cold.submissionDeadline);
+      expect(warm.createdAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(warm.updatedAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(warm.startDate).toBe('2024-01-01T00:00:00.000Z');
+    });
+
+    it('drops an un-revivable cache entry and reloads instead of throwing', async () => {
+      // `createdAt: null` cannot be the row that was cached — the column is `notNull` — so the
+      // entry is corrupt and must heal into a miss rather than become a 500.
+      cache.seedRaw(CONTEST_CACHE_NAMESPACE, 'contest-123', JSON.stringify({ ...mockContest, createdAt: null }));
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
+
+      const result = await contestsService.findById('contest-123');
+
+      expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(contestsRepository.findContestById).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops an unparseable cache entry and reloads instead of throwing', async () => {
+      cache.seedRaw(CONTEST_CACHE_NAMESPACE, 'contest-123', '{ this is not json');
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
+
+      const result = await contestsService.findById('contest-123');
+
+      expect(result.id).toBe('contest-123');
+    });
+
+    it('resolves the category name instead of handing the client a UUID', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, categoryId: 'cat-1' });
+      vi.mocked(contestsRepository.findCategoriesByIds).mockResolvedValue([{ id: 'cat-1', name: 'Speculative' }]);
+
+      const result = await contestsService.findById('contest-123');
+
+      expect(result.categoryId).toBe('cat-1');
+      expect(result.category).toBe('Speculative');
+    });
+
+    it('reports a null category when the category row no longer exists', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, categoryId: 'cat-gone' });
+      vi.mocked(contestsRepository.findCategoriesByIds).mockResolvedValue([]);
+
+      const result = await contestsService.findById('contest-123');
+
+      expect(result.categoryId).toBe('cat-gone');
+      expect(result.category).toBeNull();
+    });
+
+    it('does not query categories for a contest that has none', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
+
+      const result = await contestsService.findById('contest-123');
+
+      expect(result.category).toBeNull();
+      expect(contestsRepository.findCategoriesByIds).not.toHaveBeenCalled();
     });
   });
 
@@ -230,6 +411,43 @@ describe('ContestsService', () => {
         search: 'test',
       });
     });
+
+    it('resolves every category on the page with a single query', async () => {
+      vi.mocked(contestsRepository.findAllContests).mockResolvedValue({
+        contests: [
+          { ...mockContest, id: 'c1', categoryId: 'cat-1' },
+          { ...mockContest, id: 'c2', categoryId: 'cat-1' },
+          { ...mockContest, id: 'c3', categoryId: 'cat-2' },
+          { ...mockContest, id: 'c4', categoryId: null },
+        ],
+        total: 4,
+      });
+      vi.mocked(contestsRepository.findCategoriesByIds).mockResolvedValue([
+        { id: 'cat-1', name: 'Speculative' },
+        { id: 'cat-2', name: 'Historical' },
+      ]);
+
+      const result = await contestsService.findAll({ page: 1, limit: 20 });
+
+      // Two contests share a category; the ids are de-duplicated so one query answers the page.
+      expect(contestsRepository.findCategoriesByIds).toHaveBeenCalledTimes(1);
+      expect(contestsRepository.findCategoriesByIds).toHaveBeenCalledWith(['cat-1', 'cat-2']);
+      expect(result.contests.map((contest) => contest.category)).toEqual([
+        'Speculative',
+        'Speculative',
+        'Historical',
+        null,
+      ]);
+    });
+
+    it('issues no category query for a page where no contest has a category', async () => {
+      vi.mocked(contestsRepository.findAllContests).mockResolvedValue({ contests: [mockContest], total: 1 });
+
+      const result = await contestsService.findAll({ page: 1, limit: 20 });
+
+      expect(contestsRepository.findCategoriesByIds).not.toHaveBeenCalled();
+      expect(result.contests[0]?.category).toBeNull();
+    });
   });
 
   describe('update', () => {
@@ -240,20 +458,31 @@ describe('ContestsService', () => {
       const result = await contestsService.update('contest-123', { title: 'Updated Contest' }, 'user-123');
 
       expect(result.title).toBe('Updated Contest');
-      expect(contestsRepository.updateContest).toHaveBeenCalledWith('contest-123', expect.objectContaining({ title: 'Updated Contest' }));
-      expect(valkeyService.del).toHaveBeenCalledWith('contest:contest-123');
+      expect(contestsRepository.updateContest).toHaveBeenCalledWith(
+        'contest-123',
+        expect.objectContaining({ title: 'Updated Contest' }),
+      );
+      expect(cache.invalidations).toContainEqual({
+        namespace: CONTEST_CACHE_NAMESPACE,
+        key: 'contest-123',
+        tags: ['contests'],
+      });
     });
 
     it('should throw NotFoundException when contest not found', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(null);
 
-      await expect(contestsService.update('contest-999', { title: 'New Title' }, 'user-123')).rejects.toThrow('Contest not found');
+      await expect(contestsService.update('contest-999', { title: 'New Title' }, 'user-123')).rejects.toThrow(
+        'Contest not found',
+      );
     });
 
     it('should throw ForbiddenException when contest is completed', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'completed' });
 
-      await expect(contestsService.update('contest-123', { title: 'New Title' }, 'user-123')).rejects.toThrow('Cannot update a completed or cancelled contest');
+      await expect(contestsService.update('contest-123', { title: 'New Title' }, 'user-123')).rejects.toThrow(
+        'Cannot update a completed or cancelled contest',
+      );
     });
   });
 
@@ -295,7 +524,9 @@ describe('ContestsService', () => {
     it('should throw ForbiddenException when contest is already completed', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'completed' });
 
-      await expect(contestsService.cancel('contest-123', 'user-123')).rejects.toThrow('Cannot cancel a completed or already cancelled contest');
+      await expect(contestsService.cancel('contest-123', 'user-123')).rejects.toThrow(
+        'Cannot cancel a completed or already cancelled contest',
+      );
     });
   });
 
@@ -305,7 +536,11 @@ describe('ContestsService', () => {
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
       vi.mocked(contestsRepository.findWinningSubmission).mockResolvedValue(mockSubmission);
-      vi.mocked(contestsRepository.updateContest).mockResolvedValue({ ...votingContest, status: 'completed', winnerId: 'author-123' });
+      vi.mocked(contestsRepository.updateContest).mockResolvedValue({
+        ...votingContest,
+        status: 'completed',
+        winnerId: 'author-123',
+      });
 
       const result = await contestsService.complete('contest-123', 'user-123');
 
@@ -316,7 +551,9 @@ describe('ContestsService', () => {
     it('should throw ForbiddenException when contest is already completed', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'completed' });
 
-      await expect(contestsService.complete('contest-123', 'user-123')).rejects.toThrow('Cannot complete an already completed or cancelled contest');
+      await expect(contestsService.complete('contest-123', 'user-123')).rejects.toThrow(
+        'Cannot complete an already completed or cancelled contest',
+      );
     });
   });
 
@@ -351,7 +588,9 @@ describe('ContestsService', () => {
       try {
         vi.mocked(contestsRepository.findContestById).mockResolvedValue(null);
 
-        await expect(contestsService.submitStory('contest-999', 'user-123', 'story-123', 'user-123')).rejects.toThrow('Contest not found');
+        await expect(contestsService.submitStory('contest-999', 'user-123', 'story-123', 'user-123')).rejects.toThrow(
+          'Contest not found',
+        );
       } finally {
         vi.useRealTimers();
       }
@@ -363,7 +602,9 @@ describe('ContestsService', () => {
       try {
         vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'draft' });
 
-        await expect(contestsService.submitStory('contest-123', 'user-123', 'story-123', 'user-123')).rejects.toThrow('Contest is not accepting submissions');
+        await expect(contestsService.submitStory('contest-123', 'user-123', 'story-123', 'user-123')).rejects.toThrow(
+          'Contest is not accepting submissions',
+        );
       } finally {
         vi.useRealTimers();
       }
@@ -377,7 +618,9 @@ describe('ContestsService', () => {
         vi.mocked(contestsRepository.findContestById).mockResolvedValue(activeContest);
         vi.mocked(contestsRepository.findSubmissionByContestAndAuthor).mockResolvedValue(mockSubmission);
 
-        await expect(contestsService.submitStory('contest-123', 'user-123', 'story-123', 'user-123')).rejects.toThrow('You have already submitted a story to this contest');
+        await expect(contestsService.submitStory('contest-123', 'user-123', 'story-123', 'user-123')).rejects.toThrow(
+          'You have already submitted a story to this contest',
+        );
       } finally {
         vi.useRealTimers();
       }
@@ -386,7 +629,10 @@ describe('ContestsService', () => {
 
   describe('getSubmissions', () => {
     it('should return submissions for a contest', async () => {
-      vi.mocked(contestsRepository.findSubmissionsByContest).mockResolvedValue({ submissions: [mockSubmission], total: 1 });
+      vi.mocked(contestsRepository.findSubmissionsByContest).mockResolvedValue({
+        submissions: [mockSubmission],
+        total: 1,
+      });
 
       const result = await contestsService.getSubmissions('contest-123', 1, 20);
 
@@ -396,7 +642,7 @@ describe('ContestsService', () => {
     });
   });
 
-   describe('approveSubmission', () => {
+  describe('approveSubmission', () => {
     it('should approve a submission', async () => {
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
@@ -412,7 +658,9 @@ describe('ContestsService', () => {
     it('should throw NotFoundException when submission not found', async () => {
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(null);
 
-      await expect(contestsService.approveSubmission('submission-999', 'contest-123', 'user-123')).rejects.toThrow('Submission not found');
+      await expect(contestsService.approveSubmission('submission-999', 'contest-123', 'user-123')).rejects.toThrow(
+        'Submission not found',
+      );
     });
   });
 
@@ -431,14 +679,22 @@ describe('ContestsService', () => {
     it('should throw NotFoundException when submission not found', async () => {
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(null);
 
-      await expect(contestsService.rejectSubmission('submission-999', 'contest-123', 'user-123')).rejects.toThrow('Submission not found');
+      await expect(contestsService.rejectSubmission('submission-999', 'contest-123', 'user-123')).rejects.toThrow(
+        'Submission not found',
+      );
     });
   });
 
   describe('castVote', () => {
     it('should cast a vote successfully', async () => {
       const votingContest = { ...mockContest, status: 'voting' };
-      const vote: ContestVote = { id: 'vote-123', contestId: 'contest-123', submissionId: 'submission-123', userId: 'user-123', createdAt: new Date() };
+      const vote: ContestVote = {
+        id: 'vote-123',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        userId: 'user-123',
+        createdAt: new Date(),
+      };
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
       vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue(null);
@@ -453,21 +709,33 @@ describe('ContestsService', () => {
     it('should throw NotFoundException when contest not found', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(null);
 
-      await expect(contestsService.castVote('contest-999', 'submission-123', 'user-123')).rejects.toThrow('Contest not found');
+      await expect(contestsService.castVote('contest-999', 'submission-123', 'user-123')).rejects.toThrow(
+        'Contest not found',
+      );
     });
 
     it('should throw ForbiddenException when contest is not in voting phase', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
 
-      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow('Voting is not currently open for this contest');
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'Voting is not currently open for this contest',
+      );
     });
 
     it('should throw ConflictException when user already voted', async () => {
       const votingContest = { ...mockContest, status: 'voting' };
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
-      vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue({ id: 'vote-123', contestId: 'contest-123', submissionId: 'submission-123', userId: 'user-123', createdAt: new Date() });
+      vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue({
+        id: 'vote-123',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        userId: 'user-123',
+        createdAt: new Date(),
+      });
 
-      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow('You have already voted for this submission');
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'You have already voted for this submission',
+      );
     });
   });
 
@@ -477,7 +745,11 @@ describe('ContestsService', () => {
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
-      vi.mocked(contestsRepository.updateContest).mockResolvedValue({ ...votingContest, status: 'completed', winnerId: 'author-123' });
+      vi.mocked(contestsRepository.updateContest).mockResolvedValue({
+        ...votingContest,
+        status: 'completed',
+        winnerId: 'author-123',
+      });
 
       const result = await contestsService.selectWinner('contest-123', 'submission-123', 'author-123');
 
@@ -494,25 +766,44 @@ describe('ContestsService', () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(otherSubmission);
 
-      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow('Winner must be the author of the selected submission');
+      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow(
+        'Winner must be the author of the selected submission',
+      );
     });
 
     it('should throw ForbiddenException when contest is not in voting phase', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
 
-      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow('Contest is not in voting phase');
+      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow(
+        'Contest is not in voting phase',
+      );
     });
   });
 
   describe('distributePrize', () => {
     it('should distribute a prize successfully', async () => {
       const completedContest = { ...mockContest, status: 'completed' };
-      const prize = { id: 'prize-123', contestId: 'contest-123', submissionId: 'submission-123', winnerId: 'author-123', prizeType: 'cash', prizeDescription: '$100', distributedAt: new Date(), createdAt: new Date() };
+      const prize = {
+        id: 'prize-123',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        winnerId: 'author-123',
+        prizeType: 'cash',
+        prizeDescription: '$100',
+        distributedAt: new Date(),
+        createdAt: new Date(),
+      };
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(completedContest);
       vi.mocked(contestsRepository.createPrize).mockResolvedValue(prize);
 
-      const result = await contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash', '$100');
+      const result = await contestsService.distributePrize(
+        'contest-123',
+        'submission-123',
+        'author-123',
+        'cash',
+        '$100',
+      );
 
       expect(result).toEqual(prize);
       expect(eventValidatorService.emit).toHaveBeenCalledWith('prize.distributed', expect.any(Object));
@@ -521,13 +812,24 @@ describe('ContestsService', () => {
     it('should throw ForbiddenException when contest is not completed', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
 
-      await expect(contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash')).rejects.toThrow('Contest must be completed before distributing prizes');
+      await expect(
+        contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash'),
+      ).rejects.toThrow('Contest must be completed before distributing prizes');
     });
   });
 
   describe('getPrizes', () => {
     it('should return prizes for a contest', async () => {
-      const prize: ContestPrize = { id: 'prize-123', contestId: 'contest-123', submissionId: 'submission-123', winnerId: 'author-123', prizeType: 'cash', prizeDescription: '$100', distributedAt: new Date(), createdAt: new Date() };
+      const prize: ContestPrize = {
+        id: 'prize-123',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        winnerId: 'author-123',
+        prizeType: 'cash',
+        prizeDescription: '$100',
+        distributedAt: new Date(),
+        createdAt: new Date(),
+      };
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(mockContest);
       vi.mocked(contestsRepository.findPrizesByContest).mockResolvedValue([prize]);

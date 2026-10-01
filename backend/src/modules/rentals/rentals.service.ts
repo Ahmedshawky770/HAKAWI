@@ -1,20 +1,45 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+  BadRequestException,
+  Inject,
+} from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
-import type { RentalCreatedEvent, RentalExtendedEvent, RentalReturnedEvent, RentalExpiredEvent } from '../../common/events/rentals.events.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
+import type {
+  RentalCreatedEvent,
+  RentalExtendedEvent,
+  RentalReturnedEvent,
+  RentalExpiredEvent,
+} from '../../common/events/rentals.events.ts';
 
 import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.ts';
-import type { Rental, CreateRentalInput, RentalExtension, RentalResponse, RentalsListResponse, RentalExtensionResponse, CreateRentalRequest } from './types.ts';
+import type {
+  Rental,
+  CreateRentalInput,
+  RentalExtension,
+  RentalResponse,
+  RentalsListResponse,
+  RentalExtensionResponse,
+  CreateRentalRequest,
+} from './types.ts';
+import { reviveRentalDates } from './types.ts';
+
+export const RENTAL_CACHE_NAMESPACE = 'rental';
+export const RENTALS_CACHE_TAG = 'rentals';
+export const RENTAL_CACHE_TTL_SECONDS = 300;
 
 @Injectable()
 export class RentalsService {
   constructor(
     @Inject(RENTALS_REPOSITORY) private readonly rentalsRepository: IRentalsRepository,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
-    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
+    @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
   ) {}
 
@@ -37,34 +62,67 @@ export class RentalsService {
     };
 
     const rental = await this.rentalsRepository.create(data);
-    await this.eventBus.emit('rental.created', { rentalId: rental.id, userId, bookId: input.bookId } as RentalCreatedEvent);
+    await this.eventBus.emit('rental.created', {
+      rentalId: rental.id,
+      userId,
+      bookId: input.bookId,
+    } as RentalCreatedEvent);
     return rental;
   }
 
+  /**
+   * Reads a rental by id, cached.
+   *
+   * Two things this method used to get wrong, both invisible in a unit test that returns the same
+   * object instance it stored:
+   *
+   * 1. It read Valkey by hand and `JSON.parse`d the payload, so on a cache hit the `Date` fields
+   *    came back as ISO strings inside an object typed `Rental` — a live type lie that becomes a
+   *    `TypeError` in {@link toRentalResponse} the first time a cached rental reaches a mapper.
+   * 2. A corrupt entry (`JSON.parse` failure, a hand-edited key, a payload written by an older
+   *    shape) escaped as an exception instead of healing.
+   *
+   * `getOrSet` + `revive` fixes both: the cached copy is revived to the repository's shape, and an
+   * entry that cannot be revived is dropped and reported as a miss.
+   *
+   * The ownership check appears twice on purpose. The one after the call covers the cached path,
+   * which never runs the loader. The one inside the loader keeps a rejected read from *populating*
+   * the cache — the behaviour the hand-rolled `valkeyService.set` had, where the check came before
+   * the write. Without it, any caller who knows a rental id could force a cache write for a row they
+   * are not allowed to see.
+   */
   async findById(id: string, userId?: string): Promise<Rental> {
-    const cached = await this.valkeyService.get(`rental:${id}`);
-    if (cached) {
-      const rental = JSON.parse(cached) as Rental;
-      if (userId && rental.userId !== userId) {
-        throw new ForbiddenException('You do not have access to this rental');
-      }
-      return rental;
-    }
-
-    const rental = await this.rentalsRepository.findById(id);
-    if (!rental || rental.deletedAt) {
-      throw new NotFoundException('Rental not found');
-    }
+    const { value: rental } = await this.cache.getOrSet<Rental>({
+      namespace: RENTAL_CACHE_NAMESPACE,
+      key: id,
+      ttl: RENTAL_CACHE_TTL_SECONDS,
+      tags: [RENTALS_CACHE_TAG],
+      // Without this, `toRentalResponse` calls `.toISOString()` on an ISO string and the request
+      // fails — on every hit, while the first cold request succeeds.
+      revive: reviveRentalDates,
+      load: async () => {
+        const loaded = await this.rentalsRepository.findById(id);
+        if (!loaded || loaded.deletedAt) {
+          throw new NotFoundException('Rental not found');
+        }
+        if (userId && loaded.userId !== userId) {
+          throw new ForbiddenException('You do not have access to this rental');
+        }
+        return loaded;
+      },
+    });
 
     if (userId && rental.userId !== userId) {
       throw new ForbiddenException('You do not have access to this rental');
     }
 
-    await this.valkeyService.set(`rental:${id}`, JSON.stringify(rental), 300);
     return rental;
   }
 
-  async findMyRentals(userId: string, params: { status?: string; page?: number; limit?: number }): Promise<RentalsListResponse> {
+  async findMyRentals(
+    userId: string,
+    params: { status?: string; page?: number; limit?: number },
+  ): Promise<RentalsListResponse> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
 
@@ -113,7 +171,7 @@ export class RentalsService {
       extendedCount: rental.extendedCount + 1,
     });
 
-    await this.valkeyService.del(`rental:${id}`);
+    await this.invalidateRentalCache(id);
 
     await this.eventBus.emit('rental.extended', { rentalId: id } as RentalExtendedEvent);
     return extension;
@@ -138,7 +196,7 @@ export class RentalsService {
       returnedAt: new Date(),
     });
 
-    await this.valkeyService.del(`rental:${id}`);
+    await this.invalidateRentalCache(id);
 
     await this.eventBus.emit('rental.returned', { rentalId: id } as RentalReturnedEvent);
     return updated;
@@ -152,10 +210,26 @@ export class RentalsService {
     const overdueRentals = await this.rentalsRepository.findOverdue();
     for (const rental of overdueRentals) {
       await this.rentalsRepository.update(rental.id, { status: 'expired' });
-      await this.valkeyService.del(`rental:${rental.id}`);
+      await this.invalidateRentalCache(rental.id);
       await this.eventBus.emit('rental.expired', { rentalId: rental.id } as RentalExpiredEvent);
     }
     this.logger.info(`Expired ${overdueRentals.length} overdue rentals`);
+  }
+
+  /**
+   * Retires the cached copy of one rental.
+   *
+   * The tag is passed so the key also leaves the tag index it was written into. A targeted delete
+   * that skips the unindex leaves a tombstone in `cache:tag:rentals`, so the set grows forever and
+   * every later sweep pays for it — and the generation bump is what makes this targeted drop as
+   * visible to an in-flight reader as a sweep would be (Principle #11).
+   *
+   * Every write path that changes a rental funnels through here: extending, returning and
+   * expiring all mutate the row, and a cache that is only invalidated on some of them is the same
+   * bug as no invalidation at all.
+   */
+  private async invalidateRentalCache(id: string): Promise<void> {
+    await this.cache.invalidateKey(RENTAL_CACHE_NAMESPACE, id, [RENTALS_CACHE_TAG]);
   }
 
   private toRentalResponse(rental: Rental): RentalResponse {

@@ -53,7 +53,9 @@ export class UpdateContestDto {
   submissionDeadline?: Date;
 
   @IsOptional()
-  @IsIn(['draft', 'active', 'voting', 'completed', 'cancelled'], { message: 'Status must be one of: draft, active, voting, completed, cancelled' })
+  @IsIn(['draft', 'active', 'voting', 'completed', 'cancelled'], {
+    message: 'Status must be one of: draft, active, voting, completed, cancelled',
+  })
   status?: string;
 }
 

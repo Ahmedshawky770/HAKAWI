@@ -35,36 +35,57 @@ export class ContestsEventHandler {
 
   @OnEvent('contest.completed')
   async handleContestCompleted(event: ContestCompletedEvent): Promise<void> {
-    this.logger.info(`Contest completed: ${event.contestId}, winner: ${event.winnerId ?? 'none'}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Contest completed: ${event.contestId}, winner: ${event.winnerId ?? 'none'}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('submission.submitted')
   async handleSubmissionSubmitted(event: SubmissionSubmittedEvent): Promise<void> {
-    this.logger.info(`Submission submitted: ${event.submissionId} for contest ${event.contestId} by author ${event.authorId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Submission submitted: ${event.submissionId} for contest ${event.contestId} by author ${event.authorId}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('submission.approved')
   async handleSubmissionApproved(event: SubmissionApprovedEvent): Promise<void> {
-    this.logger.info(`Submission approved: ${event.submissionId} for contest ${event.contestId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Submission approved: ${event.submissionId} for contest ${event.contestId}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('submission.rejected')
   async handleSubmissionRejected(event: SubmissionRejectedEvent): Promise<void> {
-    this.logger.info(`Submission rejected: ${event.submissionId} for contest ${event.contestId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Submission rejected: ${event.submissionId} for contest ${event.contestId}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('vote.cast')
   async handleVoteCast(event: VoteCastEvent): Promise<void> {
-    this.logger.info(`Vote cast: ${event.voteId} by user ${event.userId} for submission ${event.submissionId} in contest ${event.contestId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Vote cast: ${event.voteId} by user ${event.userId} for submission ${event.submissionId} in contest ${event.contestId}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('winner.selected')
   async handleWinnerSelected(event: WinnerSelectedEvent): Promise<void> {
-    this.logger.info(`Winner selected for contest ${event.contestId}: submission ${event.submissionId}, winner ${event.winnerId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Winner selected for contest ${event.contestId}: submission ${event.submissionId}, winner ${event.winnerId}`,
+      'ContestsEventHandler',
+    );
   }
 
   @OnEvent('prize.distributed')
   async handlePrizeDistributed(event: PrizeDistributedEvent): Promise<void> {
-    this.logger.info(`Prize distributed: ${event.prizeId} for contest ${event.contestId} to winner ${event.winnerId}`, 'ContestsEventHandler');
+    this.logger.info(
+      `Prize distributed: ${event.prizeId} for contest ${event.contestId} to winner ${event.winnerId}`,
+      'ContestsEventHandler',
+    );
   }
 }

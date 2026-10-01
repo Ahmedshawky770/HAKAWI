@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, ConflictException, I
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type {
   ContestCreatedEvent,
   ContestUpdatedEvent,
@@ -21,6 +21,7 @@ import type { IContestsRepository } from './interfaces/contests-repository.inter
 import { CONTESTS_REPOSITORY } from './interfaces/contests-repository.interface.ts';
 import type {
   Contest,
+  ContestCategorySummary,
   ContestSubmission,
   ContestVote,
   ContestPrize,
@@ -35,13 +36,21 @@ import type {
   PublisherSubmissionOverview,
   PublisherVoteOverview,
 } from './types.ts';
+import { reviveContestDates } from './types.ts';
+
+export const CONTEST_CACHE_NAMESPACE = 'contest';
+export const CONTESTS_CACHE_TAG = 'contests';
+export const CONTEST_CACHE_TTL_SECONDS = 600;
+
+/** `categoryId` → category name, built with one query per page rather than one per contest. */
+type ContestCategoryIndex = ReadonlyMap<string, string>;
 
 @Injectable()
 export class ContestsService {
   constructor(
     @Inject(CONTESTS_REPOSITORY) private readonly contestsRepository: IContestsRepository,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
-    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
+    @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
   ) {}
 
@@ -59,7 +68,8 @@ export class ContestsService {
       status: 'draft',
       startDate: input.startDate instanceof Date ? input.startDate : new Date(input.startDate),
       endDate: input.endDate instanceof Date ? input.endDate : new Date(input.endDate),
-      submissionDeadline: input.submissionDeadline instanceof Date ? input.submissionDeadline : new Date(input.submissionDeadline),
+      submissionDeadline:
+        input.submissionDeadline instanceof Date ? input.submissionDeadline : new Date(input.submissionDeadline),
     };
 
     const contest = await this.contestsRepository.createContest(data);
@@ -67,27 +77,50 @@ export class ContestsService {
     return contest;
   }
 
-  async findById(id: string): Promise<Contest> {
-    const cached = await this.valkeyService.get(`contest:${id}`);
-    if (cached) {
-      return JSON.parse(cached) as Contest;
-    }
+  /**
+   * Reads one contest, cached, and returns it in the same shape `findAll` returns.
+   *
+   * It used to hand Valkey-read JSON straight back to the controller, which meant two things went
+   * wrong for a warm key: the `Date` fields were ISO strings inside an object typed `Contest`, so
+   * any mapper touching them threw `TypeError: ...toISOString is not a function`; and the payload
+   * carried no `category` name, so the detail page could only show the raw UUID. Both are fixed by
+   * reviving the entry to the repository's shape and running it through the one authoritative
+   * response mapper.
+   */
+  async findById(id: string): Promise<ContestResponse> {
+    const { value: contest } = await this.cache.getOrSet<Contest>({
+      namespace: CONTEST_CACHE_NAMESPACE,
+      key: id,
+      ttl: CONTEST_CACHE_TTL_SECONDS,
+      tags: [CONTESTS_CACHE_TAG],
+      // Without this the cached copy is not the row it was loaded from, and the mapper below is
+      // the first thing that notices — on every hit, while the first cold read succeeds.
+      revive: reviveContestDates,
+      load: async () => {
+        const loaded = await this.contestsRepository.findContestById(id);
+        if (!loaded) {
+          throw new NotFoundException('Contest not found');
+        }
+        return loaded;
+      },
+    });
 
-    const contest = await this.contestsRepository.findContestById(id);
-    if (!contest) {
-      throw new NotFoundException('Contest not found');
-    }
-
-    await this.valkeyService.set(`contest:${id}`, JSON.stringify(contest), 600);
-    return contest;
+    return this.toContestResponse(contest, await this.loadCategoryIndex([contest]));
   }
 
-  async findAll(params: { page?: number; limit?: number; categoryId?: string; status?: string; search?: string }): Promise<ContestsListResponse> {
+  async findAll(params: {
+    page?: number;
+    limit?: number;
+    categoryId?: string;
+    status?: string;
+    search?: string;
+  }): Promise<ContestsListResponse> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
 
     const result = await this.contestsRepository.findAllContests(params);
-    const contests = result.contests.map((contest) => this.toContestResponse(contest));
+    const categoriesById = await this.loadCategoryIndex(result.contests);
+    const contests = result.contests.map((contest) => this.toContestResponse(contest, categoriesById));
 
     return {
       contests,
@@ -112,7 +145,7 @@ export class ContestsService {
     }
 
     const contest = await this.contestsRepository.updateContest(id, input);
-    await this.valkeyService.del(`contest:${id}`);
+    await this.invalidateContestCache(id);
 
     this.eventBus.emit('contest.updated', { contestId: id, updatedFields: input });
     return contest;
@@ -133,7 +166,7 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.updateContest(id, { status: 'active' });
-    await this.valkeyService.del(`contest:${id}`);
+    await this.invalidateContestCache(id);
 
     this.eventBus.emit('contest.started', { contestId: id });
     return updated;
@@ -154,7 +187,7 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.updateContest(id, { status: 'cancelled' });
-    await this.valkeyService.del(`contest:${id}`);
+    await this.invalidateContestCache(id);
 
     this.eventBus.emit('contest.cancelled', { contestId: id });
     return updated;
@@ -184,7 +217,7 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.updateContest(id, updateData);
-    await this.valkeyService.del(`contest:${id}`);
+    await this.invalidateContestCache(id);
 
     if (hasWinner) {
       const winning = winningSubmission;
@@ -223,13 +256,19 @@ export class ContestsService {
     return submission;
   }
 
-  async getSubmissions(contestId: string, page = 1, limit = 20): Promise<{ submissions: ContestSubmissionResponse[]; total: number }> {
+  async getSubmissions(
+    contestId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ submissions: ContestSubmissionResponse[]; total: number; page: number; limit: number }> {
     const result = await this.contestsRepository.findSubmissionsByContest(contestId, page, limit);
     const submissions = result.submissions.map((submission) => this.toSubmissionResponse(submission));
 
     return {
       submissions,
       total: result.total,
+      page,
+      limit,
     };
   }
 
@@ -284,7 +323,12 @@ export class ContestsService {
     return vote;
   }
 
-  async getVotes(contestId: string, submissionId: string | undefined, page = 1, limit = 20): Promise<{ votes: ContestVoteResponse[]; total: number }> {
+  async getVotes(
+    contestId: string,
+    submissionId: string | undefined,
+    page = 1,
+    limit = 20,
+  ): Promise<{ votes: ContestVoteResponse[]; total: number; page: number; limit: number }> {
     if (submissionId) {
       const submission = await this.contestsRepository.findSubmissionById(submissionId);
       if (!submission || submission.contestId !== contestId) {
@@ -303,6 +347,8 @@ export class ContestsService {
       return {
         votes: mapped.slice((page - 1) * limit, page * limit),
         total: mapped.length,
+        page,
+        limit,
       };
     }
 
@@ -324,6 +370,8 @@ export class ContestsService {
         createdAt: vote.createdAt.toISOString(),
       })),
       total: Number(total),
+      page: pageNum,
+      limit: limitNum,
     };
   }
 
@@ -347,14 +395,20 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.updateContest(contestId, { winnerId, status: 'completed' });
-    await this.valkeyService.del(`contest:${contestId}`);
+    await this.invalidateContestCache(contestId);
 
     this.eventBus.emit('winner.selected', { contestId, submissionId, winnerId });
     this.eventBus.emit('contest.completed', { contestId, winnerId });
     return updated;
   }
 
-  async distributePrize(contestId: string, submissionId: string, winnerId: string, prizeType: string, prizeDescription?: string | null): Promise<ContestPrize> {
+  async distributePrize(
+    contestId: string,
+    submissionId: string,
+    winnerId: string,
+    prizeType: string,
+    prizeDescription?: string | null,
+  ): Promise<ContestPrize> {
     const contest = await this.contestsRepository.findContestById(contestId);
     if (!contest) {
       throw new NotFoundException('Contest not found');
@@ -428,7 +482,10 @@ export class ContestsService {
     };
   }
 
-  async getPublisherSubmissionsOverview(contestId: string, publisherId: string): Promise<PublisherSubmissionOverview[]> {
+  async getPublisherSubmissionsOverview(
+    contestId: string,
+    publisherId: string,
+  ): Promise<PublisherSubmissionOverview[]> {
     const contest = await this.contestsRepository.findContestById(contestId);
     if (!contest) {
       throw new NotFoundException('Contest not found');
@@ -477,12 +534,43 @@ export class ContestsService {
     }));
   }
 
-  private toContestResponse(contest: Contest): ContestResponse {
+  /**
+   * Resolves the category names of a page of contests with a single query.
+   *
+   * One query per page instead of one per contest is the whole point: a 20-contest list would
+   * otherwise issue 20 round trips, and a category name is not worth that. The repository returns
+   * nothing for the empty case, so a page with no categories costs no query at all.
+   */
+  private async loadCategoryIndex(contests: readonly Contest[]): Promise<ContestCategoryIndex> {
+    const categoryIds = [
+      ...new Set(contests.map((contest) => contest.categoryId).filter((id): id is string => id !== null)),
+    ];
+    if (categoryIds.length === 0) {
+      return new Map<string, string>();
+    }
+    const summaries: ContestCategorySummary[] = await this.contestsRepository.findCategoriesByIds(categoryIds);
+    return new Map(summaries.map((summary) => [summary.id, summary.name]));
+  }
+
+  /**
+   * Retires the cached copy of one contest.
+   *
+   * The tag is passed so the key also leaves the index it was written into, and so the generation
+   * bump reaches readers that loaded this contest before the change. Every path that mutates a
+   * contest routes through here; invalidating on some paths and not others is the same defect as
+   * never invalidating (Principle #11).
+   */
+  private async invalidateContestCache(id: string): Promise<void> {
+    await this.cache.invalidateKey(CONTEST_CACHE_NAMESPACE, id, [CONTESTS_CACHE_TAG]);
+  }
+
+  private toContestResponse(contest: Contest, categoriesById: ContestCategoryIndex): ContestResponse {
     return {
       id: contest.id,
       title: contest.title,
       description: contest.description,
       categoryId: contest.categoryId,
+      category: contest.categoryId === null ? null : (categoriesById.get(contest.categoryId) ?? null),
       startDate: contest.startDate.toISOString(),
       endDate: contest.endDate.toISOString(),
       submissionDeadline: contest.submissionDeadline.toISOString(),

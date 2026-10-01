@@ -1,7 +1,12 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { eq, and, desc, count, lt, isNull } from 'drizzle-orm';
 
-import { IRentalsRepository, Rental, CreateRentalInput, RentalExtension } from '../interfaces/rentals-repository.interface.ts';
+import {
+  IRentalsRepository,
+  Rental,
+  CreateRentalInput,
+  RentalExtension,
+} from '../interfaces/rentals-repository.interface.ts';
 import { rentals, rentalExtensions } from '../../../db/schema/rentals.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -36,7 +41,10 @@ export class RentalsRepository implements IRentalsRepository {
 
   async findActiveByUser(userId: string): Promise<Rental[]> {
     this.logger.debug(`Finding active rentals for user: ${userId}`);
-    return db.select().from(rentals).where(and(eq(rentals.userId, userId), eq(rentals.status, 'active'), isNull(rentals.deletedAt)));
+    return db
+      .select()
+      .from(rentals)
+      .where(and(eq(rentals.userId, userId), eq(rentals.status, 'active'), isNull(rentals.deletedAt)));
   }
 
   async findAll(params: {
@@ -76,21 +84,28 @@ export class RentalsRepository implements IRentalsRepository {
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + durationDays);
 
-    const [rental] = await db.insert(rentals).values({
-      userId: data.userId,
-      bookId: data.bookId,
-      status: 'active',
-      startDate,
-      endDate,
-      extendedCount: 0,
-      maxExtensions: 2,
-    }).returning();
+    const [rental] = await db
+      .insert(rentals)
+      .values({
+        userId: data.userId,
+        bookId: data.bookId,
+        status: 'active',
+        startDate,
+        endDate,
+        extendedCount: 0,
+        maxExtensions: 2,
+      })
+      .returning();
     return rental;
   }
 
   async update(id: string, data: Partial<Rental>): Promise<Rental> {
     this.logger.debug(`Updating rental: ${id}`);
-    const [rental] = await db.update(rentals).set({ ...data, updatedAt: new Date() }).where(eq(rentals.id, id)).returning();
+    const [rental] = await db
+      .update(rentals)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(rentals.id, id))
+      .returning();
     return rental;
   }
 
@@ -117,6 +132,9 @@ export class RentalsRepository implements IRentalsRepository {
 
   async findOverdue(): Promise<Rental[]> {
     this.logger.debug('Finding overdue rentals');
-    return db.select().from(rentals).where(and(eq(rentals.status, 'active'), lt(rentals.endDate, new Date()), isNull(rentals.deletedAt)));
+    return db
+      .select()
+      .from(rentals)
+      .where(and(eq(rentals.status, 'active'), lt(rentals.endDate, new Date()), isNull(rentals.deletedAt)));
   }
 }

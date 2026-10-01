@@ -100,55 +100,101 @@ describe('ContestsEventHandler', () => {
     it('should log contest completed event', async () => {
       await contestsEventHandler.handleContestCompleted({ contestId: 'contest-123', winnerId: 'user-456' });
 
-      expect(logger.info).toHaveBeenCalledWith('Contest completed: contest-123, winner: user-456', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Contest completed: contest-123, winner: user-456',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handleSubmissionSubmitted', () => {
     it('should log submission submitted event', async () => {
-      await contestsEventHandler.handleSubmissionSubmitted({ submissionId: 'sub-123', contestId: 'contest-123', authorId: 'author-123' });
+      await contestsEventHandler.handleSubmissionSubmitted({
+        submissionId: 'sub-123',
+        contestId: 'contest-123',
+        authorId: 'author-123',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Submission submitted: sub-123 for contest contest-123 by author author-123', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Submission submitted: sub-123 for contest contest-123 by author author-123',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handleSubmissionApproved', () => {
     it('should log submission approved event', async () => {
-      await contestsEventHandler.handleSubmissionApproved({ submissionId: 'sub-123', contestId: 'contest-123', authorId: 'author-123' });
+      await contestsEventHandler.handleSubmissionApproved({
+        submissionId: 'sub-123',
+        contestId: 'contest-123',
+        authorId: 'author-123',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Submission approved: sub-123 for contest contest-123', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Submission approved: sub-123 for contest contest-123',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handleSubmissionRejected', () => {
     it('should log submission rejected event', async () => {
-      await contestsEventHandler.handleSubmissionRejected({ submissionId: 'sub-123', contestId: 'contest-123', authorId: 'author-123' });
+      await contestsEventHandler.handleSubmissionRejected({
+        submissionId: 'sub-123',
+        contestId: 'contest-123',
+        authorId: 'author-123',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Submission rejected: sub-123 for contest contest-123', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Submission rejected: sub-123 for contest contest-123',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handleVoteCast', () => {
     it('should log vote cast event', async () => {
-      await contestsEventHandler.handleVoteCast({ voteId: 'vote-123', contestId: 'contest-123', submissionId: 'sub-123', userId: 'user-123' });
+      await contestsEventHandler.handleVoteCast({
+        voteId: 'vote-123',
+        contestId: 'contest-123',
+        submissionId: 'sub-123',
+        userId: 'user-123',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Vote cast: vote-123 by user user-123 for submission sub-123 in contest contest-123', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Vote cast: vote-123 by user user-123 for submission sub-123 in contest contest-123',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handleWinnerSelected', () => {
     it('should log winner selected event', async () => {
-      await contestsEventHandler.handleWinnerSelected({ contestId: 'contest-123', submissionId: 'sub-123', winnerId: 'user-456' });
+      await contestsEventHandler.handleWinnerSelected({
+        contestId: 'contest-123',
+        submissionId: 'sub-123',
+        winnerId: 'user-456',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Winner selected for contest contest-123: submission sub-123, winner user-456', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Winner selected for contest contest-123: submission sub-123, winner user-456',
+        'ContestsEventHandler',
+      );
     });
   });
 
   describe('handlePrizeDistributed', () => {
     it('should log prize distributed event', async () => {
-      await contestsEventHandler.handlePrizeDistributed({ prizeId: 'prize-123', contestId: 'contest-123', winnerId: 'user-456' });
+      await contestsEventHandler.handlePrizeDistributed({
+        prizeId: 'prize-123',
+        contestId: 'contest-123',
+        winnerId: 'user-456',
+      });
 
-      expect(logger.info).toHaveBeenCalledWith('Prize distributed: prize-123 for contest contest-123 to winner user-456', 'ContestsEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Prize distributed: prize-123 for contest contest-123 to winner user-456',
+        'ContestsEventHandler',
+      );
     });
   });
 });

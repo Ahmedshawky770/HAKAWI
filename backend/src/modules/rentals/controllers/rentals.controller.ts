@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Param, UseGuards, Inject, HttpCode, HttpStatus, Request, Body, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  UseGuards,
+  Inject,
+  HttpCode,
+  HttpStatus,
+  Request,
+  Body,
+  Query,
+} from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RentalsService } from '../rentals.service.ts';
@@ -31,7 +43,11 @@ export class RentalsController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/extend')
   @HttpCode(HttpStatus.OK)
-  async extendRental(@Param('id') id: string, @Body() dto: ExtendRentalDto, @Request() req: Request & { user: { sub: string } }) {
+  async extendRental(
+    @Param('id') id: string,
+    @Body() dto: ExtendRentalDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
     return this.rentalsService.extendRental(id, dto.extensionDays ?? 7, req.user.sub);
   }
 

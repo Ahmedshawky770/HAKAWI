@@ -44,35 +44,33 @@ describe('Rentals E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
     httpServer = app.getHttpServer() as Server;
 
-    await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-rentals@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Rentals User',
-        username: 'e2erentals',
-      });
+    await request(httpServer).post('/auth/register').send({
+      email: 'e2e-rentals@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Rentals User',
+      username: 'e2erentals',
+    });
 
-    const loginRes = await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-rentals@example.com',
-        password: 'SecurePass123!',
-      });
+    const loginRes = await request(httpServer).post('/auth/login').send({
+      email: 'e2e-rentals@example.com',
+      password: 'SecurePass123!',
+    });
 
     accessToken = loginRes.body.tokens.accessToken;
 

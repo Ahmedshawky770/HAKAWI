@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../../common/common.module.ts';
 import { DatabaseModule } from '../../db/database.module.ts';
+import { SharedCacheModule } from '../shared/cache/shared-cache.module.ts';
 
 import { RentalsService } from './rentals.service.ts';
 import { RentalsController } from './controllers/rentals.controller.ts';
@@ -10,9 +11,14 @@ import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.ts
 import { RentalsEventHandler } from './events/rentals.event-handler.ts';
 
 @Module({
-  imports: [CommonModule, DatabaseModule],
+  imports: [CommonModule, DatabaseModule, SharedCacheModule],
   controllers: [RentalsController],
-  providers: [RentalsService, RentalsRepository, RentalsEventHandler, { provide: RENTALS_REPOSITORY, useExisting: RentalsRepository }],
+  providers: [
+    RentalsService,
+    RentalsRepository,
+    RentalsEventHandler,
+    { provide: RENTALS_REPOSITORY, useExisting: RentalsRepository },
+  ],
   exports: [RentalsService],
 })
 export class RentalsModule {}

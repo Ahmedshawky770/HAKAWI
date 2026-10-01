@@ -2,7 +2,12 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { RentalCreatedEvent, RentalExtendedEvent, RentalReturnedEvent, RentalExpiredEvent } from '../../../common/events/rentals.events.ts';
+import type {
+  RentalCreatedEvent,
+  RentalExtendedEvent,
+  RentalReturnedEvent,
+  RentalExpiredEvent,
+} from '../../../common/events/rentals.events.ts';
 import type { IRentalsRepository } from '../interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from '../interfaces/rentals-repository.interface.ts';
 

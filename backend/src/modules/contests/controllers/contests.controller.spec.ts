@@ -2,7 +2,7 @@ import type { Server } from 'http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, NotFoundException } from '@nestjs/common';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
@@ -30,6 +30,9 @@ type MockContestsService = {
   rejectSubmission: ReturnType<typeof vi.fn>;
   distributePrize: ReturnType<typeof vi.fn>;
   getPrizes: ReturnType<typeof vi.fn>;
+  getPublisherStats: ReturnType<typeof vi.fn>;
+  getPublisherSubmissionsOverview: ReturnType<typeof vi.fn>;
+  getPublisherVotesOverview: ReturnType<typeof vi.fn>;
 };
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
@@ -61,6 +64,9 @@ describe('ContestsController', () => {
       rejectSubmission: vi.fn(),
       distributePrize: vi.fn(),
       getPrizes: vi.fn(),
+      getPublisherStats: vi.fn(),
+      getPublisherSubmissionsOverview: vi.fn(),
+      getPublisherVotesOverview: vi.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -103,9 +109,7 @@ describe('ContestsController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer)
-        .get('/contests')
-        .expect(200);
+      const res = await request(httpServer).get('/contests').expect(200);
 
       expect(res.body).toHaveProperty('contests');
       expect(res.body).toHaveProperty('total', 0);
@@ -115,19 +119,28 @@ describe('ContestsController', () => {
 
   describe('GET /contests/:id', () => {
     it('should return a contest by id', async () => {
+      // `findById` returns the response shape, not the row: dates are already ISO strings and the
+      // category is resolved, so the detail page no longer has to render a raw categoryId UUID.
       vi.mocked(contestsService.findById).mockResolvedValue({
         id: 'contest-1',
         title: 'Test Contest',
+        description: null,
+        categoryId: 'cat-1',
+        category: 'Speculative',
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-12-31T00:00:00.000Z',
+        submissionDeadline: '2024-06-30T00:00:00.000Z',
         status: 'draft',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-       } as unknown as Contest);
+        createdBy: 'user-1',
+        winnerId: null,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      });
 
-      const res = await request(httpServer)
-        .get('/contests/contest-1')
-        .expect(200);
+      const res = await request(httpServer).get('/contests/contest-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'contest-1');
+      expect(res.body).toHaveProperty('category', 'Speculative');
       expect(contestsService.findById).toHaveBeenCalledWith('contest-1');
     });
   });
@@ -143,7 +156,7 @@ describe('ContestsController', () => {
         createdBy: 'user-1',
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Contest);
+      } as unknown as Contest);
 
       const res = await request(httpServer)
         .post('/contests')
@@ -167,7 +180,7 @@ describe('ContestsController', () => {
         createdBy: 'user-1',
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Contest);
+      } as unknown as Contest);
 
       const res = await request(httpServer)
         .patch('/contests/contest-1')
@@ -191,7 +204,7 @@ describe('ContestsController', () => {
         createdBy: 'user-1',
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Contest);
+      } as unknown as Contest);
 
       const res = await request(httpServer)
         .post('/contests/contest-1/start')
@@ -236,12 +249,69 @@ describe('ContestsController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/contests/contest-1/submissions')
-        .expect(200);
+      const res = await request(httpServer).get('/contests/contest-1/submissions').expect(200);
 
       expect(res.body).toHaveProperty('submissions');
       expect(contestsService.getSubmissions).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Express matches in declaration order, so a literal segment declared after `@Get(':id')` is one
+   * edit away from being swallowed by it. `publisher/stats` only survives today because it has a
+   * different number of segments than `:id` — an accident of arity, not a guarantee, and invisible
+   * to anyone reading the file top to bottom. These two cases pin the real routing: the static
+   * route must be the one that answers, and a non-UUID `:id` must be a 404 rather than a 500 from
+   * PostgreSQL.
+   */
+  describe('route ordering between static segments and :id', () => {
+    it('routes GET /contests/publisher/stats to the publisher handler, not to findById', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'admin');
+      vi.mocked(contestsService.getPublisherStats).mockResolvedValue({
+        totalContests: 0,
+        activeContests: 0,
+        completedContests: 0,
+        totalSubmissions: 0,
+        pendingSubmissions: 0,
+        approvedSubmissions: 0,
+        rejectedSubmissions: 0,
+        totalVotes: 0,
+        totalPrizes: 0,
+      });
+
+      const res = await request(httpServer)
+        .get('/contests/publisher/stats')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('totalContests', 0);
+      expect(contestsService.getPublisherStats).toHaveBeenCalledWith('user-1');
+      expect(contestsService.findById).not.toHaveBeenCalled();
+    });
+
+    it('routes GET /contests/publisher/:id/votes to the publisher handler', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'admin');
+      vi.mocked(contestsService.getPublisherVotesOverview).mockResolvedValue([]);
+
+      const res = await request(httpServer)
+        .get('/contests/publisher/contest-1/votes')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body).toEqual([]);
+      expect(contestsService.getPublisherVotesOverview).toHaveBeenCalledWith('contest-1', 'user-1');
+      expect(contestsService.getVotes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-UUID :id as 404 instead of letting it reach the database', async () => {
+      // `ContestsRepository.findContestById` translates PostgreSQL error 22P02 into "no such
+      // contest", which is what keeps `/contests/publisher` (a plausible static path) a 404 rather
+      // than a 500. The routing spec above is the real guard; this one pins the failure mode.
+      vi.mocked(contestsService.findById).mockRejectedValue(new NotFoundException('Contest not found'));
+
+      await request(httpServer).get('/contests/not-a-uuid').expect(404);
+
+      expect(contestsService.findById).toHaveBeenCalledWith('not-a-uuid');
     });
   });
 });
