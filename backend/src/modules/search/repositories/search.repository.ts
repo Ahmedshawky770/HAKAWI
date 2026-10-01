@@ -1,11 +1,16 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { sql, desc, eq, and, isNull } from 'drizzle-orm';
+import { sql, desc, eq, and, isNull, type SQL } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { db } from '../../../db/index.ts';
 import { stories, categories, tags, storyTags } from '../../../db/schema/stories.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
-import type { ISearchRepository, SearchResult, AuthorSearchResult, CategorySearchResult } from '../interfaces/search-repository.interface.ts';
+import type {
+  ISearchRepository,
+  SearchResult,
+  AuthorSearchResult,
+  CategorySearchResult,
+} from '../interfaces/search-repository.interface.ts';
 
 interface StorySearchRow {
   id: string;
@@ -32,6 +37,38 @@ interface CategorySearchRow {
   slug: string;
   storiesCount: number;
 }
+
+/**
+ * The one author-search predicate, shared by the page query and the count query.
+ *
+ * WHY A SHARED FUNCTION AND NOT TWO IDENTICAL `sql` TEMPLATES (Principle #9 — Single Source of
+ * Truth): the tsvector configuration is part of the *predicate*, not a detail of one query. The two
+ * sides of `searchAuthors` used to spell the same predicate with different configurations — 'simple'
+ * for the page, 'english' for the count — and that divergence was invisible: both queries ran, both
+ * returned, and nothing failed. It broke the method twice over:
+ *
+ *  - `total` no longer described the rows returned. Stemming changes which terms match, so a term
+ *    the page matched was not matched by the count (or the reverse). Pagination then reported a last
+ *    page that did not exist, or stopped short of the rows that did.
+ *  - 'english' is not the expression `users_search_idx` is built on in
+ *    `migrations/0014_create_search_indexes.sql`, which uses 'simple'. A GIN expression index is
+ *    only usable when the query's expression matches the indexed one, so the count query could not
+ *    use the index the migration created for it.
+ *
+ * WHY 'simple' SPECIFICALLY, AND NOT 'english': this index set covers an Arabic corpus as well as an
+ * English one, and the Snowball 'english' stemmer discards the case-folding and diacritic handling
+ * Arabic needs while stemming English words that were never indexed as such. 'simple' is what the
+ * applied migrations already build, and Principle #6 forbids a migration purely to change a value
+ * that a code change can align instead.
+ *
+ * WHY 'simple' IS WRITTEN AS A LITERAL IN THE SQL TEXT RATHER THAN BOUND AS A PARAMETER: Postgres
+ * matches an expression index by comparing the query's expression tree against the indexed one, and
+ * a bound parameter is opaque at that point. `websearch_to_tsquery($1, $2)` with the configuration
+ * supplied as a bind would parse, run, and then scan the table instead of using `users_search_idx`.
+ * So the one name lives here, in the one predicate, spelled out.
+ */
+const searchAuthorsPredicate = (query: string): SQL =>
+  sql`to_tsvector('simple', ${users.name}) @@ websearch_to_tsquery('simple', ${query})`;
 
 @Injectable()
 export class SearchRepository implements ISearchRepository {
@@ -112,7 +149,9 @@ export class SearchRepository implements ISearchRepository {
         .orderBy(orderBy)
         .limit(filters.limit)
         .offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(stories)
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(stories)
         .leftJoin(categories, eq(categories.id, stories.categoryId))
         .leftJoin(users, eq(users.id, stories.authorId))
         .leftJoin(storyTags, eq(storyTags.storyId, stories.id))
@@ -141,7 +180,11 @@ export class SearchRepository implements ISearchRepository {
     };
   }
 
-  async searchAuthors(query: string, page: number, limit: number): Promise<{ authors: AuthorSearchResult[]; total: number }> {
+  async searchAuthors(
+    query: string,
+    page: number,
+    limit: number,
+  ): Promise<{ authors: AuthorSearchResult[]; total: number }> {
     this.logger.debug(`Searching authors: ${query}`);
     const offset = (page - 1) * limit;
 
@@ -154,12 +197,15 @@ export class SearchRepository implements ISearchRepository {
         })
         .from(users)
         .leftJoin(stories, eq(stories.authorId, users.id))
-        .where(and(sql`to_tsvector('simple', ${users.name}) @@ websearch_to_tsquery('simple', ${query})`, isNull(users.deletedAt)))
+        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt)))
         .groupBy(users.id, users.name)
         .orderBy(desc(sql<number>`count(${stories.id})`))
         .limit(limit)
         .offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(users).where(and(sql`to_tsvector('english', ${users.name}) @@ websearch_to_tsquery('english', ${query})`, isNull(users.deletedAt))),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(users)
+        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt))),
     ]);
 
     return {
@@ -184,7 +230,12 @@ export class SearchRepository implements ISearchRepository {
       })
       .from(categories)
       .leftJoin(stories, eq(stories.categoryId, categories.id))
-      .where(and(sql`to_tsvector('simple', ${categories.name}) @@ websearch_to_tsquery('simple', ${query})`, eq(categories.isActive, true)))
+      .where(
+        and(
+          sql`to_tsvector('simple', ${categories.name}) @@ websearch_to_tsquery('simple', ${query})`,
+          eq(categories.isActive, true),
+        ),
+      )
       .groupBy(categories.id, categories.name, categories.slug)
       .orderBy(desc(sql<number>`count(${stories.id})`))
       .limit(10);
