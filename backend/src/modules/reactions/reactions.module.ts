@@ -12,7 +12,12 @@ import { ReactionsEventHandler } from './events/reactions.event-handler.ts';
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [ReactionsController],
-  providers: [ReactionsService, ReactionsRepository, ReactionsEventHandler, { provide: REACTIONS_REPOSITORY, useExisting: ReactionsRepository }],
+  providers: [
+    ReactionsService,
+    ReactionsRepository,
+    ReactionsEventHandler,
+    { provide: REACTIONS_REPOSITORY, useExisting: ReactionsRepository },
+  ],
   exports: [ReactionsService],
 })
 export class ReactionsModule {}

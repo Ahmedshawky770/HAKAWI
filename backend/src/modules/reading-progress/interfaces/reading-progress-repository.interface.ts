@@ -32,7 +32,10 @@ export type UpdateReadingProgressInput = Partial<{
 export interface IReadingProgressRepository {
   findById(id: string): Promise<ReadingProgress | null>;
   findByUserAndBook(userId: string, bookId: string): Promise<ReadingProgress | null>;
-  findByUser(userId: string, params: { bookId?: string; page?: number; limit?: number }): Promise<{ progress: ReadingProgress[]; total: number }>;
+  findByUser(
+    userId: string,
+    params: { bookId?: string; page?: number; limit?: number },
+  ): Promise<{ progress: ReadingProgress[]; total: number }>;
   create(data: CreateReadingProgressInput): Promise<ReadingProgress>;
   update(id: string, data: UpdateReadingProgressInput): Promise<ReadingProgress>;
   delete(id: string): Promise<void>;

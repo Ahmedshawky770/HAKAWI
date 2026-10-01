@@ -17,9 +17,20 @@ import type { LibraryQuery } from './types.ts';
 
 type MockLibraryRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<LibraryItem | null>>>;
-  findByUser: ReturnType<typeof vi.fn<(userId: string, params: { status?: string; page?: number; limit?: number }) => Promise<{ items: LibraryItem[]; total: number }>>>;
+  findByUser: ReturnType<
+    typeof vi.fn<
+      (
+        userId: string,
+        params: { status?: string; page?: number; limit?: number },
+      ) => Promise<{ items: LibraryItem[]; total: number }>
+    >
+  >;
   findByUserAndBook: ReturnType<typeof vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>>;
-  create: ReturnType<typeof vi.fn<(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>>>;
+  create: ReturnType<
+    typeof vi.fn<
+      (data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>
+    >
+  >;
   update: ReturnType<typeof vi.fn<(id: string, data: Partial<LibraryItem>) => Promise<LibraryItem>>>;
   delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   countByUser: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
@@ -66,9 +77,18 @@ describe('LibraryService', () => {
   beforeEach(() => {
     libraryRepository = {
       findById: vi.fn<(id: string) => Promise<LibraryItem | null>>(),
-      findByUser: vi.fn<(userId: string, params: { status?: string; page?: number; limit?: number }) => Promise<{ items: LibraryItem[]; total: number }>>(),
+      findByUser:
+        vi.fn<
+          (
+            userId: string,
+            params: { status?: string; page?: number; limit?: number },
+          ) => Promise<{ items: LibraryItem[]; total: number }>
+        >(),
       findByUserAndBook: vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>(),
-      create: vi.fn<(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>>(),
+      create:
+        vi.fn<
+          (data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>
+        >(),
       update: vi.fn<(id: string, data: Partial<LibraryItem>) => Promise<LibraryItem>>(),
       delete: vi.fn<(id: string) => Promise<void>>(),
       countByUser: vi.fn<(userId: string) => Promise<number>>(),
@@ -143,7 +163,9 @@ describe('LibraryService', () => {
     it('should throw ConflictException when book already in library', async () => {
       vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(mockLibraryItem);
 
-      await expect(libraryService.addToLibrary('user-123', { bookId: 'book-123' })).rejects.toThrow('Book already in library');
+      await expect(libraryService.addToLibrary('user-123', { bookId: 'book-123' })).rejects.toThrow(
+        'Book already in library',
+      );
     });
   });
 
@@ -214,14 +236,18 @@ describe('LibraryService', () => {
     it('should throw NotFoundException when library item not found', async () => {
       vi.mocked(libraryRepository.findById).mockResolvedValue(null);
 
-      await expect(libraryService.removeFromLibrary('library-999', 'user-123')).rejects.toThrow('Library item not found');
+      await expect(libraryService.removeFromLibrary('library-999', 'user-123')).rejects.toThrow(
+        'Library item not found',
+      );
     });
 
     it('should throw NotFoundException when user does not own the item', async () => {
       const otherUserItem = { ...mockLibraryItem, userId: 'user-456' };
       vi.mocked(libraryRepository.findById).mockResolvedValue(otherUserItem);
 
-      await expect(libraryService.removeFromLibrary('library-123', 'user-123')).rejects.toThrow('Library item not found');
+      await expect(libraryService.removeFromLibrary('library-123', 'user-123')).rejects.toThrow(
+        'Library item not found',
+      );
     });
   });
 });

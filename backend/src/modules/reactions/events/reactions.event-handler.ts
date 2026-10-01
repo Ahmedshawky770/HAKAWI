@@ -15,7 +15,10 @@ export class ReactionsEventHandler {
 
   @OnEvent('story.reacted')
   async handleStoryReacted(event: StoryReactedEvent): Promise<void> {
-    this.logger.info(`User ${event.userId} reacted to story ${event.storyId} with ${event.reactionType}`, 'ReactionsEventHandler');
+    this.logger.info(
+      `User ${event.userId} reacted to story ${event.storyId} with ${event.reactionType}`,
+      'ReactionsEventHandler',
+    );
   }
 
   @OnEvent('story.reaction.removed')

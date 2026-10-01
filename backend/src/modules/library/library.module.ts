@@ -12,7 +12,12 @@ import { LibraryEventHandler } from './events/library.event-handler.ts';
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [LibraryController],
-  providers: [LibraryService, LibraryRepository, LibraryEventHandler, { provide: LIBRARY_REPOSITORY, useExisting: LibraryRepository }],
+  providers: [
+    LibraryService,
+    LibraryRepository,
+    LibraryEventHandler,
+    { provide: LIBRARY_REPOSITORY, useExisting: LibraryRepository },
+  ],
   exports: [LibraryService],
 })
 export class LibraryModule {}

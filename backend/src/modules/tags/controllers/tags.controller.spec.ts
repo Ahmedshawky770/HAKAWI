@@ -80,9 +80,7 @@ describe('TagsController', () => {
     it('should return all tags', async () => {
       vi.mocked(tagsService.findAll).mockResolvedValue([]);
 
-      const res = await request(httpServer)
-        .get('/tags')
-        .expect(200);
+      const res = await request(httpServer).get('/tags').expect(200);
 
       expect(res.body).toEqual([]);
       expect(tagsService.findAll).toHaveBeenCalled();
@@ -91,11 +89,13 @@ describe('TagsController', () => {
 
   describe('GET /tags/:id', () => {
     it('should return a tag by id', async () => {
-      vi.mocked(tagsService.findById).mockResolvedValue({ id: 'tag-1', name: 'Romance', slug: 'romance' } as unknown as Tag);
+      vi.mocked(tagsService.findById).mockResolvedValue({
+        id: 'tag-1',
+        name: 'Romance',
+        slug: 'romance',
+      } as unknown as Tag);
 
-      const res = await request(httpServer)
-        .get('/tags/tag-1')
-        .expect(200);
+      const res = await request(httpServer).get('/tags/tag-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'tag-1');
       expect(tagsService.findById).toHaveBeenCalledWith('tag-1');
@@ -104,11 +104,13 @@ describe('TagsController', () => {
 
   describe('GET /tags/slug/:slug', () => {
     it('should return a tag by slug', async () => {
-      vi.mocked(tagsService.findBySlug).mockResolvedValue({ id: 'tag-1', name: 'Romance', slug: 'romance' } as unknown as Tag);
+      vi.mocked(tagsService.findBySlug).mockResolvedValue({
+        id: 'tag-1',
+        name: 'Romance',
+        slug: 'romance',
+      } as unknown as Tag);
 
-      const res = await request(httpServer)
-        .get('/tags/slug/romance')
-        .expect(200);
+      const res = await request(httpServer).get('/tags/slug/romance').expect(200);
 
       expect(res.body).toHaveProperty('slug', 'romance');
       expect(tagsService.findBySlug).toHaveBeenCalledWith('romance');
@@ -119,7 +121,11 @@ describe('TagsController', () => {
     it('should create a tag', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(tagsService.create).mockResolvedValue({ id: 'tag-1', name: 'Romance', slug: 'romance' } as unknown as Tag);
+      vi.mocked(tagsService.create).mockResolvedValue({
+        id: 'tag-1',
+        name: 'Romance',
+        slug: 'romance',
+      } as unknown as Tag);
 
       const res = await request(httpServer)
         .post('/tags')
@@ -136,7 +142,11 @@ describe('TagsController', () => {
     it('should update a tag', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(tagsService.update).mockResolvedValue({ id: 'tag-1', name: 'Romance Updated', slug: 'romance' } as unknown as Tag);
+      vi.mocked(tagsService.update).mockResolvedValue({
+        id: 'tag-1',
+        name: 'Romance Updated',
+        slug: 'romance',
+      } as unknown as Tag);
 
       const res = await request(httpServer)
         .patch('/tags/tag-1')

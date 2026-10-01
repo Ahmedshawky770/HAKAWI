@@ -41,12 +41,24 @@ export class FollowsService {
     await this.eventBus.emit('user.unfollowed', { followerId, followingId } as UserUnfollowedEvent);
   }
 
-  async getFollowers(userId: string, page = 1, limit = 20): Promise<{ follows: Follow[]; total: number }> {
-    return this.followsRepository.findFollowers(userId, page, limit);
+  async getFollowers(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ follows: Follow[]; total: number; page: number; limit: number }> {
+    const { follows, total } = await this.followsRepository.findFollowers(userId, page, limit);
+
+    return { follows, total, page, limit };
   }
 
-  async getFollowing(userId: string, page = 1, limit = 20): Promise<{ follows: Follow[]; total: number }> {
-    return this.followsRepository.findFollowing(userId, page, limit);
+  async getFollowing(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ follows: Follow[]; total: number; page: number; limit: number }> {
+    const { follows, total } = await this.followsRepository.findFollowing(userId, page, limit);
+
+    return { follows, total, page, limit };
   }
 
   async getStats(userId: string, currentUserId?: string): Promise<FollowStats> {

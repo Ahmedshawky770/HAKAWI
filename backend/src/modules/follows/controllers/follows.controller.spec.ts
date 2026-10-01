@@ -155,9 +155,7 @@ describe('FollowsController', () => {
         isFollowing: false,
       });
 
-      const res = await request(httpServer)
-        .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats')
-        .expect(200);
+      const res = await request(httpServer).get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats').expect(200);
 
       expect(res.body).toEqual({
         followersCount: 10,

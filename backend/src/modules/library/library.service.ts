@@ -3,7 +3,11 @@ import { Injectable, NotFoundException, ConflictException, ForbiddenException, I
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
-import type { LibraryItemAddedEvent, LibraryItemAccessedEvent, LibraryItemRemovedEvent } from '../../common/events/library.events.ts';
+import type {
+  LibraryItemAddedEvent,
+  LibraryItemAccessedEvent,
+  LibraryItemRemovedEvent,
+} from '../../common/events/library.events.ts';
 
 import type { ILibraryRepository } from './interfaces/library-repository.interface.ts';
 import { LIBRARY_REPOSITORY } from './interfaces/library-repository.interface.ts';
@@ -32,7 +36,11 @@ export class LibraryService {
       status,
     });
 
-    await this.eventBus.emit('library.item.added', { libraryItemId: item.id, userId, bookId: dto.bookId } as LibraryItemAddedEvent);
+    await this.eventBus.emit('library.item.added', {
+      libraryItemId: item.id,
+      userId,
+      bookId: dto.bookId,
+    } as LibraryItemAddedEvent);
     return item;
   }
 
@@ -41,9 +49,7 @@ export class LibraryService {
     const limit = query.limit ?? 20;
 
     const result = await this.libraryRepository.findByUser(userId, { status: query.status, page, limit });
-    const items = await Promise.all(
-      result.items.map(async (item) => this.toLibraryItemResponse(item))
-    );
+    const items = await Promise.all(result.items.map(async (item) => this.toLibraryItemResponse(item)));
 
     return {
       items,
@@ -73,7 +79,10 @@ export class LibraryService {
       status: 'reading',
     });
 
-    await this.eventBus.emit('library.item.accessed', { libraryItemId: id, userId: item.userId } as LibraryItemAccessedEvent);
+    await this.eventBus.emit('library.item.accessed', {
+      libraryItemId: id,
+      userId: item.userId,
+    } as LibraryItemAccessedEvent);
     return updated;
   }
 

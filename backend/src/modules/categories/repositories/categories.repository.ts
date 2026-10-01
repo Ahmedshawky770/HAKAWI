@@ -1,7 +1,12 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
-import { ICategoriesRepository, Category, CreateCategoryInput, UpdateCategoryInput } from '../interfaces/categories-repository.interface.ts';
+import {
+  ICategoriesRepository,
+  Category,
+  CreateCategoryInput,
+  UpdateCategoryInput,
+} from '../interfaces/categories-repository.interface.ts';
 import { categories } from '../../../db/schema/stories.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -35,7 +40,11 @@ export class CategoriesRepository implements ICategoriesRepository {
 
   async update(id: string, data: UpdateCategoryInput): Promise<Category> {
     this.logger.debug(`Updating category: ${id}`);
-    const [category] = await db.update(categories).set({ ...data, updatedAt: new Date() }).where(eq(categories.id, id)).returning();
+    const [category] = await db
+      .update(categories)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(categories.id, id))
+      .returning();
     return category;
   }
 

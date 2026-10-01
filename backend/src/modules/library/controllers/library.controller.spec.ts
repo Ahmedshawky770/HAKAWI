@@ -16,7 +16,6 @@ import { LibraryController } from './library.controller.ts';
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
@@ -112,10 +111,7 @@ describe('LibraryController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer)
-        .get('/library')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(httpServer).get('/library').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('items');
       expect(res.body).toHaveProperty('total', 0);
@@ -129,10 +125,7 @@ describe('LibraryController', () => {
 
       vi.mocked(libraryService.count).mockResolvedValue({ count: 5 });
 
-      const res = await request(httpServer)
-        .get('/library/count')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(httpServer).get('/library/count').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toEqual({ count: 5 });
       expect(libraryService.count).toHaveBeenCalledWith('user-1');
@@ -169,10 +162,7 @@ describe('LibraryController', () => {
 
       vi.mocked(libraryService.removeFromLibrary).mockResolvedValue(undefined);
 
-      await request(httpServer)
-        .delete('/library/lib-1')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(204);
+      await request(httpServer).delete('/library/lib-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(libraryService.removeFromLibrary).toHaveBeenCalled();
     });

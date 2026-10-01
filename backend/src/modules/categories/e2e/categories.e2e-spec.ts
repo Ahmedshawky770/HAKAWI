@@ -42,35 +42,33 @@ describe('Categories E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
     httpServer = app.getHttpServer() as Server;
 
-    await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-categories@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Categories User',
-        username: 'e2ecategories',
-      });
+    await request(httpServer).post('/auth/register').send({
+      email: 'e2e-categories@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Categories User',
+      username: 'e2ecategories',
+    });
 
-    const loginRes = await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-categories@example.com',
-        password: 'SecurePass123!',
-      });
+    const loginRes = await request(httpServer).post('/auth/login').send({
+      email: 'e2e-categories@example.com',
+      password: 'SecurePass123!',
+    });
 
     accessToken = loginRes.body.tokens.accessToken;
   });
@@ -83,9 +81,7 @@ describe('Categories E2E', () => {
 
   describe('GET /categories', () => {
     it('should return categories', async () => {
-      const res = await request(httpServer)
-        .get('/categories')
-        .expect(200);
+      const res = await request(httpServer).get('/categories').expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
     });
@@ -109,7 +105,11 @@ describe('Categories E2E', () => {
       const createRes = await request(httpServer)
         .post('/categories')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'E2E Fiction Update', slug: `e2e-fiction-update-${Date.now()}`, description: 'E2E test category' });
+        .send({
+          name: 'E2E Fiction Update',
+          slug: `e2e-fiction-update-${Date.now()}`,
+          description: 'E2E test category',
+        });
 
       if (!createRes.body?.id) {
         throw new Error(`Category creation failed: ${JSON.stringify(createRes.body)}`);

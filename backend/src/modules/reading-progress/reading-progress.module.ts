@@ -12,7 +12,12 @@ import { ReadingProgressEventHandler } from './events/reading-progress.event-han
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [ReadingProgressController],
-  providers: [ReadingProgressService, ReadingProgressRepository, ReadingProgressEventHandler, { provide: READING_PROGRESS_REPOSITORY, useExisting: ReadingProgressRepository }],
+  providers: [
+    ReadingProgressService,
+    ReadingProgressRepository,
+    ReadingProgressEventHandler,
+    { provide: READING_PROGRESS_REPOSITORY, useExisting: ReadingProgressRepository },
+  ],
   exports: [ReadingProgressService],
 })
 export class ReadingProgressModule {}

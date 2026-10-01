@@ -24,7 +24,10 @@ export class LibraryRepository implements ILibraryRepository {
     }
   }
 
-  async findByUser(userId: string, params: { status?: string; page?: number; limit?: number }): Promise<{ items: LibraryItem[]; total: number }> {
+  async findByUser(
+    userId: string,
+    params: { status?: string; page?: number; limit?: number },
+  ): Promise<{ items: LibraryItem[]; total: number }> {
     this.logger.debug(`Finding library items for user: ${userId}`);
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
@@ -48,24 +51,40 @@ export class LibraryRepository implements ILibraryRepository {
 
   async findByUserAndBook(userId: string, bookId: string): Promise<LibraryItem | null> {
     this.logger.debug(`Finding library item by user: ${userId} and book: ${bookId}`);
-    const [item] = await db.select().from(library).where(and(eq(library.userId, userId), eq(library.bookId, bookId))).limit(1);
+    const [item] = await db
+      .select()
+      .from(library)
+      .where(and(eq(library.userId, userId), eq(library.bookId, bookId)))
+      .limit(1);
     return item ?? null;
   }
 
-  async create(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }): Promise<LibraryItem> {
+  async create(data: {
+    userId: string;
+    bookId: string;
+    rentalId?: string | null;
+    status?: string;
+  }): Promise<LibraryItem> {
     this.logger.info(`Adding book to library for user: ${data.userId}, book: ${data.bookId}`);
-    const [item] = await db.insert(library).values({
-      userId: data.userId,
-      bookId: data.bookId,
-      rentalId: data.rentalId ?? null,
-      status: data.status ?? 'owned',
-    }).returning();
+    const [item] = await db
+      .insert(library)
+      .values({
+        userId: data.userId,
+        bookId: data.bookId,
+        rentalId: data.rentalId ?? null,
+        status: data.status ?? 'owned',
+      })
+      .returning();
     return item;
   }
 
   async update(id: string, data: Partial<LibraryItem>): Promise<LibraryItem> {
     this.logger.debug(`Updating library item: ${id}`);
-    const [item] = await db.update(library).set({ ...data, updatedAt: new Date() }).where(eq(library.id, id)).returning();
+    const [item] = await db
+      .update(library)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(library.id, id))
+      .returning();
     return item;
   }
 

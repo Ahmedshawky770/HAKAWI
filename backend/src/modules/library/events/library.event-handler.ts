@@ -2,7 +2,11 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { LibraryItemAddedEvent, LibraryItemAccessedEvent, LibraryItemRemovedEvent } from '../../../common/events/library.events.ts';
+import type {
+  LibraryItemAddedEvent,
+  LibraryItemAccessedEvent,
+  LibraryItemRemovedEvent,
+} from '../../../common/events/library.events.ts';
 import type { ILibraryRepository } from '../interfaces/library-repository.interface.ts';
 import { LIBRARY_REPOSITORY } from '../interfaces/library-repository.interface.ts';
 

@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, Inject, Request, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Inject,
+  Request,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
@@ -24,16 +36,28 @@ export class FollowsController {
 
   @Public()
   @Get('user/:userId/followers')
-  async getFollowers(@Param('userId', ParseUUIDPipe) userId: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    const result = await this.followsService.getFollowers(userId, Number(page) || 1, Number(limit) || 20);
-    return { followers: result.follows, total: result.total };
+  async getFollowers(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const currentPage = Number(page) || 1;
+    const currentLimit = Number(limit) || 20;
+    const result = await this.followsService.getFollowers(userId, currentPage, currentLimit);
+    return { followers: result.follows, total: result.total, page: result.page, limit: result.limit };
   }
 
   @Public()
   @Get('user/:userId/following')
-  async getFollowing(@Param('userId', ParseUUIDPipe) userId: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    const result = await this.followsService.getFollowing(userId, Number(page) || 1, Number(limit) || 20);
-    return { following: result.follows, total: result.total };
+  async getFollowing(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const currentPage = Number(page) || 1;
+    const currentLimit = Number(limit) || 20;
+    const result = await this.followsService.getFollowing(userId, currentPage, currentLimit);
+    return { following: result.follows, total: result.total, page: result.page, limit: result.limit };
   }
 
   @Public()
@@ -45,7 +69,10 @@ export class FollowsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('check/:followingId')
-  async checkFollowing(@Param('followingId', ParseUUIDPipe) followingId: string, @Request() req: { user: { sub: string } }) {
+  async checkFollowing(
+    @Param('followingId', ParseUUIDPipe) followingId: string,
+    @Request() req: { user: { sub: string } },
+  ) {
     const isFollowing = await this.followsService.isFollowing(req.user.sub, followingId);
     return { isFollowing };
   }

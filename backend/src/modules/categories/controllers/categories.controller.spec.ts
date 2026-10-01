@@ -82,9 +82,7 @@ describe('CategoriesController', () => {
     it('should return all categories', async () => {
       vi.mocked(categoriesService.findAll).mockResolvedValue([]);
 
-      const res = await request(httpServer)
-        .get('/categories')
-        .expect(200);
+      const res = await request(httpServer).get('/categories').expect(200);
 
       expect(res.body).toEqual([]);
       expect(categoriesService.findAll).toHaveBeenCalled();
@@ -93,11 +91,13 @@ describe('CategoriesController', () => {
 
   describe('GET /categories/:id', () => {
     it('should return a category by id', async () => {
-      vi.mocked(categoriesService.findById).mockResolvedValue({ id: 'cat-1', name: 'Fiction', slug: 'fiction' } as unknown as Category);
+      vi.mocked(categoriesService.findById).mockResolvedValue({
+        id: 'cat-1',
+        name: 'Fiction',
+        slug: 'fiction',
+      } as unknown as Category);
 
-      const res = await request(httpServer)
-        .get('/categories/cat-1')
-        .expect(200);
+      const res = await request(httpServer).get('/categories/cat-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'cat-1');
       expect(categoriesService.findById).toHaveBeenCalledWith('cat-1');
@@ -106,11 +106,13 @@ describe('CategoriesController', () => {
 
   describe('GET /categories/slug/:slug', () => {
     it('should return a category by slug', async () => {
-      vi.mocked(categoriesService.findBySlug).mockResolvedValue({ id: 'cat-1', name: 'Fiction', slug: 'fiction' } as unknown as Category);
+      vi.mocked(categoriesService.findBySlug).mockResolvedValue({
+        id: 'cat-1',
+        name: 'Fiction',
+        slug: 'fiction',
+      } as unknown as Category);
 
-      const res = await request(httpServer)
-        .get('/categories/slug/fiction')
-        .expect(200);
+      const res = await request(httpServer).get('/categories/slug/fiction').expect(200);
 
       expect(res.body).toHaveProperty('slug', 'fiction');
       expect(categoriesService.findBySlug).toHaveBeenCalledWith('fiction');
@@ -121,7 +123,11 @@ describe('CategoriesController', () => {
     it('should create a category', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(categoriesService.create).mockResolvedValue({ id: 'cat-1', name: 'Fiction', slug: 'fiction' } as unknown as Category);
+      vi.mocked(categoriesService.create).mockResolvedValue({
+        id: 'cat-1',
+        name: 'Fiction',
+        slug: 'fiction',
+      } as unknown as Category);
 
       const res = await request(httpServer)
         .post('/categories')
@@ -138,7 +144,11 @@ describe('CategoriesController', () => {
     it('should update a category', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(categoriesService.update).mockResolvedValue({ id: 'cat-1', name: 'Fiction Updated', slug: 'fiction' } as unknown as Category);
+      vi.mocked(categoriesService.update).mockResolvedValue({
+        id: 'cat-1',
+        name: 'Fiction Updated',
+        slug: 'fiction',
+      } as unknown as Category);
 
       const res = await request(httpServer)
         .patch('/categories/cat-1')
@@ -157,10 +167,7 @@ describe('CategoriesController', () => {
 
       vi.mocked(categoriesService.delete).mockResolvedValue(undefined);
 
-      await request(httpServer)
-        .delete('/categories/cat-1')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(204);
+      await request(httpServer).delete('/categories/cat-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(categoriesService.delete).toHaveBeenCalledWith('cat-1');
     });
