@@ -76,9 +76,7 @@ describe('SearchController', () => {
         took: 10,
       });
 
-      const res = await request(httpServer)
-        .get('/search?q=test')
-        .expect(200);
+      const res = await request(httpServer).get('/search?q=test').expect(200);
 
       expect(res.body).toHaveProperty('results');
       expect(res.body).toHaveProperty('total', 0);
@@ -93,9 +91,7 @@ describe('SearchController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/search/authors?q=test')
-        .expect(200);
+      const res = await request(httpServer).get('/search/authors?q=test').expect(200);
 
       expect(res.body).toHaveProperty('authors');
       expect(res.body).toHaveProperty('total', 0);
@@ -107,9 +103,7 @@ describe('SearchController', () => {
     it('should search categories', async () => {
       vi.mocked(searchService.searchCategories).mockResolvedValue([]);
 
-      const res = await request(httpServer)
-        .get('/search/categories?q=test')
-        .expect(200);
+      const res = await request(httpServer).get('/search/categories?q=test').expect(200);
 
       expect(res.body).toEqual([]);
       expect(searchService.searchCategories).toHaveBeenCalledWith('test');

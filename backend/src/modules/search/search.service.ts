@@ -59,16 +59,30 @@ export class SearchService {
 
     await this.valkeyService.set(cacheKey, JSON.stringify(response), 300);
 
-    this.logger.info(`Search completed: query="${query}", results=${results.length}, took=${response.took}ms`, 'SearchService');
+    this.logger.info(
+      `Search completed: query="${query}", results=${results.length}, took=${response.took}ms`,
+      'SearchService',
+    );
 
     return response;
   }
 
-  async searchAuthors(query: string, page = 1, limit = 20): Promise<{ authors: { id: string; name: string; storiesCount: number }[]; total: number }> {
+  async searchAuthors(
+    query: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{
+    authors: { id: string; name: string; storiesCount: number }[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const result = await this.searchRepository.searchAuthors(query, page, limit);
     return {
       authors: result.authors,
       total: result.total,
+      page,
+      limit,
     };
   }
 

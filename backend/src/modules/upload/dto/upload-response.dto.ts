@@ -1,13 +1,43 @@
-import { z } from 'zod';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
-export const UploadResponseDto = z.object({
-  filename: z.string(),
-  originalName: z.string(),
-  mimetype: z.string(),
-  size: z.number(),
-  url: z.string(),
-  cdnUrl: z.string().optional(),
-  uploadedAt: z.string().optional(),
-});
+export class UploadResponseDto {
+  @IsString()
+  filename: string;
 
-export type UploadResponse = z.infer<typeof UploadResponseDto>;
+  @IsString()
+  originalName: string;
+
+  @IsString()
+  mimetype: string;
+
+  @IsInt()
+  @Min(0)
+  size: number;
+
+  @IsString()
+  url: string;
+
+  @IsOptional()
+  @IsString()
+  cdnUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  uploadedAt?: string;
+}
+
+export type UploadResponse = UploadResponseDto;
+
+export const UPLOAD_FILENAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+export class GenerateUploadUrlDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Filename must not exceed 255 characters' })
+  filename?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: 'Content type must not exceed 100 characters' })
+  contentType?: string;
+}

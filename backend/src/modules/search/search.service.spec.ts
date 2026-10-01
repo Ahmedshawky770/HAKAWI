@@ -7,9 +7,47 @@ import { SearchService } from './search.service.ts';
 import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
 
 type MockSearchRepository = {
-  searchStories: ReturnType<typeof vi.fn<(filters: { query?: string; category?: string; tag?: string; authorId?: string; status?: string; page: number; limit: number; sortBy: string }) => Promise<{ results: { id: string; title: string; slug: string; excerpt: string | null; status: string; category: string | null; tags: string[]; author: { id: string; name: string }; views: number; reactions: number; createdAt: string }[]; total: number }>>>;
-  searchAuthors: ReturnType<typeof vi.fn<(query: string, page: number, limit: number) => Promise<{ authors: { id: string; name: string; storiesCount: number }[]; total: number }>>>;
-  searchCategories: ReturnType<typeof vi.fn<(query: string) => Promise<{ id: string; name: string; slug: string; storiesCount: number }[]>>>;
+  searchStories: ReturnType<
+    typeof vi.fn<
+      (filters: {
+        query?: string;
+        category?: string;
+        tag?: string;
+        authorId?: string;
+        status?: string;
+        page: number;
+        limit: number;
+        sortBy: string;
+      }) => Promise<{
+        results: {
+          id: string;
+          title: string;
+          slug: string;
+          excerpt: string | null;
+          status: string;
+          category: string | null;
+          tags: string[];
+          author: { id: string; name: string };
+          views: number;
+          reactions: number;
+          createdAt: string;
+        }[];
+        total: number;
+      }>
+    >
+  >;
+  searchAuthors: ReturnType<
+    typeof vi.fn<
+      (
+        query: string,
+        page: number,
+        limit: number,
+      ) => Promise<{ authors: { id: string; name: string; storiesCount: number }[]; total: number }>
+    >
+  >;
+  searchCategories: ReturnType<
+    typeof vi.fn<(query: string) => Promise<{ id: string; name: string; slug: string; storiesCount: number }[]>>
+  >;
 };
 
 type MockWinstonLoggerService = {
@@ -202,6 +240,17 @@ describe('SearchService', () => {
       expect(result).toHaveProperty('authors');
       expect(result).toHaveProperty('total');
       expect(searchRepository.searchAuthors).toHaveBeenCalledWith('John', 1, 20);
+    });
+
+    it('should report the page and limit it read rather than dropping them', async () => {
+      vi.mocked(searchRepository.searchAuthors).mockResolvedValue({ authors: [], total: 12 });
+
+      const result = await searchService.searchAuthors('John', 3, 5);
+
+      expect(result.page).toBe(3);
+      expect(result.limit).toBe(5);
+      expect(result.total).toBe(12);
+      expect(searchRepository.searchAuthors).toHaveBeenCalledWith('John', 3, 5);
     });
   });
 

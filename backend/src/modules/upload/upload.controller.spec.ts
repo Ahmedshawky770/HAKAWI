@@ -117,10 +117,7 @@ describe('UploadController', () => {
 
       vi.mocked(uploadService.deleteFile).mockResolvedValue(undefined);
 
-      await request(httpServer)
-        .delete('/upload/test.png')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(204);
+      await request(httpServer).delete('/upload/test.png').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(uploadService.deleteFile).toHaveBeenCalledWith('test.png');
     });

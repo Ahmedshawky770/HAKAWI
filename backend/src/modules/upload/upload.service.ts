@@ -32,13 +32,16 @@ export class UploadService {
     this.bucket = process.env.STORAGE_BUCKET || 'hakawi-media';
     this.cdnUrl = process.env.STORAGE_CDN_URL || '';
     this.maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10);
-    this.allowedImageTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp,image/gif').split(',');
+    this.allowedImageTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp,image/gif').split(
+      ',',
+    );
     this.allowedPdfTypes = (process.env.ALLOWED_PDF_TYPES || 'application/pdf').split(',');
   }
 
   async generatePresignedUrl(filename: string, contentType: string, folder = 'uploads'): Promise<UploadResponse> {
     const normalizedContentType = contentType.toLowerCase().trim();
-    const isAllowed = this.allowedImageTypes.includes(normalizedContentType) || this.allowedPdfTypes.includes(normalizedContentType);
+    const isAllowed =
+      this.allowedImageTypes.includes(normalizedContentType) || this.allowedPdfTypes.includes(normalizedContentType);
     if (!isAllowed) {
       throw new ForbiddenException(`File type ${contentType} is not allowed`);
     }
@@ -51,9 +54,8 @@ export class UploadService {
       ContentType: normalizedContentType,
     });
 
-    const url = await this.circuitBreaker.execute(
-      's3-presigned-url',
-      async () => getSignedUrl(this.s3Client as S3, command, { expiresIn: 3600 }),
+    const url = await this.circuitBreaker.execute('s3-presigned-url', async () =>
+      getSignedUrl(this.s3Client as S3, command, { expiresIn: 3600 }),
     );
     const cdnUrl = this.cdnUrl ? `${this.cdnUrl}/${uniqueFilename}` : url;
 
@@ -67,21 +69,31 @@ export class UploadService {
     };
   }
 
-  async confirmUpload(filename: string, originalName: string, mimetype: string, size: number, uploadedById?: string, storyId?: string): Promise<Upload> {
+  async confirmUpload(
+    filename: string,
+    originalName: string,
+    mimetype: string,
+    size: number,
+    uploadedById?: string,
+    storyId?: string,
+  ): Promise<Upload> {
     if (size > this.maxFileSize) {
       throw new ForbiddenException(`File size exceeds maximum of ${this.maxFileSize} bytes`);
     }
 
-    const [upload] = await db.insert(uploads).values({
-      filename,
-      originalName,
-      mimetype,
-      size,
-      url: this.cdnUrl ? `${this.cdnUrl}/${filename}` : filename,
-      cdnUrl: this.cdnUrl ? `${this.cdnUrl}/${filename}` : null,
-      uploadedById,
-      storyId,
-    }).returning();
+    const [upload] = await db
+      .insert(uploads)
+      .values({
+        filename,
+        originalName,
+        mimetype,
+        size,
+        url: this.cdnUrl ? `${this.cdnUrl}/${filename}` : filename,
+        cdnUrl: this.cdnUrl ? `${this.cdnUrl}/${filename}` : null,
+        uploadedById,
+        storyId,
+      })
+      .returning();
     return upload;
   }
 
