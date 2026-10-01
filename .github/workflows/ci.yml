@@ -54,6 +54,18 @@ jobs:
         run: npx tsc -p tsconfig.e2e.json --noEmit
         working-directory: backend
 
+      # The frontend uses Next 16's route-aware global types (LayoutProps, PageProps). Next
+      # writes those into .next/types/ during a build, and .next/ is gitignored, so a clean
+      # runner has no such directory and `tsc --noEmit` fails with "Cannot find name
+      # 'LayoutProps'" in every layout and page.
+      #
+      # The types are therefore GENERATED as part of the check rather than assumed to exist
+      # because a developer ran `next dev` locally. Next 16 no longer runs eslint as part of
+      # `next build`, so this does not duplicate the Lint frontend step above.
+      - name: Generate Next route types
+        run: npx next build
+        working-directory: frontend
+
       - name: Type check frontend
         run: npm run typecheck --workspace=frontend
 
