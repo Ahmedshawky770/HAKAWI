@@ -1,9 +1,13 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { ICommentsRepository, Comment, CreateCommentInput, UpdateCommentInput } from '../interfaces/comments-repository.interface.ts';
+import type {
+  ICommentsRepository,
+  Comment,
+  CreateCommentInput,
+  UpdateCommentInput,
+} from '../interfaces/comments-repository.interface.ts';
 import { comments } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 
@@ -33,9 +37,22 @@ export class CommentsRepository implements ICommentsRepository {
     this.logger.debug(`Finding comments for story: ${storyId}`);
     const offset = (page - 1) * limit;
 
+    // `parentId IS NULL` must be expressed with isNull(). `eq(parentId, null)` compiles to
+    // `parent_id = NULL`, which SQL evaluates to NULL (never true) and returned an empty list
+    // for every story. isDeleted is filtered here because soft-deleted comments are tombstones
+    // everywhere else in this module (findById, update, remove all reject them).
+    const visibleTopLevel = and(
+      eq(comments.storyId, storyId),
+      isNull(comments.parentId),
+      eq(comments.isDeleted, false),
+    );
+
     const [commentsList, [{ total }]] = await Promise.all([
-      db.select().from(comments).where(and(eq(comments.storyId, storyId), eq(comments.parentId, null as unknown as string))).orderBy(desc(comments.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(comments).where(and(eq(comments.storyId, storyId), eq(comments.parentId, null as unknown as string))),
+      db.select().from(comments).where(visibleTopLevel).orderBy(desc(comments.createdAt)).limit(limit).offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(comments)
+        .where(visibleTopLevel),
     ]);
 
     return { comments: commentsList as Comment[], total: Number(total) };
@@ -45,9 +62,14 @@ export class CommentsRepository implements ICommentsRepository {
     this.logger.debug(`Finding replies for comment: ${parentId}`);
     const offset = (page - 1) * limit;
 
+    const visibleReplies = and(eq(comments.parentId, parentId), eq(comments.isDeleted, false));
+
     const [repliesList, [{ total }]] = await Promise.all([
-      db.select().from(comments).where(eq(comments.parentId, parentId)).orderBy(desc(comments.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(comments).where(eq(comments.parentId, parentId)),
+      db.select().from(comments).where(visibleReplies).orderBy(desc(comments.createdAt)).limit(limit).offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(comments)
+        .where(visibleReplies),
     ]);
 
     return { replies: repliesList as Comment[], total: Number(total) };
@@ -55,13 +77,17 @@ export class CommentsRepository implements ICommentsRepository {
 
   async create(data: CreateCommentInput): Promise<Comment> {
     this.logger.info(`Creating comment on story: ${data.storyId}`);
-    const [comment] = await db.insert(comments).values(data).returning() as Comment[];
+    const [comment] = (await db.insert(comments).values(data).returning()) as Comment[];
     return comment;
   }
 
   async update(id: string, data: UpdateCommentInput): Promise<Comment> {
     this.logger.debug(`Updating comment: ${id}`);
-    const [comment] = await db.update(comments).set({ ...data, updatedAt: new Date() }).where(eq(comments.id, id)).returning() as Comment[];
+    const [comment] = (await db
+      .update(comments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(comments.id, id))
+      .returning()) as Comment[];
     return comment;
   }
 
@@ -72,11 +98,17 @@ export class CommentsRepository implements ICommentsRepository {
 
   async incrementReplyCount(parentId: string): Promise<void> {
     this.logger.debug(`Incrementing reply count for comment: ${parentId}`);
-    await db.update(comments).set({ replyCount: sql`${comments.replyCount} + 1` }).where(eq(comments.id, parentId));
+    await db
+      .update(comments)
+      .set({ replyCount: sql`${comments.replyCount} + 1` })
+      .where(eq(comments.id, parentId));
   }
 
   async countReplies(parentId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(comments).where(eq(comments.parentId, parentId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(comments)
+      .where(and(eq(comments.parentId, parentId), eq(comments.isDeleted, false)));
     return Number(total);
   }
 }
