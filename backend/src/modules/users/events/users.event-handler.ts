@@ -5,6 +5,11 @@ import { type IUsersRepository, USERS_REPOSITORY } from '../../../common/users/u
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { UserRegisteredEvent, UserUpdatedEvent } from '../../../common/events/users.events.ts';
 
+export interface EmailVerifiedPayload {
+  readonly userId: string;
+  readonly email: string;
+}
+
 @Injectable()
 export class UsersEventHandler {
   constructor(
@@ -31,5 +36,21 @@ export class UsersEventHandler {
     if (this.logger) {
       this.logger.info(`Handling user updated event: ${event.userId}`, 'UsersEventHandler');
     }
+  }
+
+  @OnEvent('email.verified')
+  async handleEmailVerified(event: EmailVerifiedPayload): Promise<void> {
+    const user = await this.usersRepository.findById(event.userId);
+    if (!user) {
+      this.logger.warn(`Cannot verify a user that no longer exists: ${event.userId}`, 'UsersEventHandler');
+      return;
+    }
+
+    if (user.isVerified) {
+      return;
+    }
+
+    await this.usersRepository.update(user.id, { isVerified: true });
+    this.logger.info(`User ${user.id} marked verified from the email.verified event`, 'UsersEventHandler');
   }
 }

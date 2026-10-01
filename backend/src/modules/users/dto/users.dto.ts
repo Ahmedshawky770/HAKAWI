@@ -142,3 +142,11 @@ export class VerifyResponseDto {
     isVerified: boolean;
   };
 }
+
+export class VerifyUserDto {
+  @IsString()
+  @MinLength(16, { message: 'Token must be at least 16 characters' })
+  @MaxLength(128, { message: 'Token must not exceed 128 characters' })
+  @Matches(/^[a-f0-9]+$/, { message: 'Token must be lowercase hexadecimal' })
+  token: string;
+}

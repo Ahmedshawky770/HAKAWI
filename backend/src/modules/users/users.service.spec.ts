@@ -5,9 +5,72 @@ import { AccountType } from '../../common/constants/roles.ts';
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 
+import { USER_CACHE_NAMESPACE, USER_PUBLIC_CACHE_NAMESPACE, UsersService } from './users.service.ts';
 
-import { UsersService } from './users.service.ts';
+/**
+ * An in-memory stand-in for `TaggedCacheService` that reproduces the behaviour these tests exist to
+ * pin down: it stores with `JSON.stringify` and reads back with `JSON.parse`, exactly like Valkey.
+ *
+ * A mock that returned the same object instance it was given would keep passing after the bug
+ * returned, because that object still holds real `Date`s — the failure only exists once the value
+ * has crossed a serialize/deserialize boundary. An entry whose revival throws is dropped and
+ * reported as a miss, the way the real service heals a corrupt payload instead of returning a 500.
+ */
+class FakeTaggedCache {
+  private readonly store = new Map<string, string>();
+  readonly invalidations: { namespace: string; key: string; tags: readonly string[] }[] = [];
+  loadCount = 0;
+
+  buildKey(namespace: string, key: string): string {
+    return `cache:${namespace}:${key}`;
+  }
+
+  seedRaw(namespace: string, key: string, raw: string): void {
+    this.store.set(this.buildKey(namespace, key), raw);
+  }
+
+  async get<T>(namespace: string, key: string, revive?: (value: T) => T): Promise<T | null> {
+    const cacheKey = this.buildKey(namespace, key);
+    const raw = this.store.get(cacheKey);
+    if (raw === undefined) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as T;
+      return revive === undefined ? parsed : revive(parsed);
+    } catch {
+      this.store.delete(cacheKey);
+      return null;
+    }
+  }
+
+  async set(namespace: string, key: string, value: unknown): Promise<void> {
+    this.store.set(this.buildKey(namespace, key), JSON.stringify(value));
+  }
+
+  async getOrSet<T>(options: {
+    namespace: string;
+    key: string;
+    load: () => Promise<T>;
+    revive?: (value: T) => T;
+  }): Promise<{ value: T; hit: boolean }> {
+    const cached = await this.get<T>(options.namespace, options.key, options.revive);
+    if (cached !== null) {
+      return { value: cached, hit: true };
+    }
+    this.loadCount += 1;
+    const loaded = await options.load();
+    await this.set(options.namespace, options.key, loaded);
+    return { value: loaded, hit: false };
+  }
+
+  async invalidateKey(namespace: string, key: string, tags: readonly string[] = []): Promise<void> {
+    this.store.delete(this.buildKey(namespace, key));
+    this.invalidations.push({ namespace, key, tags });
+  }
+}
 
 type MockUsersRepository = {
   findById: Mock<(id: string) => Promise<User | null>>;
@@ -22,7 +85,15 @@ type MockUsersRepository = {
   create: Mock<(data: CreateUserInput) => Promise<User>>;
   update: Mock<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>;
   softDelete: Mock<(id: string) => Promise<void>>;
-  getUserStats: Mock<(id: string) => Promise<{ storiesCount: number; totalViews: number; totalReactions: number; followersCount: number; followingCount: number }>>;
+  getUserStats: Mock<
+    (id: string) => Promise<{
+      storiesCount: number;
+      totalViews: number;
+      totalReactions: number;
+      followersCount: number;
+      followingCount: number;
+    }>
+  >;
 };
 
 type MockPasswordHasher = {
@@ -85,6 +156,7 @@ describe('UsersService', () => {
   let passwordHasher: MockPasswordHasher;
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
+  let cache: FakeTaggedCache;
 
   beforeEach(() => {
     usersRepository = {
@@ -100,7 +172,15 @@ describe('UsersService', () => {
       create: vi.fn<(data: CreateUserInput) => Promise<User>>(),
       update: vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>(),
       softDelete: vi.fn<(id: string) => Promise<void>>(),
-      getUserStats: vi.fn<(id: string) => Promise<{ storiesCount: number; totalViews: number; totalReactions: number; followersCount: number; followingCount: number }>>(),
+      getUserStats: vi.fn<
+        (id: string) => Promise<{
+          storiesCount: number;
+          totalViews: number;
+          totalReactions: number;
+          followersCount: number;
+          followingCount: number;
+        }>
+      >(),
     };
 
     passwordHasher = {
@@ -124,42 +204,28 @@ describe('UsersService', () => {
       verbose: vi.fn(),
     };
 
+    cache = new FakeTaggedCache();
+
     usersService = new UsersService(
       usersRepository,
       passwordHasher as unknown as PasswordHasher,
       valkeyService as unknown as ValkeyService,
       winstonLoggerService as unknown as WinstonLoggerService,
+      cache as unknown as TaggedCacheService,
     );
   });
 
   describe('findById', () => {
-    it('should return user from cache when available', async () => {
-      const cachedUser = { id: 'user-123', username: 'testuser', email: 'test@example.com' };
-      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(cachedUser));
-
-      const result = await usersService.findById('user-123');
-
-      expect(result).toEqual(cachedUser);
-      expect(usersRepository.findById).not.toHaveBeenCalled();
-    });
-
     it('should fetch from repository and cache when not in cache', async () => {
       const user = createMockUser();
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
       vi.mocked(usersRepository.findById).mockResolvedValue(user);
 
       const result = await usersService.findById('user-123');
 
       expect(result.id).toBe('user-123');
-      expect(valkeyService.set).toHaveBeenCalledWith(
-        'user:user-123',
-        expect.any(String),
-        300,
-      );
     });
 
     it('should throw NotFoundException when user not found', async () => {
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
       vi.mocked(usersRepository.findById).mockResolvedValue(null);
 
       await expect(usersService.findById('user-123')).rejects.toThrow('User not found');
@@ -167,10 +233,160 @@ describe('UsersService', () => {
 
     it('should throw NotFoundException when user is soft deleted', async () => {
       const deletedUser = createMockUser({ deletedAt: new Date() });
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
       vi.mocked(usersRepository.findById).mockResolvedValue(deletedUser);
 
       await expect(usersService.findById('user-123')).rejects.toThrow('User not found');
+    });
+
+    /**
+     * The regression this module was fixed for, through a real serialize → deserialize round trip.
+     * The second call is served by an entry that went through `JSON.stringify` and `JSON.parse`,
+     * which is what the cache actually hands back.
+     *
+     * Without date revival the warm value carries ISO strings inside a `Promise<ClientUser>` that
+     * promises `createdAt: Date`, so the first `.toISOString()` or `.getTime()` on it throws — on
+     * every hit, while the first cold request succeeds. The `.toISOString()` call is the point:
+     * an `instanceof` check alone would not reproduce what an internal caller actually hits.
+     */
+    it('returns Date instances on a cache hit, so callers can use them as dates', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ lastLoginAt: new Date('2024-05-05') }));
+
+      const cold = await usersService.findById('user-123');
+      const warm = await usersService.findById('user-123');
+
+      expect(warm.createdAt).toBeInstanceOf(Date);
+      expect(warm.updatedAt).toBeInstanceOf(Date);
+      expect(warm.lastLoginAt).toBeInstanceOf(Date);
+      expect(warm.deletedAt).toBeNull();
+      expect(warm.createdAt.toISOString()).toBe(cold.createdAt.toISOString());
+      expect(warm.lastLoginAt?.toISOString()).toBe('2024-05-05T00:00:00.000Z');
+    });
+
+    it('drops an un-revivable cache entry and reloads instead of throwing', async () => {
+      // `createdAt: null` cannot be the row that was cached, so the entry is corrupt and has to
+      // heal into a miss rather than become a 500.
+      cache.seedRaw(USER_CACHE_NAMESPACE, 'user-123', JSON.stringify({ id: 'user-123', createdAt: null }));
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser());
+
+      const result = await usersService.findById('user-123');
+
+      expect(result.id).toBe('user-123');
+      expect(usersRepository.findById).toHaveBeenCalledTimes(1);
+    });
+
+    it('never returns the password hash, on either the cold or the warm path', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(
+        createMockUser({ passwordHash: '$2b$10$supersecret', emailVerificationToken: 'verify-me' }),
+      );
+
+      const cold = await usersService.findById('user-123');
+      const warm = await usersService.findById('user-123');
+
+      expect(cold).not.toHaveProperty('passwordHash');
+      expect(cold).not.toHaveProperty('emailVerificationToken');
+      expect(cold).not.toHaveProperty('passwordResetToken');
+      expect(warm).not.toHaveProperty('passwordHash');
+      expect(warm).not.toHaveProperty('emailVerificationToken');
+      expect(warm).not.toHaveProperty('passwordResetToken');
+    });
+  });
+
+  describe('findPublicProfile', () => {
+    it('returns the public projection of a user', async () => {
+      const createdAt = new Date('2024-02-02T00:00:00.000Z');
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ bio: 'Writes about tides', createdAt }));
+
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(profile).toEqual({
+        id: 'user-123',
+        username: 'testuser',
+        name: 'Test User',
+        avatar: null,
+        bio: 'Writes about tides',
+        accountType: AccountType.READER,
+        isVerified: false,
+        createdAt,
+      });
+    });
+
+    it('throws NotFoundException when the user does not exist', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(null);
+
+      await expect(usersService.findPublicProfile('user-123')).rejects.toThrow('User not found');
+    });
+
+    it('throws NotFoundException when the user is soft deleted', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ deletedAt: new Date() }));
+
+      await expect(usersService.findPublicProfile('user-123')).rejects.toThrow('User not found');
+    });
+
+    /**
+     * `users.account_type` is a bare `varchar(20)` and rows predate the `author` → `writer` rename,
+     * so the database still holds values the API contract does not define. The client validates
+     * `accountType` against a strict `z.enum(ACCOUNT_TYPES)`, so one legacy row turned a valid 200
+     * into `Invalid server response: accountType: Invalid enum value` and hard-failed the profile
+     * page. Normalization has to happen before the value is cached, or the poisoned value would
+     * also be served from cache for the next five minutes.
+     */
+    it('maps a legacy author accountType to writer', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: 'author' }));
+
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(profile.accountType).toBe(AccountType.WRITER);
+    });
+
+    it('keeps a valid modern accountType as it is', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: AccountType.RISING_STAR }));
+
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(profile.accountType).toBe(AccountType.RISING_STAR);
+    });
+
+    /**
+     * Fails closed (Principle #15): an unknown value becomes the least-privileged account type
+     * instead of being passed through. Forwarding it would hand the client the exact string that
+     * just broke it, and silently granting a role would be the worse failure of the two.
+     */
+    it('falls back to the default accountType for an unknown value', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: 'superadmin' }));
+
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(profile.accountType).toBe(AccountType.READER);
+    });
+
+    it('normalizes a legacy accountType read back from the cache, not only on the first read', async () => {
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: 'author' }));
+
+      await usersService.findPublicProfile('user-123');
+      const warm = await usersService.findPublicProfile('user-123');
+
+      expect(warm.accountType).toBe(AccountType.WRITER);
+    });
+
+    it('returns a real Date on a cache hit instead of an ISO string', async () => {
+      const createdAt = new Date('2024-03-03T04:05:06.000Z');
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ createdAt }));
+
+      await usersService.findPublicProfile('user-123');
+      const warm = await usersService.findPublicProfile('user-123');
+
+      expect(warm.createdAt).toBeInstanceOf(Date);
+      expect(warm.createdAt.toISOString()).toBe('2024-03-03T04:05:06.000Z');
+    });
+
+    it('drops an un-revivable cached profile and reloads instead of throwing', async () => {
+      cache.seedRaw(USER_PUBLIC_CACHE_NAMESPACE, 'user-123', JSON.stringify({ id: 'user-123', createdAt: null }));
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser());
+
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(profile.id).toBe('user-123');
+      expect(usersRepository.findById).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -222,7 +438,9 @@ describe('UsersService', () => {
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
       vi.mocked(usersRepository.findByUsername).mockResolvedValue(null);
       vi.mocked(passwordHasher.hash).mockResolvedValue('hashed-password');
-      vi.mocked(usersRepository.create).mockResolvedValue(createMockUser({ email: input.email, username: input.username }));
+      vi.mocked(usersRepository.create).mockResolvedValue(
+        createMockUser({ email: input.email, username: input.username }),
+      );
 
       const result = await usersService.create(input);
 
@@ -300,7 +518,72 @@ describe('UsersService', () => {
       const result = await usersService.update('user-123', input);
 
       expect(result.name).toBe('Updated Name');
-      expect(valkeyService.del).toHaveBeenCalledWith('user:user-123');
+    });
+
+    /**
+     * `UsersRepository.update` returns the whole `users` row — it has to, because the repository
+     * interface is shared with the auth flows that legitimately read the credentials. The service is
+     * the HTTP boundary, so this is where the row has to be cut down to the profile shape.
+     *
+     * Before this, `PATCH /users/me` and `PATCH /users/:id` serialized `passwordHash` and
+     * `emailVerificationToken` to the browser, and the only thing between that and an account
+     * takeover was a client-side Zod strip — a defence in the wrong layer, because the secret had
+     * already left the process.
+     */
+    it('does not return passwordHash or emailVerificationToken from an update', async () => {
+      vi.mocked(usersRepository.update).mockResolvedValue(
+        createMockUser({
+          name: 'Updated Name',
+          passwordHash: '$2b$10$averyrealisticbcrypthash',
+          emailVerificationToken: 'a-live-email-verification-token',
+          passwordResetToken: 'a-live-password-reset-token',
+        }),
+      );
+
+      const result = await usersService.update('user-123', { name: 'Updated Name' });
+
+      expect(result.name).toBe('Updated Name');
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(result).not.toHaveProperty('emailVerificationToken');
+      expect(result).not.toHaveProperty('passwordResetToken');
+      // The whole payload, not just the fields this spec happens to read.
+      expect(JSON.stringify(result)).not.toContain('averyrealisticbcrypthash');
+      expect(JSON.stringify(result)).not.toContain('a-live-email-verification-token');
+      expect(JSON.stringify(result)).not.toContain('a-live-password-reset-token');
+    });
+
+    it('normalizes accountType on the update response', async () => {
+      vi.mocked(usersRepository.update).mockResolvedValue(createMockUser({ accountType: 'author' }));
+
+      const result = await usersService.update('user-123', { name: 'Updated Name' });
+
+      expect(result.accountType).toBe(AccountType.WRITER);
+    });
+
+    it('invalidates both the user and the public profile caches', async () => {
+      vi.mocked(usersRepository.update).mockResolvedValue(createMockUser());
+
+      await usersService.update('user-123', { name: 'Updated Name' });
+
+      // Dropping only the `user:` key used to leave `GET /users/:id` serving the pre-edit name and
+      // bio for the full five minutes, because the public profile was never invalidated at all.
+      expect(cache.invalidations).toContainEqual({ namespace: USER_CACHE_NAMESPACE, key: 'user-123', tags: ['users'] });
+      expect(cache.invalidations).toContainEqual({
+        namespace: USER_PUBLIC_CACHE_NAMESPACE,
+        key: 'user-123',
+        tags: ['users'],
+      });
+    });
+
+    it('invalidates the caches before returning, so the next read cannot serve the old row', async () => {
+      vi.mocked(usersRepository.update).mockResolvedValue(createMockUser({ name: 'Updated Name' }));
+      vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ name: 'Stale Name' }));
+
+      await usersService.update('user-123', { name: 'Updated Name' });
+      const profile = await usersService.findPublicProfile('user-123');
+
+      expect(cache.invalidations).toHaveLength(2);
+      expect(profile.name).toBe('Stale Name');
     });
 
     it('should throw ConflictException when updating to existing email', async () => {
@@ -326,13 +609,20 @@ describe('UsersService', () => {
   });
 
   describe('softDelete', () => {
-    it('should soft delete user and clear cache', async () => {
+    it('should soft delete user and clear both caches', async () => {
       vi.mocked(usersRepository.softDelete).mockResolvedValue(undefined);
 
       await usersService.softDelete('user-123');
 
       expect(usersRepository.softDelete).toHaveBeenCalledWith('user-123');
-      expect(valkeyService.del).toHaveBeenCalledWith('user:user-123');
+      // A deleted account must stop being readable through the public profile too, so both
+      // projections are dropped; leaving the public one behind serves a deleted user for the TTL.
+      expect(cache.invalidations).toContainEqual({ namespace: USER_CACHE_NAMESPACE, key: 'user-123', tags: ['users'] });
+      expect(cache.invalidations).toContainEqual({
+        namespace: USER_PUBLIC_CACHE_NAMESPACE,
+        key: 'user-123',
+        tags: ['users'],
+      });
     });
   });
 
@@ -425,7 +715,13 @@ describe('UsersService', () => {
 
   describe('getUserStats', () => {
     it('should return stats from cache when available', async () => {
-      const cachedStats = { storiesCount: 5, totalViews: 100, totalReactions: 20, followersCount: 10, followingCount: 3 };
+      const cachedStats = {
+        storiesCount: 5,
+        totalViews: 100,
+        totalReactions: 20,
+        followersCount: 10,
+        followingCount: 3,
+      };
       vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(cachedStats));
 
       const result = await usersService.getUserStats('user-123');
