@@ -78,7 +78,10 @@ export class EventSchemaRegistry {
     return false;
   }
 
-  async getDLQStats(): Promise<{ total: number; events: Array<{ id: string; eventName: string; error: string; retryCount: number }> }> {
+  async getDLQStats(): Promise<{
+    total: number;
+    events: Array<{ id: string; eventName: string; error: string; retryCount: number }>;
+  }> {
     if (!this.dlqService) {
       return { total: 0, events: [] };
     }

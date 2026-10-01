@@ -1,13 +1,22 @@
 export class StoryCreatedEvent {
-  constructor(public readonly storyId: string, public readonly authorId: string) {}
+  constructor(
+    public readonly storyId: string,
+    public readonly authorId: string,
+  ) {}
 }
 
 export class StoryUpdatedEvent {
-  constructor(public readonly storyId: string, public readonly updatedFields: Record<string, unknown>) {}
+  constructor(
+    public readonly storyId: string,
+    public readonly updatedFields: Record<string, unknown>,
+  ) {}
 }
 
 export class StoryPublishedEvent {
-  constructor(public readonly storyId: string, public readonly publishedAt: Date) {}
+  constructor(
+    public readonly storyId: string,
+    public readonly publishedAt: Date,
+  ) {}
 }
 
 export class StoryArchivedEvent {
@@ -15,5 +24,8 @@ export class StoryArchivedEvent {
 }
 
 export class StoryDeletedEvent {
-  constructor(public readonly storyId: string, public readonly authorId: string) {}
+  constructor(
+    public readonly storyId: string,
+    public readonly authorId: string,
+  ) {}
 }

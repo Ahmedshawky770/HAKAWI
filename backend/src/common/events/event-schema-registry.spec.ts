@@ -33,7 +33,11 @@ describe('EventSchemaRegistry', () => {
 
   describe('validateEvent', () => {
     it('should validate a valid event', () => {
-      const result = registry.validateEvent('user.registered', { userId: '1', email: 'test@example.com', name: 'Test' });
+      const result = registry.validateEvent('user.registered', {
+        userId: '1',
+        email: 'test@example.com',
+        name: 'Test',
+      });
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
     });
@@ -51,14 +55,22 @@ describe('EventSchemaRegistry', () => {
     });
 
     it('should validate with explicit version', () => {
-      const result = registry.validateEvent('custom.event', { userId: '1', email: 'test@example.com', name: 'Test' }, 'v1');
+      const result = registry.validateEvent(
+        'custom.event',
+        { userId: '1', email: 'test@example.com', name: 'Test' },
+        'v1',
+      );
       expect(result.success).toBe(true);
     });
   });
 
   describe('registerSchema', () => {
     it('should register a new schema', () => {
-      const result = registry.validateEvent('custom.event', { userId: '1', email: 'test@example.com', name: 'Test' }, 'v1');
+      const result = registry.validateEvent(
+        'custom.event',
+        { userId: '1', email: 'test@example.com', name: 'Test' },
+        'v1',
+      );
       expect(result.success).toBe(true);
     });
 

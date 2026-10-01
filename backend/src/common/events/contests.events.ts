@@ -1,9 +1,15 @@
 export class ContestCreatedEvent {
-  constructor(public readonly contestId: string, public readonly createdBy: string) {}
+  constructor(
+    public readonly contestId: string,
+    public readonly createdBy: string,
+  ) {}
 }
 
 export class ContestUpdatedEvent {
-  constructor(public readonly contestId: string, public readonly updatedFields: Record<string, unknown>) {}
+  constructor(
+    public readonly contestId: string,
+    public readonly updatedFields: Record<string, unknown>,
+  ) {}
 }
 
 export class ContestStartedEvent {
@@ -11,7 +17,10 @@ export class ContestStartedEvent {
 }
 
 export class ContestCompletedEvent {
-  constructor(public readonly contestId: string, public readonly winnerId: string | null) {}
+  constructor(
+    public readonly contestId: string,
+    public readonly winnerId: string | null,
+  ) {}
 }
 
 export class ContestCancelledEvent {
@@ -19,25 +28,50 @@ export class ContestCancelledEvent {
 }
 
 export class SubmissionSubmittedEvent {
-  constructor(public readonly submissionId: string, public readonly contestId: string, public readonly authorId: string) {}
+  constructor(
+    public readonly submissionId: string,
+    public readonly contestId: string,
+    public readonly authorId: string,
+  ) {}
 }
 
 export class SubmissionApprovedEvent {
-  constructor(public readonly submissionId: string, public readonly contestId: string, public readonly authorId: string) {}
+  constructor(
+    public readonly submissionId: string,
+    public readonly contestId: string,
+    public readonly authorId: string,
+  ) {}
 }
 
 export class SubmissionRejectedEvent {
-  constructor(public readonly submissionId: string, public readonly contestId: string, public readonly authorId: string) {}
+  constructor(
+    public readonly submissionId: string,
+    public readonly contestId: string,
+    public readonly authorId: string,
+  ) {}
 }
 
 export class VoteCastEvent {
-  constructor(public readonly voteId: string, public readonly contestId: string, public readonly submissionId: string, public readonly userId: string) {}
+  constructor(
+    public readonly voteId: string,
+    public readonly contestId: string,
+    public readonly submissionId: string,
+    public readonly userId: string,
+  ) {}
 }
 
 export class WinnerSelectedEvent {
-  constructor(public readonly contestId: string, public readonly submissionId: string, public readonly winnerId: string) {}
+  constructor(
+    public readonly contestId: string,
+    public readonly submissionId: string,
+    public readonly winnerId: string,
+  ) {}
 }
 
 export class PrizeDistributedEvent {
-  constructor(public readonly prizeId: string, public readonly contestId: string, public readonly winnerId: string) {}
+  constructor(
+    public readonly prizeId: string,
+    public readonly contestId: string,
+    public readonly winnerId: string,
+  ) {}
 }

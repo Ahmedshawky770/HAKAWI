@@ -1,5 +1,9 @@
 export class RentalCreatedEvent {
-  constructor(public readonly rentalId: string, public readonly userId: string, public readonly bookId: string) {}
+  constructor(
+    public readonly rentalId: string,
+    public readonly userId: string,
+    public readonly bookId: string,
+  ) {}
 }
 
 export class RentalExtendedEvent {
