@@ -49,7 +49,11 @@ export class CommentReactionsService {
     await this.eventBus.emit('comment.reaction.removed', { userId, commentId });
   }
 
-  async getReactions(commentId: string, page = 1, limit = 20): Promise<{ reactions: CommentReaction[]; total: number }> {
+  async getReactions(
+    commentId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ reactions: CommentReaction[]; total: number }> {
     const comment = await this.commentsRepository.findById(commentId);
     if (!comment) {
       throw new NotFoundException('Comment not found');

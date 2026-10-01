@@ -15,7 +15,10 @@ export class CommentsEventHandler {
 
   @OnEvent('comment.created')
   async handleCommentCreated(event: CommentCreatedEvent): Promise<void> {
-    this.logger.info(`Comment ${event.commentId} created on story ${event.storyId} by user ${event.authorId}`, 'CommentsEventHandler');
+    this.logger.info(
+      `Comment ${event.commentId} created on story ${event.storyId} by user ${event.authorId}`,
+      'CommentsEventHandler',
+    );
   }
 
   @OnEvent('comment.updated')

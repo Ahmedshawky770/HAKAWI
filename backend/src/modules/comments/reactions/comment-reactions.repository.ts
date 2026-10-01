@@ -27,13 +27,26 @@ export class CommentReactionsRepository implements ICommentReactionsRepository {
     return (reaction ?? null) as CommentReaction | null;
   }
 
-  async findByComment(commentId: string, page: number, limit: number): Promise<{ reactions: CommentReaction[]; total: number }> {
+  async findByComment(
+    commentId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ reactions: CommentReaction[]; total: number }> {
     this.logger.debug(`Finding reactions for comment: ${commentId}`);
     const offset = (page - 1) * limit;
 
     const [reactionsList, [{ total }]] = await Promise.all([
-      db.select().from(commentReactions).where(eq(commentReactions.commentId, commentId)).orderBy(desc(commentReactions.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(commentReactions).where(eq(commentReactions.commentId, commentId)),
+      db
+        .select()
+        .from(commentReactions)
+        .where(eq(commentReactions.commentId, commentId))
+        .orderBy(desc(commentReactions.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(commentReactions)
+        .where(eq(commentReactions.commentId, commentId)),
     ]);
 
     return { reactions: reactionsList as CommentReaction[], total: Number(total) };
@@ -41,7 +54,7 @@ export class CommentReactionsRepository implements ICommentReactionsRepository {
 
   async create(data: { userId: string; commentId: string; type: string }): Promise<CommentReaction> {
     this.logger.info(`Creating comment reaction: ${data.type} on comment ${data.commentId}`);
-    const [reaction] = await db.insert(commentReactions).values(data).returning() as CommentReaction[];
+    const [reaction] = (await db.insert(commentReactions).values(data).returning()) as CommentReaction[];
     return reaction;
   }
 
@@ -52,11 +65,16 @@ export class CommentReactionsRepository implements ICommentReactionsRepository {
 
   async deleteByUserAndComment(userId: string, commentId: string): Promise<void> {
     this.logger.info(`Deleting comment reaction: ${userId} on comment ${commentId}`);
-    await db.delete(commentReactions).where(and(eq(commentReactions.userId, userId), eq(commentReactions.commentId, commentId)));
+    await db
+      .delete(commentReactions)
+      .where(and(eq(commentReactions.userId, userId), eq(commentReactions.commentId, commentId)));
   }
 
   async countReactions(commentId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(commentReactions).where(eq(commentReactions.commentId, commentId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(commentReactions)
+      .where(eq(commentReactions.commentId, commentId));
     return Number(total);
   }
 }

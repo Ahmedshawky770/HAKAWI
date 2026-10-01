@@ -2,7 +2,11 @@ import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nest
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import type { CommentCreatedEvent, CommentUpdatedEvent, CommentDeletedEvent } from '../../common/events/social.events.ts';
+import type {
+  CommentCreatedEvent,
+  CommentUpdatedEvent,
+  CommentDeletedEvent,
+} from '../../common/events/social.events.ts';
 
 import type { ICommentsRepository } from './interfaces/comments-repository.interface.ts';
 import { COMMENTS_REPOSITORY } from './interfaces/comments-repository.interface.ts';
@@ -41,19 +45,31 @@ export class CommentsService {
     return comment;
   }
 
-  async findByStory(storyId: string, page = 1, limit = 20): Promise<{ comments: CommentResponse[]; total: number }> {
+  async findByStory(
+    storyId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ comments: CommentResponse[]; total: number; page: number; limit: number }> {
     const result = await this.commentsRepository.findByStory(storyId, page, limit);
     return {
       comments: result.comments.map((comment: Comment) => this.toCommentResponse(comment)),
       total: result.total,
+      page,
+      limit,
     };
   }
 
-  async findReplies(parentId: string, page = 1, limit = 20): Promise<{ replies: CommentResponse[]; total: number }> {
+  async findReplies(
+    parentId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ replies: CommentResponse[]; total: number; page: number; limit: number }> {
     const result = await this.commentsRepository.findReplies(parentId, page, limit);
     return {
       replies: result.replies.map((reply: Comment) => this.toCommentResponse(reply)),
       total: result.total,
+      page,
+      limit,
     };
   }
 
