@@ -2,7 +2,13 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { PaymentCreatedEvent, PaymentCompletedEvent, PaymentFailedEvent, RefundCreatedEvent, RefundCompletedEvent } from '../../../common/events/payments.events.ts';
+import type {
+  PaymentCreatedEvent,
+  PaymentCompletedEvent,
+  PaymentFailedEvent,
+  RefundCreatedEvent,
+  RefundCompletedEvent,
+} from '../../../common/events/payments.events.ts';
 import type { IPaymentsRepository } from '../interfaces/payments-repository.interface.ts';
 import { PAYMENTS_REPOSITORY } from '../interfaces/payments-repository.interface.ts';
 
