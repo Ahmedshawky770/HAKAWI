@@ -100,8 +100,16 @@ test.describe("Critical user journeys", () => {
     await page.getByRole("button", { name: "إنشاء الحساب" }).click();
 
     expect((await registerResponse).status()).toBe(201);
-    await page.waitForURL("**/dashboard", { timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible();
+    // The app sends a freshly authenticated user to AUTHENTICATED_HOME_ROUTE, which is "/".
+    // There has never been a /dashboard route, and these two waits for it were the only thing
+    // failing: the navigation happened, to the root, and the assertion was looking for a URL
+    // that does not exist. `register/page.test.tsx` already asserted the opposite —
+    // "never navigates to the removed dashboard route" — so the e2e spec and the unit spec
+    // were asserting opposite facts about the same code.
+    //
+    // Asserting the heading rather than the URL is also the more robust form: it is what the
+    // journey is actually for, and it cannot drift the way a path can.
+    await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
   });
 
   test("signs in with the UI and reaches the story feed", async ({ page, request }) => {
@@ -116,8 +124,16 @@ test.describe("Critical user journeys", () => {
 
     expect((await loginResponse).status()).toBe(200);
     expect((await sessionResponse).status()).toBe(200);
-    await page.waitForURL("**/dashboard", { timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible();
+    // The app sends a freshly authenticated user to AUTHENTICATED_HOME_ROUTE, which is "/".
+    // There has never been a /dashboard route, and these two waits for it were the only thing
+    // failing: the navigation happened, to the root, and the assertion was looking for a URL
+    // that does not exist. `register/page.test.tsx` already asserted the opposite —
+    // "never navigates to the removed dashboard route" — so the e2e spec and the unit spec
+    // were asserting opposite facts about the same code.
+    //
+    // Asserting the heading rather than the URL is also the more robust form: it is what the
+    // journey is actually for, and it cannot drift the way a path can.
+    await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
   });
 
   test("surfaces a login failure and stays on the login page", async ({ page }) => {
@@ -133,9 +149,20 @@ test.describe("Critical user journeys", () => {
   });
 
   test("opens a published story from the feed", async ({ page, request }) => {
-    const { tokens } = await registerThroughApi(request, "storyopen");
+    const { user, tokens } = await registerThroughApi(request, "storyopen");
     const title = `Playwright Story ${uniqueSuffix()}`;
     const story = await publishStoryThroughApi(request, tokens.accessToken, title);
+
+    // The story is created with the API context, but (app)/layout.tsx guards every route in
+    // the group with a session probe, and the session now lives in an httpOnly cookie. The
+    // API context and the page context do not share cookies, so navigating straight to
+    // /stories lands on /login and the feed never renders. Signing in through the UI is what
+    // puts the cookie in the page context — and it exercises more of the journey than
+    // injecting a token by hand would.
+    await page.goto("/login");
+    await fillLoginForm(page, user.email, PASSWORD);
+    await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+    await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/stories");
     const listResponse = waitForApiResponse(page, "/api/v1/stories");
