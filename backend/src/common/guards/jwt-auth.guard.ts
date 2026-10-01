@@ -5,6 +5,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { IS_PUBLIC_KEY } from '../decorators/roles.decorator.ts';
 import { JwtPayload } from '../utils/jwt.util.ts';
+import { ACCESS_TOKEN_COOKIE } from '../constants/auth-cookie.constants.ts';
+import { parseCookieHeader } from '../constants/auth-cookie.constants.ts';
 import type { AuthRequest } from '../types/auth-request.interface.ts';
 
 @Injectable()
@@ -42,11 +44,18 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   private extractToken(request: AuthRequest): string | undefined {
-    const cookieToken = request.cookies?.access_token;
-    if (cookieToken) {
-      return cookieToken;
-    }
+    // WHY the header wins: the auth cookies are written with `path: '/'` and no `domain`, so any
+    // host that can set a cookie for the parent domain — a sibling subdomain, a staging deploy on
+    // a shared zone — can also write one named `access_token`. If the cookie were read first, that
+    // attacker-chosen value would decide the caller's identity while the genuine header token was
+    // ignored. The header is the credential the caller attached to this request on purpose, so it
+    // takes precedence; the cookie is only the fallback for the browser that cannot set a header
+    // on a cross-origin fetch. (Principle #15: assume the ambient credential can be poisoned.)
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
+    if (type === 'Bearer' && token !== undefined && token.length > 0) {
+      return token;
+    }
+
+    return parseCookieHeader(request.headers.cookie)[ACCESS_TOKEN_COOKIE];
   }
 }

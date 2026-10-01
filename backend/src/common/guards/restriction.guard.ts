@@ -4,9 +4,7 @@ import { ValkeyService } from '../../common/services/valkey.service.ts';
 
 @Injectable()
 export class RestrictionGuard implements CanActivate {
-  constructor(
-    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
-  ) {}
+  constructor(@Inject(ValkeyService) private readonly valkeyService: ValkeyService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest() as { user?: { sub: string } };
