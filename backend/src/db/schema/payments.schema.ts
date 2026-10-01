@@ -5,8 +5,12 @@ import { users } from './users.schema.ts';
 export const payments = pgTable(
   'payments',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
     amount: integer('amount').notNull(),
     currency: varchar('currency', { length: 3 }).notNull().default('EGP'),
     status: varchar('status', { length: 20 }).notNull().default('pending'),
@@ -14,6 +18,9 @@ export const payments = pgTable(
     paymobOrderId: varchar('paymob_order_id', { length: 255 }),
     paymobPaymentId: varchar('paymob_payment_id', { length: 255 }),
     paymobTransactionId: varchar('paymob_transaction_id', { length: 255 }),
+    paymobPaymentKey: varchar('paymob_payment_key', { length: 255 }),
+    paymobIframeUrl: text('paymob_iframe_url'),
+    paymobAcceptUrl: text('paymob_accept_url'),
     metadata: text('metadata'),
     description: text('description'),
     deletedAt: timestamp('deleted_at'),
@@ -25,14 +32,19 @@ export const payments = pgTable(
     statusIdx: index('payments_status_idx').on(table.status),
     orderIdx: index('payments_order_id_idx').on(table.paymobOrderId),
     transactionUnique: uniqueIndex('payments_transaction_id_idx').on(table.paymobTransactionId),
-  })
+    paymentKeyIdx: index('payments_paymob_payment_key_idx').on(table.paymobPaymentKey),
+  }),
 );
 
 export const paymentTransactions = pgTable(
   'payment_transactions',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    paymentId: uuid('payment_id').notNull().references(() => payments.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id),
     type: varchar('type', { length: 20 }).notNull(),
     status: varchar('status', { length: 20 }).notNull(),
     amount: integer('amount').notNull(),
@@ -42,14 +54,18 @@ export const paymentTransactions = pgTable(
   },
   (table) => ({
     paymentIdx: index('payment_transactions_payment_id_idx').on(table.paymentId),
-  })
+  }),
 );
 
 export const refunds = pgTable(
   'refunds',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    paymentId: uuid('payment_id').notNull().references(() => payments.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id),
     amount: integer('amount').notNull(),
     currency: varchar('currency', { length: 3 }).notNull(),
     reason: text('reason'),
@@ -60,7 +76,7 @@ export const refunds = pgTable(
   },
   (table) => ({
     paymentIdx: index('refunds_payment_id_idx').on(table.paymentId),
-  })
+  }),
 );
 
 export type Payment = typeof payments.$inferSelect;

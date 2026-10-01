@@ -6,7 +6,9 @@ import { tags } from './stories.schema.ts';
 export const bookCategories = pgTable(
   'book_categories',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     description: text('description'),
@@ -17,13 +19,15 @@ export const bookCategories = pgTable(
   },
   (table) => ({
     slugIdx: index('book_categories_slug_idx').on(table.slug),
-  })
+  }),
 );
 
 export const books = pgTable(
   'books',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     author: varchar('author', { length: 255 }).notNull(),
     description: text('description'),
@@ -52,29 +56,39 @@ export const books = pgTable(
     categoryIdx: index('books_category_id_idx').on(table.categoryId),
     titleIdx: index('books_title_idx').on(table.title),
     isbnIdx: index('books_isbn_idx').on(table.isbn),
-  })
+  }),
 );
 
 export const bookTags = pgTable(
   'book_tags',
   {
-    bookId: uuid('book_id').notNull().references(() => books.id),
-    tagId: uuid('tag_id').notNull().references(() => tags.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.bookId, table.tagId] }),
     bookIdx: index('book_tags_book_id_idx').on(table.bookId),
     tagIdx: index('book_tags_tag_id_idx').on(table.tagId),
-  })
+  }),
 );
 
 export const readingProgress = pgTable(
   'reading_progress',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
-    bookId: uuid('book_id').notNull().references(() => books.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
     currentPage: integer('current_page').default(0).notNull(),
     totalPages: integer('total_pages'),
     progressPercentage: integer('progress_percentage').default(0).notNull(),
@@ -88,7 +102,7 @@ export const readingProgress = pgTable(
     userBookIdx: index('reading_progress_user_book_idx').on(table.userId, table.bookId),
     userIdx: index('reading_progress_user_id_idx').on(table.userId),
     bookIdx: index('reading_progress_book_id_idx').on(table.bookId),
-  })
+  }),
 );
 
 export type Book = typeof books.$inferSelect;

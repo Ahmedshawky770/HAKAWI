@@ -1,21 +1,13 @@
-import {
-  pgTable,
-  uuid,
-  varchar,
-  text,
-  timestamp,
-  boolean,
-  integer,
-  index,
-  primaryKey,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, integer, index, primaryKey } from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
 
 export const categories = pgTable(
   'categories',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     description: text('description'),
@@ -28,27 +20,33 @@ export const categories = pgTable(
   (table) => ({
     slugUnique: index('categories_slug_idx').on(table.slug),
     parentIdx: index('categories_parent_id_idx').on(table.parentId),
-  })
+  }),
 );
 
 export const tags = pgTable(
   'tags',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     name: varchar('name', { length: 50 }).notNull(),
     slug: varchar('slug', { length: 50 }).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     slugIdx: index('tags_slug_idx').on(table.slug),
-  })
+  }),
 );
 
 export const stories = pgTable(
   'stories',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    authorId: uuid('author_id').notNull().references(() => users.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id),
     title: varchar('title', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull(),
     excerpt: text('excerpt'),
@@ -71,21 +69,25 @@ export const stories = pgTable(
     categoryIdx: index('stories_category_id_idx').on(table.categoryId),
     slugIdx: index('stories_slug_idx').on(table.slug),
     publishedAtIdx: index('stories_published_at_idx').on(table.publishedAt),
-  })
+  }),
 );
 
 export const storyTags = pgTable(
   'story_tags',
   {
-    storyId: uuid('story_id').notNull().references(() => stories.id),
-    tagId: uuid('tag_id').notNull().references(() => tags.id),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => stories.id),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.storyId, table.tagId] }),
     storyIdx: index('story_tags_story_id_idx').on(table.storyId),
     tagIdx: index('story_tags_tag_id_idx').on(table.tagId),
-  })
+  }),
 );
 
 export type Story = typeof stories.$inferSelect;

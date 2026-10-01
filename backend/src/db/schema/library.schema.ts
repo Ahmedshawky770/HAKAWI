@@ -7,9 +7,15 @@ import { rentals } from './rentals.schema.ts';
 export const library = pgTable(
   'library',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
-    bookId: uuid('book_id').notNull().references(() => books.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
     rentalId: uuid('rental_id').references(() => rentals.id),
     status: varchar('status', { length: 20 }).notNull().default('owned'),
     addedAt: timestamp('added_at').defaultNow().notNull(),
@@ -22,7 +28,7 @@ export const library = pgTable(
     bookIdx: index('library_book_id_idx').on(table.bookId),
     rentalIdx: index('library_rental_id_idx').on(table.rentalId),
     userBookIdx: index('library_user_book_idx').on(table.userId, table.bookId),
-  })
+  }),
 );
 
 export type LibraryItem = typeof library.$inferSelect;
