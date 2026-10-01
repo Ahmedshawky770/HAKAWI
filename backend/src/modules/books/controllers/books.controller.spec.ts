@@ -93,9 +93,7 @@ describe('BooksController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer)
-        .get('/books')
-        .expect(200);
+      const res = await request(httpServer).get('/books').expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total', 0);
@@ -116,11 +114,9 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
-      const res = await request(httpServer)
-        .get('/books/book-1')
-        .expect(200);
+      const res = await request(httpServer).get('/books/book-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'book-1');
       expect(booksService.findById).toHaveBeenCalledWith('book-1');
@@ -140,11 +136,9 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
-      const res = await request(httpServer)
-        .get('/books/isbn/9781234567890')
-        .expect(200);
+      const res = await request(httpServer).get('/books/isbn/9781234567890').expect(200);
 
       expect(res.body).toHaveProperty('isbn', '9781234567890');
       expect(booksService.findByIsbn).toHaveBeenCalledWith('9781234567890');
@@ -166,7 +160,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books')
@@ -194,7 +188,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .patch('/books/book-1')
@@ -221,7 +215,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books/book-1/publish')
@@ -249,7 +243,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books/book-1/download')
@@ -267,10 +261,7 @@ describe('BooksController', () => {
 
       vi.mocked(booksService.delete).mockResolvedValue(undefined);
 
-      await request(httpServer)
-        .delete('/books/book-1')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(204);
+      await request(httpServer).delete('/books/book-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(booksService.delete).toHaveBeenCalledWith('book-1', 'user-1');
     });

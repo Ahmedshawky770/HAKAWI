@@ -14,7 +14,12 @@ import { BooksEventHandler } from './events/books.event-handler.ts';
 @Module({
   imports: [CommonModule, DatabaseModule, PaymentsModule, RentalsModule],
   controllers: [BooksController],
-  providers: [BooksService, BooksRepository, BooksEventHandler, { provide: BOOKS_REPOSITORY, useExisting: BooksRepository }],
+  providers: [
+    BooksService,
+    BooksRepository,
+    BooksEventHandler,
+    { provide: BOOKS_REPOSITORY, useExisting: BooksRepository },
+  ],
   exports: [BooksService],
 })
 export class BooksModule {}

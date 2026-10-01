@@ -1,15 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { PaymentsService } from '../payments/payments.service.ts';
 import { RentalsService } from '../rentals/rentals.service.ts';
 
 import type { Book, CreateBookInput, UpdateBookInput } from './types.ts';
-import type { IBooksRepository } from './interfaces/books-repository.interface.ts';
 import { BooksService } from './books.service.ts';
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
@@ -19,7 +18,18 @@ import { BooksService } from './books.service.ts';
 type MockBooksRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Book | null>>>;
   findByIsbn: ReturnType<typeof vi.fn<(isbn: string) => Promise<Book | null>>>;
-  findAll: ReturnType<typeof vi.fn<(params: { page?: number; limit?: number; categoryId?: string; status?: string; search?: string; author?: string }) => Promise<{ books: Book[]; total: number }>>>;
+  findAll: ReturnType<
+    typeof vi.fn<
+      (params: {
+        page?: number;
+        limit?: number;
+        categoryId?: string;
+        status?: string;
+        search?: string;
+        author?: string;
+      }) => Promise<{ books: Book[]; total: number }>
+    >
+  >;
   create: ReturnType<typeof vi.fn<(data: CreateBookInput) => Promise<Book>>>;
   update: ReturnType<typeof vi.fn<(id: string, data: UpdateBookInput) => Promise<Book>>>;
   softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
@@ -37,13 +47,6 @@ type MockWinstonLoggerService = {
   verbose: ReturnType<typeof vi.fn>;
 };
 
-type MockValkeyService = {
-  exists: ReturnType<typeof vi.fn>;
-  set: ReturnType<typeof vi.fn>;
-  get: ReturnType<typeof vi.fn>;
-  del: ReturnType<typeof vi.fn>;
-};
-
 type MockEventValidatorService = {
   emit: ReturnType<typeof vi.fn>;
   validateEvent: ReturnType<typeof vi.fn>;
@@ -58,11 +61,43 @@ type MockRentalsService = {
   createRental: ReturnType<typeof vi.fn>;
 };
 
+function createFakeTaggedCache(): {
+  store: Map<string, unknown>;
+  get: Mock<(namespace: string, key: string) => Promise<unknown>>;
+  set: Mock<(namespace: string, key: string, value: unknown, ttl: number, tags?: readonly string[]) => Promise<void>>;
+  getOrSet: Mock;
+  invalidateKey: Mock<(namespace: string, key: string) => Promise<void>>;
+  invalidateTags: Mock<(tags: readonly string[]) => Promise<number>>;
+} {
+  const store = new Map<string, unknown>();
+  const cache = {
+    store,
+    get: vi.fn(async (namespace: string, key: string) => store.get(`${namespace}:${key}`) ?? null),
+    set: vi.fn(async (namespace: string, key: string, value: unknown) => {
+      store.set(`${namespace}:${key}`, value);
+    }),
+    getOrSet: vi.fn(async (options: { namespace: string; key: string; load: () => Promise<unknown> }) => {
+      const cacheKey = `${options.namespace}:${options.key}`;
+      if (store.has(cacheKey)) {
+        return { value: store.get(cacheKey), hit: true };
+      }
+      const value = await options.load();
+      store.set(cacheKey, value);
+      return { value, hit: false };
+    }),
+    invalidateKey: vi.fn(async (namespace: string, key: string) => {
+      store.delete(`${namespace}:${key}`);
+    }),
+    invalidateTags: vi.fn(async () => 0),
+  };
+  return cache;
+}
+
 describe('BooksService', () => {
   let booksService: BooksService;
   let booksRepository: MockBooksRepository;
   let logger: MockWinstonLoggerService;
-  let valkeyService: MockValkeyService;
+  let valkeyService: ReturnType<typeof createFakeTaggedCache>;
   let eventValidatorService: MockEventValidatorService;
   let paymentsService: MockPaymentsService;
   let rentalsService: MockRentalsService;
@@ -96,7 +131,17 @@ describe('BooksService', () => {
     booksRepository = {
       findById: vi.fn<(id: string) => Promise<Book | null>>(),
       findByIsbn: vi.fn<(isbn: string) => Promise<Book | null>>(),
-      findAll: vi.fn<(params: { page?: number; limit?: number; categoryId?: string; status?: string; search?: string; author?: string }) => Promise<{ books: Book[]; total: number }>>(),
+      findAll:
+        vi.fn<
+          (params: {
+            page?: number;
+            limit?: number;
+            categoryId?: string;
+            status?: string;
+            search?: string;
+            author?: string;
+          }) => Promise<{ books: Book[]; total: number }>
+        >(),
       create: vi.fn<(data: CreateBookInput) => Promise<Book>>(),
       update: vi.fn<(id: string, data: UpdateBookInput) => Promise<Book>>(),
       softDelete: vi.fn<(id: string) => Promise<void>>(),
@@ -114,12 +159,7 @@ describe('BooksService', () => {
       verbose: vi.fn(),
     };
 
-    valkeyService = {
-      exists: vi.fn(),
-      set: vi.fn(),
-      get: vi.fn(),
-      del: vi.fn(),
-    };
+    valkeyService = createFakeTaggedCache();
 
     eventValidatorService = {
       emit: vi.fn(),
@@ -138,7 +178,7 @@ describe('BooksService', () => {
     booksService = new BooksService(
       booksRepository,
       logger as unknown as WinstonLoggerService,
-      valkeyService as unknown as ValkeyService,
+      valkeyService as unknown as unknown as TaggedCacheService,
       eventValidatorService as unknown as EventValidatorService,
       paymentsService as unknown as PaymentsService,
       rentalsService as unknown as RentalsService,
@@ -192,7 +232,6 @@ describe('BooksService', () => {
   describe('findById', () => {
     it('should return a book by id', async () => {
       vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
-      vi.mocked(valkeyService.get).mockResolvedValue(null);
 
       const result = await booksService.findById('book-123');
 
@@ -259,7 +298,9 @@ describe('BooksService', () => {
     it('should throw NotFoundException when book not found', async () => {
       vi.mocked(booksRepository.findById).mockResolvedValue(null);
 
-      await expect(booksService.update('book-999', { title: 'New Title' }, 'user-123')).rejects.toThrow('Book not found');
+      await expect(booksService.update('book-999', { title: 'New Title' }, 'user-123')).rejects.toThrow(
+        'Book not found',
+      );
     });
   });
 
@@ -307,10 +348,7 @@ describe('BooksService', () => {
       const result = await booksService.archive('book-123', 'user-123');
 
       expect(result.status).toBe('archived');
-      expect(booksRepository.update).toHaveBeenCalledWith(
-        'book-123',
-        expect.objectContaining({ status: 'archived' }),
-      );
+      expect(booksRepository.update).toHaveBeenCalledWith('book-123', expect.objectContaining({ status: 'archived' }));
     });
 
     it('should throw ForbiddenException when book is already archived', async () => {
@@ -377,7 +415,22 @@ describe('BooksService', () => {
     it('should purchase a book successfully', async () => {
       const paidBook = { ...mockBook, isFree: false, author: 'other-author' };
       const paymentResult = { paymentId: 'payment-123', orderId: 'order-123', paymobUrl: 'https://paymob.com/pay' };
-      const createdPayment = { id: 'payment-123', userId: 'user-123', amount: 1000, currency: 'EGP', status: 'pending', paymentMethod: 'paymob', paymobOrderId: null, paymobPaymentId: null, paymobTransactionId: null, metadata: null, description: null, deletedAt: null, createdAt: new Date('2024-01-01'), updatedAt: new Date('2024-01-01') };
+      const createdPayment = {
+        id: 'payment-123',
+        userId: 'user-123',
+        amount: 1000,
+        currency: 'EGP',
+        status: 'pending',
+        paymentMethod: 'paymob',
+        paymobOrderId: null,
+        paymobPaymentId: null,
+        paymobTransactionId: null,
+        metadata: null,
+        description: null,
+        deletedAt: null,
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+      };
 
       vi.mocked(booksRepository.findById).mockResolvedValue(paidBook);
       vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);
@@ -387,7 +440,11 @@ describe('BooksService', () => {
       const result = await booksService.purchase('user-123', 'book-123', 'pm_123');
 
       expect(result).toEqual(createdPayment);
-      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith('user-123', paidBook.price, 'EGP', { bookId: 'book-123', type: 'purchase', paymentMethodId: 'pm_123' });
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith('user-123', paidBook.price, 'EGP', {
+        bookId: 'book-123',
+        type: 'purchase',
+        paymentMethodId: 'pm_123',
+      });
     });
 
     it('should throw NotFoundException when book not found', async () => {
@@ -400,21 +457,38 @@ describe('BooksService', () => {
       const ownBook = { ...mockBook, author: 'user-123' };
       vi.mocked(booksRepository.findById).mockResolvedValue(ownBook);
 
-      await expect(booksService.purchase('user-123', 'book-123', undefined)).rejects.toThrow('Cannot purchase your own book');
+      await expect(booksService.purchase('user-123', 'book-123', undefined)).rejects.toThrow(
+        'Cannot purchase your own book',
+      );
     });
 
     it('should throw BadRequestException when book is free', async () => {
       const freeBook = { ...mockBook, isFree: true, author: 'other-author' };
       vi.mocked(booksRepository.findById).mockResolvedValue(freeBook);
 
-      await expect(booksService.purchase('user-123', 'book-123', undefined)).rejects.toThrow('This book is free, no purchase needed');
+      await expect(booksService.purchase('user-123', 'book-123', undefined)).rejects.toThrow(
+        'This book is free, no purchase needed',
+      );
     });
   });
 
   describe('rent', () => {
     it('should rent a book successfully', async () => {
       const rentableBook = { ...mockBook, isFree: false, author: 'other-author' };
-      const createdRental = { id: 'rental-123', userId: 'user-123', bookId: 'book-123', status: 'active', startDate: new Date(), endDate: new Date(), extendedCount: 0, maxExtensions: 3, returnedAt: null, deletedAt: null, createdAt: new Date(), updatedAt: new Date() };
+      const createdRental = {
+        id: 'rental-123',
+        userId: 'user-123',
+        bookId: 'book-123',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
+        extendedCount: 0,
+        maxExtensions: 3,
+        returnedAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
       vi.mocked(booksRepository.findById).mockResolvedValue(rentableBook);
       vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);

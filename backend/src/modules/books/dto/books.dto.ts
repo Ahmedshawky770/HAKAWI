@@ -1,4 +1,18 @@
-import { IsString, IsOptional, IsUUID, IsIn, MaxLength, MinLength, IsBoolean, IsInt, Min, Max, Matches, IsNumber, Min as MinNumber } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsIn,
+  MaxLength,
+  MinLength,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+  Matches,
+  IsNumber,
+  Min as MinNumber,
+} from 'class-validator';
 
 export class CreateBookDto {
   @IsString()
