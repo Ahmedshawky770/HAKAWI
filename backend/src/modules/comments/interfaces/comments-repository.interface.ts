@@ -62,7 +62,11 @@ export type CommentReaction = {
 export interface ICommentReactionsRepository {
   findById(id: string): Promise<CommentReaction | null>;
   findByUserAndComment(userId: string, commentId: string): Promise<CommentReaction | null>;
-  findByComment(commentId: string, page: number, limit: number): Promise<{ reactions: CommentReaction[]; total: number }>;
+  findByComment(
+    commentId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ reactions: CommentReaction[]; total: number }>;
   create(data: { userId: string; commentId: string; type: string }): Promise<CommentReaction>;
   delete(id: string): Promise<void>;
   deleteByUserAndComment(userId: string, commentId: string): Promise<void>;
