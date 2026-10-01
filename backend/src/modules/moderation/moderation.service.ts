@@ -1,23 +1,30 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { eq, desc, count, and, sql } from 'drizzle-orm';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
-import { reports, moderationActions, userRestrictions } from '../../db/schema/moderation.schema.ts';
+import { reports, moderationActions, userRestrictions, type ReportSource } from '../../db/schema/moderation.schema.ts';
 import { db } from '../../db/index.ts';
+import { parseOrThrow } from '../shared/validation/zod-validation.util.ts';
 
-import type { CreateReportDto, UpdateReportStatusDto, ModerationActionDto, ReportQueryDto } from './dto/report.dto.ts';
-
+import {
+  CreateReportDto,
+  ModerationActionDto,
+  ReportQueryDto,
+  UpdateReportStatusDto,
+  type ReportQueryInput,
+} from './dto/report.dto.ts';
 
 export interface Report {
   id: string;
-  reporterId: string;
+  reporterId: string | null;
   targetId: string;
   targetType: string;
   reason: string;
   description: string | null;
   status: string;
+  source: ReportSource;
   escalatedAt: Date | null;
   resolvedAt: Date | null;
   createdAt: Date;
@@ -45,6 +52,10 @@ export interface UserRestriction {
   createdAt: Date;
 }
 
+export const AUTO_ESCALATION_REPORT_THRESHOLD = 3;
+
+export const AUTO_ESCALATION_WINDOW_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class ModerationService {
   constructor(
@@ -54,28 +65,45 @@ export class ModerationService {
   ) {}
 
   async createReport(reporterId: string, dto: CreateReportDto): Promise<Report> {
-    this.logger.info(`Creating report by ${reporterId} for ${dto.targetType} ${dto.targetId}`, 'ModerationService');
+    const input = parseOrThrow(CreateReportDto, dto);
+    this.logger.info(`Creating report by ${reporterId} for ${input.targetType} ${input.targetId}`, 'ModerationService');
 
-    const [report] = await db.insert(reports).values({
+    const [report] = await db
+      .insert(reports)
+      .values({
+        reporterId,
+        targetId: input.targetId,
+        targetType: input.targetType,
+        reason: input.reason,
+        description: input.description || null,
+        status: 'open',
+      })
+      .returning();
+
+    await this.eventBus.emit('moderation.report.created', {
+      reportId: report.id,
       reporterId,
-      targetId: dto.targetId,
-      targetType: dto.targetType,
-      reason: dto.reason,
-      description: dto.description || null,
-      status: 'open',
-    }).returning();
+      targetId: input.targetId,
+      targetType: input.targetType,
+      reason: input.reason,
+    });
+
+    await this.checkAutoEscalation(input.targetId);
 
     return report;
   }
 
-  async findAllReports(query: ReportQueryDto): Promise<{ reports: Report[]; total: number }> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+  async findAllReports(
+    query: ReportQueryInput,
+  ): Promise<{ reports: Report[]; total: number; page: number; limit: number }> {
+    const parsed: ReportQueryDto = parseOrThrow(ReportQueryDto, query);
+    const page = parsed.page;
+    const limit = parsed.limit;
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.status) conditions.push(eq(reports.status, query.status));
-    if (query.targetType) conditions.push(eq(reports.targetType, query.targetType));
+    if (parsed.status) conditions.push(eq(reports.status, parsed.status));
+    if (parsed.targetType) conditions.push(eq(reports.targetType, parsed.targetType));
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [reportsResult, [{ total }]] = await Promise.all([
@@ -83,36 +111,56 @@ export class ModerationService {
       db.select({ total: count() }).from(reports).where(whereClause),
     ]);
 
-    return { reports: reportsResult, total: Number(total) };
+    return { reports: reportsResult, total: Number(total), page, limit };
   }
 
   async updateReportStatus(id: string, dto: UpdateReportStatusDto): Promise<Report> {
-    const [report] = await db.update(reports).set({
-      status: dto.status,
-      resolvedAt: dto.status === 'resolved' ? new Date() : null,
-      updatedAt: new Date(),
-    }).where(eq(reports.id, id)).returning();
+    const input = parseOrThrow(UpdateReportStatusDto, dto);
+
+    const [existing] = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
+    if (!existing) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const [report] = await db
+      .update(reports)
+      .set({
+        status: input.status,
+        resolvedAt: input.status === 'resolved' ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(reports.id, id))
+      .returning();
+
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
     return report;
   }
 
   async takeAction(reportId: string, adminId: string, dto: ModerationActionDto): Promise<ModerationAction> {
-    this.logger.info(`Admin ${adminId} taking action ${dto.action} on report ${reportId}`, 'ModerationService');
+    const input = parseOrThrow(ModerationActionDto, dto);
+    this.logger.info(`Admin ${adminId} taking action ${input.action} on report ${reportId}`, 'ModerationService');
 
-    const [action] = await db.insert(moderationActions).values({
-      reportId,
-      adminId,
-      targetUserId: dto.targetUserId || null,
-      action: dto.action,
-      reason: dto.reason,
-      durationMinutes: dto.durationMinutes || null,
-    }).returning();
+    const [action] = await db
+      .insert(moderationActions)
+      .values({
+        reportId,
+        adminId,
+        targetUserId: input.targetUserId || null,
+        action: input.action,
+        reason: input.reason,
+        durationMinutes: input.durationMinutes || null,
+      })
+      .returning();
 
-    if (dto.targetUserId && dto.durationMinutes) {
-      const expiresAt = new Date(Date.now() + dto.durationMinutes * 60 * 1000);
+    if (input.targetUserId && input.durationMinutes) {
+      const expiresAt = new Date(Date.now() + input.durationMinutes * 60 * 1000);
       await db.insert(userRestrictions).values({
-        userId: dto.targetUserId,
-        type: dto.action === 'mute' ? 'mute' : dto.action === 'ban' ? 'ban' : 'warning',
-        reason: dto.reason,
+        userId: input.targetUserId,
+        type: input.action === 'mute' ? 'mute' : input.action === 'ban' ? 'ban' : 'warning',
+        reason: input.reason,
         expiresAt,
         createdBy: adminId,
       });
@@ -122,31 +170,63 @@ export class ModerationService {
       actionId: action.id,
       reportId,
       adminId,
-      targetUserId: dto.targetUserId || '',
-      action: dto.action,
-      reason: dto.reason,
+      targetUserId: input.targetUserId || '',
+      action: input.action,
+      reason: input.reason,
     });
 
     return action;
   }
 
-  async checkAutoEscalation(reportId: string, targetId: string): Promise<void> {
+  /**
+   * Escalates every open report against a target once it has collected enough of them.
+   *
+   * The rows are read before the write so the emitted event can carry the status and
+   * `updated_at` they genuinely held. The previous version updated every report for the target
+   * regardless of status and emitted a single event carrying the *new* timestamp, which made
+   * the audit trail claim a transition that may not have happened and left per-report
+   * consumers blind to all but one of the reports.
+   */
+  async checkAutoEscalation(targetId: string): Promise<void> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const [{ total }] = await db.select({ total: count() }).from(reports).where(
-      and(eq(reports.targetId, targetId), sql`${reports.createdAt} > ${oneHourAgo}`)
-    );
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(reports)
+      .where(and(eq(reports.targetId, targetId), sql`${reports.createdAt} > ${oneHourAgo}`));
 
-    if (Number(total) >= 3) {
-      const [report] = await db.select().from(reports).where(eq(reports.id, reportId)).limit(1);
-      await db.update(reports).set({ escalatedAt: new Date(), status: 'in_review', updatedAt: new Date() }).where(eq(reports.targetId, targetId));
-      this.logger.warn(`Auto-escalated ${total} reports for target ${targetId}`, 'ModerationService');
-      await this.eventBus.emit('moderation.report.escalated', {
-        reportId,
-        targetId,
-        previousStatus: report?.status ?? 'open',
-        previousUpdatedAt: report?.updatedAt ?? new Date(),
-      });
+    if (Number(total) < AUTO_ESCALATION_REPORT_THRESHOLD) {
+      return;
     }
+
+    const pending = await db
+      .select({ id: reports.id, status: reports.status, updatedAt: reports.updatedAt })
+      .from(reports)
+      .where(and(eq(reports.targetId, targetId), eq(reports.status, 'open')))
+      .orderBy(reports.createdAt);
+
+    if (pending.length > 0) {
+      const now = new Date();
+      const escalated = await db
+        .update(reports)
+        .set({ escalatedAt: now, status: 'in_review', updatedAt: now })
+        .where(and(eq(reports.targetId, targetId), eq(reports.status, 'open')))
+        .returning({ id: reports.id });
+
+      const escalatedIds = new Set(escalated.map((row) => row.id));
+      for (const report of pending) {
+        if (!escalatedIds.has(report.id)) {
+          continue;
+        }
+        await this.eventBus.emit('moderation.report.escalated', {
+          reportId: report.id,
+          targetId,
+          previousStatus: report.status,
+          previousUpdatedAt: report.updatedAt,
+        });
+      }
+    }
+
+    this.logger.warn(`Auto-escalated ${total} reports for target ${targetId}`, 'ModerationService');
   }
 
   async autoEscalateReports(): Promise<number> {
@@ -160,6 +240,8 @@ export class ModerationService {
     let escalatedCount = 0;
 
     for (const report of openReports) {
+      // Compare-and-set: the SELECT above is a separate statement, so the status is
+      // re-asserted here. A report an admin resolved in the gap is not resurrected.
       const [updated] = await db
         .update(reports)
         .set({
@@ -167,7 +249,7 @@ export class ModerationService {
           escalatedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(reports.id, report.id))
+        .where(and(eq(reports.id, report.id), eq(reports.status, 'open')))
         .returning();
 
       if (updated) {

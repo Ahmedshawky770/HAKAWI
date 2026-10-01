@@ -4,7 +4,10 @@ import { eq } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { ModerationActionTakenEvent, ModerationReportEscalatedEvent, UserRestrictedEvent } from '../../../common/events/moderation.events.ts';
+import {
+  ModerationActionTakenEvent,
+  ModerationReportEscalatedEvent,
+} from '../../../common/events/moderation.events.ts';
 import { userRestrictions } from '../../../db/schema/moderation.schema.ts';
 import { db } from '../../../db/index.ts';
 
@@ -17,7 +20,10 @@ export class ModerationEventHandler {
 
   @OnEvent('moderation.action.taken')
   async handleModerationActionTaken(event: ModerationActionTakenEvent): Promise<void> {
-    this.logger.info(`Handling moderation action taken: ${event.action} on user ${event.targetUserId}`, 'ModerationEventHandler');
+    this.logger.info(
+      `Handling moderation action taken: ${event.action} on user ${event.targetUserId}`,
+      'ModerationEventHandler',
+    );
 
     const restrictionKey = `restriction:${event.targetUserId}`;
     const restrictionTtl = event.action === 'ban' ? 24 * 60 * 60 : 30 * 24 * 60 * 60;
@@ -34,9 +40,10 @@ export class ModerationEventHandler {
 
     await this.valkeyService.expire(`restriction:${event.targetUserId}:details`, restrictionTtl);
 
-    const expiresAt = event.action === 'ban'
-      ? new Date(Date.now() + restrictionTtl * 1000)
-      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt =
+      event.action === 'ban'
+        ? new Date(Date.now() + restrictionTtl * 1000)
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const [existing] = await db.select().from(userRestrictions).where(eq(userRestrictions.userId, event.targetUserId));
 
@@ -56,39 +63,14 @@ export class ModerationEventHandler {
     this.logger.info(`Handling moderation report escalated: report ${event.reportId}`, 'ModerationEventHandler');
 
     const restrictionKey = `escalation:${event.targetId}`;
-    await this.valkeyService.set(restrictionKey, JSON.stringify({
-      reportId: event.reportId,
-      status: 'escalated',
-      escalatedAt: new Date().toISOString(),
-    }), 48 * 60 * 60);
-  }
-
-  @OnEvent('user.restricted')
-  async handleUserRestricted(event: UserRestrictedEvent): Promise<void> {
-    this.logger.info(`Handling user restricted: user ${event.userId} restricted by ${event.restrictedBy}`, 'ModerationEventHandler');
-
-    const restrictionKey = `restriction:${event.userId}`;
-    const restrictionTtl = event.expiresAt
-      ? Math.max(0, (event.expiresAt.getTime() - Date.now()) / 1000)
-      : 48 * 60 * 60;
-
-    await this.valkeyService.set(restrictionKey, event.type, restrictionTtl);
-
-    await this.valkeyService.hSetMultiple(`restriction:${event.userId}:details`, {
-      type: event.type,
-      reason: event.reason,
-      restrictedBy: event.restrictedBy,
-      createdAt: new Date().toISOString(),
-    });
-
-    await this.valkeyService.expire(`restriction:${event.userId}:details`, restrictionTtl);
-
-    await db.insert(userRestrictions).values({
-      userId: event.userId,
-      type: event.type,
-      reason: event.reason,
-      expiresAt: event.expiresAt,
-      createdBy: event.restrictedBy,
-    });
+    await this.valkeyService.set(
+      restrictionKey,
+      JSON.stringify({
+        reportId: event.reportId,
+        status: 'escalated',
+        escalatedAt: new Date().toISOString(),
+      }),
+      48 * 60 * 60,
+    );
   }
 }

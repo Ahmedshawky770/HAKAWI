@@ -3,11 +3,15 @@ import type { Server } from 'http';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
+import { RolesGuard } from '../../common/guards/roles.guard.ts';
+import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
+import { AdminRole, AccountType } from '../../common/constants/roles.ts';
 
 import { ModerationController } from './moderation.controller.ts';
 import { ModerationService } from './moderation.service.ts';
@@ -32,8 +36,36 @@ type MockAdminDashboardService = {
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
-async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
+const TARGET_ID = '3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8';
+const TARGET_USER_ID = '9b1d4f7a-1c2e-4f5b-8a9d-0e1f2a3b4c5d';
+
+type TokenParams = {
+  sub?: string;
+  email?: string;
+  accountType?: AccountType;
+  adminRole?: AdminRole;
+};
+
+async function generateToken({
+  sub = 'user-1',
+  email = 'test@example.com',
+  accountType = AccountType.READER,
+  adminRole,
+}: TokenParams = {}): Promise<string> {
+  return new JwtService({ secret: JWT_SECRET }).signAsync({
+    sub,
+    email,
+    accountType,
+    ...(adminRole ? { adminRole } : {}),
+  });
+}
+
+function moderatorToken(): Promise<string> {
+  return generateToken({ accountType: AccountType.ADMIN, adminRole: AdminRole.CONTENT_MODERATOR });
+}
+
+function superAdminToken(): Promise<string> {
+  return generateToken({ accountType: AccountType.ADMIN, adminRole: AdminRole.SUPER_ADMIN });
 }
 
 describe('ModerationController', () => {
@@ -73,6 +105,12 @@ describe('ModerationController', () => {
           useValue: adminDashboardService,
         },
         JwtAuthGuard,
+        RolesGuard,
+        PermissionsGuard,
+        {
+          provide: Reflector,
+          useValue: new Reflector(),
+        },
         {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
@@ -97,7 +135,7 @@ describe('ModerationController', () => {
 
   describe('POST /moderation/reports', () => {
     it('should create a new report', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      const token = await generateToken({ accountType: AccountType.READER });
 
       vi.mocked(moderationService.createReport).mockResolvedValue({
         id: 'report-1',
@@ -116,13 +154,13 @@ describe('ModerationController', () => {
       const res = await request(httpServer)
         .post('/moderation/reports')
         .set('Authorization', `Bearer ${token}`)
-        .send({ targetId: 'target-1', targetType: 'story', reason: 'spam', description: 'This is spam' })
+        .send({ targetId: TARGET_ID, targetType: 'story', reason: 'spam', description: 'This is spam' })
         .expect(201);
 
       expect(res.body).toHaveProperty('id', 'report-1');
       expect(res.body).toHaveProperty('status', 'open');
       expect(moderationService.createReport).toHaveBeenCalledWith('user-1', {
-        targetId: 'target-1',
+        targetId: TARGET_ID,
         targetType: 'story',
         reason: 'spam',
         description: 'This is spam',
@@ -132,7 +170,7 @@ describe('ModerationController', () => {
 
   describe('GET /moderation/reports', () => {
     it('should return paginated reports', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      const token = await moderatorToken();
 
       vi.mocked(moderationService.findAllReports).mockResolvedValue({
         reports: [],
@@ -146,13 +184,13 @@ describe('ModerationController', () => {
 
       expect(res.body).toHaveProperty('reports');
       expect(res.body).toHaveProperty('total', 0);
-      expect(moderationService.findAllReports).toHaveBeenCalledWith({});
+      expect(moderationService.findAllReports).toHaveBeenCalledWith({ page: 1, limit: 20 });
     });
   });
 
   describe('PATCH /moderation/reports/:id', () => {
     it('should update a report status', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      const token = await moderatorToken();
 
       vi.mocked(moderationService.updateReportStatus).mockResolvedValue({
         id: 'report-1',
@@ -181,7 +219,7 @@ describe('ModerationController', () => {
 
   describe('POST /moderation/reports/:id/actions', () => {
     it('should take a moderation action on a report', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      const token = await moderatorToken();
 
       vi.mocked(moderationService.takeAction).mockResolvedValue({
         id: 'action-1',
@@ -190,14 +228,14 @@ describe('ModerationController', () => {
         action: 'warn',
         reason: 'First warning',
         durationMinutes: null,
-        targetUserId: 'user-2',
+        targetUserId: TARGET_USER_ID,
         createdAt: new Date(),
       });
 
       const res = await request(httpServer)
         .post('/moderation/reports/report-1/actions')
         .set('Authorization', `Bearer ${token}`)
-        .send({ action: 'warn', reason: 'First warning', targetUserId: 'user-2' })
+        .send({ action: 'warn', reason: 'First warning', targetUserId: TARGET_USER_ID })
         .expect(201);
 
       expect(res.body).toHaveProperty('id', 'action-1');
@@ -205,14 +243,14 @@ describe('ModerationController', () => {
       expect(moderationService.takeAction).toHaveBeenCalledWith('report-1', 'user-1', {
         action: 'warn',
         reason: 'First warning',
-        targetUserId: 'user-2',
+        targetUserId: TARGET_USER_ID,
       });
     });
   });
 
   describe('GET /moderation/stats', () => {
     it('should return admin stats', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'admin');
+      const token = await superAdminToken();
 
       vi.mocked(adminDashboardService.getStats).mockResolvedValue({
         totalReports: 0,
@@ -239,7 +277,7 @@ describe('ModerationController', () => {
 
   describe('GET /moderation/users/:id/restrictions', () => {
     it('should return user restrictions', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      const token = await generateToken({ accountType: AccountType.READER });
 
       vi.mocked(adminDashboardService.getUserRestrictions).mockResolvedValue({
         restrictions: [],
@@ -256,7 +294,7 @@ describe('ModerationController', () => {
 
   describe('GET /moderation/reports/trends', () => {
     it('should return report trends', async () => {
-      const token = await generateToken('user-1', 'test@example.com', 'admin');
+      const token = await superAdminToken();
 
       vi.mocked(adminDashboardService.getReportTrends).mockResolvedValue({});
 
@@ -266,6 +304,74 @@ describe('ModerationController', () => {
         .expect(200);
 
       expect(typeof res.body).toBe('object');
+    });
+  });
+
+  describe('authorization', () => {
+    const forbiddenRoutes: ReadonlyArray<{ method: 'get' | 'patch' | 'post'; path: string; body?: object }> = [
+      { method: 'get', path: '/moderation/reports' },
+      { method: 'patch', path: '/moderation/reports/report-1', body: { status: 'resolved' } },
+      {
+        method: 'post',
+        path: '/moderation/reports/report-1/actions',
+        body: { action: 'warn', reason: 'r', targetUserId: TARGET_USER_ID },
+      },
+      { method: 'get', path: '/moderation/stats' },
+      { method: 'get', path: '/moderation/reports/trends' },
+      { method: 'get', path: '/moderation/actions' },
+    ];
+
+    it.each(forbiddenRoutes)('should reject a reader on $method $path', async ({ method, path, body }) => {
+      const token = await generateToken({ accountType: AccountType.READER });
+
+      const req = request(httpServer)[method](path).set('Authorization', `Bearer ${token}`);
+      if (body) {
+        req.send(body);
+      }
+
+      await req.expect(403);
+    });
+
+    it.each(forbiddenRoutes)(
+      'should reject a request without any token on $method $path',
+      async ({ method, path, body }) => {
+        const req = request(httpServer)[method](path);
+        if (body) {
+          req.send(body);
+        }
+
+        await req.expect(401);
+      },
+    );
+
+    it('should reject a moderator on a super_admin route', async () => {
+      const token = await moderatorToken();
+
+      await request(httpServer).get('/moderation/stats').set('Authorization', `Bearer ${token}`).expect(403);
+
+      expect(adminDashboardService.getStats).not.toHaveBeenCalled();
+    });
+
+    it('should allow a super_admin on a moderator route', async () => {
+      const token = await superAdminToken();
+
+      vi.mocked(moderationService.findAllReports).mockResolvedValue({ reports: [], total: 0 });
+
+      await request(httpServer).get('/moderation/reports').set('Authorization', `Bearer ${token}`).expect(200);
+
+      expect(moderationService.findAllReports).toHaveBeenCalled();
+    });
+
+    it('should not leak another user restrictions to a reader', async () => {
+      const token = await generateToken({ sub: 'reader-1', accountType: AccountType.READER });
+
+      const res = await request(httpServer)
+        .get('/moderation/users/other-user/restrictions')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body).toEqual({ restrictions: [] });
+      expect(adminDashboardService.getUserRestrictions).not.toHaveBeenCalled();
     });
   });
 });
