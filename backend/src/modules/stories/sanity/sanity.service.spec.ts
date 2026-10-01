@@ -54,7 +54,14 @@ describe('SanityService', () => {
       mockClient.fetch.mockResolvedValue(null);
       mockClient.create.mockResolvedValue({ _id: 'story-story-123', _type: 'story' });
 
-      const story = { id: 'story-123', title: 'Test', slug: 'test', status: 'published', authorId: 'author-1', hakawiId: 'story-123' } as unknown as SanityStoryDocument;
+      const story = {
+        id: 'story-123',
+        title: 'Test',
+        slug: 'test',
+        status: 'published',
+        authorId: 'author-1',
+        hakawiId: 'story-123',
+      } as unknown as SanityStoryDocument;
       const result = await sanityService.syncStoryToSanity(story);
       expect(result.success).toBe(true);
       expect(result.documentId).toBe('story-story-123');

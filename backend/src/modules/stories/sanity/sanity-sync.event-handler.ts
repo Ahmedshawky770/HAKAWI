@@ -2,7 +2,12 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { StoryCreatedEvent, StoryUpdatedEvent, StoryPublishedEvent, StoryDeletedEvent } from '../../../common/events/stories.events.ts';
+import type {
+  StoryCreatedEvent,
+  StoryUpdatedEvent,
+  StoryPublishedEvent,
+  StoryDeletedEvent,
+} from '../../../common/events/stories.events.ts';
 import type { Story } from '../types.ts';
 
 import { SanityService } from './sanity.service.ts';

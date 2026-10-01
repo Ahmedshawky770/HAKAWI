@@ -2,7 +2,13 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { StoryCreatedEvent, StoryUpdatedEvent, StoryPublishedEvent, StoryArchivedEvent, StoryDeletedEvent } from '../../../common/events/stories.events.ts';
+import type {
+  StoryCreatedEvent,
+  StoryUpdatedEvent,
+  StoryPublishedEvent,
+  StoryArchivedEvent,
+  StoryDeletedEvent,
+} from '../../../common/events/stories.events.ts';
 import type { IStoriesRepository } from '../interfaces/stories-repository.interface.ts';
 import { STORIES_REPOSITORY } from '../interfaces/stories-repository.interface.ts';
 

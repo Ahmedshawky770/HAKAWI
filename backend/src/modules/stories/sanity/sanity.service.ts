@@ -45,7 +45,11 @@ export class SanityService {
       config: { projectId: '', dataset: '', apiVersion: '' },
       withConfig: () => this.createMockClient(),
       clone: () => this.createMockClient(),
-      observe: () => ({ unsubscribe: () => {/* mock unsubscribe */} }),
+      observe: () => ({
+        unsubscribe: () => {
+          /* mock unsubscribe */
+        },
+      }),
       getDocument: async () => null,
       getDocuments: async () => [],
       createIfNotExists: async () => ({}),
@@ -91,13 +95,12 @@ export class SanityService {
         hakawiId: story.hakawiId,
       };
 
-      const existing = await this.circuitBreaker.execute<SanityStoryDocument | null>(
-        'sanity-fetch',
-        async () => {
-          const result = await this.client.fetch<SanityStoryDocument>(`*[_type == "story" && hakawiId == $hakawiId][0]`, { hakawiId: story.hakawiId });
-          return result ?? null;
-        },
-      );
+      const existing = await this.circuitBreaker.execute<SanityStoryDocument | null>('sanity-fetch', async () => {
+        const result = await this.client.fetch<SanityStoryDocument>(`*[_type == "story" && hakawiId == $hakawiId][0]`, {
+          hakawiId: story.hakawiId,
+        });
+        return result ?? null;
+      });
 
       if (existing) {
         await this.circuitBreaker.execute(
@@ -106,10 +109,7 @@ export class SanityService {
         );
         this.logger.info(`Updated story in Sanity: ${documentId}`, 'SanityService');
       } else {
-        await this.circuitBreaker.execute(
-          'sanity-create',
-          async () => await this.client.create(doc),
-        );
+        await this.circuitBreaker.execute('sanity-create', async () => await this.client.create(doc));
         this.logger.info(`Created story in Sanity: ${documentId}`, 'SanityService');
       }
 
@@ -124,10 +124,7 @@ export class SanityService {
   async deleteStoryFromSanity(storyId: string): Promise<SyncStoryResult> {
     try {
       const documentId = `story-${storyId}`;
-      await this.circuitBreaker.execute(
-        'sanity-delete',
-        async () => await this.client.delete(documentId),
-      );
+      await this.circuitBreaker.execute('sanity-delete', async () => await this.client.delete(documentId));
       this.logger.info(`Deleted story from Sanity: ${documentId}`, 'SanityService');
       return { success: true, documentId };
     } catch (error) {

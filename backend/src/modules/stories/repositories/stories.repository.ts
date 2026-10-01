@@ -1,8 +1,17 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, like, count, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, like, count, sql, isNull, inArray } from 'drizzle-orm';
 
-import { IStoriesRepository, Story, CreateStoryInput, UpdateStoryInput } from '../interfaces/stories-repository.interface.ts';
-import { stories } from '../../../db/schema/stories.schema.ts';
+import {
+  IStoriesRepository,
+  Story,
+  CreateStoryInput,
+  UpdateStoryInput,
+  StoryAuthorSummary,
+  StoryCategorySummary,
+  StoryTagSummary,
+} from '../interfaces/stories-repository.interface.ts';
+import { stories, categories, storyTags, tags } from '../../../db/schema/stories.schema.ts';
+import { users } from '../../../db/schema/users.schema.ts';
 import { db } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 
@@ -76,7 +85,11 @@ export class StoriesRepository implements IStoriesRepository {
 
   async update(id: string, data: UpdateStoryInput): Promise<Story> {
     this.logger.debug(`Updating story: ${id}`);
-    const [story] = await db.update(stories).set({ ...data, updatedAt: new Date() }).where(eq(stories.id, id)).returning();
+    const [story] = await db
+      .update(stories)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(stories.id, id))
+      .returning();
     return story;
   }
 
@@ -87,6 +100,40 @@ export class StoriesRepository implements IStoriesRepository {
 
   async incrementViewCount(id: string): Promise<void> {
     this.logger.debug(`Incrementing view count for story: ${id}`);
-    await db.update(stories).set({ viewCount: sql`${stories.viewCount} + 1` }).where(eq(stories.id, id));
+    await db
+      .update(stories)
+      .set({ viewCount: sql`${stories.viewCount} + 1` })
+      .where(eq(stories.id, id));
+  }
+
+  async findAuthorsByIds(authorIds: string[]): Promise<StoryAuthorSummary[]> {
+    if (authorIds.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding ${authorIds.length} story authors`);
+    return db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, authorIds));
+  }
+
+  async findCategoriesByIds(categoryIds: string[]): Promise<StoryCategorySummary[]> {
+    if (categoryIds.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding ${categoryIds.length} story categories`);
+    return db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(inArray(categories.id, categoryIds));
+  }
+
+  async findTagsByStoryIds(storyIds: string[]): Promise<StoryTagSummary[]> {
+    if (storyIds.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding tags for ${storyIds.length} stories`);
+    return db
+      .select({ storyId: storyTags.storyId, name: tags.name })
+      .from(storyTags)
+      .innerJoin(tags, eq(tags.id, storyTags.tagId))
+      .where(inArray(storyTags.storyId, storyIds));
   }
 }
