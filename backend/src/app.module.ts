@@ -21,11 +21,19 @@ import { RentalsModule } from './modules/rentals/rentals.module.ts';
 import { LibraryModule } from './modules/library/library.module.ts';
 import { ContestsModule } from './modules/contests/contests.module.ts';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module.ts';
+import { SharedCacheModule } from './modules/shared/cache/shared-cache.module.ts';
+import { BadgesModule } from './modules/badges/badges.module.ts';
+
+import { AppController } from './app.controller.ts';
+import { AppService } from './app.service.ts';
 
 @Module({
+  controllers: [AppController],
+  providers: [AppService],
   imports: [
     DatabaseModule,
     CommonModule,
+    SharedCacheModule,
     AuthModule,
     UsersModule,
     StoriesModule,
@@ -45,6 +53,7 @@ import { ReadingProgressModule } from './modules/reading-progress/reading-progre
     LibraryModule,
     ContestsModule,
     ReadingProgressModule,
+    BadgesModule,
   ],
 })
 export class AppModule {}

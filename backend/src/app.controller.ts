@@ -1,9 +1,18 @@
-import { Controller, Get, Injectable, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 
 import { AppService } from './app.service.ts';
 import { db } from './db/index.ts';
 import { ValkeyService } from './common/services/valkey.service.ts';
+
+export type DependencyStatus = 'connected' | 'disconnected';
+
+export type HealthResponse = {
+  status: 'healthy' | 'degraded';
+  database: DependencyStatus;
+  valkey: DependencyStatus;
+  timestamp: string;
+};
 
 @Controller()
 @Injectable()
@@ -19,7 +28,7 @@ export class AppController {
   }
 
   @Get('health')
-  async getHealth() {
+  async getHealth(): Promise<HealthResponse> {
     const dbHealthy = await this.checkDatabase();
     const valkeyHealthy = await this.checkValkey();
 
