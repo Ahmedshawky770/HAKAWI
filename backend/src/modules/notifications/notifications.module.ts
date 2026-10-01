@@ -13,7 +13,13 @@ import { NotificationsEmailService } from './email/notifications-email.service.t
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [NotificationsController],
-  providers: [NotificationsService, NotificationsRepository, NotificationsEventHandler, NotificationsEmailService, { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository }],
+  providers: [
+    NotificationsService,
+    NotificationsRepository,
+    NotificationsEventHandler,
+    NotificationsEmailService,
+    { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository },
+  ],
   exports: [NotificationsService],
 })
 export class NotificationsModule {}

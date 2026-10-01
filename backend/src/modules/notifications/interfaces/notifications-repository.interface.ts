@@ -30,7 +30,10 @@ export interface INotificationsRepository {
   delete(id: string): Promise<void>;
   countUnread(userId: string): Promise<number>;
   findPreferences(userId: string): Promise<NotificationPreferencesResponseDto>;
-  upsertPreferences(userId: string, data: UpsertNotificationPreferencesInput): Promise<NotificationPreferencesResponseDto>;
+  upsertPreferences(
+    userId: string,
+    data: UpsertNotificationPreferencesInput,
+  ): Promise<NotificationPreferencesResponseDto>;
 }
 
 export type NotificationPreferencesResponseDto = {

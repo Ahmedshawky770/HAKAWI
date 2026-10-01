@@ -16,7 +16,6 @@ import { NotificationsController } from './notifications.controller.ts';
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
@@ -91,10 +90,7 @@ describe('NotificationsController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/notifications')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(httpServer).get('/notifications').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('notifications');
       expect(res.body).toHaveProperty('total', 0);
@@ -191,7 +187,10 @@ describe('NotificationsController', () => {
 
       expect(res.body).toHaveProperty('emailEnabled', false);
       expect(res.body).toHaveProperty('comments', false);
-      expect(notificationsService.updatePreferences).toHaveBeenCalledWith('user-1', { emailEnabled: false, comments: false });
+      expect(notificationsService.updatePreferences).toHaveBeenCalledWith('user-1', {
+        emailEnabled: false,
+        comments: false,
+      });
     });
   });
 

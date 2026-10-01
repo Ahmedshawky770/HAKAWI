@@ -3,7 +3,11 @@ import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { NotificationCreatedEvent } from '../../../common/events/social.events.ts';
-import type { ContestCreatedEvent, WinnerSelectedEvent, PrizeDistributedEvent } from '../../../common/events/contests.events.ts';
+import type {
+  ContestCreatedEvent,
+  WinnerSelectedEvent,
+  PrizeDistributedEvent,
+} from '../../../common/events/contests.events.ts';
 import type { INotificationsRepository } from '../interfaces/notifications-repository.interface.ts';
 import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
 
@@ -16,7 +20,10 @@ export class NotificationsEventHandler {
 
   @OnEvent('notification.created')
   async handleNotificationCreated(event: NotificationCreatedEvent): Promise<void> {
-    this.logger.info(`Notification ${event.notificationId} created for user ${event.userId} of type ${event.type}`, 'NotificationsEventHandler');
+    this.logger.info(
+      `Notification ${event.notificationId} created for user ${event.userId} of type ${event.type}`,
+      'NotificationsEventHandler',
+    );
   }
 
   @OnEvent('contest.created')
@@ -33,7 +40,10 @@ export class NotificationsEventHandler {
 
   @OnEvent('winner.selected')
   async handleWinnerSelected(event: WinnerSelectedEvent): Promise<void> {
-    this.logger.info(`Winner selected for contest ${event.contestId}: user ${event.winnerId}`, 'NotificationsEventHandler');
+    this.logger.info(
+      `Winner selected for contest ${event.contestId}: user ${event.winnerId}`,
+      'NotificationsEventHandler',
+    );
     await this.notificationsRepository.create({
       userId: event.winnerId,
       type: 'winner.selected',
@@ -45,7 +55,10 @@ export class NotificationsEventHandler {
 
   @OnEvent('prize.distributed')
   async handlePrizeDistributed(event: PrizeDistributedEvent): Promise<void> {
-    this.logger.info(`Prize distributed for contest ${event.contestId} to winner ${event.winnerId}`, 'NotificationsEventHandler');
+    this.logger.info(
+      `Prize distributed for contest ${event.contestId} to winner ${event.winnerId}`,
+      'NotificationsEventHandler',
+    );
     await this.notificationsRepository.create({
       userId: event.winnerId,
       type: 'prize.distributed',

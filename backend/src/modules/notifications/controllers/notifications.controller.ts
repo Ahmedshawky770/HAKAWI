@@ -10,7 +10,11 @@ export class NotificationsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  async findAll(@Request() req: { user: { sub: string } }, @Query('page') page?: string, @Query('limit') limit?: string) {
+  async findAll(
+    @Request() req: { user: { sub: string } },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     return this.notificationsService.findByUser(req.user.sub, Number(page) || 1, Number(limit) || 20);
   }
 

@@ -19,11 +19,19 @@ export class NotificationsService {
     @Optional() @Inject(NotificationsEmailService) private readonly emailService?: NotificationsEmailService,
   ) {}
 
-  async findByUser(userId: string, page = 1, limit = 20): Promise<{ notifications: NotificationResponse[]; total: number }> {
+  async findByUser(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ notifications: NotificationResponse[]; total: number; page: number; limit: number }> {
     const result = await this.notificationsRepository.findByUser(userId, page, limit);
     return {
-      notifications: result.notifications.map((notification: Notification) => this.toNotificationResponse(notification)),
+      notifications: result.notifications.map((notification: Notification) =>
+        this.toNotificationResponse(notification),
+      ),
       total: result.total,
+      page,
+      limit,
     };
   }
 
@@ -34,9 +42,18 @@ export class NotificationsService {
 
   async create(input: CreateNotificationInput): Promise<Notification> {
     const notification = await this.notificationsRepository.create(input);
-    await this.eventBus.emit('notification.created', { notificationId: notification.id, userId: notification.userId, type: notification.type } as NotificationCreatedEvent);
+    await this.eventBus.emit('notification.created', {
+      notificationId: notification.id,
+      userId: notification.userId,
+      type: notification.type,
+    } as NotificationCreatedEvent);
     if (this.emailService) {
-      void this.emailService.sendNotificationEmail(notification.userId, notification.type, notification.title, notification.message);
+      void this.emailService.sendNotificationEmail(
+        notification.userId,
+        notification.type,
+        notification.title,
+        notification.message,
+      );
     }
     return notification;
   }
@@ -75,7 +92,10 @@ export class NotificationsService {
     return this.notificationsRepository.findPreferences(userId);
   }
 
-  async updatePreferences(userId: string, dto: NotificationPreferencesDto): Promise<NotificationPreferencesResponseDto> {
+  async updatePreferences(
+    userId: string,
+    dto: NotificationPreferencesDto,
+  ): Promise<NotificationPreferencesResponseDto> {
     const existing = await this.notificationsRepository.findPreferences(userId);
     const updated = await this.notificationsRepository.upsertPreferences(userId, {
       emailEnabled: dto.emailEnabled ?? existing.emailEnabled,
@@ -96,7 +116,7 @@ export class NotificationsService {
       type: notification.type,
       title: notification.title,
       message: notification.message,
-      data: notification.data ? JSON.parse(notification.data) as Record<string, unknown> : null,
+      data: notification.data ? (JSON.parse(notification.data) as Record<string, unknown>) : null,
       isRead: notification.isRead,
       readAt: notification.readAt?.toISOString() || null,
       createdAt: notification.createdAt.toISOString(),
