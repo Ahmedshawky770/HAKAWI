@@ -6,34 +6,67 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
 jobs:
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Lint Backend
-        run: |
-          cd backend
-          npm ci
-          npm run lint
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Type Check Backend
-        run: |
-          cd backend
-          npx tsc --noEmit
+      # The backend imports @hakawi/shared-types through node_modules, and that package's
+      # "types" entry is ./dist/index.d.ts. dist/ is gitignored, so it must be compiled
+      # before tsc can typecheck either workspace. The frontend no longer maps the package
+      # to source via tsconfig "paths" — it resolves through node_modules and dist too, so
+      # this step is load-bearing for the frontend typecheck as well.
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
 
-  test-backend:
-    name: Backend Tests
+      - name: Lint backend (checker, no --fix)
+        run: npm run lint --workspace=backend
+
+      - name: Lint frontend
+        run: npm run lint --workspace=frontend
+
+      - name: Type check backend
+        run: npm run typecheck --workspace=backend
+
+      - name: Type check e2e harness
+        run: npx tsc -p tsconfig.e2e.json --noEmit
+        working-directory: backend
+
+      - name: Type check frontend
+        run: npm run typecheck --workspace=frontend
+
+      - name: Type check shared-types
+        run: npm run typecheck --workspace=packages/shared-types
+
+      - name: Check formatting
+        run: npm run format --workspace=backend
+
+  test-unit:
+    name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:15-alpine
@@ -61,90 +94,418 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
-        run: |
-          cd backend
-          npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Unit Tests
-        run: |
-          cd backend
-          npm run test
-
-      - name: Run Tests with Coverage
-        run: |
-          cd backend
-          npm run test:cov
+      - name: Run unit tests
+        run: npm run test --workspace=backend
 
   test-frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Lint Frontend
-        run: |
-          cd frontend
-          npm run lint
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
 
-      - name: Build Frontend
-        run: |
-          cd frontend
-          npm run build
+      - name: Run frontend tests
+        run: npm run test:run --workspace=frontend
+
+      - name: Run frontend tests with coverage gate
+        run: npm run test:coverage --workspace=frontend
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage
+          if-no-files-found: warn
+          retention-days: 14
+
+  test-coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The gate is the vitest coverage.thresholds block in backend/vitest.config.ts
+      # (global 79/70/73/78 plus nine per-path ratchets). It is a measured floor with
+      # roughly two points of headroom, not an aspiration. The report below is only a
+      # human-readable echo of the same thresholds; it never passes where vitest fails.
+      - name: Run tests with coverage gate
+        run: npm run test:cov --workspace=backend
+
+      - name: Print coverage summary
+        if: always()
+        run: node backend/scripts/print-coverage-summary.mjs
+
+      - name: Upload coverage summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: backend/coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            backend/coverage/lcov.info
+            backend/coverage/index.html
+          if-no-files-found: warn
+          retention-days: 14
+
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same reason as the lint job: @hakawi/shared-types resolves through node_modules, and its
+      # "types" entry is ./dist/index.d.ts. dist/ is gitignored, so it must exist on a clean
+      # checkout. vitest.config.e2e.ts also aliases the package to source, but building it here
+      # keeps every workspace on the same artefact and keeps the job self-explanatory.
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      - name: Run e2e tests
+        run: npm run test:e2e --workspace=backend
+
+  # Browser tests. These drive the real Next.js dev server against the real API through
+  # Chromium, so they need both, a migrated database, and the browser binaries. They were
+  # previously configured and never invoked: the job below uploaded a Playwright report that
+  # no step produced, behind `if-no-files-found: ignore`.
+  test-browser:
+    name: Browser Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_NAME: hakawi_e2e
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      VALKEY_HOST: localhost
+      VALKEY_PORT: '6379'
+      # Non-production secrets. The API config validates a 32-character minimum, so these
+      # are sized to pass validation and are worthless outside this throwaway database.
+      JWT_SECRET: ci-browser-jwt-secret-value-not-used-anywhere-else
+      REFRESH_TOKEN_SECRET: ci-browser-refresh-secret-value-not-used-anywhere
+      ENCRYPTION_KEY: ci-browser-encryption-key-value-not-used-anywhere
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The browser specs create their own accounts and stories through the API, but they
+      # need the schema to exist first. This runs the real migration runner against a
+      # throwaway database, so a broken migration fails the browser job too rather than
+      # being papered over by a schema push.
+      - name: Apply migrations
+        run: npm run migration:run --workspace=backend
+
+      # --with-deps installs the browser plus its shared libraries. Without it the runner
+      # image has no WebKit/Firefox system packages and Chromium fails to launch.
+      - name: Install Chromium and its system dependencies
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      - name: Run browser tests
+        run: npm run test:e2e --workspace=frontend
+        working-directory: frontend
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/coverage/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Traces and screenshots are the only way to diagnose a browser failure after the fact.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: frontend/coverage/playwright-test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  migration-premerge:
+    name: Migration Lint (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Structural gate over migrations/*.sql and migrations/down/*.sql only: naming,
+      # sequence gaps, missing or placeholder down scripts, declared reversibility that
+      # does not match the statements the script actually contains. No database needed.
+      - name: Check migration files
+        run: npm run db:check --workspace=backend
+
+  # From-scratch apply of the whole chain against an empty database. This is a real gate, not a
+  # checksum check: it proves every migration is self-contained, runs in order on a virgin schema,
+  # and is re-runnable. It deliberately does NOT claim to validate any deployed environment — it
+  # has no access to one. Detecting drift between a deployed ledger and these files requires
+  # running `npm run migration:verify` against that environment; see docs/data-architecture/
+  # migrations/migration-runbook.md.
+  migration-verify:
+    name: Migration Smoke Test (from scratch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [migration-premerge]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # Verifies the ledger this run just wrote: every file present, checksums intact, no orphans.
+      # Together with the re-run below this is the assertion that matters — a chain that only
+      # works once has a migration that is not idempotent.
+      - name: Verify migration ledger
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Re-apply migrations (idempotency)
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Verify ledger after re-apply
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
 
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Run npm Audit
-        run: |
-          cd backend
-          npm audit --audit-level=high
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit all dependencies
+        run: npm audit --audit-level=high
 
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 25
+    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, security]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Build Backend
-        run: |
-          cd backend
-          npm ci
-          npm run build
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Frontend
-        run: |
-          cd frontend
-          npm ci
-          npm run build
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      - name: Build backend
+        run: npm run build --workspace=backend
+
+      - name: Build frontend
+        run: npm run build --workspace=frontend
