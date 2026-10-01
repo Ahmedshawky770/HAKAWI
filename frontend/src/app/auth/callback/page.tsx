@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, setStoredUser } from "@/lib/api";
+import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -14,10 +15,10 @@ export default function AuthCallbackPage() {
         const session = await api.getSession();
 
         if (typeof window !== "undefined") {
-          setStoredUser(session);
+          setStoredUser(session.user);
         }
 
-        router.replace("/dashboard");
+        router.replace(AUTHENTICATED_HOME_ROUTE);
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل إكمال تسجيل الدخول");
       }
@@ -30,7 +31,10 @@ export default function AuthCallbackPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="max-w-md w-full px-4">
-          <p className="text-center text-red-600">{error}</p>
+          <h1 className="sr-only">إكمال تسجيل الدخول</h1>
+          <p role="alert" className="text-center text-red-600">
+            {error}
+          </p>
         </div>
       </div>
     );
@@ -39,6 +43,7 @@ export default function AuthCallbackPage() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="max-w-md w-full px-4">
+        <h1 className="sr-only">إكمال تسجيل الدخول</h1>
         <p className="text-center text-gray-600">جاري إكمال تسجيل الدخول...</p>
       </div>
     </div>

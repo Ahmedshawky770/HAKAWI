@@ -66,13 +66,7 @@ export default function EditProfilePage() {
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && <ErrorMessage error={error} />}
-            <Input
-              label="الاسم الكامل"
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+            <Input label="الاسم الكامل" type="text" required value={name} onChange={(e) => setName(e.target.value)} />
             <div className="w-full">
               <label className="block text-sm font-medium text-gray-700 mb-1">النبذة الشخصية</label>
               <textarea

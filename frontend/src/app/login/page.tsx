@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, setStoredUser } from "@/lib/api";
+import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -22,8 +23,8 @@ export default function LoginPage() {
     try {
       const response = await api.login({ email, password });
       const session = await api.getSession();
-      setStoredUser(session);
-      router.push("/dashboard");
+      setStoredUser(session.user);
+      router.push(AUTHENTICATED_HOME_ROUTE);
     } catch (err) {
       setError(err instanceof Error ? err.message : "فشل تسجيل الدخول");
     } finally {
@@ -35,14 +36,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <Link href="/" className="flex items-center justify-center gap-2 mb-6">
+          <Link
+            href={AUTHENTICATED_HOME_ROUTE}
+            aria-label="حكاوي - الصفحة الرئيسية"
+            className="flex items-center justify-center gap-2 mb-6"
+          >
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl">ح</span>
             </div>
           </Link>
-          <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            تسجيل الدخول
-          </h2>
+          <h1 className="text-center text-3xl font-extrabold text-gray-900">تسجيل الدخول</h1>
           <p className="mt-2 text-center text-sm text-gray-600">
             ليس لديك حساب؟{" "}
             <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
@@ -52,7 +55,7 @@ export default function LoginPage() {
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div role="alert" className="rounded-md bg-red-50 p-4">
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}

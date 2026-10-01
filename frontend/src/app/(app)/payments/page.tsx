@@ -16,7 +16,7 @@ export default function PaymentsPage() {
     async function load() {
       try {
         const data = await api.getPaymentHistory();
-        setPayments(data);
+        setPayments(data.payments);
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل تحميل المدفوعات");
       } finally {
@@ -40,18 +40,12 @@ export default function PaymentsPage() {
             <Card key={payment.id}>
               <CardBody>
                 <Link href={`/payments/${payment.id}`} className="block">
-                  <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                    معرّف الدفع: {payment.id}
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    الحالة: {payment.status}
-                  </p>
+                  <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">معرّف الدفع: {payment.id}</h3>
+                  <p className="text-sm text-gray-600 mt-1">الحالة: {payment.status}</p>
                   <p className="text-lg font-bold text-gray-900 mt-2">
                     {payment.amount} {payment.currency}
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(payment.createdAt).toLocaleDateString()}
-                  </p>
+                  <p className="text-sm text-gray-500 mt-1">{new Date(payment.createdAt).toLocaleDateString()}</p>
                 </Link>
               </CardBody>
             </Card>

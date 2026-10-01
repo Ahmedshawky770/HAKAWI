@@ -13,10 +13,11 @@ export function ErrorMessage({ error, onRetry }: ErrorMessageProps) {
   if (!message) return null;
 
   return (
-    <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+    <div role="alert" className="rounded-lg bg-red-50 border border-red-200 p-4">
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg
+            aria-hidden="true"
             className="h-5 w-5 text-red-400"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 20 20"

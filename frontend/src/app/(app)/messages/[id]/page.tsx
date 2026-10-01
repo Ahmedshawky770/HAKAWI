@@ -87,13 +87,13 @@ export default function ConversationPage() {
               >
                 <div
                   className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                    message.senderId === currentUserId
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 text-gray-900"
+                    message.senderId === currentUserId ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-900"
                   }`}
                 >
                   <p>{message.content}</p>
-                  <p className={`text-xs mt-1 ${message.senderId === currentUserId ? "text-blue-100" : "text-gray-500"}`}>
+                  <p
+                    className={`text-xs mt-1 ${message.senderId === currentUserId ? "text-blue-100" : "text-gray-500"}`}
+                  >
                     {new Date(message.createdAt).toLocaleTimeString()}
                   </p>
                 </div>

@@ -6,12 +6,13 @@ import { api } from "@/lib/api";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
-import { User } from "@/types/api";
+import { PublicUserProfile, UserStats } from "@/types/api";
 
 export default function ProfilePage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<PublicUserProfile | null>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -25,7 +26,13 @@ export default function ProfilePage() {
           return;
         }
         const data = await api.getUser(resolvedId);
-        setUser(data as unknown as User);
+        setUser(data);
+        try {
+          const userStats = await api.getUserStats(resolvedId);
+          setStats(userStats);
+        } catch {
+          setStats(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل تحميل الملف الشخصي");
       } finally {
@@ -57,15 +64,15 @@ export default function ProfilePage() {
               <p className="text-gray-500 mt-2">{user.bio || "لا توجد نبذة شخصية بعد"}</p>
               <div className="flex gap-6 mt-4">
                 <div>
-                  <span className="font-semibold">{user.stats?.storiesCount ?? 0}</span>
+                  <span className="font-semibold">{stats?.storiesCount ?? 0}</span>
                   <span className="text-gray-600 ml-1">قصة</span>
                 </div>
                 <div>
-                  <span className="font-semibold">{user.stats?.followersCount ?? 0}</span>
+                  <span className="font-semibold">{stats?.followersCount ?? 0}</span>
                   <span className="text-gray-600 ml-1">متابع</span>
                 </div>
                 <div>
-                  <span className="font-semibold">{user.stats?.followingCount ?? 0}</span>
+                  <span className="font-semibold">{stats?.followingCount ?? 0}</span>
                   <span className="text-gray-600 ml-1">متابَع</span>
                 </div>
               </div>

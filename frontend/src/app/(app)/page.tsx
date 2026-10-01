@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
+import { StoryByline, StoryCategory } from "@/components/story/StoryMeta";
 import { Story } from "@/types/api";
 
 export default function DashboardPage() {
@@ -71,14 +72,12 @@ export default function DashboardPage() {
             <Card key={story.id}>
               <CardBody>
                 <Link href={`/stories/${story.id}`} className="block">
-                  <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                    {story.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">بواسطة {story.author.name}</p>
+                  <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">{story.title}</h3>
+                  <StoryByline author={story.author} className="text-sm text-gray-600 mt-1" />
                   <div className="flex gap-4 mt-2 text-sm text-gray-500">
                     <span>{story.views.toLocaleString()} مشاهدة</span>
                     <span>{story.reactions} تفاعل</span>
-                    <span className="capitalize">{story.category}</span>
+                    <StoryCategory category={story.category} variant="inline" />
                   </div>
                 </Link>
               </CardBody>

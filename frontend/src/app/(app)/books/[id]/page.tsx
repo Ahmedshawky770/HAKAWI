@@ -82,12 +82,8 @@ export default function BookDetailPage() {
         <CardBody>
           <h1 className="text-3xl font-bold text-gray-900 mb-4">{book.title}</h1>
           <p className="text-gray-600 mb-4">بواسطة {book.author}</p>
-          {book.price && (
-            <p className="text-2xl font-bold text-gray-900 mb-4">${book.price.toFixed(2)}</p>
-          )}
-          {book.description && (
-            <p className="text-gray-700 mb-6">{book.description}</p>
-          )}
+          {book.price && <p className="text-2xl font-bold text-gray-900 mb-4">${book.price.toFixed(2)}</p>}
+          {book.description && <p className="text-gray-700 mb-6">{book.description}</p>}
           <div className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">خيارات الشراء</h3>
             <div className="space-y-4">

@@ -49,7 +49,7 @@ export default function RentalsPage() {
             } catch {
               return rental;
             }
-          })
+          }),
         );
         setRentals(rentalsWithBooks);
       } catch (err) {
@@ -66,7 +66,7 @@ export default function RentalsPage() {
     try {
       await api.returnRental(id);
       setRentals((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status: "returned", returnedAt: new Date().toISOString() } : r))
+        prev.map((r) => (r.id === id ? { ...r, status: "returned", returnedAt: new Date().toISOString() } : r)),
       );
     } catch (err) {
       alert(err instanceof Error ? err.message : "فشل إرجاع الكتاب");
@@ -81,9 +81,7 @@ export default function RentalsPage() {
     setExtendingId(id);
     try {
       const updated = await api.extendRental(id, days);
-      setRentals((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...updated } : r))
-      );
+      setRentals((prev) => prev.map((r) => (r.id === id ? { ...r, ...updated } : r)));
       setExtendDays((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -133,9 +131,7 @@ export default function RentalsPage() {
                               {rental.book?.title || "كتاب"}
                             </h3>
                           </Link>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {rental.book?.author || ""}
-                          </p>
+                          <p className="text-sm text-gray-600 mt-1">{rental.book?.author || ""}</p>
                         </div>
                         <span
                           className={`inline-block px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusInfo.color}`}

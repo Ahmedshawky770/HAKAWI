@@ -5,12 +5,12 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
-import { User } from "@/types/api";
+import { PublicUserProfile } from "@/types/api";
 
 export default function PublicUserPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<PublicUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -24,7 +24,7 @@ export default function PublicUserPage() {
           return;
         }
         const data = await api.getUser(resolvedId);
-        setUser(data as unknown as User);
+        setUser(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load user");
       } finally {

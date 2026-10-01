@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 
 const ERROR_MESSAGES: Record<string, string> = {
   access_denied: "تم رفض الوصول من قبل مزود المصادقة",
@@ -10,7 +11,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_request: "طلب غير صالح",
 };
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error") || "";
   const error = ERROR_MESSAGES[errorParam] || `خطأ: ${errorParam || "غير معروف"}`;
@@ -19,9 +20,7 @@ export default function AuthErrorPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            خطأ في تسجيل الدخول
-          </h2>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">خطأ في تسجيل الدخول</h2>
           <p className="mt-2 text-center text-sm text-gray-600">{error}</p>
         </div>
         <div className="mt-8 space-y-6">
@@ -34,5 +33,13 @@ export default function AuthErrorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuthErrorContent />
+    </Suspense>
   );
 }

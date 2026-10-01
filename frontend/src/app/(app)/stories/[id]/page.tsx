@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
+import { StoryByline, StoryCategory } from "@/components/story/StoryMeta";
 import { Story } from "@/types/api";
 
 export default function StoryDetailPage() {
@@ -44,13 +45,11 @@ export default function StoryDetailPage() {
         <CardBody>
           <h1 className="text-3xl font-bold text-gray-900 mb-4">{story.title}</h1>
           <div className="flex items-center gap-4 mb-6">
-            <Link href={`/users/${story.author.id}`} className="text-blue-600 hover:text-blue-500">
-              بواسطة {story.author.name}
-            </Link>
-            <span className="text-gray-400">•</span>
-            <span className="text-gray-500 text-sm">
-              {new Date(story.createdAt).toLocaleDateString()}
+            <StoryByline author={story.author} linkToProfile />
+            <span aria-hidden="true" className="text-gray-400">
+              •
             </span>
+            <span className="text-gray-500 text-sm">{new Date(story.createdAt).toLocaleDateString()}</span>
           </div>
           <div className="prose max-w-none mb-6">
             {story.content ? (
@@ -62,7 +61,7 @@ export default function StoryDetailPage() {
           <div className="flex gap-4 text-sm text-gray-500">
             <span>{story.views.toLocaleString()} مشاهدة</span>
             <span>{story.reactions} تفاعل</span>
-            <span className="capitalize">{story.category}</span>
+            <StoryCategory category={story.category} variant="inline" />
           </div>
         </CardBody>
       </Card>

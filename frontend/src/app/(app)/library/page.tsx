@@ -6,7 +6,9 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
-import { LibraryItem } from "@/types/api";
+import { Book, LibraryItem } from "@/types/api";
+
+type LibraryEntry = LibraryItem & { book?: Book };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   owned: { label: "مملوك", color: "bg-green-100 text-green-800" },
@@ -20,7 +22,7 @@ function getStatusInfo(status: string) {
 }
 
 export default function LibraryPage() {
-  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [items, setItems] = useState<LibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -29,7 +31,17 @@ export default function LibraryPage() {
     async function load() {
       try {
         const data = await api.listLibrary();
-        setItems(data.items);
+        const entries = await Promise.all(
+          data.items.map(async (item) => {
+            try {
+              const book = await api.getBook(item.bookId);
+              return { ...item, book };
+            } catch {
+              return item;
+            }
+          }),
+        );
+        setItems(entries);
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل تحميل المكتبة");
       } finally {
@@ -68,7 +80,7 @@ export default function LibraryPage() {
                 <CardBody>
                   <Link href={`/library/${item.id}`} className="block">
                     <div className="flex gap-4">
-                      {item.book.coverImage && (
+                      {item.book?.coverImage && (
                         <img
                           src={item.book.coverImage}
                           alt={item.book.title}
@@ -77,13 +89,11 @@ export default function LibraryPage() {
                       )}
                       <div className="flex-1 min-w-0">
                         <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600 truncate">
-                          {item.book.title}
+                          {item.book?.title ?? "كتاب"}
                         </h3>
-                        <p className="text-sm text-gray-600 mt-1">{item.book.author}</p>
-                        {item.book.price != null && (
-                          <p className="text-sm font-medium text-gray-900 mt-1">
-                            ${item.book.price.toFixed(2)}
-                          </p>
+                        <p className="text-sm text-gray-600 mt-1">{item.book?.author ?? ""}</p>
+                        {item.book?.price != null && (
+                          <p className="text-sm font-medium text-gray-900 mt-1">${item.book.price.toFixed(2)}</p>
                         )}
                         <span
                           className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}
