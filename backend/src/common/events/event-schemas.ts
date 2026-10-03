@@ -139,6 +139,12 @@ export const MessageSentSchema = z.object({
   messageId: z.string(),
   conversationId: z.string(),
   senderId: z.string(),
+  /**
+   * The other participant. Optional for the dead-letter queue's sake: an entry persisted before this
+   * field existed must still validate, and a consumer with no recipient has nothing to notify rather
+   * than an error to raise.
+   */
+  recipientId: z.string().optional(),
 });
 
 export const MessageReadSchema = z.object({

@@ -23,7 +23,7 @@ export type CreateNotificationInput = {
 export interface INotificationsRepository {
   findById(id: string): Promise<Notification | null>;
   findByUser(userId: string, page: number, limit: number): Promise<{ notifications: Notification[]; total: number }>;
-  findUnread(userId: string): Promise<Notification[]>;
+  findUnread(userId: string, limit: number): Promise<Notification[]>;
   create(data: CreateNotificationInput): Promise<Notification>;
   markAsRead(id: string): Promise<Notification>;
   markAllAsRead(userId: string): Promise<void>;

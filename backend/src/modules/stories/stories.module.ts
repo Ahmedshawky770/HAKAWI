@@ -30,6 +30,9 @@ import { STORIES_REPOSITORY } from './interfaces/stories-repository.interface.ts
     // `CommentsModule` for why `useExisting` is the right alias here.
     { provide: OWNERSHIP_RESOLVER, useExisting: StoryOwnershipResolver },
   ],
-  exports: [StoriesService],
+  // Exported so another module can resolve a story author through this module's own interface rather
+  // than reading the `stories` table directly. `CommentsModule` already exports
+  // `COMMENTS_REPOSITORY` for the same reason (Principle #7: modules communicate via interfaces).
+  exports: [StoriesService, STORIES_REPOSITORY],
 })
 export class StoriesModule {}

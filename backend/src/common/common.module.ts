@@ -34,6 +34,7 @@ import { EncryptionService } from './utils/encryption.util.ts';
 import { LoggingInterceptor } from './interceptors/logging.interceptor.ts';
 import { CacheInterceptor, CacheMetrics } from './interceptors/cache.interceptor.ts';
 import { CacheMetricsController } from './observability/metrics.controller.ts';
+import { DLQController } from './events/dlq.controller.ts';
 import { WafMiddleware, WAF_CONFIG } from './middleware/waf.middleware.ts';
 import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
 import { ValkeyThrottlerStorage } from './throttler/valkey-throttler.storage.ts';
@@ -53,7 +54,7 @@ const appReflector = new Reflector();
 
 @Global()
 @Module({
-  controllers: [CacheMetricsController],
+  controllers: [CacheMetricsController, DLQController],
   imports: [
     DatabaseModule,
     ResilienceModule,

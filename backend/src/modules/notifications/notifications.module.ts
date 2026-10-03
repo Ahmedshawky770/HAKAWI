@@ -9,9 +9,16 @@ import { NotificationsRepository } from './repositories/notifications.repository
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
 import { NotificationsEventHandler } from './events/notifications.event-handler.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
+import { StoriesModule } from '../stories/stories.module.ts';
+import { CommentsModule } from '../comments/comments.module.ts';
 
 @Module({
-  imports: [CommonModule, DatabaseModule],
+  // StoriesModule and CommentsModule are imported so `NotificationsEventHandler` can resolve an
+  // author through those modules' OWN repository interfaces. It used to read the `stories`,
+  // `comments` and `conversations` tables itself through `db`, which coupled this module to three
+  // schemas it does not own (Principle #7). `message.sent` needs nothing from MessagesModule: the
+  // recipient now travels on the event, because the producer already had it (Principle #9).
+  imports: [CommonModule, DatabaseModule, StoriesModule, CommentsModule],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,

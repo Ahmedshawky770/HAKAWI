@@ -266,11 +266,45 @@ describe('MessagesService', () => {
 
       expect(result.content).toBe('Hello!');
       expect(conversationsRepository.updateLastMessage).toHaveBeenCalledWith('conv-123');
+      // `recipientId` is asserted because it is the whole reason the field exists. It used to be
+      // derived by the notifications consumer reading the `conversations` table — a cross-aggregate
+      // read from a module that does not own that schema (Principle #7), re-reading a row this
+      // method had already loaded to validate participation (Principle #9).
       expect(eventValidatorService.emit).toHaveBeenCalledWith('message.sent', {
         messageId: 'msg-123',
         conversationId: 'conv-123',
         senderId: 'user-1',
+        recipientId: 'user-2',
       });
+    });
+
+    it('should name the recipient whichever side of the conversation the sender is on', async () => {
+      // The conversation is stored as an ordered pair, so deriving the recipient by assuming the
+      // sender is `participant1Id` would notify the sender instead whenever the sender happens to be
+      // participant 2.
+      vi.mocked(conversationsRepository.findById).mockResolvedValue({
+        id: 'conv-123',
+        participant1Id: 'user-2',
+        participant2Id: 'user-1',
+        lastMessageAt: null,
+        createdAt: new Date(),
+      });
+      vi.mocked(messagesRepository.create).mockResolvedValue({
+        id: 'msg-123',
+        conversationId: 'conv-123',
+        senderId: 'user-1',
+        content: 'Hello!',
+        isRead: false,
+        readAt: null,
+        createdAt: new Date(),
+      });
+
+      await messagesService.sendMessage('conv-123', 'user-1', 'Hello!');
+
+      expect(eventValidatorService.emit).toHaveBeenCalledWith(
+        'message.sent',
+        expect.objectContaining({ senderId: 'user-1', recipientId: 'user-2' }),
+      );
     });
 
     it('should persist the conversation, sender and content it was given', async () => {

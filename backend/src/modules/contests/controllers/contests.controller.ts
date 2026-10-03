@@ -26,6 +26,8 @@ import {
   CastVoteDto,
   SelectWinnerDto,
   DistributePrizeDto,
+  ContestPageQueryDto,
+  type ContestVotesQuery,
 } from '../dto/contests.dto.ts';
 import type { CreateContestInput } from '../types.ts';
 
@@ -137,8 +139,8 @@ export class ContestsController {
 
   @Public()
   @Get(':id/submissions')
-  async getSubmissions(@Param('id') contestId: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.contestsService.getSubmissions(contestId, Number(page) || 1, Number(limit) || 20);
+  async getSubmissions(@Param('id') contestId: string, @Query() query: ContestPageQueryDto) {
+    return this.contestsService.getSubmissions(contestId, query.page ?? 1, query.limit ?? 20);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -154,13 +156,8 @@ export class ContestsController {
 
   @Public()
   @Get(':id/votes')
-  async getVotes(
-    @Param('id') contestId: string,
-    @Query('submissionId') submissionId?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.contestsService.getVotes(contestId, submissionId, Number(page) || 1, Number(limit) || 20);
+  async getVotes(@Param('id') contestId: string, @Query() query: ContestVotesQuery) {
+    return this.contestsService.getVotes(contestId, query.submissionId, query.page ?? 1, query.limit ?? 20);
   }
 
   @UseGuards(JwtAuthGuard)

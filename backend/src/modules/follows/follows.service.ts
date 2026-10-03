@@ -61,11 +61,20 @@ export class FollowsService {
     return { follows, total, page, limit };
   }
 
-  async getStats(userId: string, currentUserId?: string): Promise<FollowStats> {
+  /**
+   * `currentUserId` is REQUIRED rather than optional.
+   *
+   * It was optional only so the `@Public()` route could omit it — and because `JwtAuthGuard` never ran
+   * on that route, it was in practice ALWAYS undefined, so `isFollowing` was permanently `false` for
+   * every caller. The route is now authenticated and passes `req.user.sub` directly, which makes the
+   * optional parameter a liability: it can only ever reintroduce the silent-false bug. `follows/:id/stats`
+   * is the only caller.
+   */
+  async getStats(userId: string, currentUserId: string): Promise<FollowStats> {
     const [followersCount, followingCount, isFollowing] = await Promise.all([
       this.followsRepository.countFollowers(userId),
       this.followsRepository.countFollowing(userId),
-      currentUserId ? this.followsRepository.isFollowing(currentUserId, userId) : Promise.resolve(false),
+      this.followsRepository.isFollowing(currentUserId, userId),
     ]);
 
     return {

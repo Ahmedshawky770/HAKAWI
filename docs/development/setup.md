@@ -246,7 +246,6 @@ npm run seed:test          # Seed test data
 npm run test               # Unit tests (145 files / 3047 tests)
 npm run test:cov           # Unit tests with the coverage gate
 npm run test:e2e           # Integration/e2e (22 files / 136 tests) — needs live PostgreSQL + Valkey
-npm run test:e2e:playwright # Real browser tests; boots the backend and the frontend itself
 
 # Linting
 npm run lint               # Run ESLint (checker, no --fix)
@@ -257,7 +256,7 @@ npm run format             # prettier --check
 **Corrections:** `npm run migration:revert` and `npm run migration:generate` **do not exist** — use
 `npm run migration:rollback` and `npm run migration:create` (or `db:generate`, an alias).
 `npm run test:e2e` runs **Vitest** against a real database, not Supertest-against-one-DB; the
-Playwright browser suite is `npm run test:e2e:playwright`.
+Playwright browser suite is `npm run test:e2e` **in `frontend/`**.
 
 ### Frontend
 

@@ -315,8 +315,18 @@ describe('NotificationsService', () => {
 
       const result = await notificationsService.findUnread('user-1');
 
-      expect(notificationsRepository.findUnread).toHaveBeenCalledWith('user-1');
+      // The default of 50 is part of the contract: the query behind this had no `LIMIT` at all, so a
+      // user with thousands of unread rows downloaded every one on every poll.
+      expect(notificationsRepository.findUnread).toHaveBeenCalledWith('user-1', 50);
       expect(result.map((row) => row.id)).toEqual(['notif-1', 'notif-2']);
+    });
+
+    it('should honour an explicit limit', async () => {
+      vi.mocked(notificationsRepository.findUnread).mockResolvedValue([]);
+
+      await notificationsService.findUnread('user-1', 10);
+
+      expect(notificationsRepository.findUnread).toHaveBeenCalledWith('user-1', 10);
     });
 
     it('should return an empty list when everything is read', async () => {

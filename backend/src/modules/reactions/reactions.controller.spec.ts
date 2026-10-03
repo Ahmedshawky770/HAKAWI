@@ -76,7 +76,9 @@ describe('ReactionsController', () => {
         total: 0,
       });
 
-      const result = await controller.getReactions('story-1');
+      // The handler now takes one validated query object rather than two loose strings, so the
+      // declared defaults live in `ReactionPageQueryDto` instead of in a `Number(x) || n` pair.
+      const result = await controller.getReactions('story-1', {});
 
       expect(result).toEqual({ reactions: [], total: 0 });
       expect(reactionsService.getReactions).toHaveBeenCalledWith('story-1', 1, 20);
@@ -88,7 +90,7 @@ describe('ReactionsController', () => {
         total: 0,
       });
 
-      const result = await controller.getReactions('story-1', '2', '10');
+      const result = await controller.getReactions('story-1', { page: 2, limit: 10 });
 
       expect(result).toEqual({ reactions: [], total: 0 });
       expect(reactionsService.getReactions).toHaveBeenCalledWith('story-1', 2, 10);

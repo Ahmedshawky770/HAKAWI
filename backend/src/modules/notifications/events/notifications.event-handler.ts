@@ -1,6 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { and, eq } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { NotificationCreatedEvent } from '../../../common/events/social.events.ts';
@@ -19,9 +18,10 @@ import type { INotificationsRepository } from '../interfaces/notifications-repos
 import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
 import { NotificationsService } from '../notifications.service.ts';
 
-import { comments, conversations } from '../../../db/schema/social.schema.ts';
-import { stories } from '../../../db/schema/stories.schema.ts';
-import { db } from '../../../db/index.ts';
+import type { IStoriesRepository } from '../../stories/interfaces/stories-repository.interface.ts';
+import { STORIES_REPOSITORY } from '../../stories/interfaces/stories-repository.interface.ts';
+import type { ICommentsRepository } from '../../comments/interfaces/comments-repository.interface.ts';
+import { COMMENTS_REPOSITORY } from '../../comments/interfaces/comments-repository.interface.ts';
 
 /**
  * `comment.reacted` is emitted as a plain object literal
@@ -43,6 +43,12 @@ export class NotificationsEventHandler {
     @Inject(NOTIFICATIONS_REPOSITORY) private readonly notificationsRepository: INotificationsRepository,
     @Inject(NotificationsService) private readonly notificationsService: NotificationsService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    // Each is the OWNING module's public interface, not a table handle. Principle #7's enforcement is
+    // "modules communicate via interfaces only" plus "dependency injection for all dependencies" —
+    // reading `stories` and `comments` through `db` directly, as this handler used to, bypassed the
+    // modules that own them and coupled notifications to two schemas it has no reason to know.
+    @Inject(STORIES_REPOSITORY) private readonly storiesRepository: IStoriesRepository,
+    @Inject(COMMENTS_REPOSITORY) private readonly commentsRepository: ICommentsRepository,
   ) {}
 
   @OnEvent('notification.created')
@@ -109,12 +115,18 @@ export class NotificationsEventHandler {
   // three contest handlers above predate that contract and still write through the repository
   // directly. Migrating them is a separate, deliberate change rather than a silent one here.
   //
-  // WHY THE RECIPIENT IS RESOLVED FROM THE TABLES RATHER THAN THE PAYLOAD. `story.reacted` carries
-  // `userId` and `storyId` but not the story's author; `comment.reacted` carries `userId` and
-  // `commentId` but not the comment's author; `message.sent` names the sender and never the
-  // recipient. `BadgesEventHandler.handleStoryPublished` already resolves an author the payload
-  // omits by reading `stories` directly, and this is that same arrangement — which also means no
-  // producer has to be changed and no event schema has to grow a field.
+  // WHY SOME RECIPIENTS ARE RESOLVED AND ONE IS NOT. `message.sent` now carries `recipientId`,
+  // because `MessagesService` had already loaded the conversation to validate participation and was
+  // therefore holding the fact already (Principle #9: the producer is the source of truth). The other
+  // four events do NOT name their recipient at all — `story.reacted` carries `userId` and `storyId`
+  // but not the author, `comment.reacted` carries `userId` and `commentId` but not the comment's
+  // author — so there is nothing on the payload to read and the lookup is unavoidable.
+  //
+  // It is done through `IStoriesRepository` and `ICommentsRepository`, the owning modules' public
+  // interfaces. This handler previously read the `stories`, `comments` and `conversations` tables
+  // through `db` directly — which is what `BadgesEventHandler` still does — and that couples
+  // notifications to two schemas it has no reason to know while bypassing the modules that own them
+  // (Principle #7).
   // ---------------------------------------------------------------------------
 
   @OnEvent('user.followed')
@@ -212,20 +224,20 @@ export class NotificationsEventHandler {
    */
   @OnEvent('message.sent')
   async handleMessageSent(event: MessageSentEvent): Promise<void> {
-    const [conversation] = await db
-      .select({ participant1Id: conversations.participant1Id, participant2Id: conversations.participant2Id })
-      .from(conversations)
-      .where(eq(conversations.id, event.conversationId))
-      .limit(1);
+    /**
+     * WHY THE RECIPIENT COMES OFF THE EVENT.
+     *
+     * It used to be derived by reading the `conversations` table here — a cross-aggregate read from
+     * a module that does not own that schema, re-reading a row `MessagesService` had already loaded
+     * in order to validate participation (Principle #7 for the former, #9 for the latter). The
+     * producer now supplies it, so this module needs nothing from the messages module at all.
+     *
+     * An absent recipient is the dead-letter queue's shape: an entry persisted before the field
+     * existed has no recipient, and the right response is to notify nobody rather than to raise.
+     */
+    const recipient = event.recipientId;
 
-    if (!conversation) {
-      return;
-    }
-
-    const recipient =
-      conversation.participant1Id === event.senderId ? conversation.participant2Id : conversation.participant1Id;
-
-    if (recipient === event.senderId) {
+    if (!recipient || recipient === event.senderId) {
       return;
     }
 
@@ -241,11 +253,7 @@ export class NotificationsEventHandler {
   }
 
   private async authorOfStory(storyId: string): Promise<string | null> {
-    const [story] = await db
-      .select({ authorId: stories.authorId })
-      .from(stories)
-      .where(eq(stories.id, storyId))
-      .limit(1);
+    const story = await this.storiesRepository.findById(storyId);
     return story?.authorId ?? null;
   }
 
@@ -255,12 +263,14 @@ export class NotificationsEventHandler {
    * something the recipient cannot open.
    */
   private async authorOfComment(commentId: string): Promise<string | null> {
-    const [comment] = await db
-      .select({ authorId: comments.authorId })
-      .from(comments)
-      .where(and(eq(comments.id, commentId), eq(comments.isDeleted, false)))
-      .limit(1);
-    return comment?.authorId ?? null;
+    const comment = await this.commentsRepository.findById(commentId);
+    // `CommentsRepository.findById` returns a soft-deleted row — `CommentsService` is the layer that
+    // rejects it — so the `is_deleted` filter this handler used to push into SQL is applied here
+    // rather than assumed.
+    if (!comment || comment.isDeleted) {
+      return null;
+    }
+    return comment.authorId;
   }
 
   /**

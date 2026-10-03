@@ -12,6 +12,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | # | Document | Description | Verified |
 |---|----------|-------------|----------|
 | 1 | `01_ARCHITECTURE_PRINCIPLES.md` | Core architecture principles, with a per-principle enforcement verdict | ✅ 2026-09-30 |
+| — | `architecture-principles-deviations.md` | Where the code does NOT follow the principles, and what would close each one | ✅ 2026-10-03 |
 | 2 | `00_principles_index.md` + `01_`–`17_*.md` | Per-principle deep dives | ✅ index |
 | 3 | `11_decisions.md` | Architecture Decision Records (ADRs) | ✅ 2026-09-30 (ADR-008 corrected) |
 | 4 | `consistency-matrix.md` | Per-data-type consistency classification | ✅ 2026-09-30 |

@@ -36,8 +36,26 @@ type MockUserVerificationService = {
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
-async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
+/**
+ * Signs a token for a controller test.
+ *
+ * `adminRole` is a parameter because `RolesGuard` reads `REQUIRED_ADMIN_ROLE_KEY` and throws
+ * 'Insufficient admin privileges' when it is missing — so a token carrying only
+ * `accountType: 'admin'` answers 403 on any route that also declares `@RequireAdminRole`. That is
+ * what made the `POST /users` test below assert 403 while claiming to assert 201.
+ */
+async function generateToken(
+  sub = 'user-1',
+  email = 'test@example.com',
+  accountType = 'reader',
+  adminRole?: string,
+): Promise<string> {
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType, adminRole });
+}
+
+/** A token that satisfies `@Secured(ADMIN)` + `@RequireAdminRole(SUPER_ADMIN)`. */
+function superAdminToken(): Promise<string> {
+  return generateToken('123e4567-e89b-12d3-a456-426614174000', 'test@example.com', 'admin', 'super_admin');
 }
 
 describe('UsersController', () => {
@@ -267,10 +285,37 @@ describe('UsersController', () => {
     });
   });
 
+  /**
+   * The single test here was titled 'should create a user and return 201' and asserted `.expect(403)`,
+   * never asserted that `usersService.create` was called, and signed a token with no `adminRole` — so
+   * `RolesGuard` answered 403 for a reason unrelated to the route's success path. The success path was
+   * never executed by any test. These four cover it, and each negative one asserts the service was
+   * NOT reached, which is the half a 403-only assertion cannot distinguish.
+   */
   describe('POST /users', () => {
     it('should create a user and return 201', async () => {
-      const token = await generateToken('123e4567-e89b-12d3-a456-426614174000', 'test@example.com', 'admin');
+      const token = await superAdminToken();
       vi.mocked(usersService.create).mockResolvedValue({ id: 'user-9' } as unknown as ClientUser);
+
+      const res = await request(httpServer)
+        .post('/users')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'New Person',
+          username: 'newperson',
+          email: 'new@example.com',
+          password: 'SecurePass123!',
+        })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('id', 'user-9');
+      expect(usersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'new@example.com', username: 'newperson' }),
+      );
+    });
+
+    it('should forbid the create when the caller is a plain reader', async () => {
+      const token = await generateToken('reader-1', 'reader@example.com', 'reader');
 
       await request(httpServer)
         .post('/users')
@@ -282,6 +327,76 @@ describe('UsersController', () => {
           password: 'SecurePass123!',
         })
         .expect(403);
+
+      expect(usersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should forbid the create when the caller is an admin without the super-admin role', async () => {
+      // `accountType` is ADMIN and the role is financial, so this exercises the ROLE half of
+      // `@Secured` rather than the account-type half.
+      const token = await generateToken('fin-1', 'fin@example.com', 'admin', 'financial_officer');
+
+      await request(httpServer)
+        .post('/users')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'New Person',
+          username: 'newperson',
+          email: 'new@example.com',
+          password: 'SecurePass123!',
+        })
+        .expect(403);
+
+      expect(usersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should forbid the create with no token at all', async () => {
+      await request(httpServer)
+        .post('/users')
+        .send({
+          name: 'New Person',
+          username: 'newperson',
+          email: 'new@example.com',
+          password: 'SecurePass123!',
+        })
+        .expect(401);
+
+      expect(usersService.create).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * `DELETE /users/:id` had NO test at all — the suite covered `DELETE /users/me` only, so a route
+   * that soft-deletes an arbitrary account by id was entirely uncovered.
+   */
+  describe('DELETE /users/:id', () => {
+    it('should soft delete the named user when the caller is a super admin', async () => {
+      const token = await superAdminToken();
+      vi.mocked(usersService.softDelete).mockResolvedValue(undefined);
+
+      await request(httpServer)
+        .delete('/users/923e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+
+      expect(usersService.softDelete).toHaveBeenCalledWith('923e4567-e89b-12d3-a456-426614174000');
+    });
+
+    it('should forbid deleting another user when not an administrator', async () => {
+      const token = await generateToken('reader-1', 'reader@example.com', 'reader');
+
+      await request(httpServer)
+        .delete('/users/923e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      expect(usersService.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('should reject an unauthenticated delete with 401', async () => {
+      await request(httpServer).delete('/users/923e4567-e89b-12d3-a456-426614174000').expect(401);
+
+      expect(usersService.softDelete).not.toHaveBeenCalled();
     });
   });
 

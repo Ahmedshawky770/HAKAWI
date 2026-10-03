@@ -166,7 +166,12 @@ integration files.
       `paymob_iframe_url`, `paymob_accept_url`
 - [x] **Unit tests** (`payments.service.spec.ts`, `paymob.config.spec.ts`)
 - [x] **Integration tests**
-- [x] **E2E tests** — Playwright (`backend/e2e/critical-flows.e2e-spec.ts`)
+- [x] **E2E tests** — Playwright, in `frontend/e2e/`. ⚠️ this line previously cited
+      `backend/e2e/critical-flows.e2e-spec.ts`, which was **orphaned**: both vitest configs exclude
+      `e2e/**` and no CI step invoked `test:e2e:playwright`, so nothing in any gate ever ran it —
+      three of its five browser journeys could not have passed either. Its five API tests were moved
+      to `frontend/e2e/api-critical-paths.e2e-spec.ts`, which the `test-browser` job does run, and
+      `backend/playwright.config.ts` and the dead script were deleted
 
 **Exit Criteria — met**, with one correction: "coverage ≥ 90% for payments" is not met and was never
 a configured floor. The global gate applies.

@@ -315,14 +315,20 @@ describe('FollowsService', () => {
       expect(result).toEqual({ followersCount: 100, followingCount: 50, isFollowing: true });
     });
 
-    it('should not ask the repository about the relationship when no viewer is given', async () => {
+    it('should always ask the repository, because a viewer is now required', async () => {
+      // The previous case asserted that the relationship lookup was SKIPPED when no viewer was given.
+      // That could not happen in production: `JwtAuthGuard` is not global and the route was
+      // `@Public()`, so `request.user` was never assigned, `currentUserId` was always undefined, and
+      // `isFollowing` was permanently false for every caller. The optional parameter only existed to
+      // permit the route that caused the bug.
       vi.mocked(followsRepository.countFollowers).mockResolvedValue(0);
       vi.mocked(followsRepository.countFollowing).mockResolvedValue(0);
+      vi.mocked(followsRepository.isFollowing).mockResolvedValue(false);
 
-      const result = await followsService.getStats('user-2');
+      const result = await followsService.getStats('user-2', 'viewer-9');
 
+      expect(followsRepository.isFollowing).toHaveBeenCalledWith('viewer-9', 'user-2');
       expect(result).toEqual({ followersCount: 0, followingCount: 0, isFollowing: false });
-      expect(followsRepository.isFollowing).not.toHaveBeenCalled();
     });
 
     it('should ask the repository whether the viewer follows the target', async () => {
@@ -346,11 +352,12 @@ describe('FollowsService', () => {
       expect(result.isFollowing).toBe(true);
     });
 
-    it('should return zero counts without inventing a relationship', async () => {
+    it('should return zero counts for a user nobody follows', async () => {
       vi.mocked(followsRepository.countFollowers).mockResolvedValue(0);
       vi.mocked(followsRepository.countFollowing).mockResolvedValue(0);
+      vi.mocked(followsRepository.isFollowing).mockResolvedValue(false);
 
-      const result = await followsService.getStats('lonely-user');
+      const result = await followsService.getStats('lonely-user', 'viewer-9');
 
       expect(result.followersCount).toBe(0);
       expect(result.followingCount).toBe(0);

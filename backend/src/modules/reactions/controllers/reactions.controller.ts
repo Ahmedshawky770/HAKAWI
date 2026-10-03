@@ -16,7 +16,7 @@ import type { Request as ExpressRequest } from 'express';
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { ReactionsService } from '../reactions.service.ts';
-import { CreateReactionDto } from '../dto/reactions.dto.ts';
+import { CreateReactionDto, ReactionPageQueryDto } from '../dto/reactions.dto.ts';
 
 @Controller('reactions')
 export class ReactionsController {
@@ -44,12 +44,8 @@ export class ReactionsController {
 
   @Public()
   @Get('stories/:storyId')
-  async getReactions(
-    @Param('storyId', ParseUUIDPipe) storyId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.reactionsService.getReactions(storyId, Number(page) || 1, Number(limit) || 20);
+  async getReactions(@Param('storyId', ParseUUIDPipe) storyId: string, @Query() query: ReactionPageQueryDto) {
+    return this.reactionsService.getReactions(storyId, query.page ?? 1, query.limit ?? 20);
   }
 
   @Public()

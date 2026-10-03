@@ -44,13 +44,7 @@ test.describe("Accessibility of the authentication pages", () => {
   test("the register page labels all five fields of the form", async ({ page }) => {
     await page.goto("/register");
 
-    const labels = [
-      "الاسم الكامل",
-      "اسم المستخدم",
-      "البريد الإلكتروني",
-      "كلمة المرور",
-      "تأكيد كلمة المرور",
-    ];
+    const labels = ["الاسم الكامل", "اسم المستخدم", "البريد الإلكتروني", "كلمة المرور", "تأكيد كلمة المرور"];
 
     for (const label of labels) {
       await expect(page.getByLabel(label, { exact: true })).toBeVisible();

@@ -106,33 +106,6 @@ export class UserProfileResponseDto {
   accessBlocked: boolean;
   createdAt: Date;
   updatedAt: Date;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  location?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  country?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  website?: string;
-
-  socialLinks?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  phoneNumber?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  age?: number;
 }
 
 export class VerifyResponseDto {

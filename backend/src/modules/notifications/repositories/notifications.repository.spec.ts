@@ -170,16 +170,27 @@ describe('NotificationsRepository', () => {
     it('returns only the unread notifications, newest first', async () => {
       control.queue([{ id: NOTIFICATION_ID, isRead: false }]);
 
-      await expect(repository.findUnread(USER_ID)).resolves.toEqual([{ id: NOTIFICATION_ID, isRead: false }]);
+      await expect(repository.findUnread(USER_ID, 50)).resolves.toEqual([{ id: NOTIFICATION_ID, isRead: false }]);
 
       expect(whereOf()).toEqual(and(eq(notifications.userId, USER_ID), eq(notifications.isRead, false)));
       expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(notifications.createdAt)]);
     });
 
+    it('applies the limit, because this query used to have none at all', async () => {
+      // A user with thousands of unread rows downloaded every one of them on every poll, and the
+      // route took no query parameters to bound it even if it had. The badge COUNT comes from
+      // `countUnread` and is unaffected, so capping the list does not change the count.
+      control.queue([]);
+
+      await repository.findUnread(USER_ID, 50);
+
+      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([50]);
+    });
+
     it('returns an empty list when nothing is unread', async () => {
       control.queue([]);
 
-      await expect(repository.findUnread(USER_ID)).resolves.toEqual([]);
+      await expect(repository.findUnread(USER_ID, 50)).resolves.toEqual([]);
     });
   });
 

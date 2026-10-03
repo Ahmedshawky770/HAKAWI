@@ -62,8 +62,13 @@ export class NotificationsService {
     };
   }
 
-  async findUnread(userId: string): Promise<NotificationResponse[]> {
-    const notifications = await this.notificationsRepository.findUnread(userId);
+  /**
+   * Capped, and the cap is the contract: the query had no `LIMIT` at all, so a user with
+   * thousands of unread rows downloaded every one of them on every poll. The badge count comes
+   * from `countUnread` and is unaffected — the two numbers are different things.
+   */
+  async findUnread(userId: string, limit = 50): Promise<NotificationResponse[]> {
+    const notifications = await this.notificationsRepository.findUnread(userId, limit);
     return notifications.map((notification: Notification) => this.toNotificationResponse(notification));
   }
 

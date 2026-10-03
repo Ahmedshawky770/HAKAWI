@@ -56,13 +56,22 @@ export class NotificationsRepository implements INotificationsRepository {
     return { notifications: notificationsList, total: Number(total) };
   }
 
-  async findUnread(userId: string): Promise<Notification[]> {
+  /**
+   * Capped, and the cap is part of the contract.
+   *
+   * This had no `LIMIT` at all, so a user with thousands of unread rows downloaded all of them on
+   * every poll — and `GET /notifications/unread` took no query parameters to bound it even if it had.
+   * The badge COUNT comes from `countUnread`, which is unaffected; the two numbers are deliberately
+   * different things, so capping the list does not change the count.
+   */
+  async findUnread(userId: string, limit: number): Promise<Notification[]> {
     this.logger.debug(`Finding unread notifications for user: ${userId}`);
     return db
       .select()
       .from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
-      .orderBy(desc(notifications.createdAt));
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
   }
 
   async create(data: CreateNotificationInput): Promise<Notification> {

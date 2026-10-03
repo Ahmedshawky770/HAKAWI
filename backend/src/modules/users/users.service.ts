@@ -24,6 +24,26 @@ export const USER_CACHE_TTL_SECONDS = 300;
 export const USER_STATS_CACHE_PREFIX = 'user:stats:';
 export const USER_STATS_CACHE_TTL_SECONDS = 120;
 
+/**
+ * Postgres SQLSTATE for `unique_violation`.
+ *
+ * WHY IT IS NEEDED HERE AND NOT ONLY A PRE-CHECK. `users_email_unique` and `users_username_unique`
+ * (`migrations/0000_create_users_table.sql`) are UNCONDITIONAL, while the pre-checks below
+ * deliberately ignore a soft-deleted holder so that an address can be reused. That gap is exactly
+ * where a 500 was born: the pre-check passed, the insert then lost to the very row the pre-check was
+ * told to ignore, and `AllExceptionsFilter` rendered the driver error as an opaque 500 — so a
+ * duplicate address answered 500 when the correct answer is 409.
+ */
+const UNIQUE_VIOLATION_SQLSTATE = '23505';
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code === UNIQUE_VIOLATION_SQLSTATE;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -148,7 +168,23 @@ export class UsersService {
       tiktokId: input.tiktokId ?? null,
     };
 
-    const user = await this.usersRepository.create(data);
+    let user;
+    try {
+      user = await this.usersRepository.create(data);
+    } catch (error) {
+      // Only 23505 becomes a 409. A connection failure or a missing table is a real fault and must
+      // keep surfacing as a 500 — turning it into "email already exists" would tell the caller to
+      // retry with a different address when the database is simply down.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // The pre-checks above deliberately skip a soft-deleted holder, so on a collision the holder is
+      // either a live user the pre-check raced past, or the soft-deleted row the constraint still
+      // protects. Either way the address is taken as far as the database is concerned.
+      const held = await this.usersRepository.findByEmail(input.email).catch(() => null);
+      throw new ConflictException(held ? 'Email already exists' : 'Username already exists');
+    }
+
     // A freshly inserted row has a password hash the caller must never see, so the created user
     // leaves through the same mapper as every other user-shaped response.
     return toClientUser(user);
@@ -189,7 +225,21 @@ export class UsersService {
       delete updatePayload.password;
     }
 
-    const user = await this.usersRepository.update(id, updatePayload);
+    let user;
+    try {
+      user = await this.usersRepository.update(id, updatePayload);
+    } catch (error) {
+      // Same shape as `create`: the pre-checks skip a soft-deleted holder, the constraint does not.
+      // Only 23505 becomes a 409; anything else keeps surfacing as the fault it is.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // Disambiguated by which field the caller actually sent, so the message names the right one.
+      const heldByEmail =
+        input.email !== undefined && (await this.usersRepository.findByEmail(input.email).catch(() => null)) !== null;
+      throw new ConflictException(heldByEmail ? 'Email already exists' : 'Username already exists');
+    }
+
     await this.invalidateUserCache(id);
     return toClientUser(user);
   }

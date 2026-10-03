@@ -103,7 +103,7 @@ Reaching 80% on the frontend is open work; see
         /\
        /  \         Playwright browser tests
       / /\ \        backend: 1 file, 10 tests
-     /____\         frontend: 2 files (journeys + accessibility)
+     /____\         frontend: 3 files (journeys, accessibility, api-critical-paths)
     /      \        real Chromium, page.goto / fill / click / waitForURL,
    /--------\       asserting response.status() on the real XHR
   /          \
@@ -165,7 +165,7 @@ backend/
 │   ├── {auth,users,stories,search,comments,follows,messages,notifications,reactions,moderation}
 │   │   .integration-spec.ts
 │   └── mocks/                  repositories.mock.ts, stories.mock.ts
-└── e2e/                        Playwright: critical-flows.e2e-spec.ts
+└── e2e/                        Playwright: journeys.e2e-spec.ts + api-critical-paths.e2e-spec.ts
 
 frontend/
 ├── src/**/*.test.ts(x)         21 files
@@ -221,8 +221,10 @@ npm run test:watch --workspace=backend
 # Backend integration / e2e — needs a live PostgreSQL and Valkey
 npm run test:e2e --workspace=backend
 
-# Browser e2e — starts the backend and the frontend itself
-npm run test:e2e:playwright --workspace=backend
+# Browser e2e — the frontend suite starts the backend and the frontend itself.
+# There is ONE browser runner: `backend/playwright.config.ts` and its
+# `test:e2e:playwright` script were deleted, because no CI step ever invoked them and the
+# `test-browser` job runs the frontend suite.
 npm run test:e2e --workspace=frontend
 
 # Frontend

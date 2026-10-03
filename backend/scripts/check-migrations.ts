@@ -63,6 +63,26 @@ function collectFindings(migrationsDir: string): CheckFinding[] {
         message: `irreversible by declaration: ${script.reason}`,
       });
     }
+    // WHY THIS IS AN ERROR AND NOT A WARNING.
+    //
+    // `assertReversible` refuses an `irreversible` migration UNCONDITIONALLY — there is no
+    // `--allow-...` flag that gets past it — so a script declared irreversible can never run its
+    // statements. `0001` sat in exactly that state: it declared `irreversible` with a reason entirely
+    // about the shared `uuid-ossp` extension, while never dropping it. The hazard the reason
+    // described was already avoided by omission, and what the script actually did was drop four
+    // tables. So a rollback chain reaching `0001` failed outright, for a classification that did not
+    // describe the script.
+    //
+    // Either classification or body is wrong, and only a human knows which — so this is an error the
+    // `migration-premerge` CI job blocks on, not a note in a log. It is the assertion that would have
+    // caught the misclassification before it shipped.
+    if (script.reversibility === 'irreversible' && script.statements.length > 0) {
+      findings.push({
+        level: 'error',
+        migrationId: file.id,
+        message: `declares reversibility=irreversible but the down script contains ${script.statements.length} executable statement(s), which assertReversible will never run. Either delete the statements, or reclassify as reversible/data-loss if they are correct`,
+      });
+    }
     if (script.reversibility !== 'irreversible' && script.statements.length === 0) {
       findings.push({
         level: 'error',

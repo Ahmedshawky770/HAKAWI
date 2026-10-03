@@ -120,7 +120,7 @@ describe('NotificationsController', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(notificationsService.findUnread).toHaveBeenCalledWith('user-1');
+      expect(notificationsService.findUnread).toHaveBeenCalledWith('user-1', 50);
     });
   });
 

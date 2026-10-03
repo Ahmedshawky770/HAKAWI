@@ -180,7 +180,19 @@ export class MessagesService {
     });
 
     await this.conversationsRepository.updateLastMessage(conversationId);
-    await this.eventBus.emit('message.sent', { messageId: message.id, conversationId, senderId } as MessageSentEvent);
+
+    // The conversation is already in hand from the participation check above, so the recipient is
+    // one expression rather than a query the notifications consumer would have had to make against
+    // a schema it does not own (Principle #7, and #9 for who the source of truth is).
+    const recipientId =
+      conversation.participant1Id === senderId ? conversation.participant2Id : conversation.participant1Id;
+
+    await this.eventBus.emit('message.sent', {
+      messageId: message.id,
+      conversationId,
+      senderId,
+      recipientId,
+    } as MessageSentEvent);
 
     return message;
   }

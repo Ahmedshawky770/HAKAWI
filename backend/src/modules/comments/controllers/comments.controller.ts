@@ -17,7 +17,7 @@ import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { OwnershipGuard } from '../../../common/guards/ownership.guard.ts';
 import { CommentsService } from '../comments.service.ts';
-import { CreateCommentDto, UpdateCommentDto } from '../dto/comments.dto.ts';
+import { CommentPageQueryDto, CreateCommentDto, UpdateCommentDto } from '../dto/comments.dto.ts';
 
 @Controller('comments')
 export class CommentsController {
@@ -25,22 +25,14 @@ export class CommentsController {
 
   @Public()
   @Get('story/:storyId')
-  async findByStory(
-    @Param('storyId', ParseUUIDPipe) storyId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.commentsService.findByStory(storyId, Number(page) || 1, Number(limit) || 20);
+  async findByStory(@Param('storyId', ParseUUIDPipe) storyId: string, @Query() query: CommentPageQueryDto) {
+    return this.commentsService.findByStory(storyId, query.page ?? 1, query.limit ?? 20);
   }
 
   @Public()
   @Get(':id/replies')
-  async findReplies(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.commentsService.findReplies(id, Number(page) || 1, Number(limit) || 20);
+  async findReplies(@Param('id', ParseUUIDPipe) id: string, @Query() query: CommentPageQueryDto) {
+    return this.commentsService.findReplies(id, query.page ?? 1, query.limit ?? 20);
   }
 
   @UseGuards(JwtAuthGuard)

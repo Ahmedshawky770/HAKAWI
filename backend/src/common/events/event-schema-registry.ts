@@ -59,25 +59,6 @@ export class EventSchemaRegistry {
     });
   }
 
-  async retryDLQ(eventId: string): Promise<boolean> {
-    if (!this.dlqService) {
-      return false;
-    }
-    const dlqEvent = await this.dlqService.get(eventId);
-    if (!dlqEvent) {
-      return false;
-    }
-
-    const result = this.validateEvent(dlqEvent.eventName, dlqEvent.payload);
-    if (result.success) {
-      await this.dlqService.delete(eventId);
-      return true;
-    }
-
-    await this.dlqService.retry(eventId);
-    return false;
-  }
-
   async getDLQStats(): Promise<{
     total: number;
     events: Array<{ id: string; eventName: string; error: string; retryCount: number }>;

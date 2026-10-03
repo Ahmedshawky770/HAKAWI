@@ -123,3 +123,43 @@ export class ReviewSubmissionDto {
   @IsIn(['approved', 'rejected'], { message: 'Status must be either approved or rejected' })
   status: string;
 }
+
+/**
+ * `page` / `limit` for the submission list and the vote list on a contest.
+ *
+ * `Number(limit) || 20` accepted `999999999` and — because `Number('-5')` is truthy — `-5` as
+ * well, which reached Postgres as `LIMIT must not be negative` and came back through
+ * `AllExceptionsFilter` as a 500 rather than a 400. The ceiling and the integer check copy the
+ * pattern already used by `SearchFiltersDto` and `NotificationQueryDto`.
+ */
+export class ContestPageQueryDto {
+  @IsOptional()
+  @IsInt({ message: 'Page must be an integer' })
+  @Min(1, { message: 'Page must be greater than zero' })
+  page?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'Limit must be an integer' })
+  @Min(1, { message: 'Limit must be greater than zero' })
+  @Max(100, { message: 'Limit must not exceed 100' })
+  limit?: number;
+}
+
+/**
+ * The vote list's query, which filters by `submissionId` as well as paginating.
+ *
+ * WHY IT EXTENDS `ContestPageQueryDto` RATHER THAN ADDING A SECOND PARAMETER. `@Query()` with no key
+ * already yields the whole query object, so reading both keys from one validated parameter is both
+ * shorter and the only form that typechecks: `submissionId?: string` followed by a required parameter
+ * is `TS1016`, and splitting it back into `@Query('submissionId')` would reintroduce an unvalidated
+ * key that the page DTO does not cover.
+ *
+ * `submissionId` is a bare string rather than `@IsUUID()`, matching what this route accepted before:
+ * it is a filter, not a resource lookup, and an unparseable value yields an empty vote list rather than
+ * a row the caller could not have meant.
+ */
+export class ContestVotesQuery extends ContestPageQueryDto {
+  @IsOptional()
+  @IsString({ message: 'Submission ID must be a string' })
+  submissionId?: string;
+}
