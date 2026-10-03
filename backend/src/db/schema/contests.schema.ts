@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { categories, stories } from './stories.schema.ts';
 import { users } from './users.schema.ts';
@@ -100,6 +100,18 @@ export const contestPrizes = pgTable(
       .references(() => users.id),
     prizeType: varchar('prize_type', { length: 50 }).notNull(),
     prizeDescription: text('prize_description'),
+    /**
+     * The prize value in PIASTRES (1 EGP = 100), with `currency` beside it.
+     *
+     * There was no amount at all: a prize was `prizeType` plus a prose `prizeDescription`, so a CASH
+     * prize had nowhere to go and "5000 EGP was distributed" was not recordable. Migration 0022 adds
+     * both, nullable and deliberately un-backfilled — a figure reconstructed from a sentence is a
+     * guess — so a row from before it reads as "value never recorded" rather than "zero", which is
+     * the difference that matters when someone reconciles a contest budget.
+     */
+    amount: integer('amount'),
+    /** ISO 4217, three characters. Null only when `amount` is null; the pairing is a CHECK. */
+    currency: varchar('currency', { length: 3 }),
     distributedAt: timestamp('distributed_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },

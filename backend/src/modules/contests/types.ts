@@ -34,16 +34,18 @@ export type ContestVote = {
   createdAt: Date;
 };
 
-export type ContestPrize = {
-  id: string;
-  contestId: string;
-  submissionId: string;
-  winnerId: string;
-  prizeType: string;
-  prizeDescription: string | null;
-  distributedAt: Date | null;
-  createdAt: Date;
-};
+/**
+ * A DUPLICATE OF THE SCHEMA'S OWN TYPE — see the note above.
+ *
+ * It lived here as a hand-written copy of `contestPrizes`' inferred type, which is exactly the drift
+ * `ownerId` had in the books module: migration 0022 added `amount` and `currency` to the table, and
+ * this copy did not have them, so `toPrizeResponse` could not read them and the type checker could
+ * not have told anyone the field was missing from a second declaration.
+ *
+ * `Contest` and `ContestSubmission` above are still local copies. This one is re-exported because the
+ * prize table is the one whose columns the money depends on.
+ */
+export type { ContestPrize } from '../../db/schema/contests.schema.ts';
 
 export type CreateContestInput = {
   title: string;
@@ -93,6 +95,10 @@ export type DistributePrizeInput = {
   winnerId: string;
   prizeType: string;
   prizeDescription?: string | null;
+  /** PIASTRES (1 EGP = 100). Paired with `currency` by a CHECK on the table. */
+  amount?: number | null;
+  /** ISO 4217, three characters. */
+  currency?: string | null;
 };
 
 export type ContestStatus = 'draft' | 'active' | 'voting' | 'completed' | 'cancelled';
@@ -137,11 +143,18 @@ export type ContestSubmissionResponse = {
   reviewedBy: string | null;
 };
 
+/**
+ * NO `userId`, and its absence is deliberate.
+ *
+ * This is the `@Public()` route's shape, so it names no voter: an anonymous caller could otherwise
+ * enumerate which accounts voted for which submission in any contest. The count is public product
+ * behaviour; the identities behind it are not, and nothing read them. An organizer who needs them has
+ * the authenticated publisher dashboard.
+ */
 export type ContestVoteResponse = {
   id: string;
   contestId: string;
   submissionId: string;
-  userId: string;
   createdAt: string;
 };
 
@@ -152,6 +165,10 @@ export type ContestPrizeResponse = {
   winnerId: string;
   prizeType: string;
   prizeDescription: string | null;
+  /** PIASTRES (1 EGP = 100). Null for a non-cash prize, or for a row written before 0022. */
+  amount: number | null;
+  /** ISO 4217. Null exactly when `amount` is null. */
+  currency: string | null;
   distributedAt: string | null;
   createdAt: string;
 };

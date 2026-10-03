@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+  BadRequestException,
+  Inject,
+} from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -44,6 +51,42 @@ export const CONTEST_CACHE_TTL_SECONDS = 600;
 
 /** `categoryId` → category name, built with one query per page rather than one per contest. */
 type ContestCategoryIndex = ReadonlyMap<string, string>;
+
+/**
+ * WHY ONE HELPER FOR FIVE ROUTES.
+ *
+ * The lifecycle routes — `update`, `start`, `cancel`, `complete` — each compared
+ * `contest.createdBy !== userId` inline, and four mutating routes had no such comparison at all:
+ *
+ *   selectWinner(contestId, submissionId, winnerId)   the caller identity was NOT A PARAMETER
+ *   distributePrize(contestId, submissionId, ...)     likewise
+ *   approveSubmission(...)  `userId` was recorded as the reviewer, never checked as the owner
+ *   rejectSubmission(...)   checked nothing at all — not the contest, not the status, not the owner
+ *
+ * So any authenticated account could pick the winner of a contest it does not own, mint a prize for
+ * it, and approve or reject any submission in it. `rejectSubmission` was the worst of them: it did
+ * not even confirm the contest existed.
+ *
+ * Five inline copies of one inequality is how the last four went missing, so the check is one method
+ * now and every mutating route calls it. The lifecycle messages stay specific — "start" reads better
+ * than a generic verb — so the action is a parameter rather than being derived.
+ */
+function assertContestOwnership(
+  contest: { createdBy: string },
+  userId: string,
+  action:
+    | 'update'
+    | 'start'
+    | 'cancel'
+    | 'complete'
+    | 'select a winner for'
+    | 'distribute a prize for'
+    | 'review submissions for',
+): void {
+  if (contest.createdBy !== userId) {
+    throw new ForbiddenException(`You can only ${action} your own contests`);
+  }
+}
 
 @Injectable()
 export class ContestsService {
@@ -136,9 +179,7 @@ export class ContestsService {
       throw new NotFoundException('Contest not found');
     }
 
-    if (existing.createdBy !== userId) {
-      throw new ForbiddenException('You can only update your own contests');
-    }
+    assertContestOwnership(existing, userId, 'update');
 
     if (existing.status === 'completed' || existing.status === 'cancelled') {
       throw new ForbiddenException('Cannot update a completed or cancelled contest');
@@ -157,9 +198,7 @@ export class ContestsService {
       throw new NotFoundException('Contest not found');
     }
 
-    if (contest.createdBy !== userId) {
-      throw new ForbiddenException('You can only start your own contests');
-    }
+    assertContestOwnership(contest, userId, 'start');
 
     if (contest.status !== 'draft') {
       throw new ForbiddenException('Contest is not in draft status');
@@ -178,9 +217,7 @@ export class ContestsService {
       throw new NotFoundException('Contest not found');
     }
 
-    if (contest.createdBy !== userId) {
-      throw new ForbiddenException('You can only cancel your own contests');
-    }
+    assertContestOwnership(contest, userId, 'cancel');
 
     if (contest.status === 'completed' || contest.status === 'cancelled') {
       throw new ForbiddenException('Cannot cancel a completed or already cancelled contest');
@@ -199,9 +236,7 @@ export class ContestsService {
       throw new NotFoundException('Contest not found');
     }
 
-    if (contest.createdBy !== userId) {
-      throw new ForbiddenException('You can only complete your own contests');
-    }
+    assertContestOwnership(contest, userId, 'complete');
 
     if (contest.status === 'completed' || contest.status === 'cancelled') {
       throw new ForbiddenException('Cannot complete an already completed or cancelled contest');
@@ -283,8 +318,17 @@ export class ContestsService {
       throw new NotFoundException('Contest not found');
     }
 
+    assertContestOwnership(contest, userId, 'review submissions for');
+
     if (contest.status !== 'active' && contest.status !== 'voting') {
       throw new ForbiddenException('Contest is not in a state to approve submissions');
+    }
+
+    if (submission.contestId !== contestId) {
+      // The contest was checked and the submission was checked, but nothing connected them: a
+      // submission id from contest A approved through contest B's route recorded the reviewer
+      // against the wrong contest and emitted `submission.approved` with B's id.
+      throw new NotFoundException('Submission not found in this contest');
     }
 
     const updated = await this.contestsRepository.reviewSubmission(submissionId, 'approved', userId);
@@ -292,10 +336,34 @@ export class ContestsService {
     return updated;
   }
 
+  /**
+   * IT USED TO CHECK NOTHING BEYOND THE SUBMISSION EXISTING.
+   *
+   * No contest lookup, so the route would approve a submission against a contest id that does not
+   * exist; no ownership check, so any authenticated account could reject a submission in a contest it
+   * does not run; and no status check, so a submission could be rejected after the contest had
+   * completed and a winner had been selected. `approveSubmission` had the contest and the status
+   * checks but not the ownership one — so the pair was neither safe nor symmetrical.
+   */
   async rejectSubmission(submissionId: string, contestId: string, userId: string): Promise<ContestSubmission> {
     const submission = await this.contestsRepository.findSubmissionById(submissionId);
     if (!submission) {
       throw new NotFoundException('Submission not found');
+    }
+
+    const contest = await this.contestsRepository.findContestById(contestId);
+    if (!contest) {
+      throw new NotFoundException('Contest not found');
+    }
+
+    assertContestOwnership(contest, userId, 'review submissions for');
+
+    if (contest.status !== 'active' && contest.status !== 'voting') {
+      throw new ForbiddenException('Contest is not in a state to reject submissions');
+    }
+
+    if (submission.contestId !== contestId) {
+      throw new NotFoundException('Submission not found in this contest');
     }
 
     const updated = await this.contestsRepository.reviewSubmission(submissionId, 'rejected', userId);
@@ -311,6 +379,39 @@ export class ContestsService {
 
     if (contest.status !== 'voting') {
       throw new ForbiddenException('Voting is not currently open for this contest');
+    }
+
+    // WHY A CLOCK CHECK AND NOT JUST A STATUS CHECK. `status === 'voting'` is set when the contest is
+    // started and never cleared by the passage of time, so `end_date` passing does not close voting:
+    // it stayed open indefinitely until somebody manually moved the contest on. `submitEntry` below
+    // enforces `end_date`, so submissions closed on time while votes did not — which is the worse half
+    // to leave open, because a vote changes a winner.
+    //
+    // One clock is used deliberately: `new Date()` here and `contest.endDate` in the same comparison,
+    // rather than the row's own `updatedAt` or a second "now" from the repository.
+    if (new Date() > contest.endDate) {
+      throw new ForbiddenException('Voting has closed for this contest');
+    }
+
+    const submission = await this.contestsRepository.findSubmissionById(submissionId);
+    if (!submission || submission.contestId !== contestId) {
+      // Nothing connected the submission to the contest, so a submission id from another contest
+      // could be voted on through this route — the vote landed against this contest while pointing at
+      // somebody else's story.
+      throw new NotFoundException('Submission not found in this contest');
+    }
+
+    if (submission.authorId === userId) {
+      // Self-voting. `contest_votes_unique_idx` is on (contest, submission, user), which stops a
+      // double vote but not one vote for your own entry — so a contest with two entrants could be won
+      // by a single person casting both votes.
+      throw new ForbiddenException('You cannot vote for your own submission');
+    }
+
+    if (submission.status !== 'approved') {
+      // A rejected submission is still in the table and still has an id, so nothing stopped a vote for
+      // something the organiser removed from the contest.
+      throw new ForbiddenException('Only approved submissions can be voted on');
     }
 
     const existing = await this.contestsRepository.findVoteByUserContestSubmission(contestId, submissionId, userId);
@@ -336,13 +437,7 @@ export class ContestsService {
       }
 
       const votes = await this.contestsRepository.findVotesBySubmission(submissionId);
-      const mapped = votes.map((vote) => ({
-        id: vote.id,
-        contestId: vote.contestId,
-        submissionId: vote.submissionId,
-        userId: vote.userId,
-        createdAt: vote.createdAt.toISOString(),
-      }));
+      const mapped = votes.map((vote) => this.toPublicVoteResponse(vote));
 
       return {
         votes: mapped.slice((page - 1) * limit, page * limit),
@@ -362,24 +457,29 @@ export class ContestsService {
     ]);
 
     return {
-      votes: votesPage.map((vote) => ({
-        id: vote.id,
-        contestId: vote.contestId,
-        submissionId: vote.submissionId,
-        userId: vote.userId,
-        createdAt: vote.createdAt.toISOString(),
-      })),
+      votes: votesPage.map((vote) => this.toPublicVoteResponse(vote)),
       total: Number(total),
       page: pageNum,
       limit: limitNum,
     };
   }
 
-  async selectWinner(contestId: string, submissionId: string, winnerId: string): Promise<Contest> {
+  /**
+   * `userId` WAS NOT A PARAMETER, so there was no caller to check.
+   *
+   * The route passed the winner straight from the request body and the service decided nothing about
+   * who was asking. Any authenticated account could therefore end a contest it does not own, pick
+   * its own submission as the winner (the `submission.authorId === winnerId` check that does exist
+   * only proves the winner wrote the submission — it says nothing about who selected them), and emit
+   * `winner.selected` and `contest.completed` for it.
+   */
+  async selectWinner(contestId: string, submissionId: string, winnerId: string, userId: string): Promise<Contest> {
     const contest = await this.contestsRepository.findContestById(contestId);
     if (!contest) {
       throw new NotFoundException('Contest not found');
     }
+
+    assertContestOwnership(contest, userId, 'select a winner for');
 
     if (contest.status !== 'voting') {
       throw new ForbiddenException('Contest is not in voting phase');
@@ -407,15 +507,29 @@ export class ContestsService {
     submissionId: string,
     winnerId: string,
     prizeType: string,
-    prizeDescription?: string | null,
+    prizeDescription: string | null | undefined,
+    userId: string,
+    amount?: number | null,
+    currency?: string | null,
   ): Promise<ContestPrize> {
     const contest = await this.contestsRepository.findContestById(contestId);
     if (!contest) {
       throw new NotFoundException('Contest not found');
     }
 
+    // Like `selectWinner`, the caller identity was not a parameter. A prize is a disbursement against
+    // the contest's own budget, so "who authorised this" is the first question and it was unasked.
+    assertContestOwnership(contest, userId, 'distribute a prize for');
+
     if (contest.status !== 'completed') {
       throw new ForbiddenException('Contest must be completed before distributing prizes');
+    }
+
+    // `amount` and `currency` travel together or not at all. The schema carries the same rule as a
+    // CHECK, so a half-recorded prize is refused by the database rather than being written and
+    // discovered during a budget reconciliation.
+    if ((amount === undefined || amount === null) !== (currency === undefined || currency === null)) {
+      throw new BadRequestException('Prize amount and currency must be provided together');
     }
 
     const prize = await this.contestsRepository.createPrize({
@@ -424,6 +538,8 @@ export class ContestsService {
       winnerId,
       prizeType,
       prizeDescription: prizeDescription ?? null,
+      amount: amount ?? null,
+      currency: currency ?? null,
     });
 
     this.eventBus.emit('prize.distributed', { prizeId: prize.id, contestId, winnerId });
@@ -595,6 +711,35 @@ export class ContestsService {
     };
   }
 
+  /**
+   * WHY THERE IS NO `userId` HERE.
+   *
+   * `GET /contests/:id/votes` is `@Public()` — anonymous — and returned every vote's `userId`. So
+   * anyone could enumerate which accounts voted for which submission in any contest, with no account
+   * and no relationship to it. On a platform where accounts are people, that is a roster of who
+   * engaged with what, published to anyone who asks.
+   *
+   * A public vote tally is reasonable product behaviour; publishing the identities behind it is not,
+   * so the count stays and the identity does not. Nothing consumed it: the frontend has no caller for
+   * this route at all, so the field was carrying risk and no reader.
+   *
+   * An organizer who needs the voters gets the publisher dashboard, which is authenticated and
+   * already scopes itself to `contest.createdBy`.
+   */
+  private toPublicVoteResponse(vote: {
+    id: string;
+    contestId: string;
+    submissionId: string;
+    createdAt: Date;
+  }): ContestVoteResponse {
+    return {
+      id: vote.id,
+      contestId: vote.contestId,
+      submissionId: vote.submissionId,
+      createdAt: vote.createdAt.toISOString(),
+    };
+  }
+
   private toPrizeResponse(prize: ContestPrize): ContestPrizeResponse {
     return {
       id: prize.id,
@@ -603,6 +748,8 @@ export class ContestsService {
       winnerId: prize.winnerId,
       prizeType: prize.prizeType,
       prizeDescription: prize.prizeDescription,
+      amount: prize.amount,
+      currency: prize.currency,
       distributedAt: prize.distributedAt?.toISOString() ?? null,
       createdAt: prize.createdAt.toISOString(),
     };

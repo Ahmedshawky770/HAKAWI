@@ -260,19 +260,72 @@ a configured floor. The global gate applies.
 - [x] Submission system
 - [x] Voting system
 - [x] Winner selection
-- [x] **Unit tests** (`contests.service.spec.ts`)
+- [x] ⚠️ **Ownership on the decisive routes — was absent, and the gap was shaped like a state check.**
+      `ForbiddenException` appeared twenty-five times in `ContestsService` and every one of them was a
+      STATE check (`status !== 'voting'`). Four mutating routes had no ownership check at all:
+      `selectWinner` and `distributePrize` did not take a **caller identity** — so nothing about WHO
+      was asking was recorded, let alone enforced, and any authenticated account could end a contest it
+      did not own or mint a prize against it; `approveSubmission` took a `userId` and recorded it as the
+      reviewer without ever checking it against `contest.createdBy`; and `rejectSubmission` checked
+      nothing at all — not the contest, not the state, not the owner — so it accepted a submission
+      against a contest id that need not exist. The lifecycle routes (`update`, `start`, `cancel`,
+      `complete`) DID have the check, copied inline five times, which is how the last four went missing.
+      It is now one `assertContestOwnership` helper that every mutating route calls, with the caller
+      identity threaded through the two routes whose signatures lacked it.
+- [x] ⚠️ **Voting integrity — three ways to reach a result that needed no database.**
+      - **Self-voting.** `contest_votes_unique_idx` is on `(contest, submission, user)`, which stops a
+        DOUBLE vote and not one vote for your own entry — so a two-entrant contest could be won by a
+        single person casting both.
+      - **Cross-contest voting.** Nothing connected the submission to the contest, so a submission id
+        from contest A could be voted on through contest B's route: the vote landed against B while
+        pointing at somebody else's story.
+      - **Voting never closed.** `status === 'voting'` is set on start and never cleared by the
+        passage of time, so `end_date` passing did not close voting. `submitStory` DID enforce
+        `end_date`, so submissions closed on time while votes did not — the worse half to leave open,
+        because a vote changes a winner.
+      A rejected submission is now refused too: it keeps its row and its id, so nothing stopped a
+      vote for something the organiser had removed.
+- [x] **Unit tests** (`contests.service.spec.ts`) — including twelve cases for the ownership and
+      voting guards above, which had none
 - [x] **Integration tests** (`contests.controller.spec.ts`)
 
 ### Week 12: Contest Features — ✅
-- [x] Prize distribution — `contest_prizes` table
+- [x] ⚠️ **Prize distribution — the row could not record a prize.** `contest_prizes` carried
+      `prize_type varchar(50)` and `prize_description text` only, so a CASH prize had nowhere to go:
+      the amount had to live inside a sentence that nothing can sum, filter or compare. "A prize was
+      distributed" was recordable; "5000 EGP was distributed" was not. Migration `0022` adds `amount`
+      (piastres, matching `books.price` and the Paymob unit) and `currency`, nullable and deliberately
+      **un-backfilled** — a figure reconstructed from prose is a guess — so a row from before it reads
+      as "value never recorded" rather than "zero", which is the distinction that matters when someone
+      reconciles a contest budget. A `CHECK` pairs the two, because an amount with no currency is not an
+      amount. `ContestPrize` was a second hand-written copy of the schema's own type and is now
+      re-exported from it (Principle #9 — the same drift `ownerId` had in the books module).
 - [x] **Badge awards** — ✅ **built.** The `badges` module, the `badges` / `user_badges` tables
       (migration `0013`), award logic, and `GET /api/v1/badges` routes. This was an open roadmap
       item and has shipped
-- [x] Contest notifications — event-driven
+- [x] ⚠️ **Contest notifications — were nine `logger.info` calls and nothing else.** All nine handlers
+      existed, each subscribed to a real event, and each logged its line. The notifications table, the
+      preferences table and the unread badge all existed; nothing ever wrote to them from a contest, so
+      "event-driven" described nine log statements. They notify now, through `NotificationsService` —
+      the only path that consults the recipient's preferences — and three decisions are pinned by
+      tests: the entry AUTHOR is told, not the contest's organiser, who already sees every entry in the
+      dashboard; `contest.created` and `contest.completed` notify **nobody**, because the author just
+      did the thing and the winner was already told by `winner.selected`; and a writer with three
+      entries is told once when a contest starts rather than three times.
+- [x] ⚠️ **The public vote tally named every voter.** `GET /contests/:id/votes` is `@Public()` and
+      returned every vote's `userId`, so anyone — with no account and no relationship to the contest —
+      could enumerate which accounts voted for which submission. On a platform where an account is a
+      person, that is a roster of who engaged with what. The count is public product behaviour and
+      stays; the identities do not. Nothing consumed the field — the frontend has no caller for this
+      route — so it was carrying risk and no reader. An organizer who needs the voters has the
+      authenticated publisher dashboard, which already scopes itself to `contest.createdBy`.
 - [x] Publisher dashboard — `GET /api/v1/contests/publisher/stats`,
-      `publisher/:id/submissions`, `publisher/:id/votes` (`contests.controller.ts:179,185,194`)
+      `publisher/:id/submissions`, `publisher/:id/votes`. ⚠️ the previous line cited
+      `contests.controller.ts:179,185,194`; the routes are at `:53,60,69`
 - [x] **Unit tests** (prizes, badges)
-- [x] **Integration tests** (`src/modules/contests/e2e/contests.e2e-spec.ts`)
+- [x] **Integration tests** (`src/modules/contests/e2e/contests.e2e-spec.ts`) — ⚠️ its case named
+      "should move contest to voting and allow voting" never voted; it asserted the contest reached the
+      voting state and stopped
 
 **Exit Criteria — met**, with one correction: "coverage ≥ 85%" is not a configured floor; the
 global gate applies.

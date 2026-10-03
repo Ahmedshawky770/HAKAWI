@@ -153,9 +153,14 @@ describe('ContestsService', () => {
     title: 'Test Contest',
     description: 'A test contest',
     categoryId: null,
-    startDate: new Date('2024-01-01'),
-    endDate: new Date('2024-12-31'),
-    submissionDeadline: new Date('2024-06-30'),
+    // RELATIVE TO NOW, deliberately. These were hard-coded to 2024 dates, which is in the past, so
+    // they only ever described a contest whose window had already closed — and nothing noticed,
+    // because no code compared `end_date` against a clock. `castVote` does now, so a fixture whose
+    // deadline has passed is correctly refused; these are the dates for a contest a reader can still
+    // vote in.
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    submissionDeadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     status: 'draft',
     createdBy: 'user-123',
     winnerId: null,
@@ -168,7 +173,10 @@ describe('ContestsService', () => {
     contestId: 'contest-123',
     storyId: 'story-123',
     authorId: 'author-123',
-    status: 'pending',
+    // 'approved', not 'pending': `castVote` refuses anything the organiser has not approved, and the
+    // default a submission is created with is 'pending'. A rejected submission keeps its row and its
+    // id, so nothing else stopped a vote for one.
+    status: 'approved',
     submittedAt: new Date('2024-01-15'),
     reviewedAt: null,
     reviewedBy: null,
@@ -330,9 +338,16 @@ describe('ContestsService', () => {
       expect(warm.startDate).toBe(cold.startDate);
       expect(warm.endDate).toBe(cold.endDate);
       expect(warm.submissionDeadline).toBe(cold.submissionDeadline);
-      expect(warm.createdAt).toBe('2024-01-01T00:00:00.000Z');
-      expect(warm.updatedAt).toBe('2024-01-01T00:00:00.000Z');
-      expect(warm.startDate).toBe('2024-01-01T00:00:00.000Z');
+
+      // Compared against the FIXTURE rather than a literal, because `mockContest`'s dates are
+      // relative to now. A hard-coded 2024 expectation here would have passed only until the calendar
+      // moved past it — which is the same mistake the fixture itself had, and why nothing noticed that
+      // no code compared `end_date` against a clock.
+      expect(warm.startDate).toBe(mockContest.startDate.toISOString());
+      expect(warm.endDate).toBe(mockContest.endDate.toISOString());
+      expect(warm.submissionDeadline).toBe(mockContest.submissionDeadline.toISOString());
+      expect(warm.createdAt).toBe(mockContest.createdAt.toISOString());
+      expect(warm.updatedAt).toBe(mockContest.updatedAt.toISOString());
     });
 
     it('drops an un-revivable cache entry and reloads instead of throwing', async () => {
@@ -343,7 +358,7 @@ describe('ContestsService', () => {
 
       const result = await contestsService.findById('contest-123');
 
-      expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(result.createdAt).toBe(mockContest.createdAt.toISOString());
       expect(contestsRepository.findContestById).toHaveBeenCalledTimes(1);
     });
 
@@ -667,6 +682,10 @@ describe('ContestsService', () => {
   describe('rejectSubmission', () => {
     it('should reject a submission', async () => {
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
+      // The method used to load NO contest at all — so this mock did not exist — which is exactly why
+      // it accepted a submission against a contest id that need not exist. It loads one now, checks
+      // the caller owns it, and checks the state.
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
       vi.mocked(contestsRepository.reviewSubmission).mockResolvedValue({ ...mockSubmission, status: 'rejected' });
 
       const result = await contestsService.rejectSubmission('submission-123', 'contest-123', 'user-123');
@@ -697,6 +716,11 @@ describe('ContestsService', () => {
       };
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
+      // `castVote` now loads the submission: a self-vote, a submission from another contest and a
+      // submission the organiser rejected all used to be votable, because nothing looked it up at all.
+      // `mockSubmission.authorId` is 'author-123' and this voter is 'user-123', so this is a
+      // legitimate vote by somebody else.
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
       vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue(null);
       vi.mocked(contestsRepository.castVote).mockResolvedValue(vote);
 
@@ -725,6 +749,9 @@ describe('ContestsService', () => {
     it('should throw ConflictException when user already voted', async () => {
       const votingContest = { ...mockContest, status: 'voting' };
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
+      // The submission is resolved BEFORE the duplicate check, because self-voting, a foreign
+      // submission and a rejected one are all refused first. So a legitimate duplicate needs it too.
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
       vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue({
         id: 'vote-123',
         contestId: 'contest-123',
@@ -751,7 +778,10 @@ describe('ContestsService', () => {
         winnerId: 'author-123',
       });
 
-      const result = await contestsService.selectWinner('contest-123', 'submission-123', 'author-123');
+      // The fourth argument is new, and it is the whole authorization: the signature had no caller
+      // at all, so any authenticated account could end a contest it did not own and name its own
+      // submission as the winner.
+      const result = await contestsService.selectWinner('contest-123', 'submission-123', 'author-123', 'user-123');
 
       expect(result.status).toBe('completed');
       expect(result.winnerId).toBe('author-123');
@@ -766,17 +796,17 @@ describe('ContestsService', () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
       vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(otherSubmission);
 
-      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow(
-        'Winner must be the author of the selected submission',
-      );
+      await expect(
+        contestsService.selectWinner('contest-123', 'submission-123', 'author-123', 'user-123'),
+      ).rejects.toThrow('Winner must be the author of the selected submission');
     });
 
     it('should throw ForbiddenException when contest is not in voting phase', async () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
 
-      await expect(contestsService.selectWinner('contest-123', 'submission-123', 'author-123')).rejects.toThrow(
-        'Contest is not in voting phase',
-      );
+      await expect(
+        contestsService.selectWinner('contest-123', 'submission-123', 'author-123', 'user-123'),
+      ).rejects.toThrow('Contest is not in voting phase');
     });
   });
 
@@ -791,18 +821,23 @@ describe('ContestsService', () => {
         prizeType: 'cash',
         prizeDescription: '$100',
         distributedAt: new Date(),
+        amount: null,
+        currency: null,
         createdAt: new Date(),
       };
 
       vi.mocked(contestsRepository.findContestById).mockResolvedValue(completedContest);
       vi.mocked(contestsRepository.createPrize).mockResolvedValue(prize);
 
+      // The sixth argument is new. A prize is a disbursement against the contest's own budget, so
+      // "who authorised this" is the first question, and it was unasked.
       const result = await contestsService.distributePrize(
         'contest-123',
         'submission-123',
         'author-123',
         'cash',
         '$100',
+        'user-123',
       );
 
       expect(result).toEqual(prize);
@@ -813,18 +848,373 @@ describe('ContestsService', () => {
       vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
 
       await expect(
-        contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash'),
+        contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash', null, 'user-123'),
       ).rejects.toThrow('Contest must be completed before distributing prizes');
+    });
+  });
+
+  /**
+   * THE AUTHORIZATION THAT WAS NOT THERE.
+   *
+   * `selectWinner` and `distributePrize` did not take a caller identity at all, so nothing about WHO
+   * was asking was recorded, let alone checked: any authenticated account could end a contest it did
+   * not own and mint a prize against it. `rejectSubmission` checked nothing beyond the submission
+   * existing — not the contest, not the state, not the owner.
+   *
+   * `ForbiddenException` appeared twenty-five times in this service and every one of them was a STATE
+   * check. The word "own" appears in the lifecycle messages and nowhere else, which is the shape of the
+   * gap: the routes that decide a winner and a disbursement were the only mutating ones without it.
+   */
+  describe('contest ownership on the decisive routes', () => {
+    const votingContest = { ...mockContest, status: 'voting' };
+    const completedContest = { ...mockContest, status: 'completed' };
+
+    beforeEach(() => {
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
+    });
+
+    it('should refuse a winner selection from someone who does not own the contest', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
+
+      await expect(
+        contestsService.selectWinner('contest-123', 'submission-123', 'author-123', 'an-intruder'),
+      ).rejects.toThrow('You can only select a winner for your own contests');
+
+      expect(contestsRepository.updateContest).not.toHaveBeenCalled();
+      expect(eventValidatorService.emit).not.toHaveBeenCalledWith('winner.selected', expect.any(Object));
+    });
+
+    it('should refuse a prize distribution from someone who does not own the contest', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(completedContest);
+
+      await expect(
+        contestsService.distributePrize('contest-123', 'submission-123', 'author-123', 'cash', '$100', 'an-intruder'),
+      ).rejects.toThrow('You can only distribute a prize for your own contests');
+
+      expect(contestsRepository.createPrize).not.toHaveBeenCalled();
+      expect(eventValidatorService.emit).not.toHaveBeenCalledWith('prize.distributed', expect.any(Object));
+    });
+
+    it('should refuse an approval from someone who does not own the contest', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
+
+      await expect(contestsService.approveSubmission('submission-123', 'contest-123', 'an-intruder')).rejects.toThrow(
+        'You can only review submissions for your own contests',
+      );
+
+      expect(contestsRepository.reviewSubmission).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a rejection from someone who does not own the contest', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({ ...mockContest, status: 'active' });
+
+      await expect(contestsService.rejectSubmission('submission-123', 'contest-123', 'an-intruder')).rejects.toThrow(
+        'You can only review submissions for your own contests',
+      );
+
+      expect(contestsRepository.reviewSubmission).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a submission reviewed through a contest it does not belong to', async () => {
+      // Both the submission and a real contest were checked, and nothing connected them: a
+      // submission id from contest A approved through contest B recorded the reviewer against B and
+      // emitted `submission.approved` with B's id.
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({
+        ...mockContest,
+        id: 'contest-other',
+        status: 'active',
+      });
+
+      await expect(contestsService.approveSubmission('submission-123', 'contest-other', 'user-123')).rejects.toThrow(
+        'Submission not found in this contest',
+      );
+
+      expect(contestsRepository.reviewSubmission).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a rejection after the contest has completed', async () => {
+      // It used to check no state at all, so a submission could be rejected after a winner had been
+      // selected and the contest marked complete.
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(completedContest);
+
+      await expect(contestsService.rejectSubmission('submission-123', 'contest-123', 'user-123')).rejects.toThrow(
+        'Contest is not in a state to reject submissions',
+      );
+
+      expect(contestsRepository.reviewSubmission).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a rejection against a contest that does not exist', async () => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(null);
+
+      await expect(contestsService.rejectSubmission('submission-123', 'contest-999', 'user-123')).rejects.toThrow(
+        'Contest not found',
+      );
+
+      expect(contestsRepository.reviewSubmission).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * VOTING INTEGRITY. Three separate ways to influence an outcome, none of which needed the
+   * database: vote for your own entry, vote through contest B's route on a submission from contest A,
+   * and keep voting after the window closed.
+   */
+  describe('voting integrity', () => {
+    const votingContest = { ...mockContest, status: 'voting' };
+
+    beforeEach(() => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(votingContest);
+      vi.mocked(contestsRepository.findVoteByUserContestSubmission).mockResolvedValue(null);
+    });
+
+    it('should refuse a self-vote, where two entrants and one voter decide the contest', async () => {
+      // `contest_votes_unique_idx` is on (contest, submission, user), which stops a DOUBLE vote and
+      // not one vote for your own entry. So a two-entrant contest could be won by a single person
+      // casting both.
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue({
+        ...mockSubmission,
+        authorId: 'user-123',
+      });
+
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'You cannot vote for your own submission',
+      );
+
+      expect(contestsRepository.castVote).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a vote on a submission from another contest', async () => {
+      // Nothing connected the submission to the contest, so a submission id from another contest
+      // could be voted on through this route: the vote landed against this contest while pointing at
+      // somebody else's story.
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue({
+        ...mockSubmission,
+        contestId: 'contest-other',
+      });
+
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'Submission not found in this contest',
+      );
+
+      expect(contestsRepository.castVote).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a vote on a rejected submission', async () => {
+      // A rejected submission keeps its row and its id, so nothing stopped a vote for something the
+      // organiser removed.
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue({
+        ...mockSubmission,
+        status: 'rejected',
+      });
+
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'Only approved submissions can be voted on',
+      );
+
+      expect(contestsRepository.castVote).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a vote once end_date has passed, even while status is still voting', async () => {
+      // `status === 'voting'` is set when the contest starts and never cleared by the passage of
+      // time, so voting stayed open indefinitely until somebody manually moved the contest on.
+      // `submitStory` enforced `end_date`, so submissions closed on time while votes did not — the
+      // worse half to leave open, because a vote changes a winner.
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue({
+        ...mockContest,
+        status: 'voting',
+        endDate: new Date(Date.now() - 1000),
+      });
+
+      await expect(contestsService.castVote('contest-123', 'submission-123', 'user-123')).rejects.toThrow(
+        'Voting has closed for this contest',
+      );
+
+      expect(contestsRepository.castVote).not.toHaveBeenCalled();
+    });
+
+    it('should accept a legitimate vote inside the window', async () => {
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
+      vi.mocked(contestsRepository.castVote).mockResolvedValue({
+        id: 'vote-123',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        userId: 'user-123',
+        createdAt: new Date(),
+      });
+
+      const vote = await contestsService.castVote('contest-123', 'submission-123', 'user-123');
+
+      expect(vote.id).toBe('vote-123');
+      expect(contestsRepository.castVote).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * THE PUBLIC VOTE TALLY NAMED NO VOTER.
+   *
+   * `GET /contests/:id/votes` is `@Public()` and returned every vote's `userId`, so anyone — with no
+   * account — could enumerate which accounts voted for which submission in any contest. On a platform
+   * where an account is a person, that is a roster of who engaged with what.
+   */
+  describe('the public vote tally names no voter', () => {
+    it('should not return a userId for a submission-scoped vote list', async () => {
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
+      vi.mocked(contestsRepository.findVotesBySubmission).mockResolvedValue([
+        {
+          id: 'vote-1',
+          contestId: 'contest-123',
+          submissionId: 'submission-123',
+          userId: 'voter-1',
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await contestsService.getVotes('contest-123', 'submission-123', 1, 20);
+
+      expect(result.votes).toHaveLength(1);
+      expect(result.votes[0]).not.toHaveProperty('userId');
+      expect(result.votes[0]).toMatchObject({ id: 'vote-1', submissionId: 'submission-123' });
+    });
+
+    it('should not return a userId for a contest-scoped vote list', async () => {
+      vi.mocked(contestsRepository.findVotesByContest).mockResolvedValue([
+        {
+          id: 'vote-1',
+          contestId: 'contest-123',
+          submissionId: 'submission-123',
+          userId: 'voter-1',
+          createdAt: new Date(),
+        },
+      ]);
+      // The repository returns `{ total: string }` — a COUNT over Postgres comes back bigint-ish —
+      // and the service does `Number(total)`. A bare number here made it NaN.
+      vi.mocked(contestsRepository.countVotesByContest).mockResolvedValue({ total: '1' });
+
+      const result = await contestsService.getVotes('contest-123', undefined, 1, 20);
+
+      // The COUNT is public product behaviour and stays; the identities behind it do not.
+      expect(result.total).toBe(1);
+      expect(result.votes[0]).not.toHaveProperty('userId');
+    });
+  });
+
+  /**
+   * A PRIZE WITH NO AMOUNT. The table carried `prizeType` plus a prose `prizeDescription` and
+   * nothing else, so a cash prize had nowhere to go and no contest total was computable.
+   */
+  describe('prize amount', () => {
+    const completedContest = { ...mockContest, status: 'completed' };
+
+    beforeEach(() => {
+      vi.mocked(contestsRepository.findContestById).mockResolvedValue(completedContest);
+      vi.mocked(contestsRepository.findSubmissionById).mockResolvedValue(mockSubmission);
+    });
+
+    it('should record an amount with its currency', async () => {
+      vi.mocked(contestsRepository.createPrize).mockResolvedValue({
+        id: 'prize-1',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        winnerId: 'author-123',
+        prizeType: 'cash',
+        prizeDescription: null,
+        amount: 500_000,
+        currency: 'EGP',
+        distributedAt: null,
+        createdAt: new Date(),
+      });
+
+      await contestsService.distributePrize(
+        'contest-123',
+        'submission-123',
+        'author-123',
+        'cash',
+        null,
+        'user-123',
+        500_000,
+        'EGP',
+      );
+
+      expect(contestsRepository.createPrize).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 500_000, currency: 'EGP' }),
+      );
+    });
+
+    it('should refuse an amount with no currency, rather than writing half a prize', async () => {
+      await expect(
+        contestsService.distributePrize(
+          'contest-123',
+          'submission-123',
+          'author-123',
+          'cash',
+          null,
+          'user-123',
+          500_000,
+        ),
+      ).rejects.toThrow('must be provided together');
+
+      expect(contestsRepository.createPrize).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a currency with no amount', async () => {
+      await expect(
+        contestsService.distributePrize(
+          'contest-123',
+          'submission-123',
+          'author-123',
+          'cash',
+          null,
+          'user-123',
+          null,
+          'EGP',
+        ),
+      ).rejects.toThrow('must be provided together');
+
+      expect(contestsRepository.createPrize).not.toHaveBeenCalled();
+    });
+
+    it('should still accept a prize with neither, because a book has no figure', async () => {
+      vi.mocked(contestsRepository.createPrize).mockResolvedValue({
+        id: 'prize-1',
+        contestId: 'contest-123',
+        submissionId: 'submission-123',
+        winnerId: 'author-123',
+        prizeType: 'book',
+        prizeDescription: 'A copy of the winning story',
+        amount: null,
+        currency: null,
+        distributedAt: null,
+        createdAt: new Date(),
+      });
+
+      await contestsService.distributePrize(
+        'contest-123',
+        'submission-123',
+        'author-123',
+        'book',
+        'A copy of the winning story',
+        'user-123',
+      );
+
+      expect(contestsRepository.createPrize).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: null, currency: null }),
+      );
     });
   });
 
   describe('getPrizes', () => {
     it('should return prizes for a contest', async () => {
+      // `amount` and `currency` are on the schema and therefore required by the inferred type, even
+      // though they are nullable in the database. A book prize has neither, which is the realistic
+      // case and the reason they are not NOT NULL.
       const prize: ContestPrize = {
         id: 'prize-123',
         contestId: 'contest-123',
         submissionId: 'submission-123',
         winnerId: 'author-123',
+        amount: null,
+        currency: null,
         prizeType: 'cash',
         prizeDescription: '$100',
         distributedAt: new Date(),

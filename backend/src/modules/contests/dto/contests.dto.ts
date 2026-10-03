@@ -1,4 +1,16 @@
-import { IsString, IsOptional, IsUUID, IsIn, MaxLength, MinLength, IsDate, Min, Max, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsIn,
+  MaxLength,
+  MinLength,
+  IsDate,
+  Min,
+  Max,
+  IsInt,
+  Length,
+} from 'class-validator';
 
 export class CreateContestDto {
   @IsString()
@@ -112,6 +124,25 @@ export class DistributePrizeDto {
   @IsString()
   @MaxLength(50, { message: 'Prize type must not exceed 50 characters' })
   prizeType: string;
+
+  /**
+   * The prize value in PIASTRES (1 EGP = 100), with `currency` beside it.
+   *
+   * There was no amount at all: a prize was `prizeType` plus a prose `prizeDescription`, so a cash
+   * prize had nowhere to go and no total was computable. Optional because a non-cash prize — a book,
+   * a certificate — genuinely has no figure, and because every row written before migration 0022 has
+   * none. What is enforced is that the two travel together, in the schema's CHECK.
+   */
+  @IsOptional()
+  @IsInt({ message: 'Amount must be an integer number of piastres' })
+  @Min(0, { message: 'Amount must not be negative' })
+  amount?: number;
+
+  /** ISO 4217, three characters. Required exactly when `amount` is present — see the schema CHECK. */
+  @IsOptional()
+  @IsString()
+  @Length(3, 3, { message: 'Currency must be a 3-letter ISO 4217 code' })
+  currency?: string;
 
   @IsOptional()
   @IsString()

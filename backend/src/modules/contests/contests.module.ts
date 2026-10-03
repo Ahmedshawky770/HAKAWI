@@ -6,6 +6,7 @@ import { SharedCacheModule } from '../shared/cache/shared-cache.module.ts';
 import { CategoriesModule } from '../categories/categories.module.ts';
 
 import { ContestsService } from './contests.service.ts';
+import { NotificationsModule } from '../notifications/notifications.module.ts';
 import { ContestsController } from './controllers/contests.controller.ts';
 import { ContestsRepository } from './repositories/contests.repository.ts';
 import { ContestsEventHandler } from './events/contests.event-handler.ts';

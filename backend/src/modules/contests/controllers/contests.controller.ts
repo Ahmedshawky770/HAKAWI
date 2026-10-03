@@ -162,8 +162,15 @@ export class ContestsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/winner')
-  async selectWinner(@Param('id') contestId: string, @Body() dto: SelectWinnerDto) {
-    return this.contestsService.selectWinner(contestId, dto.submissionId, dto.winnerId);
+  async selectWinner(
+    @Param('id') contestId: string,
+    @Body() dto: SelectWinnerDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
+    // `req.user.sub` is the fourth argument and the whole authorization: the service previously had
+    // no caller identity at all, so any authenticated account could end a contest it does not own and
+    // name its own submission as the winner.
+    return this.contestsService.selectWinner(contestId, dto.submissionId, dto.winnerId, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -191,13 +198,22 @@ export class ContestsController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/prizes')
   @HttpCode(HttpStatus.CREATED)
-  async distributePrize(@Param('id') contestId: string, @Body() dto: DistributePrizeDto) {
+  async distributePrize(
+    @Param('id') contestId: string,
+    @Body() dto: DistributePrizeDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
+    // A prize is a disbursement against the contest's own budget, so "who authorised this" is the
+    // first question. It was not asked at all.
     return this.contestsService.distributePrize(
       contestId,
       dto.submissionId,
       dto.winnerId,
       dto.prizeType,
       dto.prizeDescription,
+      req.user.sub,
+      dto.amount,
+      dto.currency,
     );
   }
 
