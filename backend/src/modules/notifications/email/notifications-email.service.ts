@@ -1,6 +1,5 @@
 import { Injectable, Inject, Optional } from '@nestjs/common';
 
-
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { INotificationsRepository } from '../interfaces/notifications-repository.interface.ts';
 import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
@@ -43,7 +42,10 @@ export class NotificationsEmailService {
       }
 
       if (!this.transporter) {
-        this.logger.warn(`No email transporter configured. Skipping email for notification type: ${type}`, 'NotificationsEmailService');
+        this.logger.warn(
+          `No email transporter configured. Skipping email for notification type: ${type}`,
+          'NotificationsEmailService',
+        );
         return false;
       }
 
@@ -66,7 +68,11 @@ export class NotificationsEmailService {
       this.logger.info(`Notification email sent to ${to} for type: ${type}`, 'NotificationsEmailService');
       return true;
     } catch (error) {
-      this.logger.error(`Failed to send notification email: ${(error as Error).message}`, (error as Error).stack, 'NotificationsEmailService');
+      this.logger.error(
+        `Failed to send notification email: ${(error as Error).message}`,
+        (error as Error).stack,
+        'NotificationsEmailService',
+      );
       return false;
     }
   }

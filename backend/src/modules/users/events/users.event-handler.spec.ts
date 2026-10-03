@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
-import type { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../../../common/users/users-repository.interface.ts';
+import type {
+  IUsersRepository,
+  User,
+  CreateUserInput,
+  UpdateUserInput,
+} from '../../../common/users/users-repository.interface.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { UserRegisteredEvent, UserUpdatedEvent } from '../../../common/events/users.events.ts';
 
@@ -76,10 +81,7 @@ describe('UsersEventHandler', () => {
       info: vi.fn(),
     };
 
-    usersEventHandler = new UsersEventHandler(
-      usersRepository,
-      logger as unknown as WinstonLoggerService,
-    );
+    usersEventHandler = new UsersEventHandler(usersRepository, logger as unknown as WinstonLoggerService);
   });
 
   describe('handleUserRegistered', () => {
@@ -95,8 +97,9 @@ describe('UsersEventHandler', () => {
     it('should throw NotFoundException when user is not found', async () => {
       vi.mocked(usersRepository.findById).mockResolvedValue(null);
 
-      await expect(usersEventHandler.handleUserRegistered(new UserRegisteredEvent('missing-id', 'test@example.com', 'Test')))
-        .rejects.toThrow('User not found');
+      await expect(
+        usersEventHandler.handleUserRegistered(new UserRegisteredEvent('missing-id', 'test@example.com', 'Test')),
+      ).rejects.toThrow('User not found');
     });
   });
 

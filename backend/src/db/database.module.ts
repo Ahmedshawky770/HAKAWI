@@ -3,7 +3,15 @@ import { Module } from '@nestjs/common';
 import { db } from './index.ts';
 import { users } from './schema/users.schema.ts';
 import { categories, tags, stories, storyTags } from './schema/stories.schema.ts';
-import { follows, reactions, comments, commentReactions, notifications, conversations, messages } from './schema/social.schema.ts';
+import {
+  follows,
+  reactions,
+  comments,
+  commentReactions,
+  notifications,
+  conversations,
+  messages,
+} from './schema/social.schema.ts';
 import { uploads } from './schema/upload.schema.ts';
 import { reports, moderationActions, userRestrictions } from './schema/moderation.schema.ts';
 

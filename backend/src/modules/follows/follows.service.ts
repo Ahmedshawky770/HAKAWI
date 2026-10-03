@@ -41,19 +41,40 @@ export class FollowsService {
     await this.eventBus.emit('user.unfollowed', { followerId, followingId } as UserUnfollowedEvent);
   }
 
-  async getFollowers(userId: string, page = 1, limit = 20): Promise<{ follows: Follow[]; total: number }> {
-    return this.followsRepository.findFollowers(userId, page, limit);
+  async getFollowers(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ follows: Follow[]; total: number; page: number; limit: number }> {
+    const { follows, total } = await this.followsRepository.findFollowers(userId, page, limit);
+
+    return { follows, total, page, limit };
   }
 
-  async getFollowing(userId: string, page = 1, limit = 20): Promise<{ follows: Follow[]; total: number }> {
-    return this.followsRepository.findFollowing(userId, page, limit);
+  async getFollowing(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ follows: Follow[]; total: number; page: number; limit: number }> {
+    const { follows, total } = await this.followsRepository.findFollowing(userId, page, limit);
+
+    return { follows, total, page, limit };
   }
 
-  async getStats(userId: string, currentUserId?: string): Promise<FollowStats> {
+  /**
+   * `currentUserId` is REQUIRED rather than optional.
+   *
+   * It was optional only so the `@Public()` route could omit it — and because `JwtAuthGuard` never ran
+   * on that route, it was in practice ALWAYS undefined, so `isFollowing` was permanently `false` for
+   * every caller. The route is now authenticated and passes `req.user.sub` directly, which makes the
+   * optional parameter a liability: it can only ever reintroduce the silent-false bug. `follows/:id/stats`
+   * is the only caller.
+   */
+  async getStats(userId: string, currentUserId: string): Promise<FollowStats> {
     const [followersCount, followingCount, isFollowing] = await Promise.all([
       this.followsRepository.countFollowers(userId),
       this.followsRepository.countFollowing(userId),
-      currentUserId ? this.followsRepository.isFollowing(currentUserId, userId) : Promise.resolve(false),
+      this.followsRepository.isFollowing(currentUserId, userId),
     ]);
 
     return {

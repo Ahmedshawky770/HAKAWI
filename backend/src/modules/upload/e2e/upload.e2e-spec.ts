@@ -42,42 +42,40 @@ describe('Upload E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .overrideProvider(UploadService).useValue({
-      generatePresignedUrl: (filename: string, _contentType: string, folder: string) => ({ 
-        url: `https://s3.amazonaws.com/bucket/${folder}/${filename}`, 
-        filename: `${folder}/${filename}` 
-      }),
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .overrideProvider(UploadService)
+      .useValue({
+        generatePresignedUrl: (filename: string, _contentType: string, folder: string) => ({
+          url: `https://s3.amazonaws.com/bucket/${folder}/${filename}`,
+          filename: `${folder}/${filename}`,
+        }),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
     httpServer = app.getHttpServer() as Server;
 
-    await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-upload@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Upload User',
-        username: 'e2eupload',
-      });
+    await request(httpServer).post('/auth/register').send({
+      email: 'e2e-upload@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Upload User',
+      username: 'e2eupload',
+    });
 
-    await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-upload@example.com',
-        password: 'SecurePass123!',
-      });
-
+    await request(httpServer).post('/auth/login').send({
+      email: 'e2e-upload@example.com',
+      password: 'SecurePass123!',
+    });
   });
 
   afterAll(async () => {

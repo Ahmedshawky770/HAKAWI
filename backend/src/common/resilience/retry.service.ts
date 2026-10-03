@@ -43,7 +43,11 @@ export class RetryService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async execute<T>(name: string, fn: () => Promise<T>, shouldRetry?: (error: unknown, attempt: number) => boolean): Promise<T> {
+  async execute<T>(
+    name: string,
+    fn: () => Promise<T>,
+    shouldRetry?: (error: unknown, attempt: number) => boolean,
+  ): Promise<T> {
     const config = this.getConfig(name);
     let lastError: unknown;
 
@@ -60,7 +64,10 @@ export class RetryService {
           break;
         }
         const delay = this.calculateDelay(attempt, config);
-        this.logger.warn(`Retry ${name} attempt ${attempt + 1}/${config.maxRetries} failed, retrying in ${delay}ms`, RetryService.name);
+        this.logger.warn(
+          `Retry ${name} attempt ${attempt + 1}/${config.maxRetries} failed, retrying in ${delay}ms`,
+          RetryService.name,
+        );
         await this.sleep(delay);
       }
     }
@@ -69,10 +76,15 @@ export class RetryService {
     throw lastError;
   }
 
-  async executeWithBackoff<T>(name: string, fn: () => Promise<T>, config?: Partial<RetryConfig>): Promise<T> {
+  async executeWithBackoff<T>(
+    name: string,
+    fn: () => Promise<T>,
+    config?: Partial<RetryConfig>,
+    shouldRetry?: (error: unknown, attempt: number) => boolean,
+  ): Promise<T> {
     if (config) {
       this.configs.set(name, { ...DEFAULT_RETRY_CONFIG, ...config });
     }
-    return this.execute(name, fn);
+    return this.execute(name, fn, shouldRetry);
   }
 }

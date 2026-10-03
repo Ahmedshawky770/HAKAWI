@@ -3,6 +3,7 @@ import { Controller, Get, Patch, Delete, Param, Query, UseGuards, Inject, Reques
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { NotificationsService } from '../notifications.service.ts';
 import { NotificationPreferencesDto } from '../dto/preferences.dto.ts';
+import { NotificationQueryDto } from '../dto/notifications.dto.ts';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -10,14 +11,17 @@ export class NotificationsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  async findAll(@Request() req: { user: { sub: string } }, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.notificationsService.findByUser(req.user.sub, Number(page) || 1, Number(limit) || 20);
+  async findAll(@Request() req: { user: { sub: string } }, @Query() query: NotificationQueryDto) {
+    return this.notificationsService.findByUser(req.user.sub, query.page ?? 1, query.limit ?? 20);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('unread')
-  async findUnread(@Request() req: { user: { sub: string } }) {
-    return this.notificationsService.findUnread(req.user.sub);
+  async findUnread(@Request() req: { user: { sub: string } }, @Query() query: NotificationQueryDto) {
+    // The route took no query parameters at all, and the query behind it had no `LIMIT` either, so a
+    // user with thousands of unread rows fetched every one on every poll. `NotificationQueryDto.limit`
+    // carries the same `@Max(100)` the list route uses; the default of 50 matches the service's.
+    return this.notificationsService.findUnread(req.user.sub, query.limit ?? 50);
   }
 
   @UseGuards(JwtAuthGuard)

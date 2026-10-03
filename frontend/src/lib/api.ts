@@ -1,41 +1,89 @@
+import { z } from "zod";
+
+import type { ReactionType, StoryMutationInput, StoryPatchInput } from "@hakawi/shared-types";
+
 import {
-  AuthTokens,
-  ApiError,
-  User,
-  Story,
-  Book,
-  Payment,
-  Rental,
-  Contest,
-  ContestEntry,
-  Notification,
-  Conversation,
-  Message,
-  Follow,
-  Reaction,
-  Comment,
-  ReactionType,
-  SearchResult,
-  UploadedFile,
-  ModerationItem,
-  LibraryItem,
-  LibraryResponse,
-  ReadingProgress,
-} from "@/types/api";
+  authResponseSchema,
+  bookResponseSchema,
+  booksListResponseSchema,
+  commentSchema,
+  commentsListResponseSchema,
+  contestSchema,
+  contestSubmissionSchema,
+  contestsListResponseSchema,
+  conversationsListResponseSchema,
+  countResultSchema,
+  emptyResponseSchema,
+  followersResponseSchema,
+  followingResponseSchema,
+  libraryItemSchema,
+  libraryListResponseSchema,
+  messageOnlySchema,
+  messageSchema,
+  messagesListResponseSchema,
+  notificationSchema,
+  notificationsListResponseSchema,
+  paymentSchema,
+  paymentsListResponseSchema,
+  publicUserProfileSchema,
+  purchaseResultSchema,
+  reactionSchema,
+  reactionCountsSchema,
+  reactionsListResponseSchema,
+  readingProgressListResponseSchema,
+  rentalSchema,
+  bookCheckoutSchema,
+  rentalQuoteSchema,
+  rentalsListResponseSchema,
+  reportSchema,
+  reportsListResponseSchema,
+  searchResponseSchema,
+  sessionResponseSchema,
+  storiesListResponseSchema,
+  storyRecordResponseSchema,
+  storyResponseSchema,
+  uploadTicketSchema,
+  userStatsSchema,
+} from "@/lib/schemas";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
 
-export function setStoredUser(user: { id: string; email: string; name: string; username?: string; accountType?: string }) {
+const storedUserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  username: z.string().optional(),
+  accountType: z.string().optional(),
+});
+
+export type StoredUser = {
+  id: string;
+  email: string;
+  name: string;
+  username?: string;
+  accountType?: string;
+};
+
+export function setStoredUser(user: StoredUser) {
   if (typeof window === "undefined") return;
   localStorage.setItem("hakawi_user", JSON.stringify(user));
 }
 
-export function getStoredUser(): { id: string; email: string; name: string; username?: string; accountType?: string } | null {
+function parseStoredUser(raw: string): StoredUser | null {
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const candidate = storedUserSchema.safeParse(parsed);
+  return candidate.success ? candidate.data : null;
+}
+
+export function getStoredUser(): StoredUser | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem("hakawi_user");
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as { id: string; email: string; name: string; username?: string; accountType?: string };
+    return parseStoredUser(raw);
   } catch {
     return null;
   }
@@ -47,23 +95,150 @@ export function clearStoredUser() {
   localStorage.removeItem("hakawi_tokens");
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (response.status === 401) {
-    clearStoredUser();
-    return Promise.reject(new Error("Unauthorized"));
+const storedTokensSchema = z.object({
+  refreshToken: z.string(),
+});
+
+export function getStoredRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("hakawi_tokens");
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const tokens = storedTokensSchema.safeParse(parsed);
+    return tokens.success ? tokens.data.refreshToken : null;
+  } catch {
+    return null;
   }
-  const data = await response.json();
-  if (!response.ok) {
-    const apiError = data as ApiError;
-    throw new Error(apiError.message || "An error occurred");
-  }
-  return data as T;
 }
 
-async function apiRequest<T>(
+const apiErrorMessageSchema = z.union([z.string(), z.array(z.string())]);
+
+const apiErrorSchema = z.object({
+  message: apiErrorMessageSchema.optional(),
+  error: apiErrorMessageSchema.optional(),
+  details: z
+    .array(
+      z.object({
+        field: z.string(),
+        message: apiErrorMessageSchema,
+      }),
+    )
+    .optional(),
+});
+
+function firstMessage(value: z.infer<typeof apiErrorMessageSchema> | null): string | null {
+  if (value === null) return null;
+  if (typeof value === "string") return value;
+  const [first] = value;
+  return first ?? null;
+}
+
+function readErrorMessage(payload: unknown): string {
+  const parsed = apiErrorSchema.safeParse(payload);
+  if (parsed.success) {
+    const [firstDetail] = parsed.data.details ?? [];
+    if (firstDetail) {
+      const detailMessage = firstMessage(firstDetail.message);
+      if (detailMessage) return detailMessage;
+    }
+    const message = firstMessage(parsed.data.message ?? null);
+    if (message) return message;
+    const error = firstMessage(parsed.data.error ?? null);
+    if (error) return error;
+  }
+  return "An error occurred";
+}
+
+function decodeBody(text: string): unknown {
+  if (text.length === 0) return undefined;
+  try {
+    const decoded: unknown = JSON.parse(text);
+    return decoded;
+  } catch {
+    return undefined;
+  }
+}
+
+const MAX_REPORTED_ISSUES = 3;
+const MAX_RECEIVED_LENGTH = 200;
+
+function truncate(value: string, limit = MAX_RECEIVED_LENGTH): string {
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
+}
+
+function describeValue(value: unknown): string {
+  if (value === undefined) return "undefined";
+  try {
+    return truncate(JSON.stringify(value) ?? String(value));
+  } catch {
+    return truncate(String(value));
+  }
+}
+
+function describeIssue(issue: z.ZodIssue, path: (string | number)[]): string {
+  const label = path.length > 0 ? path.join(".") : "(root)";
+  const received = "received" in issue ? issue.received : undefined;
+  return `${label}: ${issue.message} (received ${describeValue(received)})`;
+}
+
+function collectIssues(error: z.ZodError, prefix: (string | number)[] = []): string[] {
+  return error.issues.flatMap((issue) => {
+    const path = [...prefix, ...issue.path];
+    if (issue.code === "invalid_union") {
+      return issue.unionErrors.flatMap((nested) => collectIssues(nested, path));
+    }
+    return [describeIssue(issue, path)];
+  });
+}
+
+function describeInvalidPayload(error: z.ZodError, endpoint: string, payload: unknown): string {
+  const issues = collectIssues(error);
+  const shown = issues.slice(0, MAX_REPORTED_ISSUES);
+  const remaining = issues.length - shown.length;
+  const detail = shown.length > 0 ? shown.join("; ") : "the payload matched no branch of the schema";
+  const overflow = remaining > 0 ? ` (+${remaining} more issue${remaining === 1 ? "" : "s"})` : "";
+  return `Invalid server response: ${detail}${overflow} (endpoint ${endpoint}, received ${describeValue(payload)})`;
+}
+
+async function handleResponse<S extends z.ZodTypeAny>(
+  response: Response,
+  schema: S,
   endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
+): Promise<z.infer<S>> {
+  if (response.status === 401) {
+    clearStoredUser();
+    throw new Error("Unauthorized");
+  }
+
+  const payload: unknown = decodeBody(await response.text());
+
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(describeInvalidPayload(parsed.error, endpoint, payload));
+  }
+  return parsed.data;
+}
+
+function withQuery(endpoint: string, params: Record<string, string | number | undefined>): string {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return query.length > 0 ? `${endpoint}?${query}` : endpoint;
+}
+
+async function apiRequest<S extends z.ZodTypeAny>(
+  schema: S,
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<z.infer<S>> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...options.headers,
@@ -75,348 +250,303 @@ async function apiRequest<T>(
     credentials: "include",
   });
 
-  return handleResponse<T>(response);
+  return handleResponse(response, schema, endpoint);
+}
+
+async function apiUpload<S extends z.ZodTypeAny>(schema: S, endpoint: string, body: FormData): Promise<z.infer<S>> {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: "POST",
+    body,
+    credentials: "include",
+  });
+
+  return handleResponse(response, schema, endpoint);
 }
 
 export const api = {
-  request: <T,>(endpoint: string, options: RequestInit = {}): Promise<T> =>
-    apiRequest<T>(endpoint, options),
+  request: <S extends z.ZodTypeAny>(schema: S, endpoint: string, options: RequestInit = {}): Promise<z.infer<S>> =>
+    apiRequest(schema, endpoint, options),
 
-  register: (data: {
-    email: string;
-    password: string;
-    name: string;
-    username: string;
-  }) =>
-    apiRequest<{ user: { id: string; email: string; name: string }; tokens: AuthTokens }>(
-      "/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
+  register: (data: { email: string; password: string; name: string; username: string }) =>
+    apiRequest(authResponseSchema, "/auth/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   login: (data: { email: string; password: string }) =>
-    apiRequest<{ user: { id: string; email: string }; tokens: AuthTokens }>("/auth/login", {
+    apiRequest(authResponseSchema, "/auth/login", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   refreshToken: (refreshToken: string) =>
-    apiRequest<{ accessToken: string; refreshToken: string }>("/auth/refresh", {
+    apiRequest(authResponseSchema, "/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken }),
     }),
 
-  getSession: () =>
-    apiRequest<{ id: string; email: string; name: string; username: string; accountType: string }>("/auth/session"),
+  getSession: () => apiRequest(sessionResponseSchema, "/auth/session"),
 
-  // Users
-  getUser: (id: string) =>
-    apiRequest<User>(`/users/${id}`),
+  logout: (refreshToken?: string) =>
+    apiRequest(messageOnlySchema, "/auth/logout", {
+      method: "POST",
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+    }),
+
+  getUser: (id: string) => apiRequest(publicUserProfileSchema, `/users/${id}`),
+
+  getUserStats: (id: string) => apiRequest(userStatsSchema, `/users/${id}/stats`),
 
   updateUser: (id: string, data: { name?: string; bio?: string }) =>
-    apiRequest<{ id: string; name: string; bio?: string }>(`/users/${id}`, {
+    apiRequest(publicUserProfileSchema, `/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Stories
-  listStories: (params?: { page?: number; limit?: number; category?: string }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    if (params?.category) searchParams.set("category", params.category);
-    const qs = searchParams.toString();
-    return apiRequest<{ stories: Story[]; total: number; page: number; limit: number }>(
-      `/stories${qs ? `?${qs}` : ""}`
-    );
-  },
+  listStories: (params?: { page?: number; limit?: number; category?: string }) =>
+    apiRequest(
+      storiesListResponseSchema,
+      withQuery("/stories", {
+        page: params?.page,
+        limit: params?.limit,
+        category: params?.category,
+      }),
+    ),
 
-  getStory: (id: string) =>
-    apiRequest<Story>(`/stories/${id}`),
+  getStory: (id: string) => apiRequest(storyResponseSchema, `/stories/${id}`),
 
-  createStory: (data: {
-    title: string;
-    content: string;
-    category: string;
-    tags?: string[];
-  }) =>
-    apiRequest<{ id: string; title: string; status: string; createdAt: string }>("/stories", {
+  createStory: (data: StoryMutationInput) =>
+    apiRequest(storyRecordResponseSchema, "/stories", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  updateStory: (id: string, data: { title?: string; content?: string; category?: string; tags?: string[] }) =>
-    apiRequest<{ id: string; title: string; status: string; createdAt: string }>(`/stories/${id}`, {
+  updateStory: (id: string, data: StoryPatchInput) =>
+    apiRequest(storyRecordResponseSchema, `/stories/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
   deleteStory: (id: string) =>
-    apiRequest<void>(`/stories/${id}`, {
+    apiRequest(emptyResponseSchema, `/stories/${id}`, {
       method: "DELETE",
     }),
 
-  // Books
-  listBooks: () =>
-    apiRequest<Book[]>("/books"),
+  listBooks: (params?: { page?: number; limit?: number; categoryId?: string }) =>
+    apiRequest(
+      booksListResponseSchema,
+      withQuery("/books", {
+        page: params?.page,
+        limit: params?.limit,
+        categoryId: params?.categoryId,
+      }),
+    ),
 
-  getBook: (id: string) =>
-    apiRequest<Book>(`/books/${id}`),
+  getBook: (id: string) => apiRequest(bookResponseSchema, `/books/${id}`),
 
   purchaseBook: (id: string, paymentMethodId?: string) =>
-    apiRequest<Payment>(`/books/${id}/purchase`, {
+    apiRequest(purchaseResultSchema, `/books/${id}/purchase`, {
       method: "POST",
       body: JSON.stringify({ paymentMethodId }),
     }),
 
+  /**
+   * Starts a rental by CHARGING for it.
+   *
+   * This used to validate the response against `rentalSchema` and so expected an `Rental` — an
+   * ACTIVE rental, granted with no payment. The API now returns the same checkout contract as
+   * `purchaseBook`, and `RentalsEventHandler` creates the rental when `payment.completed` arrives, so
+   * the customer is sent to Paymob rather than handed access.
+   */
   rentBook: (id: string, data: { durationDays: number }) =>
-    apiRequest<Rental>(`/books/${id}/rent`, {
+    apiRequest(bookCheckoutSchema, `/books/${id}/rent`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  // Reading Progress
+  /** Price of an extension before any money moves; `POST /rentals/:id/extend` takes the payment. */
+  quoteRentalExtension: (id: string, days: number) =>
+    apiRequest(rentalQuoteSchema, withQuery(`/rentals/${id}/extend/quote`, { days })),
+
   getReadingProgress: (bookId: string) =>
-    apiRequest<ReadingProgress>(`/reading-progress?bookId=${bookId}`),
+    apiRequest(readingProgressListResponseSchema, withQuery("/reading-progress", { bookId })),
 
-  // Library
-  listLibrary: (params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<LibraryResponse>(`/library${qs ? `?${qs}` : ""}`);
-  },
+  listLibrary: (params?: { page?: number; limit?: number }) =>
+    apiRequest(libraryListResponseSchema, withQuery("/library", { page: params?.page, limit: params?.limit })),
 
-  getLibraryCount: () =>
-    apiRequest<{ count: number }>("/library/count"),
+  getLibraryCount: () => apiRequest(countResultSchema, "/library/count"),
 
   addToLibrary: (data: { bookId: string }) =>
-    apiRequest<LibraryItem>("/library", {
+    apiRequest(libraryItemSchema, "/library", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  removeFromLibrary: (id: string) =>
-    apiRequest<void>(`/library/${id}`, { method: "DELETE" }),
+  removeFromLibrary: (id: string) => apiRequest(emptyResponseSchema, `/library/${id}`, { method: "DELETE" }),
 
   accessLibraryItem: (id: string) =>
-    apiRequest<LibraryItem>(`/library/${id}/access`, {
+    apiRequest(libraryItemSchema, `/library/${id}/access`, {
       method: "POST",
     }),
 
-  // Contests
-  listContests: () =>
-    apiRequest<Contest[]>("/contests"),
+  listContests: (params?: { page?: number; limit?: number }) =>
+    apiRequest(contestsListResponseSchema, withQuery("/contests", { page: params?.page, limit: params?.limit })),
 
-  getContest: (id: string) =>
-    apiRequest<Contest>(`/contests/${id}`),
+  getContest: (id: string) => apiRequest(contestSchema, `/contests/${id}`),
 
   createContest: (data: {
     title: string;
     description: string;
-    category: string;
+    categoryId: string;
     startDate: string;
     endDate: string;
     submissionDeadline: string;
-    prizeType: string;
-    prizeValue: string;
-    rules: string;
   }) =>
-    apiRequest<{ id: string; title: string; status: string; createdAt: string }>("/contests", {
+    apiRequest(contestSchema, "/contests", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   submitEntry: (contestId: string, storyId: string) =>
-    apiRequest<ContestEntry>(`/contests/${contestId}/submit`, {
+    apiRequest(contestSubmissionSchema, `/contests/${contestId}/submissions`, {
       method: "POST",
       body: JSON.stringify({ storyId }),
     }),
 
-  // Notifications
-  getNotifications: (params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<{ notifications: Notification[]; unreadCount: number }>(
-      `/notifications${qs ? `?${qs}` : ""}`
-    );
-  },
+  getNotifications: (params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      notificationsListResponseSchema,
+      withQuery("/notifications", { page: params?.page, limit: params?.limit }),
+    ),
+
+  getUnreadNotificationCount: () => apiRequest(countResultSchema, "/notifications/unread-count"),
 
   markNotificationAsRead: (id: string) =>
-    apiRequest<{ id: string; isRead: boolean; readAt: string }>(`/notifications/${id}/read`, {
+    apiRequest(notificationSchema, `/notifications/${id}/read`, {
       method: "PATCH",
     }),
 
-  // Messages
-  getConversations: () =>
-    apiRequest<{ conversations: Conversation[] }>("/messages/conversations"),
+  getConversations: () => apiRequest(conversationsListResponseSchema, "/messages/conversations"),
 
   getMessages: (conversationId: string) =>
-    apiRequest<{ messages: Message[] }>(`/messages/conversations/${conversationId}/messages`),
+    apiRequest(messagesListResponseSchema, `/messages/conversations/${conversationId}/messages`),
 
   sendMessage: (conversationId: string, content: string) =>
-    apiRequest<Message>(`/messages/conversations/${conversationId}/messages`, {
+    apiRequest(messageSchema, `/messages/conversations/${conversationId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
 
-  // Payments
-  getPaymentHistory: () =>
-    apiRequest<Payment[]>("/payments"),
+  getPaymentHistory: (params?: { page?: number; limit?: number }) =>
+    apiRequest(paymentsListResponseSchema, withQuery("/payments", { page: params?.page, limit: params?.limit })),
 
-  getPayment: (id: string) =>
-    apiRequest<Payment>(`/payments/${id}`),
+  getPayment: (id: string) => apiRequest(paymentSchema, `/payments/${id}`),
 
-  // Follow
-  followUser: (userId: string) =>
-    apiRequest<Follow>(`/users/${userId}/follow`, { method: "POST" }),
+  followUser: (userId: string) => apiRequest(z.unknown(), `/users/${userId}/follow`, { method: "POST" }),
 
-  unfollowUser: (userId: string) =>
-    apiRequest<void>(`/users/${userId}/follow`, { method: "DELETE" }),
+  unfollowUser: (userId: string) => apiRequest(z.unknown(), `/users/${userId}/follow`, { method: "DELETE" }),
 
-  getFollowers: (userId: string, params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<{ follows: Follow[]; total: number; page: number; limit: number }>(
-      `/users/${userId}/followers${qs ? `?${qs}` : ""}`
-    );
-  },
+  getFollowers: (userId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      followersResponseSchema,
+      withQuery(`/users/${userId}/followers`, { page: params?.page, limit: params?.limit }),
+    ),
 
-  getFollowing: (userId: string, params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<{ follows: Follow[]; total: number; page: number; limit: number }>(
-      `/users/${userId}/following${qs ? `?${qs}` : ""}`
-    );
-  },
+  getFollowing: (userId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      followingResponseSchema,
+      withQuery(`/users/${userId}/following`, { page: params?.page, limit: params?.limit }),
+    ),
 
-  // Reactions
-  getReactions: (storyId: string, params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<{ reactions: Reaction[]; total: number; page: number; limit: number }>(
-      `/stories/${storyId}/reactions${qs ? `?${qs}` : ""}`
-    );
-  },
+  getReactions: (storyId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      reactionsListResponseSchema,
+      withQuery(`/stories/${storyId}/reactions`, { page: params?.page, limit: params?.limit }),
+    ),
+
+  getReactionCounts: (storyId: string) => apiRequest(reactionCountsSchema, `/stories/${storyId}/reactions/counts`),
 
   addReaction: (storyId: string, type: ReactionType) =>
-    apiRequest<Reaction>(`/stories/${storyId}/reactions`, {
+    apiRequest(reactionSchema, `/stories/${storyId}/reactions`, {
       method: "POST",
       body: JSON.stringify({ type }),
     }),
 
   removeReaction: (storyId: string) =>
-    apiRequest<void>(`/stories/${storyId}/reactions`, { method: "DELETE" }),
+    apiRequest(messageOnlySchema, `/stories/${storyId}/reactions`, { method: "DELETE" }),
 
-  // Comments
-  getComments: (storyId: string, params?: { page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    const qs = searchParams.toString();
-    return apiRequest<{ comments: Comment[]; total: number; page: number; limit: number }>(
-      `/stories/${storyId}/comments${qs ? `?${qs}` : ""}`
-    );
-  },
+  getComments: (storyId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      commentsListResponseSchema,
+      withQuery(`/stories/${storyId}/comments`, { page: params?.page, limit: params?.limit }),
+    ),
 
   createComment: (storyId: string, data: { content: string; parentId?: string }) =>
-    apiRequest<Comment>(`/stories/${storyId}/comments`, {
+    apiRequest(commentSchema, `/stories/${storyId}/comments`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   updateComment: (storyId: string, commentId: string, data: { content: string }) =>
-    apiRequest<Comment>(`/stories/${storyId}/comments/${commentId}`, {
+    apiRequest(commentSchema, `/stories/${storyId}/comments/${commentId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
   deleteComment: (storyId: string, commentId: string) =>
-    apiRequest<void>(`/stories/${storyId}/comments/${commentId}`, { method: "DELETE" }),
+    apiRequest(messageOnlySchema, `/stories/${storyId}/comments/${commentId}`, { method: "DELETE" }),
 
-  // Search
-  search: (params: { query: string; type?: string; page?: number; limit?: number }) => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("q", params.query);
-    if (params.type) searchParams.set("type", params.type);
-    if (params.page) searchParams.set("page", String(params.page));
-    if (params.limit) searchParams.set("limit", String(params.limit));
-    return apiRequest<{ results: SearchResult[]; total: number; page: number; limit: number }>(
-      `/search?${searchParams.toString()}`
-    );
-  },
+  search: (params: { query: string; category?: string; tag?: string; page?: number; limit?: number }) =>
+    apiRequest(
+      searchResponseSchema,
+      withQuery("/search", {
+        q: params.query,
+        category: params.category,
+        tag: params.tag,
+        page: params.page,
+        limit: params.limit,
+      }),
+    ),
 
-  // Upload
-  uploadFile: async (file: File): Promise<UploadedFile> => {
+  uploadFile: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-
-    const response = await fetch(`${API_URL}/upload`, {
-      method: "POST",
-      body: formData,
-      credentials: "include",
-    });
-
-    return handleResponse<UploadedFile>(response);
+    return apiUpload(uploadTicketSchema, "/upload", formData);
   },
 
-  // Rentals
   createRental: (bookId: string, durationDays?: number) =>
-    apiRequest<Rental>("/rentals", {
+    apiRequest(rentalSchema, "/rentals", {
       method: "POST",
       body: JSON.stringify({ bookId, durationDays }),
     }),
 
-  getMyRentals: (params?: { page?: number; limit?: number; status?: string }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    if (params?.status) searchParams.set("status", params.status);
-    const qs = searchParams.toString();
-    return apiRequest<{ rentals: Rental[]; total: number; page: number; limit: number }>(
-      `/rentals/my${qs ? `?${qs}` : ""}`
-    );
-  },
+  getMyRentals: (params?: { page?: number; limit?: number; status?: string }) =>
+    apiRequest(
+      rentalsListResponseSchema,
+      withQuery("/rentals/my", { page: params?.page, limit: params?.limit, status: params?.status }),
+    ),
 
-  getRental: (id: string) =>
-    apiRequest<Rental>(`/rentals/${id}`),
+  getRental: (id: string) => apiRequest(rentalSchema, `/rentals/${id}`),
 
   extendRental: (id: string, extensionDays: number) =>
-    apiRequest<Rental>(`/rentals/${id}/extend`, {
+    apiRequest(rentalSchema, `/rentals/${id}/extend`, {
       method: "POST",
       body: JSON.stringify({ extensionDays }),
     }),
 
   returnRental: (id: string) =>
-    apiRequest<Rental>(`/rentals/${id}/return`, {
+    apiRequest(rentalSchema, `/rentals/${id}/return`, {
       method: "POST",
     }),
 
-  // Moderation
-  getModerationQueue: (params?: { page?: number; limit?: number; status?: string }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", String(params.page));
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    if (params?.status) searchParams.set("status", params.status);
-    const qs = searchParams.toString();
-    return apiRequest<{ items: ModerationItem[]; total: number; page: number; limit: number }>(
-      `/moderation${qs ? `?${qs}` : ""}`
-    );
-  },
+  getModerationQueue: (params?: { page?: number; limit?: number; status?: string }) =>
+    apiRequest(
+      reportsListResponseSchema,
+      withQuery("/moderation", { page: params?.page, limit: params?.limit, status: params?.status }),
+    ),
 
-  moderateItem: (itemId: string, data: { status: "approved" | "rejected"; reason?: string }) =>
-    apiRequest<ModerationItem>(`/moderation/${itemId}`, {
+  moderateItem: (itemId: string, data: { status: "open" | "in_review" | "resolved" | "dismissed" }) =>
+    apiRequest(reportSchema, `/moderation/${itemId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),

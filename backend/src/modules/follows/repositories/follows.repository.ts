@@ -40,8 +40,17 @@ export class FollowsRepository implements IFollowsRepository {
     const offset = (page - 1) * limit;
 
     const [followsList, [{ total }]] = await Promise.all([
-      db.select().from(follows).where(eq(follows.followingId, userId)).orderBy(desc(follows.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followingId, userId)),
+      db
+        .select()
+        .from(follows)
+        .where(eq(follows.followingId, userId))
+        .orderBy(desc(follows.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(follows)
+        .where(eq(follows.followingId, userId)),
     ]);
 
     return { follows: followsList, total: Number(total) };
@@ -52,8 +61,17 @@ export class FollowsRepository implements IFollowsRepository {
     const offset = (page - 1) * limit;
 
     const [followsList, [{ total }]] = await Promise.all([
-      db.select().from(follows).where(eq(follows.followerId, userId)).orderBy(desc(follows.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followerId, userId)),
+      db
+        .select()
+        .from(follows)
+        .where(eq(follows.followerId, userId))
+        .orderBy(desc(follows.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(follows)
+        .where(eq(follows.followerId, userId)),
     ]);
 
     return { follows: followsList, total: Number(total) };
@@ -71,12 +89,18 @@ export class FollowsRepository implements IFollowsRepository {
   }
 
   async countFollowers(userId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followingId, userId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followingId, userId));
     return Number(total);
   }
 
   async countFollowing(userId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followerId, userId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followerId, userId));
     return Number(total);
   }
 

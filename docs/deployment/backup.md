@@ -78,20 +78,47 @@ aws s3 cp media_backup_$(date +%Y%m%d).tar.gz s3://hakawi-backups/media/
 ### What to Backup
 
 ```
-├── docker compose.yml
-├── nginx.conf
-├── .env.production (encrypted)
-├── SSL certificates
-└── Deployment scripts
+├── docker-compose.yml          # ✅ exists at the repo root
+├── backend/.env.production     # encrypted
+├── frontend/.env.production    # encrypted
+├── migrations/                 # ✅ exists — 18 .sql files + down/ sidecars
+├── .github/workflows/ci.yml    # ✅ exists
+└── (no Dockerfile — none exists in this repository)
 ```
+
+### Corrections to the previous version
+
+The previous list contained two paths that **do not exist in this repository**:
+
+| Path | Reality |
+|---|---|
+| `nginx.conf` | ⛔ Does not exist. `find . -name nginx.conf` returns nothing — there is no reverse proxy in the repo |
+| `scripts/` | ⛔ Does not exist at the repo root. `backend/scripts/` exists and holds `generate-migration.ts`, `check-migrations.ts`, and `print-coverage-summary.mjs` |
+
+A tar of `docker compose.yml nginx.conf scripts/` **fails**. The command below is the working
+version.
 
 ### How to Backup
 
 ```bash
-# Encrypt and backup configuration
-tar -czf config_backup.tar.gz docker compose.yml nginx.conf scripts/
+# Encrypt and back up the configuration that actually exists
+tar -czf config_backup.tar.gz \
+  docker-compose.yml \
+  migrations/ \
+  .github/workflows/ci.yml \
+  backend/.env.production \
+  frontend/.env.production
 gpg --encrypt --recipient admin@hakawi.com config_backup.tar.gz
 ```
+
+> **Note the filename:** the file is `docker-compose.yml` with a hyphen, not `docker compose.yml`.
+> The old command had a space in the filename, which `tar` would have read as two arguments.
+
+### ⛔ No automated configuration backup
+
+There is no scheduled job, no cron entry, and no CI step that produces a configuration backup. The
+`pg_dump` commands in the Database Backup section above are **manual procedures**, not automation.
+Nothing in this repository runs them on a schedule.
 
 ---
 
@@ -210,13 +237,17 @@ createdb hakawi_test
 # 2. Restore backup
 psql -h localhost -U postgres hakawi_test < backup_latest.sql
 
-# 3. Run tests
-npm run test:db
+# 3. Apply migrations, so the restored dump is known to be at the current schema
+npm run migration:run
 
-# 4. Verify data
-npm run db:verify
+# 4. Verify the migration ledger against the restored database
+npm run migration:verify
+npm run migration:status
 
-# 5. Clean up
+# 5. Run the integration suite against it
+npm run test:e2e --workspace=backend
+
+# 6. Clean up
 dropdb hakawi_test
 ```
 
@@ -320,8 +351,8 @@ tar -xzf latest.tar.gz -C /app/media
 # 4. Start application
 docker compose up -d
 
-# 5. Verify
-curl https://api.hakawi.com/health
+# 5. Verify — the health path includes the global api/v1 prefix
+curl https://api.hakawi.com/api/v1/health
 ```
 
 ---

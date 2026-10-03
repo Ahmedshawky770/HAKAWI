@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import { ModerationActionTakenEvent, ModerationReportEscalatedEvent, UserRestrictedEvent } from '../../../common/events/moderation.events.ts';
+import {
+  ModerationActionTakenEvent,
+  ModerationReportEscalatedEvent,
+} from '../../../common/events/moderation.events.ts';
 
 import { ModerationEventHandler } from './moderation.event-handler.ts';
 
@@ -35,7 +38,19 @@ vi.mock('../../../db/index.ts', () => {
 
   return {
     db: {
-      insert: vi.fn(() => makeChain([{ id: 'restriction-1', userId: 'user-1', type: 'mute', reason: 'Test', expiresAt: null, createdBy: 'admin-1', createdAt: new Date() }])),
+      insert: vi.fn(() =>
+        makeChain([
+          {
+            id: 'restriction-1',
+            userId: 'user-1',
+            type: 'mute',
+            reason: 'Test',
+            expiresAt: null,
+            createdBy: 'admin-1',
+            createdAt: new Date(),
+          },
+        ]),
+      ),
       select: vi.fn(() => makeChain([{ count: '0' }])),
       update: vi.fn(() => makeChain([{ id: 'report-1', status: 'escalated' }])),
       eq: dbEq,
@@ -107,7 +122,10 @@ describe('ModerationEventHandler', () => {
 
       await moderationEventHandler.handleModerationActionTaken(event);
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Handling moderation action taken: mute on user user-1', 'ModerationEventHandler');
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Handling moderation action taken: mute on user user-1',
+        'ModerationEventHandler',
+      );
     });
   });
 
@@ -125,36 +143,10 @@ describe('ModerationEventHandler', () => {
 
       await moderationEventHandler.handleModerationReportEscalated(event);
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Handling moderation report escalated: report report-1', 'ModerationEventHandler');
-    });
-  });
-
-  describe('handleUserRestricted', () => {
-    it('should set restriction in Valkey', async () => {
-      const event = new UserRestrictedEvent('user-1', 'ban', 'Severe violation', 'admin-1', new Date());
-
-      await moderationEventHandler.handleUserRestricted(event);
-
-      expect(mockValkeyService.set).toHaveBeenCalledWith('restriction:user-1', 'ban', expect.any(Number));
-    });
-
-    it('should log user restricted', async () => {
-      const event = new UserRestrictedEvent('user-1', 'ban', 'Severe violation', 'admin-1', new Date());
-
-      await moderationEventHandler.handleUserRestricted(event);
-
-      expect(mockLogger.info).toHaveBeenCalledWith('Handling user restricted: user user-1 restricted by admin-1', 'ModerationEventHandler');
-    });
-
-    it('should insert restriction in Valkey details hash', async () => {
-      const event = new UserRestrictedEvent('user-1', 'mute', 'Harassment', 'admin-1', new Date());
-
-      await moderationEventHandler.handleUserRestricted(event);
-
-      expect(mockValkeyService.hSetMultiple).toHaveBeenCalledWith('restriction:user-1:details', expect.objectContaining({
-        type: 'mute',
-        reason: 'Harassment',
-      }));
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Handling moderation report escalated: report report-1',
+        'ModerationEventHandler',
+      );
     });
   });
 });

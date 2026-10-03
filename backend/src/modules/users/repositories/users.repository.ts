@@ -78,9 +78,29 @@ export class UsersRepository implements IUsersRepository {
     return user;
   }
 
+  /**
+   * Writes the patch and returns the stored row.
+   *
+   * NOTE ON THE MISSING COLUMN PROJECTION: a narrower `.returning({...})` would be the tighter fix,
+   * but `IUsersRepository.update` is declared as `Promise<User>` in
+   * `common/users/users-repository.interface.ts`, which is a shared contract this module does not
+   * own — a projection here would not type-check against it, and the interface's `User` type
+   * (deliberately) includes `passwordHash`. Every caller outside this module ignores the return
+   * value, so the right fix is to narrow the interface to a credential-free profile row and add a
+   * dedicated `updateProfile` for the two flows that need credentials; that is a change to the
+   * shared interface and is reported rather than smuggled in here.
+   *
+   * Until then the boundary holds the line: `UsersService` maps every value returned here through
+   * `toClientUser` (an allow-list, `users/types.ts`), so no route that reaches this repository can
+   * serialize `passwordHash` or `emailVerificationToken` to a client.
+   */
   async update(id: string, data: Partial<UpdateUserInput>): Promise<User> {
     this.logger.debug(`Updating user: ${id}`);
-    const [user] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+    const [user] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
     return user;
   }
 

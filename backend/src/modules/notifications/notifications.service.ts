@@ -6,9 +6,36 @@ import type { NotificationCreatedEvent } from '../../common/events/social.events
 
 import type { INotificationsRepository } from './interfaces/notifications-repository.interface.ts';
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
+import type { NotificationPreferencesResponseDto } from './interfaces/notifications-repository.interface.ts';
 import type { Notification, CreateNotificationInput, NotificationResponse } from './types.ts';
-import type { NotificationPreferencesResponseDto, NotificationPreferencesDto } from './dto/preferences.dto.ts';
+import type { NotificationPreferencesDto } from './dto/preferences.dto.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
+
+/**
+ * WHICH PREFERENCE GOVERNS WHICH NOTIFICATION TYPE.
+ *
+ * `notifications_preferences` stores one boolean per family, and the family a notification belongs
+ * to is a property of its type, not of whoever happened to raise it: a follow, a reaction on a
+ * comment and a reaction on a story are raised by three different modules and all arrive here.
+ * Resolving the family at this one write path is the only place the mapping can be enforced for
+ * all of them — checking it in each handler would put the same five-line policy in five files.
+ *
+ * WHY A TYPE WITH NO ENTRY IS STILL DELIVERED. `contest.created`, `winner.selected`,
+ * `prize.distributed` and `badge.awarded` are not in `NOTIFICATION_TYPES` and have no column behind
+ * them. Dropping them would make badge awards and contest announcements structurally invisible,
+ * which is the defect `BadgesService.announceAward` exists to fix. No entry therefore means "no
+ * preference governs this", not "suppress".
+ */
+const PREFERENCE_FOR_TYPE: Readonly<Record<string, keyof NotificationPreferencesResponseDto>> = {
+  follow: 'follows',
+  story_reaction: 'storyReactions',
+  comment: 'comments',
+  comment_reply: 'comments',
+  mention: 'mentions',
+  contest: 'system',
+  payment: 'system',
+  system: 'system',
+};
 
 @Injectable()
 export class NotificationsService {
@@ -19,24 +46,66 @@ export class NotificationsService {
     @Optional() @Inject(NotificationsEmailService) private readonly emailService?: NotificationsEmailService,
   ) {}
 
-  async findByUser(userId: string, page = 1, limit = 20): Promise<{ notifications: NotificationResponse[]; total: number }> {
+  async findByUser(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ notifications: NotificationResponse[]; total: number; page: number; limit: number }> {
     const result = await this.notificationsRepository.findByUser(userId, page, limit);
     return {
-      notifications: result.notifications.map((notification: Notification) => this.toNotificationResponse(notification)),
+      notifications: result.notifications.map((notification: Notification) =>
+        this.toNotificationResponse(notification),
+      ),
       total: result.total,
+      page,
+      limit,
     };
   }
 
-  async findUnread(userId: string): Promise<NotificationResponse[]> {
-    const notifications = await this.notificationsRepository.findUnread(userId);
+  /**
+   * Capped, and the cap is the contract: the query had no `LIMIT` at all, so a user with
+   * thousands of unread rows downloaded every one of them on every poll. The badge count comes
+   * from `countUnread` and is unaffected — the two numbers are different things.
+   */
+  async findUnread(userId: string, limit = 50): Promise<NotificationResponse[]> {
+    const notifications = await this.notificationsRepository.findUnread(userId, limit);
     return notifications.map((notification: Notification) => this.toNotificationResponse(notification));
   }
 
-  async create(input: CreateNotificationInput): Promise<Notification> {
+  /**
+   * Writes a notification, unless the recipient has turned this family off.
+   *
+   * Returns `null` when the notification was suppressed. That is the honest return for "nothing was
+   * written" — fabricating a `Notification` would claim a row exists when it does not, and the
+   * callers that would be tempted to trust such a value are exactly the ones that then build a
+   * response from it.
+   */
+  async create(input: CreateNotificationInput): Promise<Notification | null> {
+    const preference = PREFERENCE_FOR_TYPE[input.type];
+    if (preference !== undefined) {
+      const preferences = await this.notificationsRepository.findPreferences(input.userId);
+      if (preferences !== undefined && preferences !== null && preferences[preference] === false) {
+        this.logger.debug(
+          `Suppressed ${input.type} notification for user ${input.userId}: ${preference} is off`,
+          'NotificationsService',
+        );
+        return null;
+      }
+    }
+
     const notification = await this.notificationsRepository.create(input);
-    await this.eventBus.emit('notification.created', { notificationId: notification.id, userId: notification.userId, type: notification.type } as NotificationCreatedEvent);
+    await this.eventBus.emit('notification.created', {
+      notificationId: notification.id,
+      userId: notification.userId,
+      type: notification.type,
+    } as NotificationCreatedEvent);
     if (this.emailService) {
-      void this.emailService.sendNotificationEmail(notification.userId, notification.type, notification.title, notification.message);
+      void this.emailService.sendNotificationEmail(
+        notification.userId,
+        notification.type,
+        notification.title,
+        notification.message,
+      );
     }
     return notification;
   }
@@ -75,7 +144,10 @@ export class NotificationsService {
     return this.notificationsRepository.findPreferences(userId);
   }
 
-  async updatePreferences(userId: string, dto: NotificationPreferencesDto): Promise<NotificationPreferencesResponseDto> {
+  async updatePreferences(
+    userId: string,
+    dto: NotificationPreferencesDto,
+  ): Promise<NotificationPreferencesResponseDto> {
     const existing = await this.notificationsRepository.findPreferences(userId);
     const updated = await this.notificationsRepository.upsertPreferences(userId, {
       emailEnabled: dto.emailEnabled ?? existing.emailEnabled,
@@ -96,7 +168,7 @@ export class NotificationsService {
       type: notification.type,
       title: notification.title,
       message: notification.message,
-      data: notification.data ? JSON.parse(notification.data) as Record<string, unknown> : null,
+      data: notification.data ? (JSON.parse(notification.data) as Record<string, unknown>) : null,
       isRead: notification.isRead,
       readAt: notification.readAt?.toISOString() || null,
       createdAt: notification.createdAt.toISOString(),

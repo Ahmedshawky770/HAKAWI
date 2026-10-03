@@ -3,6 +3,11 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import {
+  DEFAULT_RENTAL_DURATION_DAYS,
+  RENTAL_DURATION_DAYS,
+  RENTAL_PRICE_PER_DAY_PIASTERS,
+} from "@hakawi/shared-types";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,6 +15,29 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Book } from "@/types/api";
+
+/** Arabic labels for the offered rental lengths. Presentation only — never the source of truth. */
+const RENTAL_DURATION_LABELS_AR: Record<number, string> = {
+  1: "يوم واحد",
+  3: "3 أيام",
+  7: "أسبوع",
+  14: "أسبوعين",
+  30: "شهر",
+  90: "3 أشهر",
+};
+
+/**
+ * What an extension of this length costs, from the same rate the backend charges.
+ *
+ * `RENTAL_PRICE_PER_DAY_PIASTERS` is piastres (1 EGP = 100). Showing the price from the shared
+ * constant means the figure on screen and the figure in the payment cannot disagree — and the amount
+ * is still re-derived server-side when the payment is created, so this is a quote for the reader, not
+ * the authority. The checkout is where the money is decided.
+ */
+function formatRentPrice(days: number): string {
+  const piastres = RENTAL_PRICE_PER_DAY_PIASTERS * days;
+  return `${(piastres / 100).toLocaleString("ar-EG")} ج.م / ${days} يوم`;
+}
 
 export default function BookDetailPage() {
   const params = useParams();
@@ -19,7 +47,14 @@ export default function BookDetailPage() {
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [rentalDuration, setRentalDuration] = useState(7);
+  /**
+   * The rental length offered on this page.
+   *
+   * `RENTAL_DURATION_DAYS` comes from `@hakawi/shared-types`, which is also what the backend validates
+   * against — so the list a reader can pick from and the list the API accepts cannot drift, which is
+   * what a locally-duplicated array would guarantee eventually.
+   */
+  const [rentalDays, setRentalDays] = useState<number>(DEFAULT_RENTAL_DURATION_DAYS);
 
   useEffect(() => {
     async function load() {
@@ -42,11 +77,13 @@ export default function BookDetailPage() {
     }
     setActionLoading(true);
     try {
-      await api.purchaseBook(id, paymentMethodId);
-      alert("تم الشراء بنجاح!");
+      // The response is a CHECKOUT, not a receipt. This used to ignore it and report success, so the
+      // customer was told they had bought the book while never being sent to Paymob — and the
+      // entitlement, which arrives on `payment.completed`, never happened either.
+      const checkout = await api.purchaseBook(id, paymentMethodId);
+      window.location.assign(checkout.checkoutUrl);
     } catch (err) {
       alert(err instanceof Error ? err.message : "فشل الشراء");
-    } finally {
       setActionLoading(false);
     }
   };
@@ -58,11 +95,12 @@ export default function BookDetailPage() {
     }
     setActionLoading(true);
     try {
-      await api.rentBook(id, { durationDays: rentalDuration });
-      alert("تم الإيجار بنجاح!");
+      // Same contract as the purchase: a checkout to send the customer to, not an active rental.
+      // The rental row is created when the webhook confirms the payment.
+      const checkout = await api.rentBook(id, { durationDays: rentalDays });
+      window.location.assign(checkout.checkoutUrl);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "فشل الإيجار");
-    } finally {
+      alert(err instanceof Error ? err.message : "فشل الاستئجار");
       setActionLoading(false);
     }
   };
@@ -82,12 +120,8 @@ export default function BookDetailPage() {
         <CardBody>
           <h1 className="text-3xl font-bold text-gray-900 mb-4">{book.title}</h1>
           <p className="text-gray-600 mb-4">بواسطة {book.author}</p>
-          {book.price && (
-            <p className="text-2xl font-bold text-gray-900 mb-4">${book.price.toFixed(2)}</p>
-          )}
-          {book.description && (
-            <p className="text-gray-700 mb-6">{book.description}</p>
-          )}
+          {book.price && <p className="text-2xl font-bold text-gray-900 mb-4">${book.price.toFixed(2)}</p>}
+          {book.description && <p className="text-gray-700 mb-6">{book.description}</p>}
           <div className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">خيارات الشراء</h3>
             <div className="space-y-4">
@@ -106,17 +140,23 @@ export default function BookDetailPage() {
                 </Button>
                 <div className="flex items-center gap-2">
                   <select
-                    value={rentalDuration}
-                    onChange={(e) => setRentalDuration(Number(e.target.value))}
+                    value={rentalDays}
+                    onChange={(e) => setRentalDays(Number(e.target.value))}
                     className="px-3 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option value={1}>يوم واحد</option>
-                    <option value={3}>3 أيام</option>
-                    <option value={7}>أسبوع</option>
-                    <option value={14}>أسبوعين</option>
-                    <option value={30}>شهر</option>
-                    <option value={90}>3 أشهر</option>
+                    {/* Rendered from the shared list rather than six hard-coded options, so the
+                        lengths a reader can pick from and the lengths the API accepts cannot drift —
+                        `RentalsService` validates against the same array. */}
+                    {RENTAL_DURATION_DAYS.map((days) => (
+                      <option key={days} value={days}>
+                        {RENTAL_DURATION_LABELS_AR[days] ?? `${days} يوم`}
+                      </option>
+                    ))}
                   </select>
+                  {/* The price, before anything is charged. `POST /rentals/:id/extend` and
+                      `POST /books/:id/rent` now initialise a payment, so a reader sees the cost
+                      before committing rather than discovering it at a checkout. */}
+                  <span className="text-sm text-gray-600">{formatRentPrice(rentalDays)}</span>
                   <Button variant="secondary" onClick={handleRent} loading={actionLoading}>
                     إيجار
                   </Button>

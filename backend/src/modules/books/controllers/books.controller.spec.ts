@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
@@ -66,6 +68,14 @@ describe('BooksController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // This module is hand-built rather than importing `CommonModule`, so both must be provided
+        // here or Nest fails at DI resolution before any assertion runs.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
       ],
     }).compile();
 
@@ -93,9 +103,7 @@ describe('BooksController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer)
-        .get('/books')
-        .expect(200);
+      const res = await request(httpServer).get('/books').expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total', 0);
@@ -116,11 +124,9 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
-      const res = await request(httpServer)
-        .get('/books/book-1')
-        .expect(200);
+      const res = await request(httpServer).get('/books/book-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'book-1');
       expect(booksService.findById).toHaveBeenCalledWith('book-1');
@@ -140,11 +146,9 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
-      const res = await request(httpServer)
-        .get('/books/isbn/9781234567890')
-        .expect(200);
+      const res = await request(httpServer).get('/books/isbn/9781234567890').expect(200);
 
       expect(res.body).toHaveProperty('isbn', '9781234567890');
       expect(booksService.findByIsbn).toHaveBeenCalledWith('9781234567890');
@@ -166,7 +170,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books')
@@ -194,7 +198,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .patch('/books/book-1')
@@ -221,7 +225,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books/book-1/publish')
@@ -249,7 +253,7 @@ describe('BooksController', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-       } as unknown as Book);
+      } as unknown as Book);
 
       const res = await request(httpServer)
         .post('/books/book-1/download')
@@ -267,10 +271,7 @@ describe('BooksController', () => {
 
       vi.mocked(booksService.delete).mockResolvedValue(undefined);
 
-      await request(httpServer)
-        .delete('/books/book-1')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(204);
+      await request(httpServer).delete('/books/book-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(booksService.delete).toHaveBeenCalledWith('book-1', 'user-1');
     });

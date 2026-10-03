@@ -13,8 +13,9 @@ export function Loading({ size = "md", text = "Loading..." }: LoadingProps) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center py-12">
+    <div role="status" aria-live="polite" className="flex flex-col items-center justify-center py-12">
       <svg
+        aria-hidden="true"
         className={`animate-spin text-blue-600 ${sizes[size]}`}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"

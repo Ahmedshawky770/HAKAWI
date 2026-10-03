@@ -5,6 +5,7 @@ import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
 import { db } from '../../db/index.ts';
@@ -13,7 +14,35 @@ import { follows } from '../../db/schema/social.schema.ts';
 import { reactions } from '../../db/schema/social.schema.ts';
 
 import { UserStatsDto } from './dto/users.dto.ts';
-import type { User, CreateUserInput, UpdateUserInput } from './types.ts';
+import type { ClientUser, CreateUserInput, PublicUserProfile, UpdateUserInput, User } from './types.ts';
+import { revivePublicUserProfileDates, reviveUserDates, toClientUser, toPublicUserProfile } from './types.ts';
+
+export const USER_CACHE_NAMESPACE = 'user';
+export const USER_PUBLIC_CACHE_NAMESPACE = 'user-public';
+export const USERS_CACHE_TAG = 'users';
+export const USER_CACHE_TTL_SECONDS = 300;
+export const USER_STATS_CACHE_PREFIX = 'user:stats:';
+export const USER_STATS_CACHE_TTL_SECONDS = 120;
+
+/**
+ * Postgres SQLSTATE for `unique_violation`.
+ *
+ * WHY IT IS NEEDED HERE AND NOT ONLY A PRE-CHECK. `users_email_unique` and `users_username_unique`
+ * (`migrations/0000_create_users_table.sql`) are UNCONDITIONAL, while the pre-checks below
+ * deliberately ignore a soft-deleted holder so that an address can be reused. That gap is exactly
+ * where a 500 was born: the pre-check passed, the insert then lost to the very row the pre-check was
+ * told to ignore, and `AllExceptionsFilter` rendered the driver error as an opaque 500 — so a
+ * duplicate address answered 500 when the correct answer is 409.
+ */
+const UNIQUE_VIOLATION_SQLSTATE = '23505';
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code === UNIQUE_VIOLATION_SQLSTATE;
+}
 
 @Injectable()
 export class UsersService {
@@ -22,54 +51,77 @@ export class UsersService {
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
   ) {}
 
-  async findById(id: string): Promise<User> {
-    const cached = await this.valkeyService.get(`user:${id}`);
-    if (cached) {
-      const user = JSON.parse(cached) as User;
-      if ('passwordHash' in user) {
-        delete (user as Record<string, unknown>).passwordHash;
-      }
-      return user;
-    }
-    const user = await this.usersRepository.findById(id);
-    if (!user || user.deletedAt) {
-      throw new NotFoundException('User not found');
-    }
-    const safeUser = { ...user };
-    if ('passwordHash' in safeUser) {
-      delete (safeUser as Record<string, unknown>).passwordHash;
-    }
-    await this.valkeyService.set(`user:${id}`, JSON.stringify(safeUser), 300);
-    return safeUser;
+  /**
+   * Reads a user for an authenticated caller (`GET /users/me`), cached.
+   *
+   * Two defects lived here. The cached copy was `JSON.parse`d by hand, so on a hit the `Date`
+   * fields arrived as ISO strings inside a value typed `Date` — a type lie that only becomes a
+   * `TypeError` later, and never on the first, cold request. And `passwordHash` was removed by
+   * mutating the parsed object, which is a deny-list: it works until somebody adds a second
+   * credential column.
+   *
+   * Both are replaced by the tagged cache plus {@link reviveUserDates} and {@link toClientUser}, so
+   * the warm and cold paths are the same object and the shape is an allow-list.
+   */
+  async findById(id: string): Promise<ClientUser> {
+    const { value } = await this.cache.getOrSet<ClientUser>({
+      namespace: USER_CACHE_NAMESPACE,
+      key: id,
+      ttl: USER_CACHE_TTL_SECONDS,
+      tags: [USERS_CACHE_TAG],
+      revive: reviveUserDates,
+      load: async () => {
+        const user = await this.usersRepository.findById(id);
+        if (!user || user.deletedAt) {
+          throw new NotFoundException('User not found');
+        }
+        return toClientUser(user);
+      },
+    });
+    return value;
   }
 
-  async findPublicProfile(id: string): Promise<{ id: string; username: string; name: string; avatar: string | null; bio: string | null; accountType: string; isVerified: boolean; createdAt: Date }> {
-    const cached = await this.valkeyService.get(`user:public:${id}`);
-    if (cached) {
-      return JSON.parse(cached) as { id: string; username: string; name: string; avatar: string | null; bio: string | null; accountType: string; isVerified: boolean; createdAt: Date };
-    }
-
-    const user = await this.usersRepository.findById(id);
-    if (!user || user.deletedAt) {
-      throw new NotFoundException('User not found');
-    }
-
-    const publicProfile = {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      avatar: user.avatar,
-      bio: user.bio,
-      accountType: user.accountType,
-      isVerified: user.isVerified ?? false,
-      createdAt: user.createdAt,
-    };
-
-    await this.valkeyService.set(`user:public:${id}`, JSON.stringify(publicProfile), 300);
-    return publicProfile;
+  /**
+   * Reads the profile another client is allowed to see (`GET /users/:id`), cached.
+   *
+   * `accountType` is normalized by {@link toPublicUserProfile} *before* the value is cached, not on
+   * the way out, so a legacy row cannot be written into the cache and then served for the whole TTL.
+   * `createdAt` is revived on the way back in; the client types it as an ISO string, which is what
+   * JSON serialization of a `Date` produces anyway, but an internal caller that reaches for
+   * `.toISOString()` would otherwise be holding a bare string in a value typed `Date`.
+   */
+  async findPublicProfile(id: string): Promise<PublicUserProfile> {
+    const { value } = await this.cache.getOrSet<PublicUserProfile>({
+      namespace: USER_PUBLIC_CACHE_NAMESPACE,
+      key: id,
+      ttl: USER_CACHE_TTL_SECONDS,
+      // Both user keys are tagged `users`, so a profile edit can retire them together. They used to
+      // be independent `del`s and the public one was not deleted on update at all, which served the
+      // pre-edit name and bio for five minutes after every save (Principle #11).
+      tags: [USERS_CACHE_TAG],
+      revive: revivePublicUserProfileDates,
+      load: async () => {
+        const user = await this.usersRepository.findById(id);
+        if (!user || user.deletedAt) {
+          throw new NotFoundException('User not found');
+        }
+        return toPublicUserProfile(user);
+      },
+    });
+    return value;
   }
+
+  /**
+   * The lookup family below returns the repository row, credentials and all, on purpose: they are
+   * identity lookups for sign-in and uniqueness checks, they are not reachable from any controller,
+   * and a login path must be able to compare a password hash.
+   *
+   * The moment a route is added on top of one of them, the value has to go through
+   * {@link toClientUser} first — that is the only place the credential columns are dropped.
+   */
 
   async findByEmail(email: string): Promise<User> {
     const user = await this.usersRepository.findByEmail(email);
@@ -87,7 +139,7 @@ export class UsersService {
     return user;
   }
 
-  async create(input: CreateUserInput): Promise<User> {
+  async create(input: CreateUserInput): Promise<ClientUser> {
     const existingEmail = await this.usersRepository.findByEmail(input.email).catch(() => null);
     if (existingEmail && !existingEmail.deletedAt) {
       throw new ConflictException('Email already exists');
@@ -116,11 +168,42 @@ export class UsersService {
       tiktokId: input.tiktokId ?? null,
     };
 
-    const user = await this.usersRepository.create(data);
-    return user;
+    let user;
+    try {
+      user = await this.usersRepository.create(data);
+    } catch (error) {
+      // Only 23505 becomes a 409. A connection failure or a missing table is a real fault and must
+      // keep surfacing as a 500 — turning it into "email already exists" would tell the caller to
+      // retry with a different address when the database is simply down.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // The pre-checks above deliberately skip a soft-deleted holder, so on a collision the holder is
+      // either a live user the pre-check raced past, or the soft-deleted row the constraint still
+      // protects. Either way the address is taken as far as the database is concerned.
+      const held = await this.usersRepository.findByEmail(input.email).catch(() => null);
+      throw new ConflictException(held ? 'Email already exists' : 'Username already exists');
+    }
+
+    // A freshly inserted row has a password hash the caller must never see, so the created user
+    // leaves through the same mapper as every other user-shaped response.
+    return toClientUser(user);
   }
 
-  async update(id: string, input: UpdateUserInput): Promise<User> {
+  /**
+   * Applies a profile update and returns the stored user.
+   *
+   * `UsersRepository.update` returns the whole `users` row, because the repository interface is
+   * shared with the auth flows that do need the credentials. This service is the boundary, so the
+   * row is mapped here: before this, `PATCH /users/me` and `PATCH /users/:id` serialized
+   * `passwordHash` and `emailVerificationToken` to the browser, and the only reason no one noticed
+   * is that the client's Zod schema happens to strip unknown keys — a defence in the wrong layer,
+   * since the secret left the process before any client could drop it.
+   *
+   * Both cache keys are invalidated together. Dropping only `user:<id>` used to leave the public
+   * profile serving the pre-edit name and bio for the full TTL (Principle #11).
+   */
+  async update(id: string, input: UpdateUserInput): Promise<ClientUser> {
     if (input.email) {
       const existing = await this.usersRepository.findByEmail(input.email).catch(() => null);
       if (existing && existing.id !== id && !existing.deletedAt) {
@@ -142,9 +225,23 @@ export class UsersService {
       delete updatePayload.password;
     }
 
-    const user = await this.usersRepository.update(id, updatePayload);
-    await this.valkeyService.del(`user:${id}`);
-    return user;
+    let user;
+    try {
+      user = await this.usersRepository.update(id, updatePayload);
+    } catch (error) {
+      // Same shape as `create`: the pre-checks skip a soft-deleted holder, the constraint does not.
+      // Only 23505 becomes a 409; anything else keeps surfacing as the fault it is.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // Disambiguated by which field the caller actually sent, so the message names the right one.
+      const heldByEmail =
+        input.email !== undefined && (await this.usersRepository.findByEmail(input.email).catch(() => null)) !== null;
+      throw new ConflictException(heldByEmail ? 'Email already exists' : 'Username already exists');
+    }
+
+    await this.invalidateUserCache(id);
+    return toClientUser(user);
   }
 
   async updateLastLogin(id: string): Promise<void> {
@@ -153,7 +250,7 @@ export class UsersService {
 
   async softDelete(id: string): Promise<void> {
     await this.usersRepository.softDelete(id);
-    await this.valkeyService.del(`user:${id}`);
+    await this.invalidateUserCache(id);
   }
 
   async findByGoogleId(googleId: string): Promise<User> {
@@ -205,7 +302,8 @@ export class UsersService {
   }
 
   async getUserStats(id: string): Promise<UserStatsDto> {
-    const cached = await this.valkeyService.get(`user:stats:${id}`);
+    const cacheKey = `${USER_STATS_CACHE_PREFIX}${id}`;
+    const cached = await this.valkeyService.get(cacheKey);
     if (cached) {
       return JSON.parse(cached) as UserStatsDto;
     }
@@ -216,11 +314,27 @@ export class UsersService {
     }
 
     const [storiesResult, viewsResult, reactionsResult, followersResult, followingResult] = await Promise.all([
-      db.select({ total: sql<number>`count(*)` }).from(stories).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
-      db.select({ total: sql<number>`sum(${stories.viewCount})` }).from(stories).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
-      db.select({ total: sql<number>`count(*)` }).from(reactions).innerJoin(stories, eq(stories.id, reactions.storyId)).where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
-      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followingId, id)),
-      db.select({ total: sql<number>`count(*)` }).from(follows).where(eq(follows.followerId, id)),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(stories)
+        .where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db
+        .select({ total: sql<number>`sum(${stories.viewCount})` })
+        .from(stories)
+        .where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(reactions)
+        .innerJoin(stories, eq(stories.id, reactions.storyId))
+        .where(and(eq(stories.authorId, id), sql`${stories.deletedAt} IS NULL`)),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(follows)
+        .where(eq(follows.followingId, id)),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(follows)
+        .where(eq(follows.followerId, id)),
     ]);
 
     const stats: UserStatsDto = {
@@ -231,7 +345,26 @@ export class UsersService {
       followingCount: Number(followingResult[0]?.total ?? 0),
     };
 
-    await this.valkeyService.set(`user:stats:${id}`, JSON.stringify(stats), 120);
+    await this.valkeyService.set(cacheKey, JSON.stringify(stats), USER_STATS_CACHE_TTL_SECONDS);
     return stats;
+  }
+
+  /**
+   * Retires every cached projection of one user: the authenticated user and the public profile.
+   *
+   * Both drops are targeted rather than one `invalidateTags(['users'])` sweep. A profile edit
+   * invalidating every cached user in the deployment is the same defect stories hit when a single
+   * page view swept the whole story cache: the hit rate collapses while the price stays the same.
+   * Each key is dropped together with its tag index entry, and the generation bump makes the drop
+   * visible to readers that loaded the user before the edit.
+   *
+   * A user has exactly two projections, and both are enumerated here, so there is no third key that
+   * can be forgotten. The stats aggregate is deliberately *not* in this list: it is a derived
+   * counter that changes when the user publishes or someone reacts, not when the profile is edited,
+   * so it keeps its own short TTL and key outside the entity cache.
+   */
+  private async invalidateUserCache(id: string): Promise<void> {
+    await this.cache.invalidateKey(USER_CACHE_NAMESPACE, id, [USERS_CACHE_TAG]);
+    await this.cache.invalidateKey(USER_PUBLIC_CACHE_NAMESPACE, id, [USERS_CACHE_TAG]);
   }
 }

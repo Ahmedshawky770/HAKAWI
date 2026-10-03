@@ -9,10 +9,10 @@
 graph TB
     subgraph "Frontend Container"
         direction TB
-        NextApp[Next.js App<br/>App Router]
-        Shadcn[Shadcn UI Components]
+        NextApp[Next.js 16.3.5 App<br/>App Router]
+        UI[components/ui<br/>5 hand-written components]
         TanStack[TanStack Query]
-        Tailwind[Tailwind CSS]
+        Tailwind[Tailwind CSS 4]
     end
 
     subgraph "Backend Container"
@@ -61,9 +61,9 @@ graph TB
 ## Frontend Container
 
 ### Next.js Application
-- **Technology:** Next.js 14 with App Router
+- **Technology:** **Next.js 16.3.5** with App Router
 - **Language:** TypeScript
-- **Styling:** Tailwind CSS + Shadcn UI
+- **Styling:** Tailwind CSS 4
 - **State Management:** TanStack Query + Server Components
 - **Features:**
   - Server-side rendering (SSR)
@@ -75,9 +75,15 @@ graph TB
 | Component | Purpose | Technology |
 |-----------|---------|------------|
 | **App Router** | Routing and layouts | Next.js App Router |
-| **Shadcn UI** | UI component library | Radix UI + Tailwind |
+| **`components/ui/`** | UI components | ⚠️ **5 hand-written components** — `Button`, `Card`, `ErrorMessage`, `Input`, `Loading` — plus `components/story/StoryMeta.tsx`. **Shadcn and Radix are NOT installed**; there is no `components.json` and no `@radix-ui/*` dependency |
 | **TanStack Query** | Server state management | React Query |
-| **Tailwind CSS** | Styling | Utility-first CSS |
+| **Tailwind CSS 4** | Styling | Utility-first CSS |
+| **`lib/schemas.ts`** | Response validation | ⚠️ **~50 Zod schemas** validating every API response; `lib/api.ts` has **no blind `as` casts** |
+
+> **Correction:** this document previously said "Next.js 14" at line 64 and "Shadcn UI / Radix UI" at
+> lines 66 and 78, and `docs/system-architecture/overview/high-level-architecture.md` contradicted
+> itself by saying "Next.js 16" at line 190 and "Next.js" without a version at line 120. The
+> installed version is **16.3.5** (`frontend/package.json`) and is now stated consistently.
 
 ---
 

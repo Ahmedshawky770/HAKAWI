@@ -44,21 +44,17 @@ describe('Books E2E', () => {
     await app.init();
     httpServer = app.getHttpServer() as Server;
 
-    const registerRes = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-books@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Books User',
-        username: 'e2ebooks',
-      });
+    const registerRes = await request(httpServer).post('/auth/register').send({
+      email: 'e2e-books@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Books User',
+      username: 'e2ebooks',
+    });
 
-    const loginRes = await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-books@example.com',
-        password: 'SecurePass123!',
-      });
+    const loginRes = await request(httpServer).post('/auth/login').send({
+      email: 'e2e-books@example.com',
+      password: 'SecurePass123!',
+    });
 
     accessToken = loginRes.body.tokens.accessToken;
   });
@@ -71,9 +67,7 @@ describe('Books E2E', () => {
 
   describe('GET /books', () => {
     it('should return books', async () => {
-      const res = await request(httpServer)
-        .get('/books')
-        .expect(200);
+      const res = await request(httpServer).get('/books').expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total');

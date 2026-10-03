@@ -1,131 +1,89 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
-import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
 
 describe('Search Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let accessToken: string;
+  let context: TestContext;
+  let author: TestUser;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+    context = await createTestContext();
+    author = await context.registerAndLogin({ prefix: 'searcher' });
 
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
-
-    const registerRes = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'search-int@example.com',
-        password: 'SecurePass123!',
-        name: 'Search Integration User',
-        username: 'searchint',
-      });
-
-    accessToken = registerRes.body.tokens.accessToken;
+    const story = await context.createStory(author.accessToken, {
+      title: `Searchable ${context.namespace} Chronicle`,
+      content: `<p>Distinctive body copy for ${context.namespace}</p>`,
+    });
+    await request(context.httpServer)
+      .post(`/stories/${story.id}/publish`)
+      .set('Authorization', `Bearer ${author.accessToken}`)
+      .expect(201);
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
 
   describe('GET /search', () => {
-    it('should return 400 when no query provided', async () => {
-      await request(httpServer)
-        .get('/search')
-        .expect(400);
+    it('should return 400 when no query parameter is provided', async () => {
+      await request(context.httpServer).get('/search').expect(400);
     });
 
-    it('should search stories with query', async () => {
-      const res = await request(httpServer)
-        .get('/search?query=test')
+    it('should find the published story by a unique query', async () => {
+      const res = await request(context.httpServer)
+        .get(`/search?query=${encodeURIComponent(context.namespace)}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('results');
       expect(res.body).toHaveProperty('total');
+      expect(res.body.total).toBeGreaterThanOrEqual(1);
+      expect(res.body.results.some((result: { title: string }) => result.title.includes(context.namespace))).toBe(true);
     });
 
-    it('should search stories with filters', async () => {
-      const res = await request(httpServer)
-        .get('/search?query=test&status=published&page=1&limit=10')
+    it('should return an empty result set for an unknown query', async () => {
+      const res = await request(context.httpServer)
+        .get(`/search?query=${encodeURIComponent(`no-such-term-${context.namespace}`)}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('results');
-      expect(res.body).toHaveProperty('total');
+      expect(res.body.total).toBe(0);
+      expect(res.body.results).toEqual([]);
+    });
+
+    it('should coerce the pagination query because SearchFiltersDto is a validated class', async () => {
+      const res = await request(context.httpServer)
+        .get(`/search?query=${encodeURIComponent(context.namespace)}&status=published&page=1&limit=10`)
+        .expect(200);
+
+      expect(res.body.page).toBe(1);
+      expect(res.body.limit).toBe(10);
     });
   });
 
   describe('GET /search/authors', () => {
-    it('should return 400 when query parameter q is missing', async () => {
-      await request(httpServer)
-        .get('/search/authors')
-        .expect(400);
+    it('should return 400 when the q parameter is missing', async () => {
+      await request(context.httpServer).get('/search/authors').expect(400);
     });
 
     it('should search authors by name', async () => {
-      const res = await request(httpServer)
-        .get('/search/authors?q=test')
+      const res = await request(context.httpServer)
+        .get(`/search/authors?q=${encodeURIComponent('searcher')}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('authors');
       expect(res.body).toHaveProperty('total');
+      expect(Array.isArray(res.body.authors)).toBe(true);
     });
   });
 
   describe('GET /search/categories', () => {
-    it('should return 400 when query parameter q is missing', async () => {
-      await request(httpServer)
-        .get('/search/categories')
-        .expect(400);
+    it('should return 400 when the q parameter is missing', async () => {
+      await request(context.httpServer).get('/search/categories').expect(400);
     });
 
     it('should search categories by name', async () => {
-      const res = await request(httpServer)
-        .get('/search/categories?q=tech')
+      const res = await request(context.httpServer)
+        .get(`/search/categories?q=${encodeURIComponent('tech')}`)
         .expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);

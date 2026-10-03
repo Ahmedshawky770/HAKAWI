@@ -147,13 +147,18 @@ describe('EmailVerificationService', () => {
       const result = await emailVerificationService.verifyToken('123456');
 
       expect(result.userId).toBe('user-123');
-      expect(usersRepository.update).toHaveBeenCalledWith('user-123', { emailVerified: true, emailVerificationToken: null });
+      expect(usersRepository.update).toHaveBeenCalledWith('user-123', {
+        emailVerified: true,
+        emailVerificationToken: null,
+      });
     });
 
     it('should throw BadRequestException for invalid token', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue(null);
 
-      await expect(emailVerificationService.verifyToken('invalid')).rejects.toThrow('Invalid or expired verification token');
+      await expect(emailVerificationService.verifyToken('invalid')).rejects.toThrow(
+        'Invalid or expired verification token',
+      );
     });
   });
 
@@ -167,7 +172,10 @@ describe('EmailVerificationService', () => {
       const result = await emailVerificationService.resend('test@example.com');
 
       expect(result.message).toBe('Verification email sent');
-      expect(eventValidatorService.emit).toHaveBeenCalledWith('email.verification.requested', { userId: 'user-123', email: 'test@example.com' });
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('email.verification.requested', {
+        userId: 'user-123',
+        email: 'test@example.com',
+      });
     });
 
     it('should throw NotFoundException when user not found', async () => {
@@ -188,7 +196,9 @@ describe('EmailVerificationService', () => {
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(valkeyService.get).mockResolvedValue('1');
 
-      await expect(emailVerificationService.resend('test@example.com')).rejects.toThrow('Please wait before requesting another verification email');
+      await expect(emailVerificationService.resend('test@example.com')).rejects.toThrow(
+        'Please wait before requesting another verification email',
+      );
     });
   });
 

@@ -42,35 +42,33 @@ describe('Tags E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
     httpServer = app.getHttpServer() as Server;
 
-    await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-tags@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Tags User',
-        username: 'e2etags',
-      });
+    await request(httpServer).post('/auth/register').send({
+      email: 'e2e-tags@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Tags User',
+      username: 'e2etags',
+    });
 
-    const loginRes = await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-tags@example.com',
-        password: 'SecurePass123!',
-      });
+    const loginRes = await request(httpServer).post('/auth/login').send({
+      email: 'e2e-tags@example.com',
+      password: 'SecurePass123!',
+    });
 
     accessToken = loginRes.body.tokens.accessToken;
   });
@@ -83,9 +81,7 @@ describe('Tags E2E', () => {
 
   describe('GET /tags', () => {
     it('should return tags', async () => {
-      const res = await request(httpServer)
-        .get('/tags')
-        .expect(200);
+      const res = await request(httpServer).get('/tags').expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
     });

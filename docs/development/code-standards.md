@@ -313,15 +313,23 @@ const user = await db.execute(sql`SELECT * FROM users WHERE id = ${userId}`);
 ### Migrations
 
 ```bash
-# Generate migration
-npm run migration:generate -- add_user_preferences
+# Scaffold the next numbered .sql plus its down sidecar
+npm run migration:create -- add_user_preferences
 
-# Run migrations
+# Lint the chain statically (no database needed)
+npm run db:check
+
+# Apply
 npm run migration:run
 
-# Revert migration
-npm run migration:revert
+# Roll back
+npm run migration:rollback -- --steps 1
 ```
+
+> `npm run migration:generate` and `npm run migration:revert` **do not exist.** The real names are
+> `migration:create` (alias: `db:generate`) and `migration:rollback`. A rollback whose down script is
+> classified `data-loss` additionally needs `--allow-data-loss`; an `irreversible` one will not run
+> under any flag. See `docs/data-architecture/migrations/migration-strategy.md`.
 
 ### Query Best Practices
 
@@ -338,7 +346,7 @@ npm run migration:revert
 
 ```
 components/
-├── ui/                    # Shadcn UI components
+├── ui/                    # 5 hand-written components (no Shadcn/Radix installed)
 ├── features/             # Feature-specific components
 │   ├── stories/
 │   │   ├── StoryCard.tsx

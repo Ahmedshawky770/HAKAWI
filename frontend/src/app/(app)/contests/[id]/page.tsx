@@ -65,7 +65,7 @@ export default function ContestDetailPage() {
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div>
               <p className="text-sm text-gray-600">Category</p>
-              <p className="font-medium capitalize">{contest.category}</p>
+              <p className="font-medium capitalize">{contest.categoryId ?? "—"}</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Status</p>
@@ -84,18 +84,10 @@ export default function ContestDetailPage() {
               <p className="font-medium">{new Date(contest.submissionDeadline).toLocaleDateString()}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Prize</p>
-              <p className="font-medium">
-                {contest.prizeType === "cash" ? `$${contest.prizeValue}` : contest.prizeValue}
-              </p>
+              <p className="text-sm text-gray-600">Winner</p>
+              <p className="font-medium">{contest.winnerId ?? "—"}</p>
             </div>
           </div>
-          {contest.rules && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-2">Rules</h3>
-              <p className="text-gray-700">{contest.rules}</p>
-            </div>
-          )}
           <form onSubmit={handleSubmit} className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">Submit Entry</h3>
             <div className="space-y-4">

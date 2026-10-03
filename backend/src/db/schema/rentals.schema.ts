@@ -6,9 +6,15 @@ import { books } from './books.schema.ts';
 export const rentals = pgTable(
   'rentals',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
-    bookId: uuid('book_id').notNull().references(() => books.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
     status: varchar('status', { length: 20 }).notNull().default('active'),
     startDate: timestamp('start_date').notNull(),
     endDate: timestamp('end_date').notNull(),
@@ -24,14 +30,18 @@ export const rentals = pgTable(
     bookIdx: index('rentals_book_id_idx').on(table.bookId),
     statusIdx: index('rentals_status_idx').on(table.status),
     userBookUnique: index('rentals_user_book_unique_idx').on(table.userId, table.bookId),
-  })
+  }),
 );
 
 export const rentalExtensions = pgTable(
   'rental_extensions',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    rentalId: uuid('rental_id').notNull().references(() => rentals.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    rentalId: uuid('rental_id')
+      .notNull()
+      .references(() => rentals.id),
     previousEndDate: timestamp('previous_end_date').notNull(),
     newEndDate: timestamp('new_end_date').notNull(),
     extensionDays: integer('extension_days').notNull(),
@@ -39,7 +49,7 @@ export const rentalExtensions = pgTable(
   },
   (table) => ({
     rentalIdx: index('rental_extensions_rental_id_idx').on(table.rentalId),
-  })
+  }),
 );
 
 export type Rental = typeof rentals.$inferSelect;

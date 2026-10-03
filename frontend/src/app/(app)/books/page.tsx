@@ -18,7 +18,7 @@ export default function BooksPage() {
     async function load() {
       try {
         const data = await api.listBooks();
-        setBooks(data);
+        setBooks(data.books);
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل تحميل الكتب");
       } finally {
@@ -39,13 +39,9 @@ export default function BooksPage() {
           <Card key={book.id}>
             <CardBody>
               <Link href={`/books/${book.id}`} className="block">
-                <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                  {book.title}
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">{book.title}</h3>
                 <p className="text-sm text-gray-600 mt-1">بواسطة {book.author}</p>
-                {book.price && (
-                  <p className="text-lg font-bold text-gray-900 mt-2">${book.price.toFixed(2)}</p>
-                )}
+                {book.price && <p className="text-lg font-bold text-gray-900 mt-2">${book.price.toFixed(2)}</p>}
               </Link>
             </CardBody>
           </Card>

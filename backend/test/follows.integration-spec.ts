@@ -1,224 +1,150 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
-import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+
+interface FollowPair {
+  follower: TestUser;
+  followee: TestUser;
+}
 
 describe('Follows Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let accessToken1: string;
-  let accessToken2: string;
-  let userId1: string;
-  let userId2: string;
+  let context: TestContext;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
-
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
-
-    const registerRes1 = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'follows-int-1@example.com',
-        password: 'SecurePass123!',
-        name: 'Follows Integration User 1',
-        username: 'followsint1',
-      });
-
-    accessToken1 = registerRes1.body.tokens.accessToken;
-    userId1 = registerRes1.body.user.id;
-
-    const registerRes2 = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'follows-int-2@example.com',
-        password: 'SecurePass123!',
-        name: 'Follows Integration User 2',
-        username: 'followsint2',
-      });
-
-    accessToken2 = registerRes2.body.tokens.accessToken;
-    userId2 = registerRes2.body.user.id;
+    context = await createTestContext();
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
+
+  const createPair = async (): Promise<FollowPair> => {
+    const follower = await context.registerAndLogin({ prefix: 'follower' });
+    const followee = await context.registerAndLogin({ prefix: 'followee' });
+    return { follower, followee };
+  };
+
+  const follow = (follower: TestUser, followingId: string) =>
+    request(context.httpServer)
+      .post('/follows')
+      .set('Authorization', `Bearer ${follower.accessToken}`)
+      .send({ followingId });
 
   describe('POST /follows', () => {
     it('should follow a user', async () => {
-      const res = await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 })
-        .expect(201);
+      const { follower, followee } = await createPair();
+
+      const res = await follow(follower, followee.id).expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.followerId).toBe(userId1);
-      expect(res.body.followingId).toBe(userId2);
+      expect(res.body.followerId).toBe(follower.id);
+      expect(res.body.followingId).toBe(followee.id);
     });
 
-    it('should throw ConflictException when already following', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+    it('should return 409 when already following', async () => {
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 })
-        .expect(409);
+      await follow(follower, followee.id).expect(409);
     });
 
-    it('should throw BadRequestException when following yourself', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId1 })
-        .expect(400);
+    it('should return 400 when following yourself', async () => {
+      const { follower } = await createPair();
+
+      await follow(follower, follower.id).expect(400);
     });
   });
 
   describe('DELETE /follows/:followingId', () => {
     it('should unfollow a user', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      const res = await request(httpServer)
-        .delete(`/follows/${userId2}`)
-        .set('Authorization', `Bearer ${accessToken1}`)
+      const res = await request(context.httpServer)
+        .delete(`/follows/${followee.id}`)
+        .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('message');
     });
 
-    it('should throw NotFoundException when not following', async () => {
-      await request(httpServer)
-        .delete(`/follows/${userId2}`)
-        .set('Authorization', `Bearer ${accessToken1}`)
+    it('should return 404 when not following', async () => {
+      const { follower, followee } = await createPair();
+
+      await request(context.httpServer)
+        .delete(`/follows/${followee.id}`)
+        .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(404);
     });
   });
 
   describe('GET /follows/user/:userId/followers', () => {
-    it('should get followers list', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+    it('should return the followers list', async () => {
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      const res = await request(httpServer)
-        .get(`/follows/user/${userId2}/followers`)
-        .expect(200);
+      const res = await request(context.httpServer).get(`/follows/user/${followee.id}/followers`).expect(200);
 
       expect(res.body).toHaveProperty('followers');
       expect(Array.isArray(res.body.followers)).toBe(true);
+      expect(res.body.total).toBe(1);
+      expect(res.body.followers[0].followerId).toBe(follower.id);
     });
   });
 
   describe('GET /follows/user/:userId/following', () => {
-    it('should get following list', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+    it('should return the following list', async () => {
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      const res = await request(httpServer)
-        .get(`/follows/user/${userId1}/following`)
-        .expect(200);
+      const res = await request(context.httpServer).get(`/follows/user/${follower.id}/following`).expect(200);
 
       expect(res.body).toHaveProperty('following');
       expect(Array.isArray(res.body.following)).toBe(true);
+      expect(res.body.total).toBe(1);
+      expect(res.body.following[0].followingId).toBe(followee.id);
     });
   });
 
   describe('GET /follows/user/:userId/stats', () => {
-    it('should get follow stats', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+    it('should return follow stats for the followee', async () => {
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      const res = await request(httpServer)
-        .get(`/follows/user/${userId2}/stats`)
+      const res = await request(context.httpServer)
+        .get(`/follows/user/${followee.id}/stats`)
+        .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('followersCount');
       expect(res.body).toHaveProperty('followingCount');
       expect(res.body).toHaveProperty('isFollowing');
+      expect(res.body.followersCount).toBe(1);
     });
   });
 
   describe('GET /follows/check/:followingId', () => {
-    it('should check if following a user', async () => {
-      await request(httpServer)
-        .post('/follows')
-        .set('Authorization', `Bearer ${accessToken1}`)
-        .send({ followingId: userId2 });
+    it('should report isFollowing true after following', async () => {
+      const { follower, followee } = await createPair();
+      await follow(follower, followee.id).expect(201);
 
-      const res = await request(httpServer)
-        .get(`/follows/check/${userId2}`)
-        .set('Authorization', `Bearer ${accessToken1}`)
+      const res = await request(context.httpServer)
+        .get(`/follows/check/${followee.id}`)
+        .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('isFollowing');
       expect(res.body.isFollowing).toBe(true);
     });
 
-    it('should return false when not following', async () => {
-      const res = await request(httpServer)
-        .get(`/follows/check/${userId1}`)
-        .set('Authorization', `Bearer ${accessToken2}`)
+    it('should report isFollowing false when the user is not followed', async () => {
+      const { follower, followee } = await createPair();
+
+      const res = await request(context.httpServer)
+        .get(`/follows/check/${follower.id}`)
+        .set('Authorization', `Bearer ${followee.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('isFollowing');
       expect(res.body.isFollowing).toBe(false);
     });
   });

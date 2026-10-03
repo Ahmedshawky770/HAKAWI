@@ -1,18 +1,19 @@
 import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 
 import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
 import { SEARCH_REPOSITORY } from './interfaces/search-repository.interface.ts';
 import type { SearchResponse, SearchFilters } from './types.ts';
+import { SEARCH_CACHE_NAMESPACE, SEARCH_CACHE_TAG, SEARCH_CACHE_TTL_SECONDS } from './cache-keys.ts';
 
 @Injectable()
 export class SearchService {
   constructor(
     @Inject(SEARCH_REPOSITORY) private readonly searchRepository: ISearchRepository,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
-    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
+    @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
   ) {}
 
   async search(filters: SearchFilters): Promise<SearchResponse> {
@@ -25,50 +26,66 @@ export class SearchService {
       throw new BadRequestException('At least one search parameter is required');
     }
 
-    const cacheKey = this.buildCacheKey(filters);
-    const cached = await this.valkeyService.get(cacheKey);
-    if (cached) {
-      const result = JSON.parse(cached) as SearchResponse;
-      result.took = Date.now() - startTime;
-      return result;
-    }
+    const { value } = await this.cache.getOrSet<SearchResponse>({
+      namespace: SEARCH_CACHE_NAMESPACE,
+      key: this.buildCacheKey(filters),
+      ttl: SEARCH_CACHE_TTL_SECONDS,
+      tags: [SEARCH_CACHE_TAG],
+      load: async () => {
+        const { results, total } = await this.searchRepository.searchStories({
+          query,
+          category: filters.category,
+          tag: filters.tag,
+          authorId: filters.authorId,
+          status: filters.status,
+          page,
+          limit,
+          sortBy: filters.sortBy || 'relevance',
+        });
 
-    const { results, total } = await this.searchRepository.searchStories({
-      query,
-      category: filters.category,
-      tag: filters.tag,
-      authorId: filters.authorId,
-      status: filters.status,
-      page,
-      limit,
-      sortBy: filters.sortBy || 'relevance',
+        this.logger.info(
+          `Search completed: query="${query}", results=${results.length}, total=${total}`,
+          'SearchService',
+        );
+
+        return {
+          results: results.map((result) => ({
+            ...result,
+            highlightedTitle: query ? this.highlightText(result.title, query) : undefined,
+            highlightedExcerpt: result.excerpt && query ? this.highlightText(result.excerpt, query) : undefined,
+          })),
+          total,
+          page,
+          limit,
+          query,
+          // Overwritten below with the real elapsed time; stored so the cached shape matches the
+          // fresh one and a cache hit does not change the response's type.
+          took: 0,
+        };
+      },
     });
 
-    const response: SearchResponse = {
-      results: results.map((result) => ({
-        ...result,
-        highlightedTitle: query ? this.highlightText(result.title, query) : undefined,
-        highlightedExcerpt: result.excerpt && query ? this.highlightText(result.excerpt, query) : undefined,
-      })),
-      total,
-      page,
-      limit,
-      query,
-      took: Date.now() - startTime,
-    };
-
-    await this.valkeyService.set(cacheKey, JSON.stringify(response), 300);
-
-    this.logger.info(`Search completed: query="${query}", results=${results.length}, took=${response.took}ms`, 'SearchService');
-
-    return response;
+    // `took` is measured on every call, including a cache hit, so the field reports this request's
+    // latency rather than the latency of whichever call happened to fill the cache.
+    return { ...value, took: Date.now() - startTime };
   }
 
-  async searchAuthors(query: string, page = 1, limit = 20): Promise<{ authors: { id: string; name: string; storiesCount: number }[]; total: number }> {
+  async searchAuthors(
+    query: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{
+    authors: { id: string; name: string; storiesCount: number }[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const result = await this.searchRepository.searchAuthors(query, page, limit);
     return {
       authors: result.authors,
       total: result.total,
+      page,
+      limit,
     };
   }
 

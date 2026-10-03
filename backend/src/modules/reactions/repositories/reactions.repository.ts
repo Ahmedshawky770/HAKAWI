@@ -35,13 +35,26 @@ export class ReactionsRepository implements IReactionsRepository {
     return reaction ?? null;
   }
 
-  async findReactionsByStory(storyId: string, page: number, limit: number): Promise<{ reactions: Reaction[]; total: number }> {
+  async findReactionsByStory(
+    storyId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ reactions: Reaction[]; total: number }> {
     this.logger.debug(`Finding reactions for story: ${storyId}`);
     const offset = (page - 1) * limit;
 
     const [reactionsList, [{ total }]] = await Promise.all([
-      db.select().from(reactions).where(eq(reactions.storyId, storyId)).orderBy(desc(reactions.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(reactions).where(eq(reactions.storyId, storyId)),
+      db
+        .select()
+        .from(reactions)
+        .where(eq(reactions.storyId, storyId))
+        .orderBy(desc(reactions.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(reactions)
+        .where(eq(reactions.storyId, storyId)),
     ]);
 
     return { reactions: reactionsList, total: Number(total) };
@@ -70,7 +83,10 @@ export class ReactionsRepository implements IReactionsRepository {
   }
 
   async countReactions(storyId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(reactions).where(eq(reactions.storyId, storyId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(reactions)
+      .where(eq(reactions.storyId, storyId));
     return Number(total);
   }
 

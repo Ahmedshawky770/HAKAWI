@@ -12,7 +12,11 @@ import { CommentReactionsRepository } from './comment-reactions.repository.ts';
 @Module({
   imports: [CommonModule, DatabaseModule, forwardRef(() => CommentsModule)],
   controllers: [CommentReactionsController],
-  providers: [CommentReactionsService, CommentReactionsRepository, { provide: COMMENT_REACTIONS_REPOSITORY, useExisting: CommentReactionsRepository }],
+  providers: [
+    CommentReactionsService,
+    CommentReactionsRepository,
+    { provide: COMMENT_REACTIONS_REPOSITORY, useExisting: CommentReactionsRepository },
+  ],
   exports: [CommentReactionsService],
 })
 export class CommentReactionsModule {}

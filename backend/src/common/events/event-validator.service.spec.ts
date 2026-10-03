@@ -50,7 +50,11 @@ describe('EventValidatorService', () => {
 
       await eventValidatorService.emit('user.registered', { userId: '1', email: 'test@example.com', name: 'Test' });
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith('user.registered', { userId: '1', email: 'test@example.com', name: 'Test' });
+      expect(eventEmitter.emit).toHaveBeenCalledWith('user.registered', {
+        userId: '1',
+        email: 'test@example.com',
+        name: 'Test',
+      });
       expect(registry.sendToDLQ).not.toHaveBeenCalled();
       expect(logger.error).not.toHaveBeenCalled();
     });
@@ -62,8 +66,15 @@ describe('EventValidatorService', () => {
       await eventValidatorService.emit('user.registered', { userId: '1', email: 'invalid', name: 'Test' });
 
       expect(eventEmitter.emit).not.toHaveBeenCalled();
-      expect(logger.error).toHaveBeenCalledWith('Event validation failed for user.registered: Invalid email', 'EventValidatorService');
-      expect(registry.sendToDLQ).toHaveBeenCalledWith('user.registered', { userId: '1', email: 'invalid', name: 'Test' }, 'Invalid email');
+      expect(logger.error).toHaveBeenCalledWith(
+        'Event validation failed for user.registered: Invalid email',
+        'EventValidatorService',
+      );
+      expect(registry.sendToDLQ).toHaveBeenCalledWith(
+        'user.registered',
+        { userId: '1', email: 'invalid', name: 'Test' },
+        'Invalid email',
+      );
     });
   });
 
@@ -71,7 +82,11 @@ describe('EventValidatorService', () => {
     it('should return true when validation succeeds', async () => {
       registry.validateEvent.mockReturnValue({ success: true, data: { userId: '1' } } as never);
 
-      const result = await eventValidatorService.validateEvent('user.registered', { userId: '1', email: 'test@example.com', name: 'Test' });
+      const result = await eventValidatorService.validateEvent('user.registered', {
+        userId: '1',
+        email: 'test@example.com',
+        name: 'Test',
+      });
       expect(result).toBe(true);
     });
 
@@ -79,7 +94,11 @@ describe('EventValidatorService', () => {
       registry.validateEvent.mockReturnValue({ success: false, error: 'Invalid email' } as never);
       registry.sendToDLQ.mockResolvedValue(undefined as never);
 
-      const result = await eventValidatorService.validateEvent('user.registered', { userId: '1', email: 'invalid', name: 'Test' });
+      const result = await eventValidatorService.validateEvent('user.registered', {
+        userId: '1',
+        email: 'invalid',
+        name: 'Test',
+      });
       expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalled();
       expect(registry.sendToDLQ).toHaveBeenCalled();

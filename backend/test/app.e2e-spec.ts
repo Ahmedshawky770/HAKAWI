@@ -35,16 +35,27 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(404);
+  it('/ (GET)', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(200);
+    expect(res.body).toMatchObject({ prefix: 'api/v1' });
+  });
+
+  it('/health (GET)', async () => {
+    const res = await request(app.getHttpServer()).get('/health').expect(200);
+
+    expect(res.body).toMatchObject({
+      database: 'connected',
+      valkey: 'connected',
+    });
+    expect(['healthy', 'degraded']).toContain(res.body.status);
+  });
+
+  it('/ (GET) requires no authentication', async () => {
+    await request(app.getHttpServer()).get('/').expect(200);
   });
 
   it('/api/v1 (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/api/v1')
-      .expect(404);
+    return request(app.getHttpServer()).get('/api/v1').expect(404);
   });
 
   afterEach(async () => {

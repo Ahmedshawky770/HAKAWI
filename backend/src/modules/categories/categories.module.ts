@@ -11,7 +11,11 @@ import { CATEGORIES_REPOSITORY } from './interfaces/categories-repository.interf
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [CategoriesController],
-  providers: [CategoriesService, CategoriesRepository, { provide: CATEGORIES_REPOSITORY, useExisting: CategoriesRepository }],
+  providers: [
+    CategoriesService,
+    CategoriesRepository,
+    { provide: CATEGORIES_REPOSITORY, useExisting: CategoriesRepository },
+  ],
   exports: [CategoriesService],
 })
 export class CategoriesModule {}

@@ -9,16 +9,9 @@ import { AuthController } from './auth.controller.ts';
 import { AuthService } from './auth.service.ts';
 
 @Module({
-  imports: [
-    CommonModule,
-    EmailVerificationModule,
-    EventEmitterModule,
-    ConfigModule,
-  ],
+  imports: [CommonModule, EmailVerificationModule, EventEmitterModule, ConfigModule],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-  ],
+  providers: [AuthService],
   exports: [AuthService],
 })
 export class AuthModule {}

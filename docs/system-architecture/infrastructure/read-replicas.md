@@ -2,6 +2,34 @@
 
 ## Hakawi - Database Read Scaling and Consistency
 
+> ## ⛔ STATUS: NOT IMPLEMENTED — this is a design proposal, not a description
+>
+> **There is no read replica, no read/write splitting, and no replication-lag monitoring in this
+> repository.**
+>
+> ```bash
+> $ grep -rni "replica" --include='*.ts' backend/src/
+> (no matches)
+> ```
+>
+> - ⛔ The application connects to exactly **one** PostgreSQL primary
+>   (`backend/src/config/database.config.ts` — `DB_HOST`, `DB_PORT`, `DB_NAME`; there is no
+>   `DB_REPLICA_*` variable)
+> - ⛔ No connection is read-only, and no query is routed to a replica
+> - ⛔ `docker-compose.yml` defines a single `postgres` service with no replica
+> - ⛔ No `pg_stat_replication` query, no lag metric, and no lag alert exists
+>
+> **The rest of this document is a proposal.** It is retained so the design is not silently lost, and
+> so that whoever implements it does not have to start from scratch. Nothing in it may be cited as
+> current behaviour. The read-scaling problem it addresses is real and unsolved: today, every read —
+> including the full-text search, the cached list endpoints, and the admin dashboard aggregations —
+> hits the single primary.
+>
+> Its roadmap status is tracked in
+> `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*, items 1–3.
+>
+> Related: `docs/consistency-matrix.md` → *Monitoring*, which records the same absence.
+
 ---
 
 ## 1. Purpose
@@ -16,10 +44,12 @@ Read replicas are introduced when:
 - **Database CPU** exceeds **70%** due to read load
 - **Reporting/analytics** queries impact production performance
 
-### Current Stage
+### Current Stage — ⛔ none
 
-**Phase 1-3 (Weeks 1-7):** Single primary database, no replicas
-**Phase 4+ (Weeks 8+):** Introduce read replicas when thresholds are met
+**Actual:** single primary database, no replicas, no read/write splitting. This has not changed
+since Phase 1 and is not scheduled in any phase; it is an open roadmap item with no week assigned.
+The "Phase 4+ (Weeks 8+)" line in the previous version of this document was aspirational — Phase 4
+shipped in week 10 and read replicas did not arrive.
 
 ---
 
@@ -438,11 +468,25 @@ const config = {
 
 ## Related Documentation
 
-- ADR-003: Database Schema Design
-- ADR-004: Caching Strategy
+- ADR-003: `adr/003-use-valkey-cache.md` — the *actual* ADR-003
+- ADR-004: `adr/004-use-event-emitter2.md` — the *actual* ADR-004
+  (⚠️ the previous version of this file cited these two titles, "Database Schema Design" and
+  "Caching Strategy", which match neither file. There is no ADR on schema design.)
 - Deployment Guide: `deployment/deployment.md`
 - Non-Functional Requirements: `system-architecture/non-functional-requirements.md`
 
 ---
 
-*This document defines the read replica strategy for Hakawi. Read replicas are introduced when read-heavy workloads require horizontal scaling.*
+## Changelog — reconciliation (2026-09-30)
+
+| Previous | Reality |
+|---|---|
+| Presented in the present tense as a database read-scaling strategy | ⛔ **Nothing in it is implemented.** A status banner now says so at the top of the file |
+| "**Phase 4+ (Weeks 8+):** Introduce read replicas when thresholds are met" | ⛔ Phase 4 shipped in week 10 and no replicas were introduced. The line was aspirational, not a plan |
+| "ADR-003: Database Schema Design" and "ADR-004: Caching Strategy" in *Related Documentation* | ⚠️ The ADRs are `adr/003-use-valkey-cache.md` and `adr/004-use-event-emitter2.md`. There is no ADR-003 on schema design and no ADR-004 on caching |
+| No acknowledgement that the read-scaling problem is unsolved | ✅ Now stated explicitly: every read, including full-text search and admin aggregations, hits the single primary |
+
+---
+
+*This document is a **proposal** for a read-replica strategy that has not been built. It is retained
+as a design reference; the current state is a single PostgreSQL primary with no read replicas.*

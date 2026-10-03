@@ -229,7 +229,7 @@ space-16: 64px
 
 Expanded:
 ┌────────────────────────────────────────┐
-│ [Rich Text Editor - Shadcn/TipTap]     │
+│ [Rich Text Editor - TipTap]            │
 │                                        │
 │ [Tags: #رعب #واقعي #فلسفة]             │
 │                                        │

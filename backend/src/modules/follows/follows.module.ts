@@ -12,7 +12,12 @@ import { FollowsEventHandler } from './events/follows.event-handler.ts';
 @Module({
   imports: [CommonModule, DatabaseModule],
   controllers: [FollowsController],
-  providers: [FollowsService, FollowsRepository, FollowsEventHandler, { provide: FOLLOWS_REPOSITORY, useExisting: FollowsRepository }],
+  providers: [
+    FollowsService,
+    FollowsRepository,
+    FollowsEventHandler,
+    { provide: FOLLOWS_REPOSITORY, useExisting: FollowsRepository },
+  ],
   exports: [FollowsService],
 })
 export class FollowsModule {}

@@ -44,13 +44,9 @@ export default function MessagesPage() {
                 <CardBody>
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {conversation.participant.name}
-                      </h3>
+                      <h3 className="text-lg font-semibold text-gray-900">{conversation.participant.name}</h3>
                       {conversation.lastMessage && (
-                        <p className="text-sm text-gray-600 mt-1 line-clamp-1">
-                          {conversation.lastMessage.content}
-                        </p>
+                        <p className="text-sm text-gray-600 mt-1 line-clamp-1">{conversation.lastMessage.content}</p>
                       )}
                     </div>
                     {conversation.unreadCount > 0 && (

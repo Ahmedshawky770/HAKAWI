@@ -30,7 +30,7 @@ export default function EditStoryPage() {
         setStory(data);
         setTitle(data.title);
         setContent(data.content || "");
-        setCategory(data.category);
+        setCategory(data.category ?? "");
         setTags((data.tags || []).join(", "));
       } catch (err) {
         setError(err instanceof Error ? err.message : "فشل تحميل القصة");
@@ -51,7 +51,10 @@ export default function EditStoryPage() {
         title,
         content,
         category,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
       });
       router.push(`/stories/${id}`);
     } catch (err) {
@@ -72,13 +75,7 @@ export default function EditStoryPage() {
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && <ErrorMessage error={error} />}
-            <Input
-              label="العنوان"
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input label="العنوان" type="text" required value={title} onChange={(e) => setTitle(e.target.value)} />
             <div className="w-full">
               <label className="block text-sm font-medium text-gray-700 mb-1">المحتوى</label>
               <textarea
@@ -101,12 +98,7 @@ export default function EditStoryPage() {
                 <option value="fantasy">فانتازيا</option>
               </select>
             </div>
-            <Input
-              label="الوسوم (مفصولة بفاصلة)"
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-            />
+            <Input label="الوسوم (مفصولة بفاصلة)" type="text" value={tags} onChange={(e) => setTags(e.target.value)} />
             <div className="flex gap-3">
               <Button type="submit" loading={saving}>
                 حفظ التغييرات

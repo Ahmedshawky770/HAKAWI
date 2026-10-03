@@ -107,7 +107,7 @@ export class CircuitBreakerService {
   }
 
   private async transitionTo(name: string, newState: CircuitBreakerState): Promise<void> {
-    const current = this.states.get(name) ?? await this.loadState(name);
+    const current = this.states.get(name) ?? (await this.loadState(name));
     current.state = newState;
     this.states.set(name, current);
     await this.persistState(name, current);
@@ -115,12 +115,12 @@ export class CircuitBreakerService {
   }
 
   async getState(name: string): Promise<CircuitBreakerState> {
-    const state = this.states.get(name) ?? await this.loadState(name);
+    const state = this.states.get(name) ?? (await this.loadState(name));
     return state.state;
   }
 
   async getStats(name: string): Promise<CircuitBreakerStats> {
-    const state = this.states.get(name) ?? await this.loadState(name);
+    const state = this.states.get(name) ?? (await this.loadState(name));
     return { ...state };
   }
 
@@ -143,7 +143,7 @@ export class CircuitBreakerService {
 
   async execute<T>(name: string, fn: () => Promise<T>, fallback?: () => Promise<T>): Promise<T> {
     const config = this.getConfig(name);
-    const state = this.states.get(name) ?? await this.loadState(name);
+    const state = this.states.get(name) ?? (await this.loadState(name));
 
     if (state.state === CircuitBreakerState.OPEN) {
       const now = Date.now();

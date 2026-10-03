@@ -4,7 +4,6 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
 import { AppModule } from '../app.module.ts';
@@ -14,8 +13,6 @@ import { EncryptionService } from '../common/utils/encryption.util.ts';
 import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../modules/users/events/users.event-handler.ts';
-import { db } from '../db/index.ts';
-import { users } from '../db/schema/users.schema.ts';
 
 // drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
 // Accepted external-library typing limitations — no production code change.
@@ -30,6 +27,9 @@ interface RegisterResponseBody {
 interface LoginResponseBody {
   user: {
     email: string;
+  };
+  tokens: {
+    accessToken?: string;
   };
 }
 
@@ -61,15 +61,17 @@ describe('Auth E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
@@ -100,14 +102,12 @@ describe('Auth E2E', () => {
     });
 
     it('should return 409 for duplicate email', async () => {
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: 'e2e-register@example.com',
-          password: 'SecurePass123!',
-          name: 'E2E Register User',
-          username: 'e2eregister',
-        });
+      await request(httpServer).post('/auth/register').send({
+        email: 'e2e-register@example.com',
+        password: 'SecurePass123!',
+        name: 'E2E Register User',
+        username: 'e2eregister',
+      });
 
       await request(httpServer)
         .post('/auth/register')
@@ -123,14 +123,12 @@ describe('Auth E2E', () => {
 
   describe('/auth/login (POST)', () => {
     it('should login with valid credentials', async () => {
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: 'e2e-login@example.com',
-          password: 'SecurePass123!',
-          name: 'E2E Login User',
-          username: 'e2elogin',
-        });
+      await request(httpServer).post('/auth/register').send({
+        email: 'e2e-login@example.com',
+        password: 'SecurePass123!',
+        name: 'E2E Login User',
+        username: 'e2elogin',
+      });
 
       const res = await request(httpServer)
         .post('/auth/login')
@@ -158,27 +156,23 @@ describe('Auth E2E', () => {
 
   describe('/auth/session (GET)', () => {
     it('should return session with valid token', async () => {
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: 'e2e-session@example.com',
-          password: 'SecurePass123!',
-          name: 'E2E Session User',
-          username: 'e2esession',
-        });
+      await request(httpServer).post('/auth/register').send({
+        email: 'e2e-session@example.com',
+        password: 'SecurePass123!',
+        name: 'E2E Session User',
+        username: 'e2esession',
+      });
 
-      const loginRes = await request(httpServer)
-        .post('/auth/login')
-        .send({
-          email: 'e2e-session@example.com',
-          password: 'SecurePass123!',
-        });
+      const loginRes = await request(httpServer).post('/auth/login').send({
+        email: 'e2e-session@example.com',
+        password: 'SecurePass123!',
+      });
 
       const loginBody = loginRes.body as LoginResponseBody;
 
       await request(httpServer)
         .get('/auth/session')
-        .set('Authorization', `Bearer ${(loginBody as any).tokens?.accessToken || 'test'}`)
+        .set('Authorization', `Bearer ${loginBody.tokens?.accessToken || 'test'}`)
         .expect(200)
         .expect((res) => {
           const body = res.body as SessionResponseBody;

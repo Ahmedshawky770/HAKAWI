@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
@@ -54,6 +56,14 @@ describe('FollowsController', () => {
         {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
+        },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // This module is hand-built rather than importing `CommonModule`, so both must be provided
+        // here or Nest fails at DI resolution before any assertion runs.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
         },
       ],
     }).compile();
@@ -148,23 +158,33 @@ describe('FollowsController', () => {
   });
 
   describe('GET /follows/user/:userId/stats', () => {
-    it('should return follow stats for a user', async () => {
+    it('should return follow stats for a user, with a real viewer', async () => {
+      // The route was `@Public()`, so `JwtAuthGuard` never ran, `request.user` was never assigned, and
+      // `getStats` was always called with `undefined` — which is why `isFollowing` was permanently
+      // false. The previous assertion pinned that broken call; this pins the fixed one.
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
       vi.mocked(followsService.getStats).mockResolvedValue({
         followersCount: 10,
         followingCount: 3,
-        isFollowing: false,
+        isFollowing: true,
       });
 
       const res = await request(httpServer)
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats')
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toEqual({
         followersCount: 10,
         followingCount: 3,
-        isFollowing: false,
+        isFollowing: true,
       });
-      expect(followsService.getStats).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', undefined);
+      expect(followsService.getStats).toHaveBeenCalledWith('123e4567-e89b-12d3-a456-426614174000', 'user-1');
+
+      // Anonymous callers now get a 401 rather than a payload whose `isFollowing` is always false.
+      // The public surface is `/follows/user/:id/followers` and `/following`, which stay `@Public()`.
+      await request(httpServer).get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats').expect(401);
     });
   });
 

@@ -55,7 +55,8 @@ describe('RetryService', () => {
     });
 
     it('should retry on failure and eventually succeed', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new Error('fail'))
         .mockRejectedValueOnce(new Error('fail'))
         .mockResolvedValue('success');
@@ -87,13 +88,15 @@ describe('RetryService', () => {
     it('should use custom config when provided', async () => {
       const fn = vi.fn().mockRejectedValue(new Error('fail'));
 
-      await expect(retryService.executeWithBackoff('custom', fn, {
-        maxRetries: 1,
-        initialDelayMs: 10,
-        maxDelayMs: 100,
-        backoffMultiplier: 2,
-        jitterMs: 0,
-      })).rejects.toThrow('fail');
+      await expect(
+        retryService.executeWithBackoff('custom', fn, {
+          maxRetries: 1,
+          initialDelayMs: 10,
+          maxDelayMs: 100,
+          backoffMultiplier: 2,
+          jitterMs: 0,
+        }),
+      ).rejects.toThrow('fail');
 
       expect(fn).toHaveBeenCalledTimes(2);
     });

@@ -27,7 +27,10 @@ export default function CreateStoryPage() {
         title,
         content,
         category,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
       });
       router.push(`/stories/${response.id}`);
     } catch (err) {

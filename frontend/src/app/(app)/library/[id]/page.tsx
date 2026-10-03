@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Loading } from "@/components/ui/Loading";
-import { LibraryItem, ReadingProgress } from "@/types/api";
+import { Book, LibraryItem, ReadingProgress } from "@/types/api";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   owned: { label: "مملوك", color: "bg-green-100 text-green-800" },
@@ -25,6 +25,7 @@ export default function LibraryItemPage() {
   const router = useRouter();
   const id = typeof params.id === "string" ? params.id : "";
   const [item, setItem] = useState<LibraryItem | null>(null);
+  const [book, setBook] = useState<Book | null>(null);
   const [progress, setProgress] = useState<ReadingProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,8 +41,14 @@ export default function LibraryItemPage() {
 
         if (found) {
           try {
+            const bookData = await api.getBook(found.bookId);
+            setBook(bookData);
+          } catch {
+            setBook(null);
+          }
+          try {
             const progressData = await api.getReadingProgress(found.bookId);
-            setProgress(progressData);
+            setProgress(progressData.progress[0] ?? null);
           } catch {
             setProgress(null);
           }
@@ -97,30 +104,22 @@ export default function LibraryItemPage() {
       <Card>
         <CardBody>
           <div className="flex flex-col md:flex-row gap-6">
-            {item.book.coverImage && (
+            {book?.coverImage && (
               <img
-                src={item.book.coverImage}
-                alt={item.book.title}
+                src={book.coverImage}
+                alt={book.title}
                 className="w-40 h-56 object-cover rounded-lg flex-shrink-0 mx-auto md:mx-0"
               />
             )}
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{item.book.title}</h1>
-              <p className="text-lg text-gray-600 mb-4">بواسطة {item.book.author}</p>
-              {item.book.price != null && (
-                <p className="text-2xl font-bold text-gray-900 mb-4">${item.book.price.toFixed(2)}</p>
-              )}
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${statusInfo.color}`}
-              >
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{book?.title ?? ""}</h1>
+              <p className="text-lg text-gray-600 mb-4">بواسطة {book?.author ?? ""}</p>
+              {book?.price != null && <p className="text-2xl font-bold text-gray-900 mb-4">${book.price.toFixed(2)}</p>}
+              <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${statusInfo.color}`}>
                 {statusInfo.label}
               </span>
-              {item.book.description && (
-                <p className="text-gray-700 mt-4 whitespace-pre-line">{item.book.description}</p>
-              )}
-              {item.book.pageCount && (
-                <p className="text-sm text-gray-500 mt-2">عدد الصفحات: {item.book.pageCount}</p>
-              )}
+              {book?.description && <p className="text-gray-700 mt-4 whitespace-pre-line">{book.description}</p>}
+              {book?.pageCount && <p className="text-sm text-gray-500 mt-2">عدد الصفحات: {book.pageCount}</p>}
               {item.lastAccessedAt && (
                 <p className="text-sm text-gray-500 mt-1">
                   آخر قراءة: {new Date(item.lastAccessedAt).toLocaleDateString("ar-EG")}
@@ -150,11 +149,6 @@ export default function LibraryItemPage() {
               </span>
               <span>{progress.progressPercentage.toFixed(1)}%</span>
             </div>
-            {progress.startedAt && (
-              <p className="text-sm text-gray-500 mt-2">
-                بدأت القراءة: {new Date(progress.startedAt).toLocaleDateString("ar-EG")}
-              </p>
-            )}
             {progress.lastReadAt && (
               <p className="text-sm text-gray-500 mt-1">
                 آخر قراءة: {new Date(progress.lastReadAt).toLocaleDateString("ar-EG")}

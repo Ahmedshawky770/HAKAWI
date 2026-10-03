@@ -1,175 +1,341 @@
 # Migration Strategy
 ## Hakawi Data Architecture
 
-This document defines how database schema changes are introduced, reviewed, tested, and applied in the Hakawi system.
+How database schema changes are created, verified, applied, and reversed.
+
+Status markers: ✅ implemented · ⚠️ partial · ⛔ not implemented.
 
 ---
 
-## Migration Principles
+## System Overview
 
-### 1. Version Control
-All migrations are version-controlled in the repository:
-- Migrations stored in `backend/src/migrations/`
-- Named with timestamp: `YYYYMMDDHHMMSS_description.ts`
-- Never edit committed migrations
-- Always create new migration for changes
+The migration system was **rebuilt** during 2026-09. The current system is:
 
-### 2. Review Process
-All migrations require:
-- Code review by at least one other developer
-- DBA approval for production
-- Rollback plan documentation
-- Impact assessment
+- **18 numbered `.sql` files at the repository-root `migrations/` directory** are the single source
+  of truth for schema.
+- `backend/src/db/migrations/` holds the **runner** (discovery, checksum ledger, execution,
+  rollback), not the migrations themselves.
+- Every migration runs inside a **PostgreSQL transaction**, and every applied file is recorded in a
+  **sha256 content-checksum ledger**. A file that changes after it has been applied is a hard
+  error, not a silent re-run.
+- Rollback is driven by **sidecar files** in `migrations/down/<id>.down.sql`, each carrying a
+  machine-read reversibility header.
 
-### 3. Testing
-Migrations must be tested:
-- On development database
-- On staging database (production-like)
-- With production data snapshot
-- Rollback tested
+### ⛔ `drizzle-kit up:pg` is gone
 
-### 4. Zero-Downtime
-Migrations must support zero-downtime deployment:
-- Additive changes only (add columns, don't remove)
-- Nullable columns first, backfill, then make required
-- No table locks for extended periods
-- Background jobs for data migration
+The old workflow used `drizzle-kit up:pg`, a *schema push* that reconciles the database to the
+Drizzle models and **discards migration history**. It is no longer available and must not be used.
+`npm run db:generate` / `migration:create` **create a new numbered SQL file**; they do not push a
+schema. Drizzle is now used as a **query builder and type layer only** (`backend/src/db/schema/*.ts`
+mirrors the SQL; `drizzle-kit studio` remains available for browsing).
 
 ---
 
-## Migration Types
+## The Migration Chain
 
-### Safe Migrations (No Review Required)
-- Adding nullable columns
-- Adding new tables
-- Adding indexes
-- Adding enum values
+`migrations/`, in order:
 
-### Requires Review
-- Adding non-nullable columns
-- Modifying existing columns
-- Removing columns
-- Removing indexes
-- Changing enum values
+| # | File | Owns |
+|---|---|---|
+| 0000 | `0000_create_users_table.sql` | `users` (+ `user_restrictions`, `email_verification` columns) |
+| 0001 | `0001_create_stories_tables.sql` | `stories`, `categories`, `tags`, `story_tags` — **and `uuid-ossp`** |
+| 0002 | `0002_create_social_tables.sql` | `follows`, `reactions`, `comments`, `comment_reactions` |
+| 0003 | `0003_create_messaging_tables.sql` | `notifications`, `conversations`, `messages`, `notification_preferences` |
+| 0004 | `0004_create_upload_tables.sql` | `uploads` |
+| 0005 | `0005_create_moderation_tables.sql` | `reports`, `moderation_actions`, `user_restrictions` |
+| 0006 | `0006_add_email_verification.sql` | `users.email_verified`, `users.email_verification_token` |
+| 0007 | `0007_add_notification_preferences.sql` | `notification_preferences` |
+| 0008 | `0008_create_books_tables.sql` | `books`, `book_categories`, `book_tags`, `reading_progress` |
+| 0009 | `0009_create_payments_tables.sql` | `payments`, `payment_transactions`, `refunds` |
+| 0010 | `0010_create_rentals_tables.sql` | `rentals`, `rental_extensions` |
+| 0011 | `0011_create_contests_tables.sql` | `contests`, `contest_submissions`, `contest_votes`, `contest_prizes` |
+| 0012 | `0012_create_library_tables.sql` | `library` |
+| 0013 | `0013_create_badges_tables.sql` | `badges`, `user_badges` |
+| 0014 | `0014_create_search_indexes.sql` | three GIN full-text expression indexes |
+| 0015 | `0015_add_password_reset_token.sql` | `users.password_reset_token` |
+| 0016 | `0016_add_paymob_gateway_fields.sql` | `payments.paymob_payment_key` / `paymob_iframe_url` / `paymob_accept_url` |
+| 0018 | `0018_add_report_source.sql` | `reports.source`, relaxes `reports.reporter_id` to nullable |
 
-### Requires DBA Approval
-- Dropping tables
-- Dropping columns
-- Large data migrations
-- Schema changes affecting >100k rows
+⚠️ **Known gap: there is no `0017`.** The numbering jumps from 16 to 18. `npm run db:check` reports
+this as a warning (`sequence jumps from 16 to 18; a migration file is missing from the chain`,
+`backend/scripts/check-migrations.ts:30`) and still exits 0. Either 0017 is a reserved slot that
+needs filling, or the chain should be renumbered — the current state is deliberate-looking but
+unexplained.
+
+Total schema: **33 tables** across the chain, matching `backend/src/db/schema/*.ts` exactly.
 
 ---
 
-## Migration Workflow
+## Commands
 
-### 1. Create Migration
+All commands run through `backend/src/db/migrations/migration-runner.ts` via `tsx`. From the repo
+root, `npm run <script>` forwards to the `backend` workspace.
+
+| Command | What it does |
+|---|---|
+| `npm run migration:run` | Apply every pending migration in order. Skips applied ones. Transaction-wrapped per migration. |
+| `npm run migration:run:production` | Same, plus `--allow-production`. Required when `NODE_ENV=production`. |
+| `npm run migration:run:staging` | Same as `migration:run` (a distinct name for pipeline clarity). |
+| `npm run migration:rollback` | Roll back. Classification decides whether it is allowed. |
+| `npm run migration:status` | Table of every migration: `MIGRATION`, `STATE`, `APPLIED AT`, `MS`, `REVERSIBILITY`, `DETAIL`. |
+| `npm run migration:list` | One line per file: id, first 12 chars of the checksum, reversibility, statement count. Works without a database. |
+| `npm run migration:verify` | Checksum-drift and orphan-ledger audit. Non-zero exit on drift. |
+| `npm run db:check` | **Static** migration-chain lint — no database required. |
+| `npm run migration:create` | `tsx scripts/generate-migration.ts` — scaffolds the next numbered `.sql` and its `.down.sql`. |
+| `npm run db:generate` | Alias of `migration:create`. |
+
+### Flags
+
+Parsed in `backend/src/db/migrations/migration-cli.ts`. Unknown flags are a hard error, and each flag
+is rejected if used with the wrong command.
+
+| Flag | Valid with | Meaning |
+|---|---|---|
+| `--steps <n>` | `down` | Roll back exactly `n` migrations. |
+| `--to <id>` | `down` | Roll back until the named migration has been undone. |
+| `--allow-data-loss` | `down` | Required to run a `data-loss` down script. |
+| `--allow-production` | `up` | Required when `NODE_ENV=production`. |
+
+`--steps` and `--to` are mutually exclusive. `--allow-data-loss` on anything but `down` is an
+error, as is `--allow-production` on anything but `up`.
+
+`--allow-production` exists so that a production migration is an explicit decision rather than an
+accident:
+
+```
+Refusing to run migrations with NODE_ENV=production without --allow-production.
+Use "npm run migration:run:production", which passes the flag, so a production deploy
+is an explicit decision.
+```
+
+### CI wiring
+`.github/workflows/ci.yml` runs two migration jobs:
+- `migration-premerge` → `npm run db:check` (no database)
+- `migration-verify` → applies migrations, then `npm run migration:verify` against the resulting
+  ledger
+
+---
+
+## Reversibility Model
+
+Every rollback is driven by `migrations/down/<id>.down.sql`. The first line is a machine-read
+header; the runner parses it and refuses to proceed on a missing or unparseable header.
+
+```
+-- hakawi:down reversibility=<reversible|data-loss|irreversible> data-loss=<none|rows|columns> reason=<human explanation>
+```
+
+### The three classifications
+
+| Classification | Runner behaviour | Real examples |
+|---|---|---|
+| `reversible` | Runs. No extra flag. | `0014_create_search_indexes` — drops three GIN indexes, touches no rows. |
+| `data-loss`` | **Refuses** without `--allow-data-loss`. The `reason` must say what is destroyed. | `0009_create_payments_tables` (the money ledger), `0000_create_users_table` (every user row), `0018_add_report_source` (re-tightens `NOT NULL` on `reporter_id`). |
+| `irreversible` | **Never runs.** Throws `MigrationNotReversibleError` regardless of any flag. | `0001_create_stories_tables`. |
+
+### Why `0001` is irreversible
+
+`0001_create_stories_tables.sql` creates the shared **`uuid-ossp`** extension. Dropping it would
+cascade into the default of every `uuid_generate_v4()` column in the database, including tables
+this migration does not own. Its header says so:
+
+```
+-- hakawi:down reversibility=irreversible data-loss=rows reason=Also creates the shared
+uuid-ossp extension. Dropping it would cascade into the default of every uuid_generate_v4()
+column in the database, including tables this migration does not own. Re-create the extension
+and the four tables with a forward migration instead.
+```
+
+The correct response to a bad `0001` is a **forward** migration, not a rollback. This is the
+mechanism that makes Principle #6 ("minimize database migrations", "data loss is irreversible")
+enforceable rather than aspirational.
+
+### Writing a new down script
+
+```sql
+-- migrations/down/00NN_your_change.down.sql
+-- hakawi:down reversibility=data-loss data-loss=columns reason=Drops the foo column. Rows keep
+-- their bar value, so the feature can be re-added with a forward migration.
+ALTER TABLE "things" DROP COLUMN IF EXISTS "foo";
+```
+
+Rules the runner enforces:
+- The header must be the first line and must parse.
+- A `down` script declared reversible must contain at least one executable statement, otherwise
+  `MigrationNotReversibleError` is raised (`:242`).
+- A `data-loss` script run without `--allow-data-loss` names the `data-loss` kind and the reason in
+  the error (`:205-211`).
+
+---
+
+## Ledger, Drift, and Idempotency
+
+### Checksum ledger
+Each applied migration is stored with a **sha256 of the file content**. On every `up` and on
+`verify`:
+- A file whose hash differs from the recorded hash → `MigrationChecksumMismatchError`, hard fail.
+  Editing an applied migration is forbidden.
+- A ledger row with no matching file → `MigrationLedgerDriftError` (orphan), reported by `verify`.
+- A file with no ledger row and already-present schema → applied normally (idempotent by design
+  only through the ledger, not by `IF EXISTS` guesswork).
+
+### Legacy rows
+Rows written before the runner recorded checksums carry the sentinel `LEGACY_CHECKSUM = ''`
+(`backend/src/db/migrations/migration-runner.ts:41`). On first encounter the runner **adopts** the current file hash and logs
+that it cannot prove the executed content matches:
+
+> `Migration 0000 was applied before this runner recorded checksums, so its recorded checksum was
+> adopted from the current file (…) and cannot be proven identical to what was executed.`
+
+This is honest about the limit rather than pretending the old rows are verified.
+
+### Transaction wrapping
+Each migration is applied inside `this.database.transaction(...)` (`:218`, `:247`), so a partially
+applied statement set cannot be committed.
+
+### Idempotency
+`migration:run` is safe to re-run: already-applied files are skipped and reported as `skipped=`.
+`migration:status` and `migration:list` are read-only; `list` needs no database at all.
+
+---
+
+## Workflow
+
+### 1. Create
 ```bash
 npm run migration:create -- add_user_preferences
+# or: npm run db:generate -- add_user_preferences
 ```
+Scaffolds `migrations/00NN_add_user_preferences.sql` and
+`migrations/down/00NN_add_user_preferences.down.sql` with a starter reversibility header.
 
-### 2. Edit Migration
-```typescript
-// migrations/YYYYMMDDHHMMSS_add_user_preferences.ts
-import { sql } from 'drizzle-orm';
+### 2. Write the SQL
+Plain SQL. No TypeScript, no `export async function up(db: any)`.
 
-export async function up(db: any) {
-  await db.execute(sql`
-    ALTER TABLE users ADD COLUMN preferences JSONB DEFAULT '{}'::jsonb
-  `);
-}
+> **Replaced.** This document previously showed a `YYYYMMDDHHMMSS_name.ts` file exporting
+> `up(db: any)` / `down(db: any)`. That format never existed in this repository, and it violates
+> the project's own zero-`any` rule (`@typescript-eslint/no-explicit-any: 'error'` in
+> `backend/.eslintrc.cjs`). Migrations are `.sql`; the runner is TypeScript.
 
-export async function down(db: any) {
-  await db.execute(sql`
-    ALTER TABLE users DROP COLUMN preferences
-  `);
-}
-```
-
-### 3. Test Migration
+### 3. Lint the chain
 ```bash
-# Local
+npm run db:check
+```
+Detects sequence gaps, missing `.down.sql` sidecars, unparseable reversibility headers, and
+duplicate ids. No database required — this is the pre-merge gate.
+
+### 4. Apply and verify
+```bash
 npm run migration:run
-
-# Verify
+npm run migration:status
 npm run migration:verify
-
-# Rollback test
-npm run migration:rollback
 ```
 
-### 4. Code Review
-- Review migration SQL
-- Verify rollback strategy
-- Check for data loss risks
+### 5. Test the rollback
+```bash
+npm run migration:rollback -- --to 0015        # back to before 0016
+npm run migration:rollback -- --steps 1        # undo one
+# if the target is classified data-loss:
+npm run migration:rollback -- --steps 1 --allow-data-loss
+```
 
-### 5. Deploy to Staging
+### 6. Deploy
 ```bash
 npm run migration:run:staging
+npm run migration:run:production      # passes --allow-production
 ```
 
-### 6. Verify on Staging
-- Check data integrity
-- Run application tests
-- Verify performance
-
-### 7. Deploy to Production
+### 7. Post-deployment
 ```bash
-npm run migration:run:production
+npm run migration:verify
 ```
-
-### 8. Post-Deployment
-- Monitor for errors
-- Verify data integrity
-- Document any issues
 
 ---
 
 ## Rollback Strategies
 
-### Additive Changes
-- No rollback needed
-- Safe to deploy
+### Additive changes (add a nullable column, add a table)
+`reversible`. No flag, no data loss.
 
-### Schema Changes
-- Down migration provided
-- Tested before deployment
-- May require data backfill
+### Column removals and constraint tightenings
+`data-loss` — even when the loss is "just" a column, because an in-flight value may exist. These
+need `--allow-data-loss` and a `reason` that names what is lost.
 
-### Data Migrations
-- Two-phase approach:
-  1. Add new column
-  2. Backfill data
-  3. Update application code
-  4. Remove old column
+### Table and extension removals
+`irreversible` where a shared object is involved (the `uuid-ossp` case), otherwise `data-loss`.
+
+### Data migrations — the two-phase pattern
+Still the right approach, and the reversibility header is where it is recorded:
+1. Add the new nullable column
+2. Backfill
+3. Deploy code that reads the new column
+4. In a **separate, later** migration, drop the old column — classified `data-loss`
 
 ---
 
 ## Emergency Procedures
 
-### Migration Failure
-1. Stop deployment pipeline
-2. Assess data integrity
-3. Run rollback migration
-4. Restore from backup if needed
-5. Investigate root cause
-6. Document incident
+### Migration failure mid-apply
+1. The transaction aborts; the database is left at the previous migration. Nothing is half-applied.
+2. `npm run migration:status` shows exactly which file failed.
+3. Fix the file. Because the failed file was never recorded in the ledger, its checksum is not
+   pinned and it can be edited freely.
+4. Re-run `npm run migration:run`.
+5. If the failure is a checksum error on an *already applied* file, the file was edited after the
+   fact: restore it, or write a new forward migration.
 
-### Production Issues
-1. Enable maintenance mode
-2. Run rollback migration
-3. Verify application functionality
-4. Disable maintenance mode
-5. Post-mortem analysis
+### Production issue caused by a migration
+1. Stop the deploy pipeline.
+2. Assess data integrity (`npm run migration:status`, ledger contents).
+3. Roll back **only if** the down script is `reversible` or you accept `data-loss` and pass
+   `--allow-data-loss`. An `irreversible` migration can only be fixed forward.
+4. Deploy the previous code (`git revert`).
+5. Post-mortem; write a forward migration.
+
+### ⛔ Not implemented
+- ⛔ **Automated backups.** There is no backup job, no `pg_dump` cron, and no PITR configuration in
+  the repository. `docs/deployment/backup.md` describes an `nginx.conf` and a `scripts/` directory
+  that do not exist. Restoring from a backup is currently a manual operation against a snapshot you
+  must already have.
+- ⛔ **Maintenance mode.** Nothing pauses traffic during a migration.
+- ⛔ **Zero-downtime column drops.** Principle #6 asks for additive-only changes; the runner does not
+  enforce it, the reversibility header just records the risk.
 
 ---
 
 ## Best Practices
 
-1. **Small Migrations** - Keep migrations small and focused
-2. **Backward Compatible** - Application works with both old and new schema
-3. **Tested** - Always test on staging first
-4. **Monitored** - Monitor migration performance
-5. **Documented** - Document purpose and impact
+1. **Small migrations** — one concern per file, so a rollback is one concern wide.
+2. **Never edit an applied file.** The checksum ledger turns this from a convention into an error.
+3. **Always write the down sidecar with a real `reason`.** The reason is the only thing a reviewer
+   reads when deciding whether to pass `--allow-data-loss`.
+4. **Classify honestly.** Marking a destructive down script `reversible` to avoid a flag is a lie
+   that a reviewer has to catch; the ledger cannot.
+5. **Test the rollback on staging before merging.**
+6. **Run `npm run db:check` before review** — it needs no database and catches most mistakes.
+7. **Add nullable first, backfill, then require** — and drop the old column in a *later* migration.
+
+---
+
+## Changelog — reconciliation (2026-09-30)
+
+| Previous claim | Reality | Evidence |
+|---|---|---|
+| Migrations in `backend/src/migrations/`, named `YYYYMMDDHHMMSS_*.ts` | 18 numbered `.sql` files at the **repository-root** `migrations/`; no timestamp format | `migrations/`, `backend/src/db/migrations/migration-discovery.ts` |
+| `export async function up(db: any)` / `down(db: any)` | Never existed, and violates the zero-`any` rule | `backend/.eslintrc.cjs` sets `no-explicit-any: 'error'` |
+| Drizzle-generated migrations | `drizzle-kit up:pg` **removed** — it was a schema push that discarded history. `migration:create` now scaffolds SQL. | no `drizzle.config.ts` push target; `backend/scripts/generate-migration.ts` |
+| `npm run migration:rollback` "documented but did not exist" | ✅ Now real, with `--steps`, `--to`, `--allow-data-loss` | `backend/package.json`, `migration-cli.ts` |
+| No `--status` / `--list` | ✅ Both real; `list` runs without a database | `migration-runner.ts:404,435` |
+| No content-checksum ledger | ✅ sha256 ledger, drift is a hard error | `migration-runner.ts:153,296` |
+| Rollback "tested before deployment" (unimplemented) | ✅ machine-read reversibility headers with 3 classifications | `migrations/down/*.down.sql` first line |
+| 17 migrations | **18** files, with a gap at 0017 | `migrations/` listing |
+| — | New: `migrations/meta/` ledger-support directory | `migrations/meta` |
+| Backup/restore as part of rollback | ⛔ No backup automation exists | no backup script or cron in the repo |
+| Zero-downtime enforcement | ⚠️ Aspiration only; the runner records risk, it does not prevent it | — |
+
+**Newly documented (was missing entirely):** the classification policy, the four flags, the
+transaction and checksum guarantees, the legacy-checksum adoption behaviour, and the reason
+`0001_create_stories_tables` is deliberately irreversible.
 
 ---
 

@@ -45,7 +45,11 @@ export class SanityService {
       config: { projectId: '', dataset: '', apiVersion: '' },
       withConfig: () => this.createMockClient(),
       clone: () => this.createMockClient(),
-      observe: () => ({ unsubscribe: () => {/* mock unsubscribe */} }),
+      observe: () => ({
+        unsubscribe: () => {
+          /* mock unsubscribe */
+        },
+      }),
       getDocument: async () => null,
       getDocuments: async () => [],
       createIfNotExists: async () => ({}),
@@ -75,6 +79,21 @@ export class SanityService {
   }
 
   async syncStoryToSanity(story: SanityStoryDocument): Promise<SyncStoryResult> {
+    // WHY THIS GUARD IS HERE AND NOT ONLY AT THE EVENT HANDLER. `createSanityClient` returns a mock
+    // client when SANITY_PROJECT_ID is absent, and that mock's `create`/`commit` resolve `{}`. So a
+    // direct caller — the batch `syncStoriesToSanity` below, or a future retry job — would get
+    // `{ success: true }` for a document that was never written anywhere. Returning a failure
+    // instead makes "not configured" legible at the call site, which is what lets an operator tell
+    // a silent no-op from a successful sync. The mock client is kept for construction so the
+    // application still boots with no SANITY_* variable set at all.
+    if (!this.isEnabled()) {
+      this.logger.warn('Sanity is not configured; skipping story sync', 'SanityService');
+      return {
+        success: false,
+        error: 'Sanity is not configured (SANITY_PROJECT_ID and SANITY_DATASET are required)',
+      };
+    }
+
     try {
       const documentId = `story-${story.hakawiId}`;
       const doc = {
@@ -91,13 +110,12 @@ export class SanityService {
         hakawiId: story.hakawiId,
       };
 
-      const existing = await this.circuitBreaker.execute<SanityStoryDocument | null>(
-        'sanity-fetch',
-        async () => {
-          const result = await this.client.fetch<SanityStoryDocument>(`*[_type == "story" && hakawiId == $hakawiId][0]`, { hakawiId: story.hakawiId });
-          return result ?? null;
-        },
-      );
+      const existing = await this.circuitBreaker.execute<SanityStoryDocument | null>('sanity-fetch', async () => {
+        const result = await this.client.fetch<SanityStoryDocument>(`*[_type == "story" && hakawiId == $hakawiId][0]`, {
+          hakawiId: story.hakawiId,
+        });
+        return result ?? null;
+      });
 
       if (existing) {
         await this.circuitBreaker.execute(
@@ -106,10 +124,7 @@ export class SanityService {
         );
         this.logger.info(`Updated story in Sanity: ${documentId}`, 'SanityService');
       } else {
-        await this.circuitBreaker.execute(
-          'sanity-create',
-          async () => await this.client.create(doc),
-        );
+        await this.circuitBreaker.execute('sanity-create', async () => await this.client.create(doc));
         this.logger.info(`Created story in Sanity: ${documentId}`, 'SanityService');
       }
 
@@ -122,12 +137,19 @@ export class SanityService {
   }
 
   async deleteStoryFromSanity(storyId: string): Promise<SyncStoryResult> {
+    // Same reason as `syncStoryToSanity`: the mock client's `delete` resolves `{}`, so an
+    // unconfigured instance would report a deletion that never happened.
+    if (!this.isEnabled()) {
+      this.logger.warn('Sanity is not configured; skipping story delete', 'SanityService');
+      return {
+        success: false,
+        error: 'Sanity is not configured (SANITY_PROJECT_ID and SANITY_DATASET are required)',
+      };
+    }
+
     try {
       const documentId = `story-${storyId}`;
-      await this.circuitBreaker.execute(
-        'sanity-delete',
-        async () => await this.client.delete(documentId),
-      );
+      await this.circuitBreaker.execute('sanity-delete', async () => await this.client.delete(documentId));
       this.logger.info(`Deleted story from Sanity: ${documentId}`, 'SanityService');
       return { success: true, documentId };
     } catch (error) {

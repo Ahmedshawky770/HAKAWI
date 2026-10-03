@@ -1,22 +1,65 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { INotificationsRepository, Notification, CreateNotificationInput } from '../interfaces/notifications-repository.interface.ts';
+import type {
+  INotificationsRepository,
+  Notification,
+  CreateNotificationInput,
+} from '../interfaces/notifications-repository.interface.ts';
 import type { IUsersRepository, User, CreateUserInput } from '../../../common/users/users-repository.interface.ts';
 
 import { NotificationsEmailService } from './notifications-email.service.ts';
 
 type MockNotificationsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Notification | null>>>;
-  findByUser: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>>;
+  findByUser: ReturnType<
+    typeof vi.fn<
+      (userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>
+    >
+  >;
   findUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<Notification[]>>>;
   create: ReturnType<typeof vi.fn<(data: CreateNotificationInput) => Promise<Notification>>>;
   markAsRead: ReturnType<typeof vi.fn<(id: string) => Promise<Notification>>>;
   markAllAsRead: ReturnType<typeof vi.fn<(userId: string) => Promise<void>>>;
   delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   countUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
-  findPreferences: ReturnType<typeof vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
-  upsertPreferences: ReturnType<typeof vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
+  findPreferences: ReturnType<
+    typeof vi.fn<
+      (userId: string) => Promise<{
+        emailEnabled: boolean;
+        pushEnabled: boolean;
+        storyReactions: boolean;
+        comments: boolean;
+        follows: boolean;
+        mentions: boolean;
+        system: boolean;
+      }>
+    >
+  >;
+  upsertPreferences: ReturnType<
+    typeof vi.fn<
+      (
+        userId: string,
+        data: {
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          system: boolean;
+        },
+      ) => Promise<{
+        emailEnabled: boolean;
+        pushEnabled: boolean;
+        storyReactions: boolean;
+        comments: boolean;
+        follows: boolean;
+        mentions: boolean;
+        system: boolean;
+      }>
+    >
+  >;
 };
 
 type MockUsersRepository = {
@@ -44,7 +87,16 @@ type MockWinstonLoggerService = {
 };
 
 type MockEmailTransporter = {
-  sendMail: ReturnType<typeof vi.fn<(options: { from: string; to: string; subject: string; text: string; html?: string }) => Promise<{ accepted: string[]; rejected: string[]; pending: string[]; envelope: { from: string; to: string[] } }>>>;
+  sendMail: ReturnType<
+    typeof vi.fn<
+      (options: { from: string; to: string; subject: string; text: string; html?: string }) => Promise<{
+        accepted: string[];
+        rejected: string[];
+        pending: string[];
+        envelope: { from: string; to: string[] };
+      }>
+    >
+  >;
 };
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
@@ -61,15 +113,49 @@ describe('NotificationsEmailService', () => {
   beforeEach(() => {
     notificationsRepository = {
       findById: vi.fn<(id: string) => Promise<Notification | null>>(),
-      findByUser: vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>(),
+      findByUser:
+        vi.fn<
+          (userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>
+        >(),
       findUnread: vi.fn<(userId: string) => Promise<Notification[]>>(),
       create: vi.fn<(data: CreateNotificationInput) => Promise<Notification>>(),
       markAsRead: vi.fn<(id: string) => Promise<Notification>>(),
       markAllAsRead: vi.fn<(userId: string) => Promise<void>>(),
       delete: vi.fn<(id: string) => Promise<void>>(),
       countUnread: vi.fn<(userId: string) => Promise<number>>(),
-      findPreferences: vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
-      upsertPreferences: vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
+      findPreferences: vi.fn<
+        (userId: string) => Promise<{
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          system: boolean;
+        }>
+      >(),
+      upsertPreferences: vi.fn<
+        (
+          userId: string,
+          data: {
+            emailEnabled: boolean;
+            pushEnabled: boolean;
+            storyReactions: boolean;
+            comments: boolean;
+            follows: boolean;
+            mentions: boolean;
+            system: boolean;
+          },
+        ) => Promise<{
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          system: boolean;
+        }>
+      >(),
     };
 
     usersRepository = {
@@ -97,7 +183,12 @@ describe('NotificationsEmailService', () => {
     };
 
     transporter = {
-      sendMail: vi.fn().mockResolvedValue({ accepted: ['user-1@example.com'], rejected: [], pending: [], envelope: { from: 'noreply@hakawi.com', to: ['user-1@example.com'] } }),
+      sendMail: vi.fn().mockResolvedValue({
+        accepted: ['user-1@example.com'],
+        rejected: [],
+        pending: [],
+        envelope: { from: 'noreply@hakawi.com', to: ['user-1@example.com'] },
+      }),
     };
 
     service = new NotificationsEmailService(

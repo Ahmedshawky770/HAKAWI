@@ -12,7 +12,10 @@ export class ReadingProgressEventHandler {
   ) {}
 
   handleReadingProgressStarted(progress: { userId: string; bookId: string }) {
-    this.logger.info(`Reading progress started: user ${progress.userId}, book ${progress.bookId}`, 'ReadingProgressEventHandler');
+    this.logger.info(
+      `Reading progress started: user ${progress.userId}, book ${progress.bookId}`,
+      'ReadingProgressEventHandler',
+    );
   }
 
   handleReadingProgressCompleted(progress: { userId: string; bookId: string; progressId: string }) {

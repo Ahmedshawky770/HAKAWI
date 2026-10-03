@@ -38,10 +38,16 @@ npm ci --production
 #### Step 3: Run Database Migrations
 
 ```bash
-npm run db:push
-# or for production-safe migrations
-npm run db:migrate
+npm run db:check        # static chain lint, no database needed
+npm run migration:run   # apply every pending migration
+npm run migration:verify
 ```
+
+> `npm run db:push` and `npm run db:migrate` **do not exist.** The schema push they referred to
+> (`drizzle-kit up:pg`) is gone — it discarded migration history. The real commands are
+> `migration:run` / `migration:rollback` / `migration:status` / `migration:verify`, with
+> `db:check` for the static lint. See
+> `docs/data-architecture/migrations/migration-strategy.md`.
 
 #### Step 4: Build Application
 
@@ -94,10 +100,16 @@ npm ci --production
 #### Step 3: Run Database Migrations
 
 ```bash
-npm run db:push
-# or for production-safe migrations
-npm run db:migrate
+npm run db:check        # static chain lint, no database needed
+npm run migration:run   # apply every pending migration
+npm run migration:verify
 ```
+
+> `npm run db:push` and `npm run db:migrate` **do not exist.** The schema push they referred to
+> (`drizzle-kit up:pg`) is gone — it discarded migration history. The real commands are
+> `migration:run` / `migration:rollback` / `migration:status` / `migration:verify`, with
+> `db:check` for the static lint. See
+> `docs/data-architecture/migrations/migration-strategy.md`.
 
 #### Step 4: Build Application
 
@@ -164,8 +176,9 @@ After deployment, verify:
 cd /opt/hakawi/backend
 git revert HEAD
 git push origin main
-npm ci --production
-npm run db:migrate
+npm ci --omit=dev
+npm run migration:status          # see what is currently applied
+npm run migration:rollback -- --steps 1   # add --allow-data-loss if classified data-loss
 npm run build
 sudo systemctl restart hakawi-backend
 
@@ -475,10 +488,14 @@ npm ci --production
 #### الخطوة 3: تشغيل ترحيلات قاعدة البيانات
 
 ```bash
-npm run db:push
-# أو للترحيلات الآمنة للإنتاج
-npm run db:migrate
+npm run db:check        # فحص السلسلة بدون قاعدة بيانات
+npm run migration:run   # تطبيق كل الترحيلات المعلقة
+npm run migration:verify
 ```
+
+> `npm run db:push` و `npm run db:migrate` **غير موجودين.** تم حذف أمر الدفع إلى المخطط
+> (`drizzle-kit up:pg`) لأنه كان يتجاهل سجل الترحيلات. الأوامر الحقيقية هي `migration:run` /
+> `migration:rollback` / `migration:status` / `migration:verify`.
 
 #### الخطوة 4: بناء التطبيق
 
@@ -531,8 +548,9 @@ journalctl -u hakawi-backend -f --since "5 minutes ago"
 cd /opt/hakawi/backend
 git revert HEAD
 git push origin main
-npm ci --production
-npm run db:migrate
+npm ci --omit=dev
+npm run migration:status          # see what is currently applied
+npm run migration:rollback -- --steps 1   # add --allow-data-loss if classified data-loss
 npm run build
 sudo systemctl restart hakawi-backend
 ```

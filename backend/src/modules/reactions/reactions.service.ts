@@ -45,8 +45,14 @@ export class ReactionsService {
     await this.eventBus.emit('story.reaction.removed', { userId, storyId } as StoryReactionRemovedEvent);
   }
 
-  async getReactions(storyId: string, page = 1, limit = 20): Promise<{ reactions: Reaction[]; total: number }> {
-    return this.reactionsRepository.findReactionsByStory(storyId, page, limit);
+  async getReactions(
+    storyId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ reactions: Reaction[]; total: number; page: number; limit: number }> {
+    const { reactions, total } = await this.reactionsRepository.findReactionsByStory(storyId, page, limit);
+
+    return { reactions, total, page, limit };
   }
 
   async getReactionCounts(storyId: string): Promise<ReactionCounts> {

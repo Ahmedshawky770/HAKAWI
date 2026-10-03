@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
@@ -15,7 +17,6 @@ import { MessagesController } from './messages.controller.ts';
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -62,6 +63,14 @@ describe('MessagesController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // This module is hand-built rather than importing `CommonModule`, so both must be provided
+        // here or Nest fails at DI resolution before any assertion runs.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
       ],
     }).compile();
 
@@ -85,7 +94,7 @@ describe('MessagesController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       vi.mocked(messagesService.getOrCreateConversation).mockResolvedValue({
-        id: 'conv-1',
+        id: '11111111-1111-4111-8111-111111111111',
         participant1Id: 'user-1',
         participant2Id: 'user-2',
         lastMessageAt: null,
@@ -98,10 +107,13 @@ describe('MessagesController', () => {
         .send({ recipientId: '00000000-0000-0000-0000-000000000002' })
         .expect(201);
 
-      expect(res.body).toHaveProperty('id', 'conv-1');
+      expect(res.body).toHaveProperty('id', '11111111-1111-4111-8111-111111111111');
       expect(res.body).toHaveProperty('participant1Id', 'user-1');
       expect(res.body).toHaveProperty('participant2Id', 'user-2');
-      expect(messagesService.getOrCreateConversation).toHaveBeenCalledWith('user-1', '00000000-0000-0000-0000-000000000002');
+      expect(messagesService.getOrCreateConversation).toHaveBeenCalledWith(
+        'user-1',
+        '00000000-0000-0000-0000-000000000002',
+      );
     });
   });
 
@@ -135,13 +147,13 @@ describe('MessagesController', () => {
       });
 
       const res = await request(httpServer)
-        .get('/messages/conversations/conv-1/messages')
+        .get('/messages/conversations/11111111-1111-4111-8111-111111111111/messages')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('messages');
       expect(res.body).toHaveProperty('total', 0);
-      expect(messagesService.getMessages).toHaveBeenCalledWith('conv-1', 'user-1', 1, 50);
+      expect(messagesService.getMessages).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'user-1', 1, 50);
     });
   });
 
@@ -150,8 +162,8 @@ describe('MessagesController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       vi.mocked(messagesService.sendMessage).mockResolvedValue({
-        id: 'msg-1',
-        conversationId: 'conv-1',
+        id: '22222222-2222-4222-8222-222222222222',
+        conversationId: '11111111-1111-4111-8111-111111111111',
         senderId: 'user-1',
         content: 'Hello!',
         isRead: false,
@@ -160,14 +172,18 @@ describe('MessagesController', () => {
       });
 
       const res = await request(httpServer)
-        .post('/messages/conversations/conv-1/messages')
+        .post('/messages/conversations/11111111-1111-4111-8111-111111111111/messages')
         .set('Authorization', `Bearer ${token}`)
         .send({ content: 'Hello!' })
         .expect(201);
 
-      expect(res.body).toHaveProperty('id', 'msg-1');
+      expect(res.body).toHaveProperty('id', '22222222-2222-4222-8222-222222222222');
       expect(res.body).toHaveProperty('content', 'Hello!');
-      expect(messagesService.sendMessage).toHaveBeenCalledWith('conv-1', 'user-1', 'Hello!');
+      expect(messagesService.sendMessage).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        'user-1',
+        'Hello!',
+      );
     });
   });
 
@@ -176,8 +192,8 @@ describe('MessagesController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       vi.mocked(messagesService.markAsRead).mockResolvedValue({
-        id: 'msg-1',
-        conversationId: 'conv-1',
+        id: '22222222-2222-4222-8222-222222222222',
+        conversationId: '11111111-1111-4111-8111-111111111111',
         senderId: 'user-2',
         content: 'Hello!',
         isRead: true,
@@ -186,12 +202,12 @@ describe('MessagesController', () => {
       });
 
       const res = await request(httpServer)
-        .patch('/messages/messages/msg-1/read')
+        .patch('/messages/messages/22222222-2222-4222-8222-222222222222/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('isRead', true);
-      expect(messagesService.markAsRead).toHaveBeenCalledWith('msg-1', 'user-1');
+      expect(messagesService.markAsRead).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222', 'user-1');
     });
   });
 
@@ -202,12 +218,12 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.markAllAsRead).mockResolvedValue(undefined);
 
       const res = await request(httpServer)
-        .patch('/messages/conversations/conv-1/read')
+        .patch('/messages/conversations/11111111-1111-4111-8111-111111111111/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toEqual({ message: 'All messages marked as read' });
-      expect(messagesService.markAllAsRead).toHaveBeenCalledWith('conv-1', 'user-1');
+      expect(messagesService.markAllAsRead).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'user-1');
     });
   });
 
@@ -218,12 +234,12 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.getUnreadCount).mockResolvedValue(5);
 
       const res = await request(httpServer)
-        .get('/messages/conversations/conv-1/unread')
+        .get('/messages/conversations/11111111-1111-4111-8111-111111111111/unread')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toEqual({ count: 5 });
-      expect(messagesService.getUnreadCount).toHaveBeenCalledWith('conv-1', 'user-1');
+      expect(messagesService.getUnreadCount).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'user-1');
     });
   });
 });

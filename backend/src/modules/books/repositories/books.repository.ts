@@ -76,7 +76,11 @@ export class BooksRepository implements IBooksRepository {
 
   async update(id: string, data: UpdateBookInput): Promise<Book> {
     this.logger.debug(`Updating book: ${id}`);
-    const [book] = await db.update(books).set({ ...data, updatedAt: new Date() }).where(eq(books.id, id)).returning();
+    const [book] = await db
+      .update(books)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(books.id, id))
+      .returning();
     return book;
   }
 
@@ -87,17 +91,26 @@ export class BooksRepository implements IBooksRepository {
 
   async incrementViewCount(id: string): Promise<void> {
     this.logger.debug(`Incrementing view count for book: ${id}`);
-    await db.update(books).set({ viewCount: sql`${books.viewCount} + 1` }).where(eq(books.id, id));
+    await db
+      .update(books)
+      .set({ viewCount: sql`${books.viewCount} + 1` })
+      .where(eq(books.id, id));
   }
 
   async incrementDownloadCount(id: string): Promise<void> {
     this.logger.debug(`Incrementing download count for book: ${id}`);
-    await db.update(books).set({ downloadCount: sql`${books.downloadCount} + 1` }).where(eq(books.id, id));
+    await db
+      .update(books)
+      .set({ downloadCount: sql`${books.downloadCount} + 1` })
+      .where(eq(books.id, id));
   }
 
   async findByCategory(categoryId: string): Promise<Book[]> {
     this.logger.debug(`Finding books by category: ${categoryId}`);
-    const result = await db.select().from(books).where(and(eq(books.categoryId, categoryId), isNull(books.deletedAt)));
+    const result = await db
+      .select()
+      .from(books)
+      .where(and(eq(books.categoryId, categoryId), isNull(books.deletedAt)));
     return result;
   }
 }

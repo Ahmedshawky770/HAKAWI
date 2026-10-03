@@ -52,7 +52,7 @@ export default function RentalDetailPage() {
         }
         try {
           const progressData = await api.getReadingProgress(rentalData.bookId);
-          setProgress(progressData);
+          setProgress(progressData.progress[0] ?? null);
         } catch {
           setProgress(null);
         }
@@ -124,9 +124,7 @@ export default function RentalDetailPage() {
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{book?.title || "كتاب"}</h2>
               <p className="text-lg text-gray-600 mb-4">بواسطة {book?.author || ""}</p>
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${statusInfo.color}`}
-              >
+              <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${statusInfo.color}`}>
                 {statusInfo.label}
               </span>
               <div className="grid grid-cols-2 gap-3 text-sm text-gray-600 mt-4">
@@ -149,9 +147,7 @@ export default function RentalDetailPage() {
                   </div>
                 )}
               </div>
-              {book?.description && (
-                <p className="text-gray-700 mt-4 whitespace-pre-line">{book.description}</p>
-              )}
+              {book?.description && <p className="text-gray-700 mt-4 whitespace-pre-line">{book.description}</p>}
             </div>
           </div>
         </CardBody>
@@ -176,11 +172,6 @@ export default function RentalDetailPage() {
               </span>
               <span>{progress.progressPercentage.toFixed(1)}%</span>
             </div>
-            {progress.startedAt && (
-              <p className="text-sm text-gray-500 mt-2">
-                بدأت القراءة: {new Date(progress.startedAt).toLocaleDateString("ar-EG")}
-              </p>
-            )}
             {progress.lastReadAt && (
               <p className="text-sm text-gray-500 mt-1">
                 آخر قراءة: {new Date(progress.lastReadAt).toLocaleDateString("ar-EG")}
@@ -192,9 +183,9 @@ export default function RentalDetailPage() {
               </p>
             )}
             <div className="mt-4">
-              <Link href={`/reading-progress?bookId=${rental.bookId}`}>
+              <Link href="/library">
                 <Button variant="secondary" size="sm">
-                  تحديث تقدم القراءة
+                  تحديث القراءة من مكتبتي
                 </Button>
               </Link>
             </div>
@@ -223,10 +214,7 @@ export default function RentalDetailPage() {
                       </option>
                     ))}
                   </select>
-                  <Button
-                    disabled={!extendDays || extending}
-                    onClick={handleExtend}
-                  >
+                  <Button disabled={!extendDays || extending} onClick={handleExtend}>
                     {extending ? "جاري التمديد..." : "تمديد الإيجار"}
                   </Button>
                 </div>

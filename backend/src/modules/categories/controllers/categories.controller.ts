@@ -1,7 +1,21 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Inject, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Inject,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 
-import { Public } from '../../../common/decorators/roles.decorator.ts';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { Public, RequireAdminRole, RequirePermissions } from '../../../common/decorators/roles.decorator.ts';
+import { Secured } from '../../../common/decorators/secured.decorator.ts';
+import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
+import { Permission } from '../../../common/permissions/permissions.ts';
 import { CategoriesService } from '../categories.service.ts';
 import { CreateCategoryDto, UpdateCategoryDto } from '../dto/categories.dto.ts';
 
@@ -27,20 +41,26 @@ export class CategoriesController {
     return this.categoriesService.findBySlug(slug);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.CONTENT_MODERATOR)
+  @RequirePermissions(Permission.CONTENT_EDIT_ALL)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateCategoryDto) {
     return this.categoriesService.create(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.CONTENT_MODERATOR)
+  @RequirePermissions(Permission.CONTENT_EDIT_ALL)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
     return this.categoriesService.update(id, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.CONTENT_MODERATOR)
+  @RequirePermissions(Permission.CONTENT_EDIT_ALL)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {

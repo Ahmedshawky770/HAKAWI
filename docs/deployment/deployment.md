@@ -15,14 +15,18 @@
 
 ### Deployment Platforms
 
-| Component | Platform | Reason |
+| Component | Platform | Status |
 |-----------|----------|--------|
-| **Frontend** | Vercel | Optimized for Next.js, edge network, automatic deployments |
-| **Backend** | Railway | Containerized NestJS, easy scaling, PostgreSQL managed |
-| **Database** | Railway Managed PostgreSQL | Automated backups, high availability |
-| **Cache** | Railway Managed Valkey | Redis-compatible, managed service |
-| **Storage** | Cloudflare R2 | S3-compatible, no egress fees |
-| **Monitoring** | Sentry | Error tracking and performance monitoring |
+| **Frontend** | Vercel | Plausible. `next build` succeeds; the root `build` script builds shared-types first |
+| **Backend** | Railway | ⛔ **Not deployable as written.** There is no `Dockerfile` in the repository — `find . -name "Dockerfile*"` returns nothing. Railway's container deploy has no artifact to build |
+| **Database** | Railway Managed PostgreSQL | Plausible. Schema comes from `migrations/*.sql` |
+| **Cache** | Railway Managed Valkey | Plausible. ⚠️ the Socket.IO adapter reads `REDIS_*`, not `VALKEY_*` |
+| **Storage** | Cloudflare R2 | Plausible via the S3-compatible SDK. ⛔ there is no `STORAGE_ENDPOINT` variable |
+| **Monitoring** | Sentry | ✅ Real. `@sentry/nestjs@11.1.0`, `common/observability/sentry.config.ts` |
+
+**The deployment artifact is the gap.** Everything else in this table is a configuration decision;
+the missing `Dockerfile` is a missing file. See
+`docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
 
 ---
 
@@ -30,22 +34,30 @@
 
 ### Code Quality
 
-- [ ] All tests pass (`npm test`)
-- [ ] E2E tests pass (`npm run test:e2e`)
-- [ ] Linting passes (`npm run lint`)
-- [ ] TypeScript compilation passes (`npm run build`)
-- [ ] No security vulnerabilities (`npm audit`)
+- [ ] All backend unit tests pass — `npm test` (145 files / 3047 tests, includes the coverage gate)
+- [ ] Backend e2e tests pass — `npm run test:e2e --workspace=backend` (22 files / 136 tests)
+- [ ] Frontend tests pass — `npm run test:run --workspace=frontend` (21 files / 340 tests)
+- [ ] Frontend coverage gate passes — `npm run test:coverage --workspace=frontend`
+- [ ] Linting passes — `npm run lint` (0 errors)
+- [ ] TypeScript passes — `npm run typecheck`
+- [ ] Build passes — `npm run build` (shared-types → backend → frontend)
+- [ ] No security vulnerabilities — `npm audit --omit=dev`
 
 ### Database
 
-- [ ] All migrations tested on staging
-- [ ] Migration rollback tested
-- [ ] Database backup completed
+- [ ] All migrations applied — `npm run migration:run`
+- [ ] Ledger verified, no drift — `npm run migration:verify`
+- [ ] Chain linted — `npm run db:check` (static, no database)
+- [ ] Migration rollback tested, including the reversibility classification
+- [ ] ⚠️ **Database backup taken manually** — there is no automated backup. `pg_dump` first
 - [ ] Migration script reviewed
 
 ### Configuration
 
-- [ ] Environment variables set in deployment platform
+- [ ] Environment variables set in the deployment platform — follow
+      `docs/deployment/environment.md`, which mirrors `backend/.env.example`
+- [ ] `THROTTLE_TRUST_PROXY=true` if behind a reverse proxy
+- [ ] `ENABLE_SWAGGER=false` if the API docs should not be public
 - [ ] Secrets rotated
 - [ ] CORS origins configured
 - [ ] SSL certificates valid
@@ -53,9 +65,14 @@
 ### Monitoring
 
 - [ ] Sentry DSN configured
-- [ ] Alerts configured
-- [ ] Health check endpoints working
-- [ ] Log aggregation working
+- [ ] ⛔ **Alerting rules defined** — no alert rules exist in the repository
+- [ ] Health check responding at `GET /api/v1/health`
+- [ ] ⛔ **Log aggregation configured** — no aggregation stack is defined in the repository
+
+### Missing artifact
+
+- [ ] ⛔ **A `Dockerfile` exists.** It does not. `find . -name "Dockerfile*"` returns nothing, so
+      every "Deploy to Railway" step below is blocked at step one.
 
 ---
 
@@ -110,25 +127,49 @@ DB_HOST=${{Postgres.PGHOST}}
 DB_PORT=${{Postgres.PGPORT}}
 DB_NAME=${{Postgres.PGDATABASE}}
 DB_USER=${{Postgres.PGUSER}}
-DB_PASSWORD=${{Postgres.PGPASSWORD}}
+DB_PASSWORD=${{Postgres.PGPOST}}
 VALKEY_HOST=${{Valkey.HOST}}
 VALKEY_PORT=${{Valkey.PORT}}
 VALKEY_PASSWORD=${{Valkey.PASSWORD}}
-JWT_SECRET=your-jwt-secret
-REFRESH_TOKEN_SECRET=your-refresh-secret
-PAYMOB_API_KEY=your-paymob-api-key
-PAYMOB_WEBHOOK_SECRET=your-webhook-secret
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=noreply@hakawi.com
-EMAIL_PASSWORD=your-email-password
-STORAGE_PROVIDER=r2
-STORAGE_BUCKET=hakawi-media
-STORAGE_ACCESS_KEY=your-access-key
-STORAGE_SECRET_KEY=your-secret-key
-SENTRY_DSN=your-sentry-dsn
+REDIS_HOST=${{Valkey.HOST}}
+REDIS_PORT=${{Valkey.PORT}}
+REDIS_PASSWORD=${{Valkey.PASSWORD}}
+JWT_SECRET=<≥32 chars, different from REFRESH_TOKEN_SECRET>
+REFRESH_TOKEN_SECRET=<≥32 chars>
+ENCRYPTION_KEY=<generated>
+PAYMOB_ENVIRONMENT=live
+PAYMOB_API_KEY=…
+PAYMOB_MERCHANT_ID=…
+PAYMOB_INTEGRATION_ID=…
+PAYMOB_WEBHOOK_SECRET=…
+SENTRY_DSN=…
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.1
 CORS_ORIGIN=https://hakawi.com
+FRONTEND_URL=https://hakawi.com
+ENABLE_SWAGGER=false
+THROTTLE_TRUST_PROXY=true
+WAF_ENABLED=true
+WAF_FAIL_MODE=closed
 ```
+
+**Corrections to the previous list:**
+
+| Removed | Why |
+|---|---|
+| `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` | ⛔ Read by nothing. No SMTP client is wired. See `docs/deployment/environment.md` |
+| `STORAGE_PROVIDER=r2` | ⛔ `STORAGE_PROVIDER` is **not read** by any config factory. R2 works through S3 compatibility, not a provider switch |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | ✅ still real — but they come from `STORAGE_*`, which is a real family; the *provider* value is not |
+
+**Added:** `ENCRYPTION_KEY`, `PAYMOB_ENVIRONMENT`, `PAYMOB_INTEGRATION_ID`, `SENTRY_ENVIRONMENT`,
+`SENTRY_TRACES_SAMPLE_RATE`, `FRONTEND_URL`, `ENABLE_SWAGGER`, `THROTTLE_TRUST_PROXY`,
+`WAF_ENABLED`, `WAF_FAIL_MODE`, and the `REDIS_*` trio for the Socket.IO adapter.
+`PAYMOB_WEBHOOK_SECRET` is retained above and is real, but it is read directly in
+`backend/src/modules/payments/payments.service.ts:412` rather than through `paymob.config.ts`; if it is unset, every Paymob
+webhook is rejected.
+
+The complete authoritative list is `docs/deployment/environment.md`, which follows
+`backend/.env.example`.
 
 ### Build Settings
 
@@ -146,18 +187,29 @@ CORS_ORIGIN=https://hakawi.com
 
 ## Database Migrations
 
+Migrations are 18 numbered `.sql` files at the repository-root `migrations/` directory, applied by a
+transaction-wrapped runner with a sha256 content-checksum ledger. Full detail:
+`docs/data-architecture/migrations/migration-strategy.md`.
+
 ### Pre-Migration
 
 ```bash
-# 1. Backup database
+# 1. Back up the database yourself — there is no automated backup
 pg_dump -h localhost -U postgres hakawi > backup.sql
 
-# 2. Test migration on staging
+# 2. Lint the migration chain (static, no database required)
+npm run db:check
+
+# 3. Apply
 npm run migration:run
 
-# 3. Verify data integrity
-npm run db:verify
+# 4. Verify the ledger
+npm run migration:verify
+npm run migration:status
 ```
+
+> `npm run db:verify` **does not exist** and never did. Use `npm run db:check` (static) or
+> `npm run migration:verify` (against a live database).
 
 ### Migration Deployment
 
@@ -165,44 +217,62 @@ npm run db:verify
 # 1. Deploy code first (backward compatible)
 git push origin main
 
-# 2. Run migration
+# 2. Apply migrations
 npm run migration:run
 
-# 3. Verify application
-curl https://api.hakawi.com/health
+# 3. Verify the application
+curl https://api.hakawi.com/api/v1/health
 ```
+
+> The health path is **`/api/v1/health`**, not `/health`. The global prefix `api/v1` is set at
+> `backend/src/main.ts:65`.
 
 ### Rollback
 
 ```bash
-# 1. Revert migration
-npm run migration:revert
+# 1. Roll back the migration
+npm run migration:rollback -- --steps 1
 
-# 2. Deploy previous code
+# 2. Or roll back to a named migration
+npm run migration:rollback -- --to 0015
+
+# If the down script is classified `data-loss`, you must opt in explicitly:
+npm run migration:rollback -- --steps 1 --allow-data-loss
+
+# 3. Deploy the previous code
 git revert HEAD
 git push origin main
 
-# 3. Verify application
-curl https://api.hakawi.com/health
+# 4. Verify
+curl https://api.hakawi.com/api/v1/health
 ```
+
+> `npm run migration:revert` **does not exist.** The real command is `npm run migration:rollback`,
+> and it did not exist before the migration system was rebuilt.
+>
+> ⚠️ A migration whose down script is `irreversible` **will not roll back under any flag.**
+> `0001_create_stories_tables` is deliberately irreversible because it owns the shared `uuid-ossp`
+> extension. An `irreversible` failure is fixed with a forward migration.
 
 ---
 
 ## Health Checks
 
-### Backend Health Endpoint
+### Backend Health Endpoint — ✅ real
+
+`backend/src/app.controller.ts:19-32`, with the global `api/v1` prefix:
 
 ```typescript
 @Get('health')
-async healthCheck() {
+async getHealth() {
+  const dbHealthy = await this.checkDatabase();      // SELECT 1
+  const valkeyHealthy = await this.checkValkey();     // PING
+
   return {
-    status: 'ok',
+    status: dbHealthy && valkeyHealthy ? 'healthy' : 'degraded',
+    database: dbHealthy ? 'connected' : 'disconnected',
+    valkey: valkeyHealthy ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
-    services: {
-      database: await this.checkDatabase(),
-      valkey: await this.checkValkey(),
-      sanity: await this.checkSanity(),
-    },
   };
 }
 ```
@@ -211,15 +281,19 @@ async healthCheck() {
 
 ```json
 {
-  "status": "ok",
-  "timestamp": "2026-09-19T10:00:00Z",
-  "services": {
-    "database": "ok",
-    "valkey": "ok",
-    "sanity": "ok"
-  }
+  "status": "healthy",
+  "database": "connected",
+  "valkey": "connected",
+  "timestamp": "2026-09-19T10:00:00.000Z"
 }
 ```
+
+**Full path: `GET /api/v1/health`.** The previous version of this document showed
+`curl https://api.hakawi.com/health` and a `services: { database, valkey, sanity }` object with
+`"ok"` values. There is no `services` wrapper, no `ok` value, and **no Sanity check** — only
+PostgreSQL and Valkey. The status is `degraded`, not `unhealthy`, when a dependency is down, and the
+endpoint always returns **200**; it does not return 503. A load balancer pointed at it must parse
+the body, not trust the status code.
 
 ---
 
@@ -230,12 +304,15 @@ async healthCheck() {
 ```typescript
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
+  environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+  release: process.env.SENTRY_RELEASE ?? process.env.GIT_COMMIT_SHA,
+  tracesSampleRate: Number.parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
 });
 ```
+
+The real implementation lives in `backend/src/common/observability/sentry.config.ts`: it is a no-op
+when `SENTRY_DSN` is unset, and `AllExceptionsFilter` forwards unhandled (non-`HttpException`)
+errors to `Sentry.captureException`.
 
 ### Alerts
 
@@ -370,35 +447,44 @@ jobs:
 ## Security
 
 ### HTTPS
+- Force HTTPS everywhere — ⚠️ **the application does not do this.** There is no HTTPS redirect and
+  no `trust proxy` configuration anywhere in `backend/src`. TLS must be terminated by the platform
+  or a reverse proxy, and the proxy must forward `X-Forwarded-For` **and** have
+  `THROTTLE_TRUST_PROXY=true` set, or per-IP throttling and WAF IP blocking will key on the proxy's
+  address instead of the client's.
+- HSTS — ✅ set, but **only when `NODE_ENV === 'production'`** (`backend/src/main.ts:26-28`)
+- TLS 1.3 only — a platform concern
 
-- Force HTTPS everywhere
-- HSTS headers
-- TLS 1.3 only
+### Headers — ⚠️ `helmet` is NOT used
 
-### Headers
+The previous version of this document prescribed `app.use(helmet({...}))`. **There is no `helmet`
+dependency in `backend/package.json`** and no such call in the code.
 
-```typescript
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-  },
-}));
+The real implementation is a hand-written map in `backend/src/main.ts:15-21`:
+
+```ts
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+};
 ```
 
-### Secrets
+`Strict-Transport-Security: max-age=31536000; includeSubDomains` is added separately, and only in
+production.
 
+⛔ **No `Content-Security-Policy` is set.** The previous `contentSecurityPolicy` directives block
+describes a policy that has never existed. If CSP is required, it has to be written and added to
+that map.
+
+### Secrets
 - Never log secrets
 - Rotate secrets regularly
 - Use different secrets per environment
+- ⚠️ Rotating `JWT_SECRET` or `REFRESH_TOKEN_SECRET` invalidates every outstanding token for that
+  pair. Safe, but user-visible.
 
 ---
 

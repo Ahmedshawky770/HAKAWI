@@ -1,26 +1,131 @@
 {
-  "version": "5",
+  "version": "7",
   "dialect": "pg",
   "entries": [
     {
       "idx": 0,
-      "version": "5",
-      "when": 1790112160261,
-      "tag": "0000_majestic_annihilus",
+      "version": "7",
+      "when": 1790116953077,
+      "tag": "0000_create_users_table",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "5",
-      "when": 1790116605786,
-      "tag": "0001_lucky_molly_hayes",
+      "version": "7",
+      "when": 1790184109707,
+      "tag": "0001_create_stories_tables",
       "breakpoints": true
     },
     {
       "idx": 2,
-      "version": "5",
-      "when": 1790189187860,
-      "tag": "0002_nice_jigsaw",
+      "version": "7",
+      "when": 1790184111693,
+      "tag": "0002_create_social_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790184111751,
+      "tag": "0003_create_messaging_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790187912989,
+      "tag": "0004_create_upload_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790187913041,
+      "tag": "0005_create_moderation_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790189276887,
+      "tag": "0006_add_email_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790189276922,
+      "tag": "0007_add_notification_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790448599840,
+      "tag": "0008_create_books_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790448617143,
+      "tag": "0009_create_payments_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790448636969,
+      "tag": "0010_create_rentals_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790448657623,
+      "tag": "0011_create_contests_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790448798613,
+      "tag": "0012_create_library_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790467500245,
+      "tag": "0013_create_badges_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790720577116,
+      "tag": "0014_create_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790552602656,
+      "tag": "0015_add_password_reset_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790717017952,
+      "tag": "0016_add_paymob_gateway_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790738352487,
+      "tag": "0018_add_report_source",
       "breakpoints": true
     }
   ]

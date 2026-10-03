@@ -6,7 +6,9 @@ import { tags } from './stories.schema.ts';
 export const bookCategories = pgTable(
   'book_categories',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     description: text('description'),
@@ -17,15 +19,34 @@ export const bookCategories = pgTable(
   },
   (table) => ({
     slugIdx: index('book_categories_slug_idx').on(table.slug),
-  })
+  }),
 );
 
 export const books = pgTable(
   'books',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
+    /**
+     * The author's DISPLAY name. Not an identity — see `ownerId` below.
+     *
+     * `ownerId` was added by migration 0021 precisely because this field was being compared against a
+     * UUID by four write guards, so it could never match. Keep the two separate: renaming an author on
+     * a book must not change who may edit it, and a display name must not be load-bearing for
+     * authorization.
+     */
     author: varchar('author', { length: 255 }).notNull(),
+    /**
+     * The account that owns this book, and the ONLY field the write guards consult.
+     *
+     * Nullable because it cannot be derived from `author` — that would be a guess, and a wrong guess
+     * silently transfers a book to the wrong account. Books that predate migration 0021 have
+     * `ownerId === null`, which every write path treats as UNOWNED: editable by an administrator,
+     * by nobody else, and claimable through `PATCH /books/:id`.
+     */
+    ownerId: uuid('owner_id').references(() => users.id),
     description: text('description'),
     coverImage: text('cover_image'),
     isbn: varchar('isbn', { length: 20 }),
@@ -48,33 +69,44 @@ export const books = pgTable(
   },
   (table) => ({
     authorIdx: index('books_author_idx').on(table.author),
+    ownerIdx: index('books_owner_id_idx').on(table.ownerId),
     statusIdx: index('books_status_idx').on(table.status),
     categoryIdx: index('books_category_id_idx').on(table.categoryId),
     titleIdx: index('books_title_idx').on(table.title),
     isbnIdx: index('books_isbn_idx').on(table.isbn),
-  })
+  }),
 );
 
 export const bookTags = pgTable(
   'book_tags',
   {
-    bookId: uuid('book_id').notNull().references(() => books.id),
-    tagId: uuid('tag_id').notNull().references(() => tags.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.bookId, table.tagId] }),
     bookIdx: index('book_tags_book_id_idx').on(table.bookId),
     tagIdx: index('book_tags_tag_id_idx').on(table.tagId),
-  })
+  }),
 );
 
 export const readingProgress = pgTable(
   'reading_progress',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
-    bookId: uuid('book_id').notNull().references(() => books.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    bookId: uuid('book_id')
+      .notNull()
+      .references(() => books.id),
     currentPage: integer('current_page').default(0).notNull(),
     totalPages: integer('total_pages'),
     progressPercentage: integer('progress_percentage').default(0).notNull(),
@@ -88,7 +120,7 @@ export const readingProgress = pgTable(
     userBookIdx: index('reading_progress_user_book_idx').on(table.userId, table.bookId),
     userIdx: index('reading_progress_user_id_idx').on(table.userId),
     bookIdx: index('reading_progress_book_id_idx').on(table.bookId),
-  })
+  }),
 );
 
 export type Book = typeof books.$inferSelect;

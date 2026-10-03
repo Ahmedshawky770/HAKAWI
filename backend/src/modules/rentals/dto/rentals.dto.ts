@@ -9,7 +9,7 @@ export const RENTAL_DURATION_PRESETS = [
   { label: '3 months', days: 90 },
 ] as const;
 
-export type RentalDurationPreset = typeof RENTAL_DURATION_PRESETS[number]['days'];
+export type RentalDurationPreset = (typeof RENTAL_DURATION_PRESETS)[number]['days'];
 
 export class CreateRentalDto {
   @IsUUID('4', { message: 'Book ID must be a valid UUID' })

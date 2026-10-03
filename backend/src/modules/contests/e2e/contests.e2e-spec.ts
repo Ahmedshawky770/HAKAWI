@@ -4,7 +4,7 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import request, { type Response } from 'supertest';
+import request from 'supertest';
 
 import { AppModule } from '../../../app.module.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -13,12 +13,11 @@ import { EncryptionService } from '../../../common/utils/encryption.util.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
-import { categories } from '../../../db/schema/stories.schema.ts';
-import { contests } from '../../../db/schema/contests.schema.ts';
-import { contestSubmissions } from '../../../db/schema/contests.schema.ts';
-import { contestVotes } from '../../../db/schema/contests.schema.ts';
-import { contestPrizes } from '../../../db/schema/contests.schema.ts';
-import { stories } from '../../../db/schema/stories.schema.ts';
+
+interface JsonResponse<TBody> {
+  status: number;
+  body: TBody;
+}
 
 interface RegisterResponseBody {
   id: string;
@@ -50,11 +49,6 @@ interface CategoryResponseBody {
   slug: string;
 }
 
-interface StoryResponseBody {
-  id: string;
-  title: string;
-}
-
 // drizzle-ORM db and sql template tags are typed as `any` by the library.
 // Supertest request chains propagate `any` from the untyped CommonJS default import.
 // These are accepted external-library typing limitations — no production code change.
@@ -63,6 +57,7 @@ interface StoryResponseBody {
 describe('Contests E2E', () => {
   let app: INestApplication;
   let httpServer: Server;
+  let logger: WinstonLoggerService;
   let accessToken: string;
   let categoryId: string;
   let contestId: string;
@@ -86,69 +81,64 @@ describe('Contests E2E', () => {
         },
       ],
     })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
+      .overrideProvider(UsersEventHandler)
+      .useValue({
+        handleUserRegistered: () => Promise.resolve(),
+        handleUserUpdated: () => Promise.resolve(),
+      })
+      .overrideProvider(EncryptionService)
+      .useValue({
+        encrypt: (plaintext: string) => plaintext,
+        decrypt: (ciphertext: string) => ciphertext,
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
     httpServer = app.getHttpServer() as Server;
+    logger = app.get(WinstonLoggerService);
 
-    const registerPublisher = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-publisher@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Publisher',
-        username: 'e2epublisher',
-        accountType: 'author',
-      }) as Response<{ body: RegisterResponseBody }>;
+    const registerPublisher = (await request(httpServer).post('/auth/register').send({
+      email: 'e2e-publisher@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Publisher',
+      username: 'e2epublisher',
+      accountType: 'author',
+    })) as JsonResponse<RegisterResponseBody>;
 
     void registerPublisher.body.id;
 
-    const loginPublisher = await request(httpServer)
-      .post('/auth/login')
-      .send({
-        email: 'e2e-publisher@example.com',
-        password: 'SecurePass123!',
-      }) as Response<{ body: LoginResponseBody }>;
+    const loginPublisher = (await request(httpServer).post('/auth/login').send({
+      email: 'e2e-publisher@example.com',
+      password: 'SecurePass123!',
+    })) as JsonResponse<LoginResponseBody>;
 
     accessToken = loginPublisher.body.tokens.accessToken;
 
-    const categoryRes = await request(httpServer)
+    const categoryRes = (await request(httpServer)
       .post('/categories')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ name: 'E2E Contest Category', slug: 'e2e-contest-category' }) as Response<{ body: CategoryResponseBody }>;
+      .send({ name: 'E2E Contest Category', slug: 'e2e-contest-category' })) as JsonResponse<CategoryResponseBody>;
 
     categoryId = categoryRes.body.id;
 
-    const registerAuthor = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-author@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Author',
-        username: 'e2eauthor',
-        accountType: 'author',
-      }) as Response<{ body: RegisterResponseBody }>;
+    const registerAuthor = (await request(httpServer).post('/auth/register').send({
+      email: 'e2e-author@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Author',
+      username: 'e2eauthor',
+      accountType: 'author',
+    })) as JsonResponse<RegisterResponseBody>;
 
     void registerAuthor.body.id;
 
-    const registerVoter = await request(httpServer)
-      .post('/auth/register')
-      .send({
-        email: 'e2e-voter@example.com',
-        password: 'SecurePass123!',
-        name: 'E2E Voter',
-        username: 'e2evoter',
-        accountType: 'reader',
-      }) as Response<{ body: RegisterResponseBody }>;
+    const registerVoter = (await request(httpServer).post('/auth/register').send({
+      email: 'e2e-voter@example.com',
+      password: 'SecurePass123!',
+      name: 'E2E Voter',
+      username: 'e2evoter',
+      accountType: 'reader',
+    })) as JsonResponse<RegisterResponseBody>;
 
     void registerVoter.body.id;
 
@@ -177,7 +167,7 @@ describe('Contests E2E', () => {
 
   describe('POST /contests', () => {
     it('should create a contest', async () => {
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .post('/contests')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({
@@ -188,7 +178,7 @@ describe('Contests E2E', () => {
           endDate: new Date(Date.now() + 7 * 86400000).toISOString(),
           submissionDeadline: new Date(Date.now() + 3 * 86400000).toISOString(),
         })
-        .expect(201) as Response<{ body: ContestResponseBody }>;
+        .expect(201)) as JsonResponse<ContestResponseBody>;
 
       expect(res.body).toHaveProperty('id');
       expect(res.body.title).toBe('E2E Test Contest');
@@ -199,10 +189,10 @@ describe('Contests E2E', () => {
 
   describe('POST /contests/:id/start', () => {
     it('should start a draft contest', async () => {
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .post(`/contests/${contestId}/start`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200) as Response<{ body: ContestResponseBody }>;
+        .expect(200)) as JsonResponse<ContestResponseBody>;
 
       expect(res.body.status).toBe('active');
     });
@@ -210,12 +200,12 @@ describe('Contests E2E', () => {
 
   describe('POST /contests/:id/submissions', () => {
     it('should submit a story to contest', async () => {
-      console.log('storyId:', storyId, 'contestId:', contestId);
-      const res = await request(httpServer)
+      logger.debug(`storyId: ${storyId} contestId: ${contestId}`, 'ContestsE2E');
+      const res = (await request(httpServer)
         .post(`/contests/${contestId}/submissions`)
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ storyId })
-        .expect(201) as Response<{ body: SubmissionResponseBody }>;
+        .expect(201)) as JsonResponse<SubmissionResponseBody>;
 
       expect(res.body).toHaveProperty('id');
       expect(res.body.contestId).toBe(contestId);
@@ -225,16 +215,16 @@ describe('Contests E2E', () => {
 
   describe('POST /contests/:id/submissions/:submissionId/approve', () => {
     it('should approve a submission', async () => {
-      const submissionsRes = await request(httpServer)
+      const submissionsRes = (await request(httpServer)
         .get(`/contests/${contestId}/submissions`)
-        .expect(200) as Response<{ body: { submissions: SubmissionResponseBody[]; total: number } }>;
+        .expect(200)) as JsonResponse<{ submissions: SubmissionResponseBody[]; total: number }>;
 
       const submissionId: string = submissionsRes.body.submissions[0].id;
 
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .post(`/contests/${contestId}/submissions/${submissionId}/approve`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200) as Response<{ body: { status: string } }>;
+        .expect(200)) as JsonResponse<{ status: string }>;
 
       expect(res.body.status).toBe('approved');
     });
@@ -242,10 +232,10 @@ describe('Contests E2E', () => {
 
   describe('POST /contests/:id/cancel', () => {
     it('should cancel an active contest', async () => {
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .post(`/contests/${contestId}/cancel`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200) as Response<{ body: ContestResponseBody }>;
+        .expect(200)) as JsonResponse<ContestResponseBody>;
 
       expect(res.body.status).toBe('cancelled');
     });
@@ -256,7 +246,7 @@ describe('Contests E2E', () => {
     let approvedSubmissionId: string;
 
     beforeAll(async () => {
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .post('/contests')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({
@@ -266,7 +256,7 @@ describe('Contests E2E', () => {
           startDate: new Date(Date.now() - 86400000).toISOString(),
           endDate: new Date(Date.now() + 7 * 86400000).toISOString(),
           submissionDeadline: new Date(Date.now() + 3 * 86400000).toISOString(),
-        }) as Response<{ body: ContestResponseBody }>;
+        })) as JsonResponse<ContestResponseBody>;
 
       activeContestId = res.body.id;
 
@@ -274,10 +264,10 @@ describe('Contests E2E', () => {
         .post(`/contests/${activeContestId}/start`)
         .set('Authorization', `Bearer ${accessToken}`);
 
-      const submissionRes = await request(httpServer)
+      const submissionRes = (await request(httpServer)
         .post(`/contests/${activeContestId}/submissions`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ storyId }) as Response<{ body: SubmissionResponseBody }>;
+        .send({ storyId })) as JsonResponse<SubmissionResponseBody>;
 
       approvedSubmissionId = submissionRes.body.id;
 
@@ -291,9 +281,9 @@ describe('Contests E2E', () => {
         .post(`/contests/${activeContestId}/complete`)
         .set('Authorization', `Bearer ${accessToken}`);
 
-      const contest = await request(httpServer)
+      const contest = (await request(httpServer)
         .get(`/contests/${activeContestId}`)
-        .expect(200) as Response<{ body: ContestResponseBody }>;
+        .expect(200)) as JsonResponse<ContestResponseBody>;
 
       expect(contest.body.status).toBe('completed');
     });
@@ -301,10 +291,10 @@ describe('Contests E2E', () => {
 
   describe('Publisher Dashboard', () => {
     it('should return publisher stats', async () => {
-      const res = await request(httpServer)
+      const res = (await request(httpServer)
         .get('/contests/publisher/stats')
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200) as Response<{ body: Record<string, unknown> }>;
+        .expect(200)) as JsonResponse<Record<string, unknown>>;
 
       expect(res.body).toHaveProperty('totalContests');
       expect(res.body).toHaveProperty('activeContests');
