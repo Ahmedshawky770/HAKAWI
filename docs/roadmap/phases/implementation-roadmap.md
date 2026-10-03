@@ -158,13 +158,88 @@ integration files.
       `ResilientHttpClient` with Zod on every response: auth token (Valkey-cached) → order
       registration → payment key → iframe/accept URL → refund. The previous stub fabricated a URL
       with no HTTP call
-- [x] Payment initiation — reachable: `backend/src/modules/books/books.service.ts:201` calls `paymobInitializePayment`
+- [x] **A purchase charges exactly once and delivers exactly once.**
+      - **The guard existed only as a route.** `books.author` is a `varchar(255)` display name and
+        there was no owner column, so four write paths compared a name against a UUID: `publish`,
+        `archive` and `delete` answered `ForbiddenException` for EVERY caller, and the two
+        self-dealing guards (`book.author === userId` on purchase and rent) never fired at all. No book
+        could be published, archived or deleted, and nobody was stopped from buying their own. The unit
+        tests passed because their fixtures used `author: 'user-1'` — a UUID-shaped string in a varchar,
+        a shape the schema cannot produce.
+      - Migration `0021` adds `books.owner_id`, deliberately **nullable and un-backfilled**: it
+        cannot be derived from a display name without guessing, and a wrong guess silently transfers a
+        book to the wrong account. Books predating it are UNOWNED — editable by an administrator,
+        by nobody else, and claimable through `PATCH /books/:id`.
+      - `BooksService` reads `ownerId` through one `assertOwnership` helper, and the create path
+        stamps the owner from the authenticated caller **after** the input spread, so a body field
+        cannot set it.
+      - **Double charging is refused.** There was no check at all, so ten calls to
+        `POST /books/:id/purchase` created ten payments and ten checkout sessions for one book. The
+        guard reads the **library**, because "does this reader already have this book" has one
+        authoritative answer (Principle #9) rather than being re-derived from payment rows — which is
+        exactly the row that disagrees when the code is broken.
+      - **The entitlement now exists.** `PaymentsEventHandler.handlePaymentCompleted` logged a line
+        and returned, so a completed payment produced a `payments` row and nothing else — the reader
+        was charged and given nothing. `LibraryEventHandler` now grants ownership from the stored
+        payment, idempotently, and grants ONLY on `type === 'purchase'`.
+      - **The free hole is closed.** `POST /library` wrote an `owned` row for any `bookId` with no
+        price check, no payment check and no check the book was for sale, so any authenticated account
+        could claim any book in the catalogue for nothing. It is removed. `POST /library/claim`
+        replaces it and verifies `is_free` **in the service**, not the controller — a controller check
+        is bypassed by the payment-grant caller, which must not be subject to it.
+      - **The response is a checkout, not a payment row.** `purchase` returned the `payments` row,
+        which has no URL; the frontend schema asked for `paymobUrl`, Zod rejected every response, and
+        the buy flow errored on every attempt without ever sending anyone to Paymob. `iframeUrl` and
+        `acceptUrl` existed on the gateway response and were discarded. Both money paths now return
+        `BookCheckoutResponse` — declared once in `@hakawi/shared-types`, matched by
+        `purchaseResultSchema` on the frontend — and the page redirects to `checkoutUrl`.
+- [x] **Production credentials are guarded at boot.** `PAYMOB_API_KEY`,
+      `PAYMOB_MERCHANT_ID` and `PAYMOB_INTEGRATION_ID` each carried a `sandbox-*` default with **no
+      production guard**, while the webhook secret beside them had one — and the comment above the
+      schema claimed the opposite, that "a deployment that forgets the variable now stops at boot". A
+      production deployment that copied `.env.example` therefore booted healthy, answered
+      `/health` with `database: connected`, and failed every real checkout with a gateway error.
+      All three are now refused in production, and `PAYMOB_ENVIRONMENT=sandbox` with
+      `NODE_ENV=production` is refused too: that is the operator's own mistake rather than a
+      forgotten variable, and it fails the same way.
+- [x] ⚠️ **CORRECTION — the identical sandbox and live base URLs are NOT a defect.** This roadmap
+      previously flagged that `PAYMOB_SANDBOX_BASE_URL` and `PAYMOB_LIVE_BASE_URL` are byte-identical
+      and called it a bug in "sandbox mode authenticates against the live host". Paymob's own
+      documentation says the opposite: *"Test and live use the same regional base URL for each region.
+      The mode is controlled by the keys and Integration IDs you use."* A test key against a live
+      Integration ID returns 404 on creation, so the failure to prevent is a **credential-mode**
+      mismatch, not a URL mismatch — which is why the boot guard above is the real control. Each
+      constant now carries that fact in its own comment, because the names invite exactly the wrong
+      reading.
 - [x] Payment webhook handling — `POST /api/v1/payments/webhooks/paymob`
 - [x] Idempotent webhook processing — `uniqueIndex` on `payments.paymob_transaction_id`
 - [x] Payment state machine
 - [x] Gateway field persistence — migration `0016` adds `paymob_payment_key`,
       `paymob_iframe_url`, `paymob_accept_url`
-- [x] **Unit tests** (`payments.service.spec.ts`, `paymob.config.spec.ts`)
+- [x] **Rentals and extensions charge.**
+      - **They were entirely free.** A search of `src/modules/rentals/` for
+        `payment|amount|price|charge` returned **zero hits**: no price on a rental row, no billing code,
+        no `rent` payment type. `POST /books/:id/rent` returned an **active** rental — which is
+        access to a paid book — and `POST /rentals/:id/extend` let the reader add up to three more
+        periods, also free. The rental product was a way to read paid books without paying for them.
+      - `POST /books/:id/rent` now initialises a payment and **returns a checkout instead of a rental**.
+        That return-type change IS the fix: the previous shape told the caller the rental had already
+        happened. `RentalsEventHandler` creates the rental row from `payment.completed`, so access is
+        always downstream of money.
+      - `extendRental` does the same and no longer moves `endDate` in the request.
+        `RentalsEventHandler.applyExtension` recomputes the end date from the STORED rental plus the
+        PAID duration, so a stale or hand-edited metadata field cannot extend a rental further than
+        what was bought — and it re-checks the ownership, the active state and the extension cap at
+        apply time, because a webhook can arrive after any of those changed.
+      - Pricing is one number: `RENTAL_PRICE_PER_DAY_PIASTERS` in `@hakawi/shared-types`, with the
+        offered durations alongside it, so the lengths a reader can pick from and the lengths the API
+        accepts cannot drift. `GET /rentals/:id/extend/quote` returns the price before any money moves,
+        because every rejection — not your rental, not active, cap reached, duration not offered —
+        would otherwise happen after a checkout had been created.
+- [x] **Unit tests** (`payments.service.spec.ts`, `paymob.config.spec.ts`, and
+      `books.service.spec.ts` / `library.service.spec.ts` / `rentals.service.spec.ts` for the
+      ownership, double-charge and entitlement paths — the cases that pin the money, since the ones
+      that existed asserted the un-paid flow completing)
 - [x] **Integration tests**
 - [x] **E2E tests** — Playwright, in `frontend/e2e/`. ⚠️ this line previously cited
       `backend/e2e/critical-flows.e2e-spec.ts`, which was **orphaned**: both vitest configs exclude

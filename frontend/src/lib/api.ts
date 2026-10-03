@@ -32,6 +32,8 @@ import {
   reactionsListResponseSchema,
   readingProgressListResponseSchema,
   rentalSchema,
+  bookCheckoutSchema,
+  rentalQuoteSchema,
   rentalsListResponseSchema,
   reportSchema,
   reportsListResponseSchema,
@@ -348,11 +350,23 @@ export const api = {
       body: JSON.stringify({ paymentMethodId }),
     }),
 
+  /**
+   * Starts a rental by CHARGING for it.
+   *
+   * This used to validate the response against `rentalSchema` and so expected an `Rental` — an
+   * ACTIVE rental, granted with no payment. The API now returns the same checkout contract as
+   * `purchaseBook`, and `RentalsEventHandler` creates the rental when `payment.completed` arrives, so
+   * the customer is sent to Paymob rather than handed access.
+   */
   rentBook: (id: string, data: { durationDays: number }) =>
-    apiRequest(rentalSchema, `/books/${id}/rent`, {
+    apiRequest(bookCheckoutSchema, `/books/${id}/rent`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  /** Price of an extension before any money moves; `POST /rentals/:id/extend` takes the payment. */
+  quoteRentalExtension: (id: string, days: number) =>
+    apiRequest(rentalQuoteSchema, withQuery(`/rentals/${id}/extend/quote`, { days })),
 
   getReadingProgress: (bookId: string) =>
     apiRequest(readingProgressListResponseSchema, withQuery("/reading-progress", { bookId })),

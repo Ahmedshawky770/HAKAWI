@@ -6,6 +6,7 @@ import { WinstonLoggerService } from '../../common/services/winston-logger.servi
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 
+import type { IBooksRepository } from '../books/interfaces/books-repository.interface.ts';
 import { LibraryService } from './library.service.ts';
 import type { ILibraryRepository } from './interfaces/library-repository.interface.ts';
 import type { LibraryItem } from './types.ts';
@@ -62,6 +63,9 @@ describe('LibraryService', () => {
   let libraryRepository: MockLibraryRepository;
   let logger: MockWinstonLoggerService;
   let valkeyService: MockValkeyService;
+  // The books module's own interface: `claimFreeBook` must read `is_free` from the authoritative
+  // source rather than trusting the request, and must not query the books table itself.
+  let booksRepository: { findById: ReturnType<typeof vi.fn> };
   let eventValidatorService: MockEventValidatorService;
 
   const mockLibraryItem: LibraryItem = {
@@ -115,12 +119,74 @@ describe('LibraryService', () => {
       validateEvent: vi.fn(),
     };
 
+    booksRepository = { findById: vi.fn() };
+
     libraryService = new LibraryService(
       libraryRepository,
       logger as unknown as WinstonLoggerService,
       valkeyService as unknown as ValkeyService,
       eventValidatorService as unknown as EventValidatorService,
+      booksRepository as unknown as IBooksRepository,
     );
+  });
+
+  /**
+   * `claimFreeBook` is the ONLY HTTP route to an entitlement, and it exists because `books.is_free`
+   * defaults to `true` — so without it a reader could not obtain any free book at all.
+   *
+   * It replaced `POST /library`, which accepted a bare `{ bookId }` and wrote an `owned` row with no
+   * price check, no payment check and no check the book was for sale. So the check has to be here, in
+   * the service, and not in the controller: a controller check is bypassed by every other caller, and
+   * `addToLibrary` has a second legitimate one (the payment grant) that must NOT be subject to it.
+   */
+  describe('claimFreeBook', () => {
+    const freeBook = { id: 'book-1', isFree: true, deletedAt: null } as never;
+
+    it('should add a genuinely free book', async () => {
+      booksRepository.findById.mockResolvedValue(freeBook);
+      libraryRepository.create.mockResolvedValue({ id: 'lib-1' } as never);
+
+      const result = await libraryService.claimFreeBook('user-1', 'book-1');
+
+      expect(result).toHaveProperty('id', 'lib-1');
+      // `rentalId: null` and `status: 'owned'` are set by `addToLibrary`, which is the single write
+      // path both callers share — so the claim does not get to choose its own status.
+      expect(libraryRepository.create).toHaveBeenCalledWith({
+        userId: 'user-1',
+        bookId: 'book-1',
+        rentalId: null,
+        status: 'owned',
+      });
+    });
+
+    it('should REFUSE a book that is not free, by name, because that is the attack it replaces', async () => {
+      // A paid book must only ever arrive through money. This is the assertion that closes
+      // `POST /library`: without it, the same call with this book id would have granted ownership.
+      booksRepository.findById.mockResolvedValue({ id: 'book-1', isFree: false, deletedAt: null } as never);
+
+      await expect(libraryService.claimFreeBook('user-1', 'book-1')).rejects.toThrow('This book is not free');
+      expect(libraryRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should say to buy it rather than that it does not exist', async () => {
+      // The book exists and is visible, so pretending otherwise sends the reader hunting for a typo.
+      booksRepository.findById.mockResolvedValue({ id: 'book-1', isFree: false, deletedAt: null } as never);
+
+      await expect(libraryService.claimFreeBook('user-1', 'book-1')).rejects.toThrow('Purchase it');
+    });
+
+    it('should refuse a soft-deleted book', async () => {
+      booksRepository.findById.mockResolvedValue({ id: 'book-1', isFree: true, deletedAt: new Date() } as never);
+
+      await expect(libraryService.claimFreeBook('user-1', 'book-1')).rejects.toThrow('Book not found');
+      expect(libraryRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a book that does not exist', async () => {
+      booksRepository.findById.mockResolvedValue(null);
+
+      await expect(libraryService.claimFreeBook('user-1', 'book-1')).rejects.toThrow('Book not found');
+    });
   });
 
   describe('addToLibrary', () => {

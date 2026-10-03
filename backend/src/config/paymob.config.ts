@@ -1,8 +1,39 @@
 import { registerAs } from '@nestjs/config';
 import { z } from 'zod';
 
+/**
+ * Paymob runs test and live on the SAME regional host. From Paymob's own documentation: "Test and
+ * live use the same regional base URL for each region. The mode is controlled by the keys and
+ * Integration IDs you use." A test key against a live Integration ID returns 404 on creation, which
+ * is the failure this module has to prevent — not a URL mismatch.
+ *
+ * TWO CONSTANTS THAT ARE IDENTICAL, DELIBERATELY. `PAYMOB_SANDBOX_BASE_URL` and
+ * `PAYMOB_LIVE_BASE_URL` were previously reported as a defect on the grounds that "sandbox mode
+ * authenticates against the live host". That was wrong, and it is worth recording why: the names
+ * invite exactly that reading, which is why each constant now carries the host's meaning in its own
+ * comment. If Paymob ever does introduce a separate sandbox host, this is the one line that changes.
+ *
+ * The genuinely load-bearing distinction is the credential-mode pair below, which is enforced at boot.
+ */
 export const PAYMOB_SANDBOX_BASE_URL = 'https://accept.paymob.com/api';
 export const PAYMOB_LIVE_BASE_URL = 'https://accept.paymob.com/api';
+
+/**
+ * The placeholder credentials, and the boot-time guard that refuses them in production.
+ *
+ * `PAYMOB_API_KEY`, `PAYMOB_MERCHANT_ID` and `PAYMOB_INTEGRATION_ID` each carried a `sandbox-*`
+ * default with NO production guard, while the webhook secret beside them had one. The comment above
+ * `envSchema` claimed the opposite — that "a deployment that forgets the variable now stops at boot"
+ * — which was true for the webhook secret and false for the three that decide whether a payment can
+ * happen at all. The failure mode was silent and total: a production deployment that copied
+ * `.env.example` booted healthy, answered `/health` with `database: connected`, and failed every real
+ * checkout.
+ */
+const PUBLICLY_KNOWN_PAYMOB_CREDENTIALS: ReadonlySet<string> = new Set([
+  'sandbox-paymob-api-key',
+  'sandbox-merchant-id',
+  'sandbox-integration-id',
+]);
 
 export const PAYMOB_AUTH_TOKEN_LIFETIME_SECONDS = 3600;
 
@@ -12,8 +43,14 @@ export const PAYMOB_CONFIG = 'PAYMOB_CONFIG';
  * WHY a default exists at all: the unit suite and local development boot the payments module with
  * no environment at all, and a webhook secret with no value would fail the minimum-length rule for
  * every one of them. This is a *development* value, not a fallback — `envSchema` refuses it whenever
- * `NODE_ENV=production`, so a deployment that forgets the variable now stops at boot instead of
- * quietly running a webhook endpoint that rejects every delivery as unsigned.
+ * `NODE_ENV=production`, so a deployment that forgets the variable stops at boot instead of quietly
+ * running a webhook endpoint that rejects every delivery as unsigned.
+ *
+ * WHAT THAT CLAIM USED TO OVERSTATE. It sat directly above a schema whose ONLY production guard
+ * covered the webhook secret. `PAYMOB_API_KEY`, `PAYMOB_MERCHANT_ID` and `PAYMOB_INTEGRATION_ID`
+ * carried `sandbox-*` defaults with no guard at all, so "a deployment that forgets the variable now
+ * stops at boot" was true of one variable out of four — and false of the three that decide whether a
+ * payment can happen. All four are guarded now; see `PUBLICLY_KNOWN_PAYMOB_CREDENTIALS`.
  */
 export const NON_PRODUCTION_PAYMOB_WEBHOOK_SECRET = 'default-paymob-webhook-secret-for-development-only-1234567890';
 
@@ -63,6 +100,41 @@ const envSchema = z
     if (env.NODE_ENV !== 'production') {
       return;
     }
+    // The three credentials that decide whether a payment can be taken at all. Checked BEFORE the
+    // webhook secret so the message an operator sees first names the thing that actually breaks the
+    // product rather than the thing that would have broken it second.
+    for (const [path, value] of [
+      ['PAYMOB_API_KEY', env.PAYMOB_API_KEY],
+      ['PAYMOB_MERCHANT_ID', env.PAYMOB_MERCHANT_ID],
+      ['PAYMOB_INTEGRATION_ID', env.PAYMOB_INTEGRATION_ID],
+    ] as const) {
+      if (PUBLICLY_KNOWN_PAYMOB_CREDENTIALS.has(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message:
+            `${path} is still the published sandbox placeholder. Paymob distinguishes test from live by ` +
+            'the KEYS, not by the host — both modes use the same regional base URL — so a production ' +
+            'deployment with these values boots, reports healthy, and fails every real checkout with a ' +
+            'gateway error. Set the live values from the Paymob dashboard (Settings > Account Info) ' +
+            'before starting in production.',
+        });
+      }
+    }
+
+    // A live deployment configured with sandbox keys is the same failure with different values, and
+    // this one is the operator's own mistake rather than a forgotten variable — so it is caught too.
+    if (env.PAYMOB_ENVIRONMENT === 'sandbox' && env.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PAYMOB_ENVIRONMENT'],
+        message:
+          'PAYMOB_ENVIRONMENT is `sandbox` while NODE_ENV is `production`. Paymob selects the mode from ' +
+          'the keys, so a sandbox configuration in production takes no real money and the module looks ' +
+          'healthy while every checkout fails. Set PAYMOB_ENVIRONMENT=live together with the live keys.',
+      });
+    }
+
     if (PUBLICLY_KNOWN_WEBHOOK_SECRETS.has(env.PAYMOB_WEBHOOK_SECRET)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

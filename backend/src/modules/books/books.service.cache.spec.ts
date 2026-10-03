@@ -6,6 +6,7 @@ import { EventValidatorService } from '../../common/events/event-validator.servi
 import { CacheMetrics } from '../../common/interceptors/cache.interceptor.ts';
 import { PaymentsService } from '../payments/payments.service.ts';
 import { RentalsService } from '../rentals/rentals.service.ts';
+import type { ILibraryRepository } from '../library/interfaces/library-repository.interface.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 
 import type { Book } from './types.ts';
@@ -71,7 +72,10 @@ function buildRow(overrides: Partial<Book> = {}): Book {
   return {
     id: 'book-1',
     title: 'The Book',
-    author: 'user-1',
+    // `author` is a display name; the ownership guards read `ownerId` (migration 0021). This suite's
+    // caller is 'user-1', so the owner has to be that, not the author string.
+    author: 'Ahmad Author',
+    ownerId: 'user-1',
     description: null,
     coverImage: null,
     isbn: '9781234567890',
@@ -138,6 +142,9 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
       { emit: vi.fn() } as unknown as EventValidatorService,
       {} as PaymentsService,
       {} as RentalsService,
+      // The library is the authoritative record of what a reader already owns, so `purchase`
+      // reads it before initialising a payment.
+      { findByUserAndBook: vi.fn().mockResolvedValue(null) } as unknown as ILibraryRepository,
     );
   });
 

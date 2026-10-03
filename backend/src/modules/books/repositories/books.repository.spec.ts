@@ -222,7 +222,7 @@ describe('BooksRepository', () => {
     it('inserts the row and returns the inserted book', async () => {
       control.queue([{ id: BOOK_ID, title: 'Dune' }]);
 
-      const created = await repository.create({ title: 'Dune', author: 'Frank Herbert' });
+      const created = await repository.create({ title: 'Dune', author: 'Frank Herbert', ownerId: 'user-1' });
 
       expect(created).toMatchObject({ id: BOOK_ID });
       expect(db.insert).toHaveBeenCalledWith(books);
@@ -231,7 +231,14 @@ describe('BooksRepository', () => {
     it('passes the create input through to values unchanged', async () => {
       control.queue([{ id: BOOK_ID }]);
 
-      const data = { title: 'Dune', author: 'Frank Herbert', isbn: ISBN, categoryId: CATEGORY_ID, isFree: false };
+      const data = {
+        title: 'Dune',
+        author: 'Frank Herbert',
+        isbn: ISBN,
+        categoryId: CATEGORY_ID,
+        isFree: false,
+        ownerId: 'user-1',
+      };
       await repository.create(data);
 
       expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);

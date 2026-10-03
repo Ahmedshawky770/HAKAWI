@@ -1,0 +1,4 @@
+-- hakawi:down reversibility=reversible data-loss=none reason=Drops the books.owner_id column and its index. No row loses data: owner_id is a derived ownership pointer, and books.author — the display name it was added alongside — is untouched, so every dropped value is still reconstructible by the operator from the name if it has to be. The write paths in BooksService would return to comparing a display name against a UUID, which is the state this migration was written to end, so a rollback here reinstates that defect deliberately.
+DROP INDEX IF EXISTS "books_owner_id_idx";
+--> statement-breakpoint
+ALTER TABLE "books" DROP COLUMN IF EXISTS "owner_id";

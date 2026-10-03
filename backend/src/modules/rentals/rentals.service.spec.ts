@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
+import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 
+import type { PaymentsService } from '../payments/payments.service.ts';
 import { RENTAL_CACHE_NAMESPACE, RentalsService } from './rentals.service.ts';
 import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
 import type { Rental, CreateRentalInput, RentalExtension } from './types.ts';
@@ -131,6 +133,9 @@ type MockEventValidatorService = {
 
 describe('RentalsService', () => {
   let rentalsService: RentalsService;
+  // `extendRental` initialises a payment, so the module takes PaymentsService. It did not before
+  // because the module had no billing code at all.
+  let paymentsService: { paymobInitializePayment: ReturnType<typeof vi.fn> };
   let rentalsRepository: MockRentalsRepository;
   let logger: MockWinstonLoggerService;
   let cache: FakeTaggedCache;
@@ -197,11 +202,16 @@ describe('RentalsService', () => {
       validateEvent: vi.fn(),
     };
 
+    paymentsService = {
+      paymobInitializePayment: vi.fn().mockResolvedValue({ checkoutUrl: 'https://paymob.test/iframes/abc' }),
+    };
+
     rentalsService = new RentalsService(
       rentalsRepository,
       logger as unknown as WinstonLoggerService,
       cache as unknown as TaggedCacheService,
       eventValidatorService as unknown as EventValidatorService,
+      paymentsService as unknown as PaymentsService,
     );
   });
 
@@ -383,16 +393,32 @@ describe('RentalsService', () => {
       vi.mocked(rentalsRepository.createExtension).mockResolvedValue(extension);
       vi.mocked(rentalsRepository.update).mockResolvedValue({ ...activeRental, endDate: newEndDate, extendedCount: 1 });
 
+      // The old assertion was `expect(result).toEqual(extension)` — the extension had ALREADY
+      // been written and the end date moved, for free. It now initialises a payment, and
+      // `RentalsEventHandler` applies the extension from `payment.completed`.
       const result = await rentalsService.extendRental('rental-123', 14, 'user-123');
 
-      expect(result).toEqual(extension);
-      expect(rentalsRepository.createExtension).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rentalId: 'rental-123',
-          extensionDays: 14,
-        }),
-      );
-      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.extended', expect.any(Object));
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledTimes(1);
+      const [, amount, currency, metadata] = vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0]!;
+
+      expect(amount).toBe(rentalPriceForDays(14));
+      expect(currency).toBe(RENTAL_CURRENCY);
+      expect(metadata).toMatchObject({
+        rentalId: 'rental-123',
+        bookId: activeRental.bookId,
+        type: 'rental_extension',
+        extensionDays: 14,
+      });
+      expect(result).toBeDefined();
+
+      // The access change has NOT happened yet, and this is the whole point: the end date is moved
+      // only when `payment.completed` arrives. A test that asserted `createExtension` had been called
+      // here is a test that asserts the free extension this change set removes.
+      expect(rentalsRepository.createExtension).not.toHaveBeenCalled();
+      expect(rentalsRepository.update).not.toHaveBeenCalled();
+
+      // Nor is `rental.extended` emitted: subscribers would read an extension that has not happened.
+      expect(eventValidatorService.emit).not.toHaveBeenCalledWith('rental.extended', expect.any(Object));
     });
 
     it('should throw ForbiddenException when rental is not active', async () => {

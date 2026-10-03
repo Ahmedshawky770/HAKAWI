@@ -24,10 +24,11 @@ export class PaymentsEventHandler {
     this.logger.info(`Handling payment created event: ${event.paymentId}`, 'PaymentsEventHandler');
   }
 
-  @OnEvent('payment.completed')
-  async handlePaymentCompleted(event: PaymentCompletedEvent): Promise<void> {
-    this.logger.info(`Handling payment completed event: ${event.paymentId}`, 'PaymentsEventHandler');
-  }
+  // `payment.completed` is intentionally NOT handled here. It used to log a line and return, so a
+  // completed payment produced a `payments` row and no entitlement — the user was charged and given
+  // nothing. The grant now lives in `LibraryEventHandler.handlePaymentCompleted`, because "this user
+  // owns this book" is the library's fact (Principle #9), and a second subscriber here that does no
+  // work is the false assurance this change set exists to remove.
 
   @OnEvent('payment.failed')
   async handlePaymentFailed(event: PaymentFailedEvent): Promise<void> {

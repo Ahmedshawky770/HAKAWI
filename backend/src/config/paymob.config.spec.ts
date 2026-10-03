@@ -159,12 +159,88 @@ describe('resolvePaymobConfig', () => {
     });
 
     it('accepts a real secret in production', () => {
+      // It previously passed ONLY the webhook secret and expected production to boot. That was the
+      // gap: the three credentials that decide whether a payment can be taken had `sandbox-*` defaults
+      // with no guard, so exactly this configuration booted healthy and failed every checkout.
       const config = resolvePaymobConfig({
         NODE_ENV: 'production',
+        PAYMOB_ENVIRONMENT: 'live',
         PAYMOB_WEBHOOK_SECRET: 'a-genuinely-unique-webhook-secret-value',
+        PAYMOB_API_KEY: 'live-api-key',
+        PAYMOB_MERCHANT_ID: 'live-merchant-id',
+        PAYMOB_INTEGRATION_ID: 'live-integration-id',
       });
 
       expect(config.webhookSecret).toBe('a-genuinely-unique-webhook-secret-value');
+    });
+  });
+
+  /**
+   * The three credentials that decide whether a payment can happen at all, and the environment flag
+   * that selects the key mode. Paymob runs both modes on the same regional host and distinguishes
+   * them by the KEYS, so there is no URL that can catch a mismatch — the boot check is the only place
+   * it can be caught, and without it the failure is a gateway 404 on the customer's first checkout.
+   */
+  describe('production credentials', () => {
+    const productionEnv = {
+      NODE_ENV: 'production',
+      PAYMOB_ENVIRONMENT: 'live',
+      PAYMOB_WEBHOOK_SECRET: 'a-genuinely-unique-webhook-secret-value',
+    } as const;
+
+    it.each([
+      ['PAYMOB_API_KEY', 'sandbox-paymob-api-key'],
+      ['PAYMOB_MERCHANT_ID', 'sandbox-merchant-id'],
+      ['PAYMOB_INTEGRATION_ID', 'sandbox-integration-id'],
+    ])('should refuse to boot when %s is still the published placeholder', (key, placeholder) => {
+      expect(() =>
+        resolvePaymobConfig({
+          ...productionEnv,
+          // The three live values FIRST, then the one under test LAST. The other way round the
+          // literals overwrite the computed key and the guard never sees the placeholder.
+          PAYMOB_API_KEY: 'live-api-key',
+          PAYMOB_MERCHANT_ID: 'live-merchant-id',
+          PAYMOB_INTEGRATION_ID: 'live-integration-id',
+          [key]: placeholder,
+        }),
+      ).toThrow(key);
+      // The message names the VARIABLE, not the value — so the assertion checks the variable, and
+      // the value is asserted here rather than through `toThrow`.
+      try {
+        resolvePaymobConfig({
+          ...productionEnv,
+          PAYMOB_API_KEY: 'live-api-key',
+          PAYMOB_MERCHANT_ID: 'live-merchant-id',
+          PAYMOB_INTEGRATION_ID: 'live-integration-id',
+          [key]: placeholder,
+        } as unknown as NodeJS.ProcessEnv);
+        expect.unreachable(`${key} should have been refused`);
+      } catch (error) {
+        expect((error as Error).message).toContain(key);
+        expect((error as Error).message).toContain('the KEYS, not by the host');
+      }
+    });
+
+    it('should refuse a sandbox environment in production even with real-looking keys', () => {
+      // The operator's own mistake rather than a forgotten variable, and the same failure: no money is
+      // taken and the module looks healthy.
+      expect(() =>
+        resolvePaymobConfig({
+          NODE_ENV: 'production',
+          PAYMOB_ENVIRONMENT: 'sandbox',
+          PAYMOB_WEBHOOK_SECRET: 'a-genuinely-unique-webhook-secret-value',
+          PAYMOB_API_KEY: 'live-api-key',
+          PAYMOB_MERCHANT_ID: 'live-merchant-id',
+          PAYMOB_INTEGRATION_ID: 'live-integration-id',
+        }),
+      ).toThrow('PAYMOB_ENVIRONMENT');
+    });
+
+    it('should NOT apply the guard outside production', () => {
+      // The unit suite and local development run with no environment at all; a boot failure there
+      // would break every test that touches the payments module.
+      expect(() => resolvePaymobConfig({ NODE_ENV: 'development' })).not.toThrow();
+      expect(resolvePaymobConfig({ NODE_ENV: 'test' }).apiKey).toBe('sandbox-paymob-api-key');
     });
   });
 

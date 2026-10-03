@@ -4,10 +4,14 @@ import {
   ConflictException,
   ForbiddenException,
   BadRequestException,
+  InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { RENTAL_CURRENCY, RENTAL_DURATION_DAYS, isRentalDurationDays, rentalPriceForDays } from '@hakawi/shared-types';
+import { PaymentsService } from '../payments/payments.service.ts';
+import type { PaymobCheckoutResponse } from '../payments/types.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type {
@@ -41,6 +45,10 @@ export class RentalsService {
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    // The charge for a rental extension. The module had no billing code at all, so extensions were
+    // granted free up to the per-row cap; `extendRental` now initialises a payment and
+    // `RentalsEventHandler` applies the extension from `payment.completed`.
+    @Inject(PaymentsService) private readonly paymentsService: PaymentsService,
   ) {}
 
   async createRental(userId: string, input: CreateRentalRequest): Promise<Rental> {
@@ -137,7 +145,21 @@ export class RentalsService {
     };
   }
 
-  async extendRental(id: string, extensionDays: number, userId: string): Promise<RentalExtension> {
+  /**
+   * Extends a rental — for money.
+   *
+   * IT USED TO GRANT THE EXTENSION FOR FREE. It created a `rental_extensions` row, moved `endDate`
+   * forward and incremented `extendedCount` without any payment, up to `maxExtensions` times, so a
+   * reader could turn a 1-day rental of a paid book into a long one and never pay for any of it. The
+   * whole rentals module contained no billing code — a search for `payment|amount|price|charge` across
+   * it returned zero hits — and this route was the cheapest version of that hole.
+   *
+   * IT NOW RETURNS A CHECKOUT, LIKE `POST /books/:id/rent` DOES. The extended end date is computed and
+   * applied by `RentalsEventHandler` on `payment.completed`, so the access never precedes the money.
+   * The return type changing from `RentalExtension` to `PaymobCheckoutResponse` IS the fix: the
+   * previous shape told the caller the extension had already happened.
+   */
+  async extendRental(id: string, extensionDays: number, userId: string): Promise<PaymobCheckoutResponse> {
     const rental = await this.rentalsRepository.findById(id);
     if (!rental || rental.deletedAt) {
       throw new NotFoundException('Rental not found');
@@ -155,26 +177,70 @@ export class RentalsService {
       throw new ForbiddenException('Maximum extensions reached for this rental');
     }
 
-    const previousEndDate = new Date(rental.endDate);
-    const newEndDate = new Date(previousEndDate);
-    newEndDate.setDate(newEndDate.getDate() + extensionDays);
+    if (!isRentalDurationDays(extensionDays)) {
+      throw new BadRequestException(
+        `Invalid extension duration. Allowed values: ${RENTAL_DURATION_DAYS.join(', ')} days`,
+      );
+    }
 
-    const extension = await this.rentalsRepository.createExtension({
+    const amount = rentalPriceForDays(extensionDays);
+    if (amount <= 0) {
+      // A zero-amount checkout would be a free extension arrived at through a pricing mistake rather
+      // than through a decision, which is exactly the defect this method had.
+      throw new InternalServerErrorException('Rental pricing is misconfigured');
+    }
+
+    return this.paymentsService.paymobInitializePayment(userId, amount, RENTAL_CURRENCY, {
       rentalId: id,
-      previousEndDate,
-      newEndDate,
+      bookId: rental.bookId,
+      type: 'rental_extension',
       extensionDays,
     });
+  }
 
-    await this.rentalsRepository.update(id, {
-      endDate: newEndDate,
-      extendedCount: rental.extendedCount + 1,
-    });
-
-    await this.invalidateRentalCache(id);
-
-    await this.eventBus.emit('rental.extended', { rentalId: id } as RentalExtendedEvent);
-    return extension;
+  /**
+   * Price for an extension, without taking money.
+   *
+   * WHY THE ROUTE QUOTES AND THEN CHARGES. Every rejection above — not your rental, not active, cap
+   * reached, duration not offered — happens before any money moves. A reader sees the price of an
+   * extension before committing to it, which the single charge-carrying route cannot offer.
+   */
+  async quoteExtension(
+    id: string,
+    extensionDays: number,
+    userId: string,
+  ): Promise<{
+    rentalId: string;
+    bookId: string;
+    extensionDays: number;
+    amount: number;
+    currency: string;
+  }> {
+    const rental = await this.rentalsRepository.findById(id);
+    if (!rental || rental.deletedAt) {
+      throw new NotFoundException('Rental not found');
+    }
+    if (rental.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this rental');
+    }
+    if (rental.status !== 'active') {
+      throw new ForbiddenException('Cannot extend a non-active rental');
+    }
+    if (rental.extendedCount >= rental.maxExtensions) {
+      throw new ForbiddenException('Maximum extensions reached for this rental');
+    }
+    if (!isRentalDurationDays(extensionDays)) {
+      throw new BadRequestException(
+        `Invalid extension duration. Allowed values: ${RENTAL_DURATION_DAYS.join(', ')} days`,
+      );
+    }
+    return {
+      rentalId: id,
+      bookId: rental.bookId,
+      extensionDays,
+      amount: rentalPriceForDays(extensionDays),
+      currency: RENTAL_CURRENCY,
+    };
   }
 
   async returnRental(id: string, userId: string): Promise<Rental> {

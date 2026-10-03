@@ -275,11 +275,28 @@ export const booksListResponseSchema = z.object({
   limit: z.number(),
 });
 
+/**
+ * What a money path returns.
+ *
+ * This schema asked for `{ paymentId, orderId, paymobUrl }` while the API returned the whole
+ * `payments` row — which has no URL field at all. Zod rejected every response, so `purchaseBook`
+ * errored on every attempt and the customer was never sent to Paymob. The API now returns this exact
+ * shape from both `POST /books/:id/purchase` and `POST /books/:id/rent`, declared once in
+ * `@hakawi/shared-types` as `BookCheckoutResponse` (Principle #9).
+ */
 export const purchaseResultSchema = z.object({
   paymentId: z.string(),
   orderId: z.string(),
-  paymobUrl: z.string(),
+  /** Where to send the customer. Load this in the iframe integration. */
+  checkoutUrl: z.string(),
+  /** Paymob's hosted accept URL, for a redirect flow instead of the iframe. */
+  acceptUrl: z.string(),
+  /** 'pending' until the webhook confirms. */
+  status: z.string(),
 });
+
+/** Alias kept so the two money paths read the same at the call site. */
+export const bookCheckoutSchema = purchaseResultSchema;
 
 export const readingProgressSchema: z.ZodType<ReadingProgress> = z.object({
   id: z.string(),
@@ -335,6 +352,22 @@ export const paymentsListResponseSchema = z.object({
   total: z.number(),
   page: z.number(),
   limit: z.number(),
+});
+
+/**
+ * What an extension costs, before the customer commits to paying it.
+ *
+ * The quote exists because `POST /rentals/:id/extend` now initialises a payment: calling it first
+ * would send someone to a checkout for an extension they may not be permitted — not their rental, not
+ * active, cap already reached, duration not offered. The quote runs every one of those checks and
+ * returns the amount, so nothing is charged until the price has been seen.
+ */
+export const rentalQuoteSchema = z.object({
+  rentalId: z.string(),
+  bookId: z.string(),
+  extensionDays: z.number(),
+  amount: z.number(),
+  currency: z.string(),
 });
 
 export const rentalSchema: z.ZodType<Rental> = z.object({

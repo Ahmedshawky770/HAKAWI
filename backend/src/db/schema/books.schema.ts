@@ -29,7 +29,24 @@ export const books = pgTable(
       .$defaultFn(() => crypto.randomUUID())
       .primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
+    /**
+     * The author's DISPLAY name. Not an identity — see `ownerId` below.
+     *
+     * `ownerId` was added by migration 0021 precisely because this field was being compared against a
+     * UUID by four write guards, so it could never match. Keep the two separate: renaming an author on
+     * a book must not change who may edit it, and a display name must not be load-bearing for
+     * authorization.
+     */
     author: varchar('author', { length: 255 }).notNull(),
+    /**
+     * The account that owns this book, and the ONLY field the write guards consult.
+     *
+     * Nullable because it cannot be derived from `author` — that would be a guess, and a wrong guess
+     * silently transfers a book to the wrong account. Books that predate migration 0021 have
+     * `ownerId === null`, which every write path treats as UNOWNED: editable by an administrator,
+     * by nobody else, and claimable through `PATCH /books/:id`.
+     */
+    ownerId: uuid('owner_id').references(() => users.id),
     description: text('description'),
     coverImage: text('cover_image'),
     isbn: varchar('isbn', { length: 20 }),
@@ -52,6 +69,7 @@ export const books = pgTable(
   },
   (table) => ({
     authorIdx: index('books_author_idx').on(table.author),
+    ownerIdx: index('books_owner_id_idx').on(table.ownerId),
     statusIdx: index('books_status_idx').on(table.status),
     categoryIdx: index('books_category_id_idx').on(table.categoryId),
     titleIdx: index('books_title_idx').on(table.title),

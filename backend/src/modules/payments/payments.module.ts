@@ -37,6 +37,9 @@ import { PaymobClient, PAYMOB_CLIENT } from './clients/paymob.client.ts';
       inject: [ConfigService],
     },
   ],
-  exports: [PaymentsService, PaymobClient],
+  // `PAYMENTS_REPOSITORY` is exported so the library module can read the completed payment it is
+  // granting an entitlement FOR, through this module's own interface rather than reading the payments
+  // table itself (Principle #7). It is a read-only edge: the library never writes a payment.
+  exports: [PaymentsService, PaymobClient, PAYMENTS_REPOSITORY],
 })
 export class PaymentsModule {}
