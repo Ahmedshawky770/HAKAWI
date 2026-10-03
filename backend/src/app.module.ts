@@ -25,11 +25,10 @@ import { SharedCacheModule } from './modules/shared/cache/shared-cache.module.ts
 import { BadgesModule } from './modules/badges/badges.module.ts';
 
 import { AppController } from './app.controller.ts';
-import { AppService } from './app.service.ts';
 
 @Module({
   controllers: [AppController],
-  providers: [AppService],
+  providers: [],
   imports: [
     DatabaseModule,
     CommonModule,

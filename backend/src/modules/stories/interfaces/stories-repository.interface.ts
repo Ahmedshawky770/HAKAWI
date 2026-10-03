@@ -97,7 +97,23 @@ export interface IStoriesRepository {
   update(id: string, data: UpdateStoryInput): Promise<Story>;
   softDelete(id: string): Promise<void>;
   incrementViewCount(id: string): Promise<void>;
+  /**
+   * `stories.like_count` and `stories.comment_count` are read by the search index — including
+   * `sortBy=reactions`, which orders on `like_count` — and by the story response, which exposes
+   * them as `reactions`. Neither was ever written after the create-time zero, so the whole search
+   * sort was permanently inert. These are the writers, called from `StoriesEventHandler`.
+   */
+  incrementLikeCount(id: string): Promise<void>;
+  decrementLikeCount(id: string): Promise<void>;
+  incrementCommentCount(id: string): Promise<void>;
+  decrementCommentCount(id: string): Promise<void>;
   findAuthorsByIds(authorIds: string[]): Promise<StoryAuthorSummary[]>;
   findCategoriesByIds(categoryIds: string[]): Promise<StoryCategorySummary[]>;
   findTagsByStoryIds(storyIds: string[]): Promise<StoryTagSummary[]>;
+  /**
+   * Replaces a story's tag set in one transaction. Every supplied name must already exist in
+   * `tags`; an unknown name is a `BadRequestException` rather than a silent no-op, because the DTO
+   * accepted the field and the caller has been told it is understood.
+   */
+  replaceTags(storyId: string, names: readonly string[]): Promise<void>;
 }

@@ -243,9 +243,9 @@ npm run seed:dev           # Seed development data
 npm run seed:test          # Seed test data
 
 # Testing
-npm run test               # Unit tests (104 files / 1792 tests)
+npm run test               # Unit tests (145 files / 3047 tests)
 npm run test:cov           # Unit tests with the coverage gate
-npm run test:e2e           # Integration/e2e (23 files / 146 tests) — needs live PostgreSQL + Valkey
+npm run test:e2e           # Integration/e2e (22 files / 136 tests) — needs live PostgreSQL + Valkey
 npm run test:e2e:playwright # Real browser tests; boots the backend and the frontend itself
 
 # Linting

@@ -59,6 +59,7 @@ export const NOTIFICATION_TYPES = [
   'comment_reply',
   'follow',
   'mention',
+  'message',
   'contest',
   'payment',
   'system',

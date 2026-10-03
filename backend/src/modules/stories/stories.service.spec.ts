@@ -7,6 +7,8 @@ import { WinstonLoggerService } from '../../common/services/winston-logger.servi
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
+import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
+import { STORIES_CACHE_TAG, STORY_CACHE_NAMESPACE } from './stories.service.ts';
 
 import { StoriesService } from './stories.service.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput } from './types.ts';
@@ -34,9 +36,14 @@ type MockStoriesRepository = {
   update: ReturnType<typeof vi.fn<(id: string, data: UpdateStoryInput) => Promise<Story>>>;
   softDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   incrementViewCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  incrementLikeCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  decrementLikeCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  incrementCommentCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  decrementCommentCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   findAuthorsByIds: ReturnType<typeof vi.fn<(authorIds: string[]) => Promise<{ id: string; name: string }[]>>>;
   findCategoriesByIds: ReturnType<typeof vi.fn<(categoryIds: string[]) => Promise<{ id: string; name: string }[]>>>;
   findTagsByStoryIds: ReturnType<typeof vi.fn<(storyIds: string[]) => Promise<{ storyId: string; name: string }[]>>>;
+  replaceTags: ReturnType<typeof vi.fn<(storyId: string, names: readonly string[]) => Promise<void>>>;
 };
 
 type MockWinstonLoggerService = {
@@ -209,9 +216,14 @@ describe('StoriesService', () => {
       update: vi.fn<(id: string, data: UpdateStoryInput) => Promise<Story>>(),
       softDelete: vi.fn<(id: string) => Promise<void>>(),
       incrementViewCount: vi.fn<(id: string) => Promise<void>>(),
+      incrementLikeCount: vi.fn<(id: string) => Promise<void>>(),
+      decrementLikeCount: vi.fn<(id: string) => Promise<void>>(),
+      incrementCommentCount: vi.fn<(id: string) => Promise<void>>(),
+      decrementCommentCount: vi.fn<(id: string) => Promise<void>>(),
       findAuthorsByIds: vi.fn<(authorIds: string[]) => Promise<{ id: string; name: string }[]>>(),
       findCategoriesByIds: vi.fn<(categoryIds: string[]) => Promise<{ id: string; name: string }[]>>(),
       findTagsByStoryIds: vi.fn<(storyIds: string[]) => Promise<{ storyId: string; name: string }[]>>(),
+      replaceTags: vi.fn<(storyId: string, names: readonly string[]) => Promise<void>>().mockResolvedValue(undefined),
     };
 
     logger = {
@@ -481,7 +493,11 @@ describe('StoriesService', () => {
       );
     });
 
-    it('should emit the created event with the resolved story id', async () => {
+    it('should emit the created event with the resolved story id AND the story snapshot', async () => {
+      // This assertion used to stop at the id, which is why the Sanity integration stayed dead for
+      // the whole life of the codebase: `SanitySyncEventHandler` read `event.story` and returned on
+      // a missing snapshot, so every handler no-opped while this test stayed green. The producer
+      // contract is what a consumer-only test cannot prove, so it is pinned here.
       acceptsInsert();
 
       await storiesService.create('author-123', { authorId: 'author-123', title: 'The Lighthouse' });
@@ -489,6 +505,83 @@ describe('StoriesService', () => {
       expect(eventValidatorService.emit).toHaveBeenCalledWith('story.created', {
         storyId: mockStory.id,
         authorId: 'author-123',
+        // The snapshot is the row that was actually created — the caller's authorId and the
+        // slug derived from the title — not the `mockStory` fixture. A snapshot built from anything
+        // other than the created row would publish a Sanity document for a story that does not
+        // exist under that slug.
+        story: expect.objectContaining({
+          id: mockStory.id,
+          authorId: 'author-123',
+          title: 'The Lighthouse',
+          slug: 'the-lighthouse',
+        }),
+      });
+    });
+  });
+
+  /**
+   * The producer side of the Sanity sync contract.
+   *
+   * `SanitySyncEventHandler` reads the story off the event and no-ops on a missing snapshot, so
+   * every handler was inert while the suite stayed green: nothing asserted that the producer ever
+   * SET the snapshot. A consumer-only test cannot catch that, so it is pinned from here.
+   */
+  describe('event snapshots for the Sanity sync', () => {
+    it('should attach a snapshot to the published event, built from the RETURNED row', async () => {
+      // Not from the update input: `UpdateStoryInput` carries no id, no slug and an unset status, so
+      // a Sanity document built from it would be almost entirely empty while the event still looked
+      // well-formed.
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+      vi.mocked(storiesRepository.update).mockResolvedValue({
+        ...mockStory,
+        status: 'published',
+        publishedAt: new Date('2026-05-06T07:08:09.000Z'),
+      });
+
+      await storiesService.publish(mockStory.id, 'user-123');
+
+      // `publish` mints its own `new Date()` and hands it to the repository, so the emitted
+      // timestamp is the wall clock rather than the mocked value. The contract worth pinning is the
+      // SNAPSHOT: that it is the returned row, carrying the new status and that same timestamp.
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('story.published', {
+        storyId: mockStory.id,
+        publishedAt: expect.any(Date),
+        story: expect.objectContaining({
+          id: mockStory.id,
+          slug: mockStory.slug,
+          status: 'published',
+          publishedAt: expect.any(Date),
+        }),
+      });
+    });
+
+    it('should attach a snapshot to the updated event', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+      vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory, title: 'A New Title' });
+
+      await storiesService.update(mockStory.id, { title: 'A New Title' }, 'user-123');
+
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('story.updated', {
+        storyId: mockStory.id,
+        updatedFields: { title: 'A New Title' },
+        story: expect.objectContaining({
+          id: mockStory.id,
+          title: 'A New Title',
+          slug: mockStory.slug,
+          status: 'draft',
+        }),
+      });
+    });
+
+    it('should attach a snapshot to the archived event, so unpublishing reaches the CMS', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+      vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory, status: 'archived' });
+
+      await storiesService.archive(mockStory.id, 'user-123');
+
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('story.archived', {
+        storyId: mockStory.id,
+        story: expect.objectContaining({ status: 'archived' }),
       });
     });
   });
@@ -725,7 +818,10 @@ describe('StoriesService', () => {
       await storiesService.incrementViewCount('story-a');
       vi.mocked(storiesRepository.findById).mockClear();
 
-      expect(cache.invalidateTags).not.toHaveBeenCalled();
+      // `views` is projected into the search index, so a view bump legitimately sweeps the SEARCH
+      // tag. What must never happen is the STORIES sweep, which is what emptied every cached story.
+      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
       expect(cache.store.cached('story', 'story-b')).toBe(true);
       expect(cache.store.cached('story', 'slug:slug-b')).toBe(true);
       expect(cache.store.cached('story', 'story-a')).toBe(false);
@@ -810,7 +906,12 @@ describe('StoriesService', () => {
 
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'story-123', ['stories']);
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'slug:test-story', ['stories']);
-      expect(cache.invalidateTags).not.toHaveBeenCalled();
+      // Scoped to the STORIES tag on purpose. The original assertion was a bare
+      // `not.toHaveBeenCalled()`, guarding against a whole-tag sweep that emptied every story in
+      // the deployment on each write. The search index is a different tag and DOES have to be swept
+      // here, so the guard is narrowed rather than deleted.
+      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
     });
 
     it('should invalidate the story cache on publish', async () => {
@@ -820,7 +921,12 @@ describe('StoriesService', () => {
       await storiesService.publish('story-123', 'user-123');
 
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'story-123', ['stories']);
-      expect(cache.invalidateTags).not.toHaveBeenCalled();
+      // Scoped to the STORIES tag on purpose. The original assertion was a bare
+      // `not.toHaveBeenCalled()`, guarding against a whole-tag sweep that emptied every story in
+      // the deployment on each write. The search index is a different tag and DOES have to be swept
+      // here, so the guard is narrowed rather than deleted.
+      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
     });
 
     it('should invalidate the story cache on archive', async () => {
@@ -830,7 +936,12 @@ describe('StoriesService', () => {
       await storiesService.archive('story-123', 'user-123');
 
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'story-123', ['stories']);
-      expect(cache.invalidateTags).not.toHaveBeenCalled();
+      // Scoped to the STORIES tag on purpose. The original assertion was a bare
+      // `not.toHaveBeenCalled()`, guarding against a whole-tag sweep that emptied every story in
+      // the deployment on each write. The search index is a different tag and DOES have to be swept
+      // here, so the guard is narrowed rather than deleted.
+      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
     });
 
     it('should invalidate the story cache on delete', async () => {
@@ -841,7 +952,12 @@ describe('StoriesService', () => {
 
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'story-123', ['stories']);
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'slug:test-story', ['stories']);
-      expect(cache.invalidateTags).not.toHaveBeenCalled();
+      // Scoped to the STORIES tag on purpose. The original assertion was a bare
+      // `not.toHaveBeenCalled()`, guarding against a whole-tag sweep that emptied every story in
+      // the deployment on each write. The search index is a different tag and DOES have to be swept
+      // here, so the guard is narrowed rather than deleted.
+      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
     });
   });
 

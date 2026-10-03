@@ -218,19 +218,32 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - Admin dashboard — `/moderation/stats`, `/reports/trends`, `/actions`, `/users/:id/restrictions`
 - ✅ **The authorization hole is closed.** `@RequireAdminRole` was dead metadata with no
   `RolesGuard` applied, so any authenticated user could read moderation stats. `@Secured()` now
-  wires `JwtAuthGuard` + `RolesGuard` + `PermissionsGuard`
+  wires `JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` + `PermissionsGuard`.
+- ✅ **The dead restriction control is closed.** `RestrictionGuard` was in neither
+  `CommonModule.providers` nor its exports and was applied to zero routes, while six documents
+  described it as live — so a moderation `ban` had no effect on the API. It is now provided,
+  exported, composed into `SECURED_GUARDS`, and pinned by `restriction-guard.wiring.spec.ts`, which
+  drives real HTTP and asserts a banned account is refused. Its logic was also wrong in a way that
+  would have shipped: the producer wrote the **raw** action for all five of
+  `warn`/`mute`/`ban`/`content_removal`/`no_action`, so wiring the guard as written would have turned
+  every warning and every no-op decision into a total account lockout
 
 #### 6.2 Testing ✅ (with a gap)
-- ✅ Unit tests: 104 files / 1792 tests
-- ✅ Integration/e2e: 23 files / 146 tests, per-file cloned database
-- ✅ E2E browser tests in `backend/` and `frontend/`, plus axe-core WCAG 2.0/2.1 A+AA on the frontend
-- ✅ Frontend tests: 21 files / 340 tests
-- ⚠️ Frontend coverage: S 44.25 / B 87.05 / F 53.69 / L 44.25 — below the 80% target for
-  statements and lines
+- ✅ Unit tests: **145 files / 3047 tests**. Re-derive with `npm test --workspace=backend`; the number was previously recorded as 104/1792 and had drifted by 40 files and 1255 tests
+- ✅ Integration/e2e: **22 files / 136 tests** — 11 `src/**/*.e2e-spec.ts`, `backend/test/app.e2e-spec.ts`, and 10 `backend/test/*.integration-spec.ts`, per-file cloned database. Selected by `vitest.config.e2e.ts`; needs a live PostgreSQL and Valkey
+- ✅ E2E browser tests: **2 files / 9 tests** in `frontend/e2e/`, driven by `frontend/playwright.config.ts`, which boots both servers itself. Plus `@axe-core/playwright` on the frontend.
+  ⚠️ `backend/e2e/critical-flows.e2e-spec.ts` and `backend/playwright.config.ts` are **orphaned**: both vitest configs exclude `e2e/**`, and no CI step invokes `test:e2e:playwright`, so nothing in any gate ever ran them. The browser suite that does run is the frontend one
+- ✅ Frontend tests: **21 files / 340 tests** (unchanged — this figure was already correct)
+- ⚠️ Frontend coverage: **S 39.79 / B 35.90 / F 35.74 / L 40.22**, against an 80% target. The gate in
+  `frontend/vitest.config.ts` is set to **38 / 33 / 33 / 38**, so CI passes at roughly 40% — the
+  gate encodes the current number rather than the target. The previously recorded 44.25/87.05/53.69
+  predates both the measurement and the lowered gate
 - ⛔ **Performance tests — NOT BUILT.** No k6 / Locust / autocannon / Artillery config
 
 #### 6.3 Documentation ✅ / 🔄
-- ✅ API documentation — OpenAPI served at `/api/docs` and `/api/docs-json`
+- ✅ API documentation — OpenAPI served at `/api/docs` and `/api/docs-json`. ⚠️ enabled by
+  default including in production (`ENABLE_SWAGGER !== 'false'`), so an operator who forgets the
+  variable publishes the full API map, admin routes included
 - ✅ Deployment guides
 - ✅ Architecture docs
 - ⛔ **User documentation — NOT BUILT**
@@ -239,7 +252,11 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - [ ] Staging deployment — ⛔ no artifact
 - [ ] Production deployment — ⛔ no artifact
 - [x] Monitoring setup — `@sentry/nestjs@11.1.0`, `common/observability/sentry.config.ts`
-- [x] CI/CD pipeline — 9 jobs, hard gates
+- [x] CI/CD pipeline — **10 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`,
+  `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `security`, `build`).
+  ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**;
+  and `build`'s `needs:` omits it, so a green `build` does not prove the from-scratch migration
+  chain applied
 
 ### Acceptance Criteria
 - [x] Users can report content

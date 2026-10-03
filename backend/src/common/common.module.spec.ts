@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
+import { RestrictionGuard } from './guards/restriction.guard.ts';
 import { CacheMetricsController } from './observability/metrics.controller.ts';
 import { CommonModule } from './common.module.ts';
 
@@ -36,6 +37,10 @@ describe('CommonModule wiring', () => {
       ['RolesGuard', RolesGuard],
       ['PermissionsGuard', PermissionsGuard],
       ['OwnershipGuard', OwnershipGuard],
+      // Pinned because it was absent from both lists while six documents described it as live, and
+      // because `SECURED_GUARDS` composes it — so a missing provider here would fail at runtime on
+      // every `@Secured` route rather than at boot.
+      ['RestrictionGuard', RestrictionGuard],
     ])('provides %s', (_name, guard) => {
       expect(providers).toContain(guard);
     });
@@ -45,6 +50,7 @@ describe('CommonModule wiring', () => {
       ['RolesGuard', RolesGuard],
       ['PermissionsGuard', PermissionsGuard],
       ['OwnershipGuard', OwnershipGuard],
+      ['RestrictionGuard', RestrictionGuard],
     ])('exports %s so @UseGuards() resolves outside this module', (_name, guard) => {
       expect(exports).toContain(guard);
     });

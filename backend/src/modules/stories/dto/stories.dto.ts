@@ -184,9 +184,20 @@ export class UpdateStoryDto {
   @MaxLength(500, { message: 'Cover image URL must not exceed 500 characters' })
   coverImage?: string;
 
-  @IsOptional()
-  @IsIn(['draft', 'published', 'archived'], { message: 'Status must be draft, published, or archived' })
-  status?: string;
+  // `status` is DELIBERATELY NOT ON THIS DTO, and `forbidNonWhitelisted` turns its absence into a
+  // 400. It used to be accepted here, and that made `PATCH /stories/:id {"status":"published"}` a
+  // complete bypass of the publishing workflow:
+  //
+  //   - `published_at` stayed NULL, because only `StoriesService.publish` sets it;
+  //   - no `story.published` event was emitted, so the Sanity sync, the search-cache invalidation,
+  //     the badge award and the content moderation pass all silently did not run;
+  //   - and the story was then unrecoverable, because `POST /stories/:id/publish` rejects with
+  //     "Story is already published".
+  //
+  // The lifecycle is reachable through `POST /stories/:id/publish` and `POST /stories/:id/archive`,
+  // which are the only two transitions that set `published_at` and emit the matching event. Leaving
+  // a narrow `PATCH /stories/:id/status` alias out of scope is better than adding a second door to
+  // the same state machine.
 
   @IsOptional()
   @IsUUID('4', { message: 'Category ID must be a valid UUID' })

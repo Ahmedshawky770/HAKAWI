@@ -1,10 +1,28 @@
 name: hakawi-dev
 
+# WHY THE APP SERVICES MOUNT THE REPOSITORY ROOT AND NOT THEIR OWN DIRECTORY.
+#
+# `@hakawi/shared-types` is an npm workspace at `packages/shared-types`, resolved through the ROOT
+# `node_modules` into its `dist/`. The previous configuration mounted only `./backend` at `/app`, which
+# put `/app` outside the workspace graph entirely: `npm install` there saw a `package.json` with no
+# `workspaces` field, treated the unpublished `@hakawi/shared-types` as a registry dependency, and
+# failed. Mounting `.:/app` and setting `working_dir` to the workspace subdirectory keeps npm's
+# workspace resolution intact and is what makes `npm ci` install all three workspaces at once.
+#
+# WHY `npm ci` AND NOT `npm install`. `package-lock.json` lives at the root, so `npm ci` is both
+# possible and reproducible. `npm install` would re-resolve the floating `^` ranges on every boot.
+#
+# WHY `migration:run` IS PART OF THE BACKEND COMMAND. Without it the stack comes up with a healthy
+# PostgreSQL, a healthy Valkey and a backend whose `/health` reports `database: connected` while every
+# table is absent — a green-looking deployment with no schema. The runner is idempotent (every
+# statement is `IF NOT EXISTS` and the sha256 ledger skips applied files) and takes a session advisory
+# lock, so running it on every start is safe.
+#
+# WHY node:22. CI pins Node 22 and `docs/development/setup.md` requires 20+; this file said 20.
+
 services:
   postgres:
     image: postgres:15-alpine
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
@@ -12,6 +30,12 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
+      # A NAMED volume, not a host bind mount. A bind mount puts PostgreSQL's data directory on the
+      # host filesystem, and if that filesystem does not support POSIX ownership changes — a network
+      # share, virtiofs, some container-in-container mounts — the container cannot chown it and dies
+      # on boot with `could not change permissions of directory /var/lib/postgresql/data: Operation
+      # not permitted`. That is a slow, confusing failure to debug from the compose file; a named
+      # volume keeps the data inside Docker's own filesystem where it always works.
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
@@ -26,38 +50,50 @@ services:
     volumes:
       - valkey_data:/data
     healthcheck:
+      # `valkey-cli`, not `redis-cli` — that is the binary the valkey image ships.
       test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run start:dev"
+    image: node:22-alpine
+    working_dir: /app/backend
+    command: >-
+      sh -c "npm ci &&
+             npm run build:shared-types &&
+             npm run migration:run --workspace=backend &&
+             npm run start:dev --workspace=backend"
     ports:
       - "${PORT:-3001}:3001"
-    env_file:
-      - .env
+    # These are the container-to-container addresses. The values under `ports:` above are what the
+    # HOST uses, and they are different on purpose — inside the compose network PostgreSQL is always
+    # `postgres:5432` regardless of what `DB_PORT` is set to.
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${PORT:-3001}
       DB_HOST: postgres
-      DB_PORT: ${DB_PORT:-5432}
+      DB_PORT: 5432
       DB_NAME: ${DB_NAME:-hakawi}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
       VALKEY_HOST: valkey
-      VALKEY_PORT: ${VALKEY_PORT:-6379}
+      VALKEY_PORT: 6379
       VALKEY_PASSWORD: ${VALKEY_PASSWORD:-}
-      JWT_SECRET: ${JWT_SECRET}
+      # `NODE_ENV=production` makes `public-secret.ts` REFUSE these two published defaults, which is
+      # the behaviour a real deployment needs and the reason a copied `.env` fails loudly rather than
+      # minting forgeable tokens.
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me-32-chars-min}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-local-dev-refresh-secret-change-me-32-chars}
       JWT_EXPIRY: ${JWT_EXPIRY:-15m}
-      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
       REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     volumes:
-      - ./backend:/app
+      - .:/app
+      # Anonymous volume so the container's `node_modules` — installed from the root lockfile, with
+      # the workspace symlinks in it — is not hidden by whatever the host has at that path.
       - /app/node_modules
+      - /root/.npm
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,21 +101,23 @@ services:
         condition: service_healthy
 
   frontend:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    image: node:22-alpine
+    working_dir: /app/frontend
+    command: >-
+      sh -c "npm ci &&
+             npm run build:shared-types &&
+             npm run dev"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    env_file:
-      - .env
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       NEXT_PUBLIC_APP_ENV: ${NODE_ENV:-development}
     volumes:
-      - ./frontend:/app
+      - .:/app
       - /app/node_modules
+      - /root/.npm
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,8 +126,11 @@ services:
       backend:
         condition: service_started
 
+  # Behind a profile so it does not start on every `docker compose up`. It is a database GUI, not part
+  # of the application, and an always-on admin console on a published port is a liability.
   adminer:
     image: adminer:latest
+    profiles: ["tools"]
     ports:
       - "8080:8080"
     environment:

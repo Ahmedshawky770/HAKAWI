@@ -25,13 +25,24 @@ export class CommentReactionsService {
     }
 
     const comment = await this.commentsRepository.findById(commentId);
-    if (!comment) {
+    // A soft-deleted comment is a tombstone: `CommentsService.findById` rejects it with a 404 and
+    // `findReplies` filters it out, so a reaction on one is stored against something the author can
+    // never open and nobody can ever see listed.
+    if (!comment || comment.isDeleted) {
       throw new NotFoundException('Comment not found');
     }
 
     const existing = await this.commentReactionsRepository.findByUserAndComment(userId, commentId);
     if (existing) {
-      throw new NotFoundException('Reaction already exists');
+      // `comment_reactions_unique_idx` admits exactly one reaction per (user, comment), so a repeat
+      // POST is a type change and not a conflict. Throwing here made a comment reaction immutable
+      // over HTTP: the only way to change one was DELETE then POST, which briefly removed it from
+      // the count. This mirrors `ReactionsService.addReaction` for the story case.
+      //
+      // Nothing is emitted on the type change, exactly as in the story module. `comment.reacted`
+      // means "a new reaction exists" and `CommentsEventHandler` increments the comment's
+      // `like_count` on it; emitting it again would double-count.
+      return this.commentReactionsRepository.update(existing.id, { type });
     }
 
     const reaction = await this.commentReactionsRepository.create({ userId, commentId, type });
@@ -40,6 +51,13 @@ export class CommentReactionsService {
   }
 
   async removeReaction(userId: string, commentId: string): Promise<void> {
+    // The comment is checked before the reaction so that a reaction on a tombstoned comment cannot
+    // be removed through a path that never looks at whether the comment still exists.
+    const comment = await this.commentsRepository.findById(commentId);
+    if (!comment || comment.isDeleted) {
+      throw new NotFoundException('Comment not found');
+    }
+
     const existing = await this.commentReactionsRepository.findByUserAndComment(userId, commentId);
     if (!existing) {
       throw new NotFoundException('Reaction not found');
@@ -55,7 +73,7 @@ export class CommentReactionsService {
     limit = 20,
   ): Promise<{ reactions: CommentReaction[]; total: number }> {
     const comment = await this.commentsRepository.findById(commentId);
-    if (!comment) {
+    if (!comment || comment.isDeleted) {
       throw new NotFoundException('Comment not found');
     }
     return this.commentReactionsRepository.findByComment(commentId, page, limit);

@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Patch, Body, Param, UseGuards, Inject, HttpCode, HttpStatus } from '@nestjs/common';
 
-import { Public } from '../../../common/decorators/roles.decorator.ts';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { Public, RequireAdminRole, RequirePermissions } from '../../../common/decorators/roles.decorator.ts';
+import { Secured } from '../../../common/decorators/secured.decorator.ts';
+import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
+import { Permission } from '../../../common/permissions/permissions.ts';
 import { TagsService } from '../tags.service.ts';
 import { CreateTagDto, UpdateTagDto } from '../dto/tags.dto.ts';
 
@@ -27,14 +29,18 @@ export class TagsController {
     return this.tagsService.findBySlug(slug);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.CONTENT_MODERATOR)
+  @RequirePermissions(Permission.CONTENT_EDIT_ALL)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateTagDto) {
     return this.tagsService.create(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.CONTENT_MODERATOR)
+  @RequirePermissions(Permission.CONTENT_EDIT_ALL)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateTagDto) {
     return this.tagsService.update(id, dto);

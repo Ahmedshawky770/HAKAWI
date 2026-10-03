@@ -49,7 +49,7 @@ Establish the project foundation: authentication, database, and basic infrastruc
 - [x] PostgreSQL database configured — 33 tables
 - [x] Valkey cache configured
 - [x] Docker Compose for local development — ⚠️ services only; **no `Dockerfile` exists**
-- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, 9 jobs
+- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **10 jobs**
 
 ### Acceptance Criteria
 1. **Project Structure** ✅
@@ -98,8 +98,8 @@ cd frontend && npm run dev
 curl http://localhost:3001/api/v1/health
 
 # 8. Run the test suites
-npm test                                        # backend unit: 104 files / 1792 tests
-npm run test:e2e --workspace=backend             # 23 files / 146 tests
+npm test                                        # backend unit: 145 files / 3047 tests
+npm run test:e2e --workspace=backend             # 22 files / 136 tests
 npm run test:run --workspace=frontend            # 21 files / 340 tests
 ```
 
@@ -397,7 +397,7 @@ Shipped early (during Phases 1–2), not in Weeks 15–16.
 ### Deliverables
 - [x] Event schema registry — `common/events/event-schema-registry.ts`
 - [x] Dead Letter Queue — `common/events/dlq.service.ts`
-- [x] Event versioning — 16 event modules
+- [x] Event versioning — **55** registered event names, **10** event-constant modules, **16** `@OnEvent` handler files. `EventBusModule` has been deleted; `CommonModule` calls `EventEmitterModule.forRoot(...)` directly
 - [x] Event validation — `event-validator.service.ts`
 - [x] Circuit breakers — ✅ **wired**, not dead code: injected into `auth.service.ts` and
       `stories/sanity/sanity.service.ts`
@@ -427,14 +427,16 @@ npm test --workspace=backend -- \
 Complete testing, optimisation, and deploy to production.
 
 ### Deliverables
-- [x] Comprehensive tests — 1792 backend unit, 146 backend e2e, 340 frontend
+- [x] Comprehensive tests — **3047** backend unit (145 files), **136** backend e2e/integration (22 files), **340** frontend (21 files), **9** Playwright (2 files)
 - [x] Security audit in CI — `npm audit --omit=dev` + `npm audit`
 - [x] Monitoring setup — Sentry (`@sentry/nestjs@11.1.0`) + Winston
 - [ ] ⛔ **Production deployment — NOT BUILT.** No `Dockerfile`, no manifest, no IaC, no deploy
       script. `docs/deployment/deployment.md` describes a containerised Railway deploy with no
       artifact behind it
-- [ ] ⛔ **Backup automation — NOT BUILT.** The strategy is documented; nothing runs it. The
-      `nginx.conf` and `scripts/` directory that `docs/deployment/backup.md` backs up do not exist
+- [ ] ⛔ **Backup automation — NOT BUILT.** The strategy is documented; nothing runs it.
+      `docs/deployment/backup-strategy.md` schedules four scripts under `/opt/hakawi/scripts/` and a
+      crontab entry, and **none of them exists** in this repository. (`backup.md` was already
+      corrected to say so; four other documents still repeat the stale claim)
 - [ ] ⛔ **Load testing — NOT BUILT.** No k6 / Locust / autocannon / Artillery config
 - [ ] ⛔ **Performance benchmarking — NOT BUILT.** The p95 targets have never been measured
 - [ ] ⛔ **Security penetration testing — NOT BUILT**
@@ -442,8 +444,9 @@ Complete testing, optimisation, and deploy to production.
 - [ ] ⛔ **Alerting rules — NOT BUILT**
 
 ### Acceptance Criteria
-1. **Testing** 🔄 — ✅ backend above the gate; ⚠️ frontend statements/lines are 44.25, below the
-   80% target
+1. **Testing** 🔄 — ✅ backend above the gate; ⚠️ frontend is S 39.79 / B 35.90 / F 35.74 / L 40.22
+   against an 80% target, and the gate itself is set to 38/33/33/38 — it encodes the current number
+   rather than the target
 2. **Performance** ⛔ — no benchmark harness exists, so no target has been measured
 3. **Security** 🔄 — CI audit passes; ⛔ no pentest, ⛔ no WAF metrics endpoint, ⛔ no admin
    operations endpoints to manage blocks
@@ -455,7 +458,7 @@ Complete testing, optimisation, and deploy to production.
 ```bash
 # 1. All test suites
 npm test                                              # backend unit + coverage gate
-npm run test:e2e --workspace=backend                 # 23 e2e files, needs a live PostgreSQL
+npm run test:e2e --workspace=backend                 # 22 e2e/integration files, needs a live PostgreSQL and Valkey
 npm run test:run --workspace=frontend
 npm run test:coverage --workspace=frontend
 

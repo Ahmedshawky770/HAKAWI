@@ -145,9 +145,18 @@ describe('throttle tiers applied to the real controllers', () => {
   });
 
   it('answers 429 for POST /upload/image on the sixth request in the window', async () => {
+    // Both upload routes require authentication now, so the limiter is measured on authenticated
+    // requests. The upload tier tracks by IP (see `throttlerOptions`), so one token is enough.
+    const token = await new JwtService({ secret: 'throttle-tier-spec-secret' }).signAsync({
+      sub: 'user-1',
+      email: 'uploader@example.com',
+      accountType: 'reader',
+    });
+
     for (let attempt = 0; attempt < THROTTLE_TIERS.upload.limit; attempt += 1) {
       const allowed = await request(httpServer)
         .post('/upload/image')
+        .set('Authorization', `Bearer ${token}`)
         .send({ filename: 'test.png', contentType: 'image/png' })
         .expect(201);
 
@@ -158,6 +167,7 @@ describe('throttle tiers applied to the real controllers', () => {
 
     await request(httpServer)
       .post('/upload/image')
+      .set('Authorization', `Bearer ${token}`)
       .send({ filename: 'test.png', contentType: 'image/png' })
       .expect(429);
 

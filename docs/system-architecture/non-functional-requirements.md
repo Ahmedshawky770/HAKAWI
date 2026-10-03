@@ -689,10 +689,10 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 
 | Requirement | Target | Status |
 |-------------|--------|--------|
-| **Code coverage** | > 80% overall, 90% for critical modules | ⚠️ **Backend met:** S 80.56 / B 76.02 / F 72.60 / L 80.72 against floors 78/70/73/79 plus 9 per-path ratchets. **Frontend not met:** S 44.25 / B 87.05 / F 53.69 / L 44.25 against 42/85/51/42. ⛔ The "90% for critical modules" tier was never configured as a floor. **The unified roadmap target is ≥ 80% everywhere** — this "90% for critical modules" split is retired |
+| **Code coverage** | > 80% overall, 90% for critical modules | ✅ **Backend met:** S 85.43 / 82.39 / 79.00 / 85.58 against floors 78/70/73/79 plus 9 per-path ratchets. ⚠️ **Frontend not met:** S 39.79 / 35.90 / 35.74 / 40.22 against floors 38/33/33/38 — the frontend gate encodes the current number rather than the target, so a passing build certifies roughly 40%. ⛔ The "90% for critical modules" tier was never configured as a floor. **The unified roadmap target is ≥ 80% everywhere** — this "90% for critical modules" split is retired |
 | **Cyclomatic complexity** | < 10 per function | ⛔ No complexity rule is configured in `backend/.eslintrc.cjs` |
 | **Technical debt ratio** | < 5% | ⛔ Not measured; no tooling |
-| **Code review coverage** | 100% of changes | ⚠️ A 9-job CI pipeline gates every push and PR, but no `CODEOWNERS` file and no required-reviewer configuration exist in the repo |
+| **Code review coverage** | 100% of changes | ⚠️ A 10-job CI pipeline gates every push and PR, but no `CODEOWNERS` file and no required-reviewer configuration exist in the repo |
 
 ### Documentation
 
@@ -786,9 +786,9 @@ A short and real list:
 - ✅ **Cache-aside with tag invalidation**, plus **hit-rate metrics** at `GET /api/v1/metrics/cache`
 - ✅ **Circuit breakers, retry with backoff, timeout, and fallback** — wired into the three external
   services that exist
-- ✅ **Test depth** — 104 unit files / 1792 tests, 23 e2e files / 146 tests against a real cloned
+- ✅ **Test depth** — 145 unit files / 3047 tests, 22 e2e files / 136 tests against a real cloned
   database, 340 frontend tests, 2 real-browser Playwright suites with axe-core WCAG checks
-- ✅ **Backend coverage above its gate**; **frontend branches at 87.05**
+- ✅ **Backend coverage above its gate**; **frontend is the gap** — S 39.79 / B 35.90 / F 35.74 / L 40.22, which is the one measured number that got worse rather than better
 - ✅ **Error tracking**, structured logging, and correlation IDs
 - ✅ **The event schema registry and DLQ**, which shipped early
 - ✅ **bcrypt at cost 12**, separate JWT secrets, refresh-token rotation with reuse detection
@@ -833,7 +833,7 @@ A short and real list:
 | "Backup frequency: daily full, hourly incremental" / "retention 30 days" | ⛔ **Nothing backs up automatically** |
 | RPO 1 hour / RTO 4 hours | ⛔ Unachievable — nothing to restore from |
 | "PostgreSQL: read replicas, 1 primary + 3 replicas" | ⛔ **Not built** |
-| "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (80.56/76.02/72.60/80.72); frontend not (44.25/87.05/53.69/44.25). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
+| "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (85.43 / 82.39 / 79.00 / 85.58); frontend not (39.79 / 35.90 / 35.74 / 40.22). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
 | "Cyclomatic complexity < 10 per function" | ⛔ No such lint rule |
 | "README: every module" | ⛔ Only `modules/search/README.md` exists |
 | "Changelog: updated with every release" | ⛔ **No CHANGELOG in the repository** |

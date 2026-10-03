@@ -37,6 +37,16 @@ export interface RuleViolation {
   readonly detail: string;
 }
 
+/**
+ * Matched against the NORMALISED text, so each entry must be written in its normalised form:
+ * lowercase, no harakat, no tatweel, alef/yeh/teh-marbuta folded to their canonical code point
+ * (see `normalizeForTermSearch`), punctuation collapsed to single spaces. A writer who adds a
+ * diacritic, stretches a letter, or types a different alef variant cannot fork the match.
+ *
+ * The Arabic entries are the direct equivalents of the Latin ones, and they only became matchable
+ * once the normaliser stopped emptying every Arabic word. Before that they were dead text in a list
+ * the rule could never act on.
+ */
 const PROHIBITED_TERMS = [
   'buy followers',
   'free money',
@@ -44,6 +54,13 @@ const PROHIBITED_TERMS = [
   'crypto giveaway',
   'work from home income',
   'click here now',
+  'اشتر متابعين',
+  'متابعين مجانا',
+  'مال مجاني',
+  'مكافاهه كازينو',
+  'هديه عملات رقميه',
+  'اكسب من المنزل',
+  'اضغط هنا الان',
 ] as const;
 
 export const CONTENT_MODERATION_RULES: readonly ContentModerationRule[] = [
@@ -90,10 +107,72 @@ export function rulesForTarget(targetType: ContentModerationTargetType): readonl
   return CONTENT_MODERATION_RULES.filter((rule) => rule.targetTypes.includes(targetType));
 }
 
+/**
+ * Arabic harakat (tashkeel) and the Quranic marks. A writer may or may not type them, so they must
+ * not decide whether a word matches.
+ *
+ * WRITTEN AS `\u` ESCAPES ON PURPOSE. A hand-typed literal range around the marks block is easy to
+ * fatten until it swallows U+0620-U+064A — which is the Arabic LETTER range, not the marks range.
+ * A fattened range does not fail loudly: it silently normalises every Arabic word to the empty
+ * string again, which is the exact bug this function exists to fix.
+ */
+const ARABIC_HARAKAT = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g;
+
+/** Tatweel (kashida, U+0640) — the visual stretching character, an obfuscation with no meaning. */
+const ARABIC_TATWEEL = /\u0640/g;
+
+/**
+ * Arabic orthographic variants of the same letter, folded to one form.
+ *
+ * WHY THIS EXISTS. Alef, yeh and teh-marbuta are each written several ways and the choice varies
+ * by writer, by keyboard and by how fast someone typed: alef as U+0627 / U+0622 (madda) / U+0623
+ * (hamza above) / U+0625 (hamza below), yeh as U+064A / U+0649 (alef maqsura), teh marbuta as
+ * U+0629 / U+0647. They are the same letter, not different ones — but as raw code points they are
+ * different strings, so without this a writer who typed a different variant silently evaded a term
+ * match, and the term list would need one entry per spelling.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO. It does not fold hamza carriers (U+0621 U+0624 U+0626) into
+ * bare alef, and it does not fold qaf (U+0642) to feh or alef maqsura to yeh in the position where
+ * the qaf/ya distinction is phonemic. Those are genuinely different words, and folding them would
+ * put false positives on legitimate content — which for a rule with `autoEscalate: true` is worse
+ * than a miss.
+ */
+const ARABIC_LETTER_FOLD = /[\u0622\u0623\u0625\u0671]/g;
+
+/**
+ * WHY THIS EXISTS AT ALL, AND WHY IT IS NOT `[a-z0-9]`.
+ *
+ * The rule set has to be able to SEE the text it is judging. The previous class `[^a-z0-9\s]`
+ * replaced every character outside it with a space, and every Arabic letter is outside it — so for
+ * an Arabic corpus it replaced the entire string, and `"قصة"` normalised to `""`. The failure was
+ * not uniform across the four rules that consume this value:
+ *
+ *  - `comment-minimum-length` measured `0 < 2` and auto-reported EVERY Arabic comment as
+ *    `auto:comment_too_short`. That is a false positive per comment, not a missed detection.
+ *  - `prohibited_terms` searched `""` and so never matched anything written in Arabic.
+ *
+ * `link_spam` and `character_repetition` were always fine: they read `rawText`, not this.
+ *
+ * `\p{L}` / `\p{N}` is what replaces `[a-z0-9]`: every Unicode letter and every Unicode digit, so
+ * Latin, Arabic, Cyrillic, Greek and Arabic-Indic digits (٠-٩) all survive. NFKC folds the
+ * compatibility forms that Arabic keyboards and copy-paste actually produce (full-width and
+ * presentation forms) onto their canonical letters; it does not remove harakat or tatweel, which
+ * is why those two are stripped explicitly above.
+ *
+ * CONSEQUENCE, STATED RATHER THAN HIDDEN: a comment made only of punctuation or emoji is still `""`
+ * and still trips `comment-minimum-length`. That is the rule working as designed — and now it
+ * distinguishes `"!!!"` from a real Arabic sentence, because only the former is empty.
+ */
 function normalizeForTermSearch(text: string): string {
   return text
+    .normalize('NFKC')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(ARABIC_HARAKAT, '')
+    .replace(ARABIC_TATWEEL, '')
+    .replace(ARABIC_LETTER_FOLD, '\u0627')
+    .replace(/\u0649/g, '\u064A')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

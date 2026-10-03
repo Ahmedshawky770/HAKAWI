@@ -311,10 +311,32 @@ describe('UpdateStoryDto through the production ValidationPipe', () => {
     expect(await accepts(UpdateStoryDto, { tags: ['a'.repeat(MAX_STORY_TAG_LENGTH + 1)] })).toBe(false);
   });
 
-  it('rejects a status outside the story lifecycle', async () => {
-    const messages = await messagesFor(UpdateStoryDto, { status: 'deleted' });
+  it('rejects any status at all, because the lifecycle is not a PATCH field', async () => {
+    // This used to assert only that `status: 'deleted'` was rejected, with `status` present on the
+    // DTO and constrained by `@IsIn`. That left `status: 'published'` ACCEPTED, which bypassed the
+    // whole publishing workflow: no `published_at`, no `story.published` event — so no Sanity sync,
+    // no search invalidation, no badge, no moderation — and then `POST /stories/:id/publish` rejected
+    // with "Story is already published", leaving the story unrecoverable.
+    //
+    // `forbidNonWhitelisted` turns the field's absence into a 400, so the assertion is now that the
+    // property does not exist at all, for every value in the lifecycle.
+    for (const status of ['deleted', 'draft', 'published', 'archived']) {
+      const messages = await messagesFor(UpdateStoryDto, { status });
 
-    expect(messages.join(' ')).toContain('Status must be draft, published, or archived');
+      expect(messages.join(' ')).toContain('should not exist');
+    }
+  });
+
+  it('still accepts every field a client legitimately sends on a PATCH', async () => {
+    // The counterpart, so removing `status` did not quietly remove anything else with it.
+    const messages = await messagesFor(UpdateStoryDto, {
+      title: 'A Title',
+      content: '<p>Body</p>',
+      categoryId: '11111111-1111-4111-8111-111111111111',
+      tags: ['romance'],
+    });
+
+    expect(messages).toEqual([]);
   });
 });
 

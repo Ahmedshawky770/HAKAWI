@@ -1,4 +1,15 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, integer, index, primaryKey } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
 
@@ -67,7 +78,14 @@ export const stories = pgTable(
     authorIdx: index('stories_author_id_idx').on(table.authorId),
     statusIdx: index('stories_status_idx').on(table.status),
     categoryIdx: index('stories_category_id_idx').on(table.categoryId),
+    // Both indexes exist. The unique one is the constraint `StoriesService.insertWithResolvedSlug`
+    // already assumed and could never get, because migrations/0001 created only the plain one — so
+    // its unique-violation catch was unreachable and two concurrent creates of the same title both
+    // succeeded. Migration 0020 adds the unique index. The plain index is kept deliberately: it is
+    // redundant for lookups, and dropping it is a non-additive change that belongs in its own
+    // migration rather than as a side effect of adding a constraint.
     slugIdx: index('stories_slug_idx').on(table.slug),
+    slugUnique: unique('stories_slug_unique').on(table.slug),
     publishedAtIdx: index('stories_published_at_idx').on(table.publishedAt),
   }),
 );

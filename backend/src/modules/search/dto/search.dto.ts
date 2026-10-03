@@ -45,3 +45,31 @@ export class SearchFiltersDto {
   @Max(100)
   limit?: number;
 }
+
+/**
+ * Runtime class for `GET /search/authors`.
+ *
+ * WHY THIS EXISTS. The route took `@Query('limit') limit?: string` and passed
+ * `Number(limit) || 20` straight through, so `?limit=999999999` was accepted and handed to
+ * `LIMIT`. A negative value was worse: `Number('-5')` is truthy, so it reached Postgres and came
+ * back as `ERROR: LIMIT must not be negative`, which `AllExceptionsFilter` renders as an opaque 500
+ * rather than a 400.
+ *
+ * The decorators copy `SearchFiltersDto`'s own `page`/`limit` block verbatim, so the ceiling is the
+ * one the rest of the codebase already applies rather than a new number invented here.
+ */
+export class SearchAuthorsQueryDto {
+  @IsString({ message: 'Query parameter "q" is required' })
+  q: string;
+
+  @IsOptional()
+  @IsInt({ message: 'Page must be an integer' })
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'Limit must be an integer' })
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}

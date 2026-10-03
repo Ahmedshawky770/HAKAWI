@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { eq, and, desc, like, count, sql, isNull, inArray } from 'drizzle-orm';
 
 import {
@@ -106,6 +106,46 @@ export class StoriesRepository implements IStoriesRepository {
       .where(eq(stories.id, id));
   }
 
+  async incrementLikeCount(id: string): Promise<void> {
+    this.logger.debug(`Incrementing like count for story: ${id}`);
+    await db
+      .update(stories)
+      .set({ likeCount: sql`${stories.likeCount} + 1` })
+      .where(eq(stories.id, id));
+  }
+
+  /**
+   * `greatest(..., 0)` rather than a bare `- 1`. A removal that arrives without a matching
+   * increment — a retried delete, a row imported by hand — would otherwise drive the counter
+   * negative, and `sortBy=reactions` in the search repository would then sort that story above every
+   * story anyone has actually read. The floor is what makes the counter safe to derive from the
+   * reactions table rather than recomputed from it.
+   */
+  async decrementLikeCount(id: string): Promise<void> {
+    this.logger.debug(`Decrementing like count for story: ${id}`);
+    await db
+      .update(stories)
+      .set({ likeCount: sql`greatest(${stories.likeCount} - 1, 0)` })
+      .where(eq(stories.id, id));
+  }
+
+  async incrementCommentCount(id: string): Promise<void> {
+    this.logger.debug(`Incrementing comment count for story: ${id}`);
+    await db
+      .update(stories)
+      .set({ commentCount: sql`${stories.commentCount} + 1` })
+      .where(eq(stories.id, id));
+  }
+
+  /** `greatest(..., 0)` for the same reason as `decrementLikeCount` above. */
+  async decrementCommentCount(id: string): Promise<void> {
+    this.logger.debug(`Decrementing comment count for story: ${id}`);
+    await db
+      .update(stories)
+      .set({ commentCount: sql`greatest(${stories.commentCount} - 1, 0)` })
+      .where(eq(stories.id, id));
+  }
+
   async findAuthorsByIds(authorIds: string[]): Promise<StoryAuthorSummary[]> {
     if (authorIds.length === 0) {
       return [];
@@ -135,5 +175,49 @@ export class StoriesRepository implements IStoriesRepository {
       .from(storyTags)
       .innerJoin(tags, eq(tags.id, storyTags.tagId))
       .where(inArray(storyTags.storyId, storyIds));
+  }
+
+  /**
+   * Replaces a story's tag set in one transaction.
+   *
+   * WHY A TRANSACTION AND NOT TWO STATEMENTS. `story_tags`' primary key is `(story_id, tag_id)`. A
+   * delete-then-insert pair outside a transaction opens a window in which a concurrent reader sees a
+   * story with no tags, and a failure between the two leaves it with none permanently — while the
+   * API still answers 200, because the write that failed was the second one.
+   *
+   * WHY AN UNKNOWN NAME IS A 400 AND NOT A SILENT NO-OP. The DTO accepts and validates `tags`, so a
+   * caller that sent a name the taxonomy does not have has been told the field is understood. Dropping
+   * it quietly is how this defect stayed invisible for so long: nothing 400'd, nothing 500'd, and the
+   * tags simply were not there.
+   *
+   * WHY NAMES ARE NOT AUTO-CREATED. `tags.slug` carries a plain index, not a unique one
+   * (`migrations/0001_create_stories_tables.sql`), so a get-or-create would race two concurrent
+   * requests into two rows with the same name and make the taxonomy ambiguous. Creating tags is an
+   * administrative act, so the writer resolves names that already exist and refuses the rest — which
+   * also keeps this change additive and migration-free.
+   */
+  async replaceTags(storyId: string, names: readonly string[]): Promise<void> {
+    if (names.length === 0) {
+      await db.delete(storyTags).where(eq(storyTags.storyId, storyId));
+      return;
+    }
+
+    const resolved = await db
+      .select({ id: tags.id, name: tags.name })
+      .from(tags)
+      .where(inArray(tags.name, [...names]));
+
+    const byName = new Map(resolved.map((tag: { id: string; name: string }) => [tag.name, tag.id]));
+    const missing = names.filter((name) => !byName.has(name));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown tag${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Tags are created by an administrator.`,
+      );
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(storyTags).where(eq(storyTags.storyId, storyId));
+      await tx.insert(storyTags).values(names.map((name) => ({ storyId, tagId: byName.get(name) as string })));
+    });
   }
 }

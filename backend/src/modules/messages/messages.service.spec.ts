@@ -173,13 +173,73 @@ describe('MessagesService', () => {
       expect(conversationsRepository.create).not.toHaveBeenCalled();
     });
 
-    it('should look the pair up in the order it was given', async () => {
+    it('should look the pair up in a canonical order regardless of who asked', async () => {
+      // This test used to assert the opposite — that the lookup preserved the caller's order —
+      // and that title was the defect's name. `idx_conversations_unique` is on the ORDERED pair,
+      // so A→B then B→A looked up `(B, A)`, missed the existing `(A, B)` row, and inserted a
+      // second conversation for the same two people, with its own message history.
       vi.mocked(conversationsRepository.findByParticipants).mockResolvedValue(null);
       vi.mocked(conversationsRepository.create).mockResolvedValue(CONVERSATION);
 
       await messagesService.getOrCreateConversation('user-2', 'user-1');
 
-      expect(conversationsRepository.findByParticipants).toHaveBeenCalledWith('user-2', 'user-1');
+      expect(conversationsRepository.findByParticipants).toHaveBeenCalledWith('user-1', 'user-2');
+      expect(conversationsRepository.create).toHaveBeenCalledWith({
+        participant1Id: 'user-1',
+        participant2Id: 'user-2',
+      });
+    });
+
+    it('should resolve to the same conversation whichever side asks first', async () => {
+      vi.mocked(conversationsRepository.findByParticipants).mockResolvedValue(CONVERSATION);
+
+      await messagesService.getOrCreateConversation('user-1', 'user-2');
+      await messagesService.getOrCreateConversation('user-2', 'user-1');
+
+      expect(conversationsRepository.findByParticipants).toHaveBeenNthCalledWith(1, 'user-1', 'user-2');
+      expect(conversationsRepository.findByParticipants).toHaveBeenNthCalledWith(2, 'user-1', 'user-2');
+      expect(conversationsRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a conversation with yourself', async () => {
+      // `countUnread` and `markAllAsRead` select `sender_id <> userId`. With both participants
+      // the same person that predicate matches nothing, so the unread badge would read 0 forever
+      // and "mark all read" would be a silent no-op. Refusing the row keeps the negation exact.
+      await expect(messagesService.getOrCreateConversation('user-1', 'user-1')).rejects.toThrow(
+        'Cannot start a conversation with yourself',
+      );
+
+      expect(conversationsRepository.findByParticipants).not.toHaveBeenCalled();
+      expect(conversationsRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should return the winner row when it loses the insert race', async () => {
+      // Two concurrent, identically-ordered creates: the unique index catches the loser, and the
+      // winner's row is what both callers get. A retry of the write would not converge; a re-read
+      // does.
+      vi.mocked(conversationsRepository.findByParticipants)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(CONVERSATION);
+      vi.mocked(conversationsRepository.create).mockRejectedValue(
+        Object.assign(new Error('duplicate key'), {
+          code: '23505',
+        }),
+      );
+
+      const result = await messagesService.getOrCreateConversation('user-1', 'user-2');
+
+      expect(result).toBe(CONVERSATION);
+      expect(conversationsRepository.findByParticipants).toHaveBeenCalledTimes(2);
+    });
+
+    it('should rethrow an insert failure that is not a unique violation', async () => {
+      // A connection loss must stay a 500. Swallowing it into "try again" would hide the fault.
+      vi.mocked(conversationsRepository.findByParticipants).mockResolvedValue(null);
+      vi.mocked(conversationsRepository.create).mockRejectedValue(new Error('connection terminated'));
+
+      await expect(messagesService.getOrCreateConversation('user-1', 'user-2')).rejects.toThrow(
+        'connection terminated',
+      );
     });
   });
 

@@ -6,8 +6,10 @@ import { ConfigModule } from '@nestjs/config';
 import type { INestApplication } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
 import { RolesGuard } from '../../common/guards/roles.guard.ts';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
+import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ModerationController } from './moderation.controller.ts';
 import { ModerationService } from './moderation.service.ts';
@@ -75,9 +77,14 @@ describe('ModerationController route surface', () => {
         { provide: ModerationService, useValue: {} },
         { provide: AdminDashboardService, useValue: { getStats: vi.fn().mockResolvedValue(emptyStats()) } },
         { provide: WinstonLoggerService, useValue: { info: vi.fn(), error: vi.fn() } },
+        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `ValkeyService` and the
+        // logger. This module is hand-built rather than importing `CommonModule`, so both have to
+        // be provided here — the alternative is the whole suite failing at DI resolution.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,
+        RestrictionGuard,
         { provide: Reflector, useValue: new Reflector() },
         { provide: JwtService, useValue: new JwtService({ secret: JWT_SECRET }) },
       ],
@@ -104,6 +111,10 @@ describe('ModerationController route surface', () => {
         { provide: ModerationService, useValue: {} },
         { provide: AdminDashboardService, useValue: { getStats: vi.fn().mockResolvedValue(emptyStats()) } },
         { provide: WinstonLoggerService, useValue: { info: vi.fn(), error: vi.fn() } },
+        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `ValkeyService` and the
+        // logger. This module is hand-built rather than importing `CommonModule`, so both have to
+        // be provided here — the alternative is the whole suite failing at DI resolution.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,

@@ -76,7 +76,7 @@ Everything blocking M8 is infrastructure, not product: read replicas, load testi
 |---|---|---|---|---|
 | Payment integration (Paymob) | 4 | High | Zod-validated client, Valkey-cached auth token, `ResilientHttpClient` with circuit breaker + retry, clean 503 failure instead of a fabricated URL | ✅ Built; ⛔ never run against a live sandbox |
 | Sanity CMS integration | 2 | Medium | `CircuitBreakerService` wrapper, PostgreSQL fallback | ✅ Built |
-| Testing coverage | All | High | TDD, 2192 tests across three suites, 9-job CI with hard gates | ✅ Built; ⚠️ frontend statements/lines 44.25 vs the 80% target |
+| Testing coverage | All | High | TDD, 3523 tests across three suites, 10-job CI with hard gates | ✅ Built; ⚠️ frontend S 39.79 / L 40.22 against an 80% target, and the frontend gate is set to 38/33/33/38 — it encodes the current number, not the target |
 | Migration data loss | All | High | sha256 content-checksum ledger, per-migration transactions, reversibility classification (`reversible` / `data-loss` / `irreversible`) | ✅ Materially reduced |
 | Performance under load | 7 | Medium | Cache-aside + tagged invalidation + hit-rate metrics | ⛔ Unmitigated — no load test or benchmark exists |
 
@@ -91,7 +91,7 @@ Everything blocking M8 is infrastructure, not product: read replicas, load testi
 | Phase 6 = week 13 here, "Moderation & Polish, weeks 14–16" in `deliverables.md`, and inside "M6 Production, weeks 14–16" in `milestones.md` | Unified on **week 13** as a standalone phase |
 | `milestones.md` ended at week 16 with 6 milestones | Unified on **8 milestones ending week 18** |
 | No status information at all | Added a status column to every table, and a milestone calendar |
-| "TDD from Week 1, 80% minimum coverage" as a risk mitigation | Kept, with the measured numbers: backend S 80.56 / B 76.02 / F 72.60 / L 80.72; frontend S 44.25 / B 87.05 / F 53.69 / L 44.25 |
+| "TDD from Week 1, 80% minimum coverage" as a risk mitigation | Kept, with the measured numbers: backend S 85.43 / 82.39 / 79.00 / 85.58 against floors 78/70/73/79; frontend S 39.79 / 35.90 / 35.74 / 40.22 against floors 38/33/33/38 |
 | "Sandbox testing from Week 10" for Paymob | ⛔ Never happened — no test has ever called the Paymob API |
 
 ---

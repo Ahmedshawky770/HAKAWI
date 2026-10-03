@@ -1,3 +1,30 @@
+/**
+ * Projects a stored story into the snapshot the Sanity sync reads off the event.
+ *
+ * WHY THIS IS A FUNCTION AND NOT AN INLINE OBJECT LITERAL. The four emit sites each need the same
+ * eight fields, and the mapping is the part that has to stay in step with `SanityStoryDocument`. A
+ * literal per site would let one of them drift, and the symptom would be a Sanity document that
+ * silently omits a field only on create or only on publish.
+ *
+ * WHY `publishedAt` IS PASSED THROUGH UNTOUCHED. `SanitySyncEventHandler.toSanityDocument` calls
+ * `.toISOString()` on it, so a string here would be a `TypeError` at the point of use. The event
+ * schema coerces it back to a Date for payloads that round-trip through the dead-letter queue, but
+ * an in-process emit never serialises, so the Date survives as a Date.
+ */
+function toStorySnapshot(story: Story): StorySnapshot {
+  return {
+    id: story.id,
+    authorId: story.authorId,
+    title: story.title,
+    slug: story.slug,
+    excerpt: story.excerpt,
+    content: story.content,
+    coverImage: story.coverImage,
+    status: story.status,
+    publishedAt: story.publishedAt,
+  };
+}
+
 import {
   Injectable,
   NotFoundException,
@@ -16,6 +43,7 @@ import type {
   StoryPublishedEvent,
   StoryArchivedEvent,
   StoryDeletedEvent,
+  StorySnapshot,
 } from '../../common/events/stories.events.ts';
 
 import type {
@@ -26,6 +54,7 @@ import type {
 } from './interfaces/stories-repository.interface.ts';
 import { STORIES_REPOSITORY, isUniqueViolation } from './interfaces/stories-repository.interface.ts';
 import { deriveStorySlug, storySlugCandidates, MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
+import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput, StoriesListResponse, StoryRecord } from './types.ts';
 import { toStoryResponse, toStoryRecord, reviveStoryDates, type StoryAuthor, type StoryRelations } from './types.ts';
 
@@ -80,7 +109,16 @@ export class StoriesService {
     };
 
     const story = await this.insertWithResolvedSlug(data);
-    await this.eventBus.emit('story.created', { storyId: story.id, authorId } as StoryCreatedEvent);
+
+    if (data.tags !== undefined) {
+      await this.storiesRepository.replaceTags(story.id, data.tags);
+    }
+
+    await this.eventBus.emit('story.created', {
+      storyId: story.id,
+      authorId,
+      story: toStorySnapshot(story),
+    } as StoryCreatedEvent);
     return story;
   }
 
@@ -186,9 +224,21 @@ export class StoriesService {
     }
 
     const story = await this.storiesRepository.update(id, input);
+
+    if (input.tags !== undefined) {
+      // Omitting `tags` leaves the current set alone, exactly as omitting `slug` leaves the
+      // current slug alone. Only an explicit array replaces, so a client that PATCHes just the
+      // title does not silently strip a story's tags.
+      await this.storiesRepository.replaceTags(id, input.tags);
+    }
+
     await this.invalidateStoryCache(id, existing.slug);
 
-    await this.eventBus.emit('story.updated', { storyId: id, updatedFields: input } as StoryUpdatedEvent);
+    await this.eventBus.emit('story.updated', {
+      storyId: id,
+      updatedFields: input,
+      story: toStorySnapshot(story),
+    } as StoryUpdatedEvent);
     return story;
   }
 
@@ -217,7 +267,11 @@ export class StoriesService {
     });
     await this.invalidateStoryCache(id, story.slug);
 
-    await this.eventBus.emit('story.published', { storyId: id, publishedAt } as StoryPublishedEvent);
+    await this.eventBus.emit('story.published', {
+      storyId: id,
+      publishedAt,
+      story: toStorySnapshot(updated),
+    } as StoryPublishedEvent);
     return updated;
   }
 
@@ -238,7 +292,10 @@ export class StoriesService {
     const updated = await this.storiesRepository.update(id, { status: 'archived' });
     await this.invalidateStoryCache(id, story.slug);
 
-    await this.eventBus.emit('story.archived', { storyId: id } as StoryArchivedEvent);
+    await this.eventBus.emit('story.archived', {
+      storyId: id,
+      story: toStorySnapshot(updated),
+    } as StoryArchivedEvent);
     return updated;
   }
 
@@ -369,7 +426,25 @@ export class StoriesService {
     return (await this.storiesRepository.findBySlug(slug)) !== null;
   }
 
+  /**
+   * WHY THE SEARCH SWEEP LIVES HERE AND NOT IN AN EVENT HANDLER.
+   *
+   * The search index is a projection of stories, so every story write makes some cached search page
+   * wrong. Before this, the cache was an untagged `valkeyService.set()` and nothing could reach it:
+   * a story published at T was invisible to search for up to 300s, and a story unpublished at T
+   * stayed findable for the same window — which, with the public route now pinned to
+   * `status = 'published'`, turned a staleness bug into a disclosure of unpublished work.
+   *
+   * Hooking it into this method rather than into a `story.*` event handler covers more than the
+   * handler would: a write that succeeds and then fails to emit still invalidates, and the five call
+   * sites here are the only writes to the table.
+   *
+   * WHY THE TAG COMES FROM THE SEARCH MODULE. `SEARCH_CACHE_TAG` is imported from
+   * `search/cache-keys.ts` rather than re-spelled. Two copies of the string would both typecheck
+   * and produce a cache that is silently never invalidated, which is the exact failure this replaces.
+   */
   private async invalidateStoryCache(id: string, slug?: string): Promise<void> {
+    await this.cache.invalidateTags([SEARCH_CACHE_TAG]);
     await this.cache.invalidateKey(STORY_CACHE_NAMESPACE, id, [STORIES_CACHE_TAG]);
     if (slug) {
       await this.cache.invalidateKey(STORY_CACHE_NAMESPACE, `slug:${slug}`, [STORIES_CACHE_TAG]);

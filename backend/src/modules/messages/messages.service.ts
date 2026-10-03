@@ -28,6 +28,25 @@ interface MessageRow {
   createdAt: Date;
 }
 
+/**
+ * Postgres SQLSTATE for `unique_violation`.
+ *
+ * WHY IT IS DUPLICATED RATHER THAN IMPORTED. The same four-line dialect fact already exists in
+ * `src/modules/stories/interfaces/stories-repository.interface.ts`, and both copies are deliberate:
+ * sharing it would mean the stories module exporting a persistence-layer constant for another
+ * module's service to consume, which is the coupling this codebase's boundary rules exist to
+ * prevent. Duplicating a driver error code is cheaper than inverting a dependency.
+ */
+const UNIQUE_VIOLATION_SQLSTATE = '23505';
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code === UNIQUE_VIOLATION_SQLSTATE;
+}
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -37,15 +56,54 @@ export class MessagesService {
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
   ) {}
 
+  /**
+   * WHY A SELF-DM IS REFUSED. `conversations` stores an ordered pair and
+   * `MessagesRepository.countUnread` / `markAllAsRead` select `sender_id <> userId`. In a
+   * conversation whose two participants are the same person that predicate matches nothing, so the
+   * unread badge would read 0 forever and "mark all read" would be a silent no-op. There is no row
+   * shape in which a self-DM is useful, so it is refused at the door rather than special-cased in
+   * two queries. `FollowsService.follow` refuses the same class of input with the same wording.
+   *
+   * WHY THE ORDER IS NORMALISED HERE AND NOT IN THE REPOSITORY. The pair IS the conversation's
+   * identity, and `idx_conversations_unique` (`migrations/0003_create_messaging_tables.sql`) is on
+   * the ORDERED pair, so "the same pair" only exists once both sides agree on an order. Sorting at
+   * the one place the lookup and the insert both pass through is what makes the index the
+   * authority rather than a second, order-sensitive opinion — sorting inside
+   * `findByParticipants` alone would not do it, because the `create` on the next line would still
+   * insert `(B, A)` and the index would still accept it. That is how A→B followed by B→A used to
+   * produce two conversations with two separate message histories.
+   *
+   * WHY `sort()` AND NOT `localeCompare`. `Array.sort()` compares UTF-16 code units, which for two
+   * lower-case-hex UUID strings is the same order Postgres's `LEAST`/`GREATEST` on `uuid` gives.
+   * `localeCompare` is locale-dependent and could disagree with the database on some ICU builds.
+   */
   async getOrCreateConversation(userId: string, recipientId: string): Promise<Conversation> {
-    let conversation = await this.conversationsRepository.findByParticipants(userId, recipientId);
-    if (!conversation) {
-      conversation = await this.conversationsRepository.create({
-        participant1Id: userId,
-        participant2Id: recipientId,
-      });
+    if (userId === recipientId) {
+      throw new BadRequestException('Cannot start a conversation with yourself');
     }
-    return conversation;
+
+    const [participant1Id, participant2Id] = [userId, recipientId].sort();
+
+    const existing = await this.conversationsRepository.findByParticipants(participant1Id, participant2Id);
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      return await this.conversationsRepository.create({ participant1Id, participant2Id });
+    } catch (error) {
+      // Lost the insert race against a concurrent, identically-ordered create. The unique index
+      // caught it, so the winner's row is the one to hand back — a re-read, not a retry of the
+      // write, which is what makes this converge instead of 500.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const raced = await this.conversationsRepository.findByParticipants(participant1Id, participant2Id);
+      if (!raced) {
+        throw error;
+      }
+      return raced;
+    }
   }
 
   async getConversations(

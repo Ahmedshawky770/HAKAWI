@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, ne } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -72,13 +72,33 @@ export class MessagesRepository implements IMessagesRepository {
     return message;
   }
 
+  /**
+   * WHY `ne(senderId, userId)` AND NOT A RECIPIENT COLUMN. `messages` has no `recipient_id`
+   * (`db/schema/social.schema.ts`); the recipient is implicit in the conversation's two
+   * participant columns, and `MessagesService` has already proved the caller is one of them before
+   * either of these is reached. Given that, "the unread messages of this conversation for me" is
+   * exactly "the messages in this conversation that I did not send", and one negated predicate
+   * expresses it without a subquery.
+   *
+   * WHY THIS WAS `eq(...)` AND WAS WRONG. The predicate selected the caller's OWN outbound
+   * traffic: `GET /messages/conversations/:id/unread` counted what the caller had not yet seen of
+   * their own messages, and `PATCH /messages/conversations/:id/read` marked the caller's own sent
+   * messages as read. The sibling list path already had this right —
+   * `countIncomingUnreadByConversations` below passes the OTHER participants' ids — so the two
+   * disagreed inside one module.
+   *
+   * WHY THIS DEPENDS ON REFUSING SELF-DM. With `participant1_id = participant2_id` there is no
+   * other side, `sender_id <> userId` matches nothing, and the badge would read 0 forever.
+   * `MessagesService.getOrCreateConversation` rejects a self-DM, which is what keeps the negation
+   * exact.
+   */
   async markAllAsRead(conversationId: string, userId: string): Promise<void> {
-    this.logger.info(`Marking all messages as read in conversation: ${conversationId}`);
+    this.logger.info(`Marking all incoming messages as read in conversation: ${conversationId}`);
     await db
       .update(messages)
       .set({ isRead: true, readAt: new Date() })
       .where(
-        and(eq(messages.conversationId, conversationId), eq(messages.senderId, userId), eq(messages.isRead, false)),
+        and(eq(messages.conversationId, conversationId), ne(messages.senderId, userId), eq(messages.isRead, false)),
       );
   }
 
@@ -87,7 +107,7 @@ export class MessagesRepository implements IMessagesRepository {
       .select({ total: sql<number>`count(*)` })
       .from(messages)
       .where(
-        and(eq(messages.conversationId, conversationId), eq(messages.senderId, userId), eq(messages.isRead, false)),
+        and(eq(messages.conversationId, conversationId), ne(messages.senderId, userId), eq(messages.isRead, false)),
       );
     return Number(total);
   }

@@ -108,6 +108,19 @@ describe('NotificationsService', () => {
       verbose: vi.fn(),
     };
 
+    // "Never configured" means everything on: every column defaults to true and the repository
+    // already returns the all-true row when none exists. Pinned here so a preference test is a
+    // deliberate override rather than an accident of mock plumbing.
+    vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({
+      emailEnabled: true,
+      pushEnabled: true,
+      storyReactions: true,
+      comments: true,
+      follows: true,
+      mentions: true,
+      system: true,
+    });
+
     eventValidatorService = { emit: vi.fn(), validateEvent: vi.fn() };
 
     notificationsService = new NotificationsService(
@@ -149,7 +162,8 @@ describe('NotificationsService', () => {
         message: 'Someone followed you',
       });
 
-      expect(result.title).toBe('New Follower');
+      expect(result).not.toBeNull();
+      expect(result?.title).toBe('New Follower');
       expect(eventValidatorService.emit).toHaveBeenCalledWith('notification.created', {
         notificationId: 'notif-123',
         userId: 'user-1',
@@ -198,7 +212,7 @@ describe('NotificationsService', () => {
 
       const result = await service.create({ userId: 'user-1', type: 'follow', title: 't', message: 'm' });
 
-      expect(result.id).toBe('notif-123');
+      expect(result?.id).toBe('notif-123');
     });
 
     it('should let a repository failure propagate', async () => {
@@ -309,6 +323,135 @@ describe('NotificationsService', () => {
       vi.mocked(notificationsRepository.findUnread).mockResolvedValue([]);
 
       await expect(notificationsService.findUnread('user-1')).resolves.toEqual([]);
+    });
+  });
+
+  /**
+   * The preference gate was the reason this suite could not catch the real defect. `create` wrote
+   * unconditionally, so a stored `follows: false` suppressed nothing and `GET /notifications`
+   * could only ever be empty. These cases pin the gate in both directions: off means nothing is
+   * written, on means the write happens exactly as before.
+   */
+  describe('create preference gate', () => {
+    const allOn = {
+      emailEnabled: true,
+      pushEnabled: true,
+      storyReactions: true,
+      comments: true,
+      follows: true,
+      mentions: true,
+      system: true,
+    };
+
+    it('should not write a follow notification when follows is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, follows: false });
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'follow',
+        title: 'New follower',
+        message: 'Someone started following you.',
+      });
+
+      expect(result).toBeNull();
+      expect(notificationsRepository.create).not.toHaveBeenCalled();
+      expect(eventValidatorService.emit).not.toHaveBeenCalled();
+    });
+
+    it('should not write a comment notification when comments is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, comments: false });
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'comment',
+        title: 'New comment',
+        message: 'Someone commented on your story.',
+      });
+
+      expect(result).toBeNull();
+      expect(notificationsRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should not write a comment_reply notification when comments is off', async () => {
+      // A reply is a comment as far as the recipient is concerned; gating it under its own key
+      // would have let a muted account still be pinged by replies.
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, comments: false });
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'comment_reply',
+        title: 'New reply',
+        message: 'Someone replied to one of your comments.',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('should not write a story_reaction notification when storyReactions is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, storyReactions: false });
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'story_reaction',
+        title: 'New reaction',
+        message: 'Someone reacted to your story.',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('should write the notification when the governing preference is on', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue(allOn);
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'follow',
+        title: 'New follower',
+        message: 'Someone started following you.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not consult preferences for a type no preference governs', async () => {
+      // contest.created / winner.selected / prize.distributed / badge.awarded have no column behind
+      // them. Gating them would make badge awards and contest announcements structurally invisible,
+      // which is the defect BadgesService.announceAward exists to fix.
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'badge.awarded',
+        title: 'Badge earned',
+        message: 'You earned a new badge.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.findPreferences).not.toHaveBeenCalled();
+    });
+
+    it('should deliver when the recipient has no preferences row at all', async () => {
+      // "Never configured" means everything on — the repository returns the all-true row in this
+      // case, and a null must not be read as "suppress everything".
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue(
+        undefined as unknown as ReturnType<typeof notificationsRepository.findPreferences> extends Promise<infer T>
+          ? T
+          : never,
+      );
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'follow',
+        title: 'New follower',
+        message: 'Someone started following you.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
     });
   });
 

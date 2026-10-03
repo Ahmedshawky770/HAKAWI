@@ -27,6 +27,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
+import { RestrictionGuard } from './guards/restriction.guard.ts';
 import { PasswordHasher } from './utils/password.util.ts';
 import { JwtHelper, AppleJwksService } from './utils/jwt.util.ts';
 import { EncryptionService } from './utils/encryption.util.ts';
@@ -102,6 +103,7 @@ const appReflector = new Reflector();
     RolesGuard,
     PermissionsGuard,
     OwnershipGuard,
+    RestrictionGuard,
     PasswordHasher,
     JwtHelper,
     AppleJwksService,
@@ -160,6 +162,7 @@ const appReflector = new Reflector();
     RolesGuard,
     PermissionsGuard,
     OwnershipGuard,
+    RestrictionGuard,
     JwtModule,
     PasswordHasher,
     JwtHelper,

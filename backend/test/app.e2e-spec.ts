@@ -37,7 +37,7 @@ describe('AppController (e2e)', () => {
 
   it('/ (GET)', async () => {
     const res = await request(app.getHttpServer()).get('/').expect(200);
-    expect(res.text).toBe('Hello World!');
+    expect(res.body).toMatchObject({ prefix: 'api/v1' });
   });
 
   it('/health (GET)', async () => {

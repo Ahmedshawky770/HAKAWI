@@ -34,8 +34,8 @@ the missing `Dockerfile` is a missing file. See
 
 ### Code Quality
 
-- [ ] All backend unit tests pass — `npm test` (104 files / 1792 tests, includes the coverage gate)
-- [ ] Backend e2e tests pass — `npm run test:e2e --workspace=backend` (23 files / 146 tests)
+- [ ] All backend unit tests pass — `npm test` (145 files / 3047 tests, includes the coverage gate)
+- [ ] Backend e2e tests pass — `npm run test:e2e --workspace=backend` (22 files / 136 tests)
 - [ ] Frontend tests pass — `npm run test:run --workspace=frontend` (21 files / 340 tests)
 - [ ] Frontend coverage gate passes — `npm run test:coverage --workspace=frontend`
 - [ ] Linting passes — `npm run lint` (0 errors)

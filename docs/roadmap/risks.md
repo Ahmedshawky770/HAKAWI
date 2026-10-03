@@ -340,7 +340,8 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 3. No backup automation, so there is nothing to restore from
 4. No alert rules
 5. No WAF metrics endpoint or WAF admin operations endpoints
-6. Frontend coverage at 44.25 statements/lines, against an 80% target
+6. Frontend coverage at **39.79** statements / **40.22** lines, against an 80% target — and the CI
+   gate is set to 38/33/33/38, so a passing build certifies roughly 40%, not 80%
 
 ### Risks retired by the refactor
 | Retired risk | Why |

@@ -35,10 +35,16 @@ integration files.
 - [x] Initialize monorepo structure — npm workspaces: `backend`, `frontend`, `packages/shared-types`
 - [x] Set up NestJS backend
 - [x] Set up Next.js frontend
-- [x] Configure Docker Compose — ⚠️ `docker-compose.yml` at the repo root. **There is no
-      `Dockerfile` anywhere in the repository**, so this is PostgreSQL + Valkey services, not
-      containerised application deploys
-- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, 9 jobs
+- [x] Configure Docker Compose — `docker-compose.yml` at the repo root, **5 services**: `postgres` and
+      `valkey` as images, `backend` and `frontend` running from bind-mounted source, and `adminer`
+      behind a `tools` profile so it does not start on every `up`. **There is no `Dockerfile` anywhere
+      in the repository**, so nothing is containerised for deployment — this is local development only.
+      The two app services mount the repository **root**, not their own directory, because
+      `@hakawi/shared-types` is a workspace resolved through the root `node_modules`; mounting only
+      `./backend` put `/app` outside the workspace graph and `npm install` there tried to fetch an
+      unpublished package from the public registry. `backend` runs `migration:run` before `start:dev`,
+      so the stack can never come up healthy-looking with no schema.
+- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **10 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `security`, `build`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**; and `build`'s `needs:` omits it, so a green `build` does not prove the from-scratch migration chain applied
 - [x] Set up testing framework — **Vitest** (not Jest/Supertest), plus Playwright in `backend/`
       and `frontend/`
 - [x] Write first tests
@@ -48,17 +54,17 @@ integration files.
 - [x] Drizzle ORM setup — query builder + type layer only; migrations are hand-written `.sql`
 - [x] Authentication module — JWT access + refresh, 5 OAuth providers, bcrypt (12 rounds)
 - [x] Authorization module — `@Secured()` composing `JwtAuthGuard` + `RolesGuard` + `PermissionsGuard`
-- [x] WAF middleware — 34 typed rules, 8 layers, Valkey blocklist
+- [x] WAF middleware — **35** typed rules in 8 layers, Valkey blocklist. One rule, `header-forbidden-forwarding-headers`, is opt-in and inert unless `WAF_BLOCK_FORWARDING_HEADERS=true`, so the count *evaluated by default* is 34. `grep -c "^    id: '" backend/src/common/waf/rules.ts` is the check; a number in a document that no longer matches it is a defect, not a rounding difference.
 - [x] Logger setup — Winston, no `console` in `src/`
-- [x] Event Bus setup — EventEmitter2, 16 event modules, schema registry, DLQ
+- [x] Event Bus setup — EventEmitter2 (called directly by `CommonModule`; there is **no** `EventBusModule`), **10** event-constant modules under `src/common/events/`, **16** `@OnEvent` handler files under `src/modules/*/events/`, a schema registry of **55** registered event names, and a Valkey DLQ. ⚠️ the DLQ has **no drain**: `retryDLQ`/`getDLQStats` exist with unit tests and no non-spec caller, and `retryDLQ` deletes a now-valid entry instead of re-emitting it, so a dead-lettered event is never redelivered and simply expires after 7 days
 - [x] Migration runner — transaction-wrapped, sha256 ledger, rollback classification
 
 **Exit Criteria — met:**
-- ✅ All tests pass (unit + integration) — 104 unit files / 1792 tests; 23 e2e files / 146 tests
-- ✅ Code coverage ≥ 80% — measured S 80.56 / B 76.02 / F 72.60 / L 80.72
+- ✅ All tests pass (unit + integration) — 145 unit files / 3047 tests; 22 e2e files / 136 tests
+- ✅ Code coverage ≥ 80% — measured S 85.43 / B 82.39 / F 79.00 / L 85.58
 - ✅ Auth flow works end-to-end
 - ✅ Database connected and migrations run
-- ✅ Docker Compose runs locally (PostgreSQL + Valkey)
+- ✅ `docker compose up -d postgres valkey` runs the datastores with **no `.env` file at all** — every value has a `${VAR:-default}` fallback. Bring the whole stack up and `backend` applies migrations before the API boots.
 
 ---
 
@@ -219,8 +225,8 @@ global gate applies.
 ## Phase 7: Polish & Launch (Weeks 14–18) — 🔄 IN PROGRESS
 
 ### Week 14: Testing & Optimization — 🔄
-- [x] **Unit tests** — 104 files / 1792 tests, coverage above the gate
-- [x] **Integration tests** — 23 files / 146 tests, per-file cloned database
+- [x] **Unit tests** — 145 files / 3047 tests, coverage above the gate (S 85.43 / L 85.58 against floors 78/79)
+- [x] **Integration tests** — 22 files / 136 tests, per-file cloned database
 - [x] **E2E tests** — real browser tests in `backend/` and `frontend/`; frontend also runs
       axe-core WCAG 2.0/2.1 A+AA checks
 - [x] **Frontend tests** — 21 files / 340 tests
@@ -235,7 +241,7 @@ global gate applies.
 Delivered in the Phase 1–2 window rather than Week 15.
 - [x] Event schema registry — `backend/src/common/events/event-schema-registry.ts`
 - [x] Dead Letter Queue — `backend/src/common/events/dlq.service.ts`
-- [x] Event versioning — 16 event modules under `backend/src/common/events/`
+- [x] Event versioning — every one of the **55** names in `EVENT_SCHEMAS` is pinned at `v1`; **10** event-constant modules live in `backend/src/common/events/` and the **16** `@OnEvent` handler files live under `backend/src/modules/*/events/`. Two names (`user.updated`, `refund.completed`) are registered with **no producer** and are listed in `REGISTERED_WITHOUT_PRODUCER`; `event-schemas.spec.ts` fails if a third appears
 - [x] Event validation — `event-validator.service.ts`
 - [x] **Unit tests** (event bus)
 
@@ -282,7 +288,7 @@ Delivered in the Phase 1–2 window rather than Week 15.
 | Exit criterion | Status |
 |---|---|
 | All tests pass (unit, integration, E2E) | ✅ |
-| Code coverage ≥ 80% | ✅ backend; ⚠️ frontend statements/lines are 44.25 |
+| Code coverage ≥ 80% | ✅ backend (S 85.43 / B 82.39 / F 79.00 / L 85.58); ⚠️ frontend S 39.79 / L 40.22, with the gate set to 38/38 rather than the target |
 | Payment E2E tests pass | ✅ against fixtures; ⛔ never run against a live sandbox |
 | Performance targets met (< 200ms p95) | ⛔ not measured — no benchmark harness |
 | Security audit passed | ✅ CI `npm audit` job; ⛔ no pentest |
@@ -356,9 +362,11 @@ payment marked `failed` rather than a fabricated URL.
 
 ### Testing (All Phases)
 **Risk:** High
-**Outcome:** ✅ 2192 tests across three suites, all green, with a hard CI gate and a per-file
+**Outcome:** ✅ 3523 tests across three suites (3047 backend unit + 136 backend e2e/integration + 340
+frontend), plus 9 Playwright tests, all green, with a hard CI gate and a per-file
 cloned test database.
-**Residual risk:** frontend statement/line coverage is 44.25, below the 80% target.
+**Residual risk:** frontend coverage is S 39.79 / L 40.22, well below the 80% target — and the
+frontend gate is set to 38/38, so it certifies roughly 40% rather than failing on the gap.
 
 ---
 
@@ -369,7 +377,7 @@ cloned test database.
 | **Payment gateway issues** | Low | High | Zod-validated client, cached auth token, circuit breaker, retry, clean 503 failure | 🔄 untested live |
 | **Sanity CMS integration** | Medium | High | Circuit breaker, PostgreSQL fallback | ✅ |
 | **Performance bottlenecks** | Medium | Medium | Cache-aside + tagged invalidation; read replicas and load testing never built | ⛔ unmitigated |
-| **Security vulnerabilities** | Low | High | WAF (34 rules), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
+| **Security vulnerabilities** | Low | High | WAF (35 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
 | **Testing delays** | Medium | High | TDD, CI on every PR | ✅ |
 | **Scope creep** | High | Medium | Phase boundaries | ✅ |
 | **Migration data loss** | Low | High | **sha256 ledger, transaction wrapping, reversibility classification** | ✅ materially reduced |
@@ -396,17 +404,17 @@ cloned test database.
 ### Security
 - ✅ CI `npm audit` job passes
 - ⛔ No external pentest
-- ✅ WAF configured — 34 rules, 8 layers
+- ✅ WAF configured — 35 rules, 8 layers
 - ✅ Rate limiting active — 4 tiers, Valkey-backed
 - ⚠️ Encryption at rest (AES-256-GCM) and in transit (TLS, if the platform terminates it) —
       the app itself has no HTTPS redirect or `trust proxy`
 
 ### Quality
-- ✅ Backend coverage above the gate (S 80.56 / B 76.02 / F 72.60 / L 80.72)
-- ⚠️ All tests pass (unit, integration, E2E) ✅; frontend coverage 44.25 statements/lines is below
+- ✅ Backend coverage above the gate (S 85.43 / B 82.39 / F 79.00 / L 85.58 against floors 78/70/73/79)
+- ⚠️ All tests pass (unit, integration, E2E) ✅; frontend coverage 39.79 statements / 40.22 lines is below
       the 80% target
 - ✅ Payment E2E tests exist
-- ✅ Code review coverage — enforced by the 9-job CI pipeline
+- ✅ Code review coverage — enforced by the 10-job CI pipeline
 
 ### Reliability
 - ⛔ Uptime > 99.9% — not deployed, so not applicable
@@ -482,7 +490,8 @@ Everything the roadmap claims and the repository does not contain:
 15. **Permission-decision audit trail** — see `docs/security-architecture/permissions/permissions-overview.md`
 16. **WAF admin operations endpoints** (`GET /admin/waf/blocked-ips` and friends)
 17. **Machine-readable error codes** and custom exception classes — see `docs/api-contract/error-handling.md`
-18. **Frontend coverage** at the 80% target — currently 44.25 statements / 44.25 lines
+18. **Frontend coverage** at the 80% target — currently S 39.79 / B 35.90 / F 35.74 / L 40.22, with
+    the CI gate set to 38/33/33/38, so it currently certifies ~40% instead of holding the line at 80%
 
 ---
 

@@ -21,6 +21,8 @@ interface StorySearchRow {
   category: string | null;
   views: number;
   reactions: number;
+  /** Aggregated by the query; `{}` for a story with no tags. */
+  tagNames: string[] | null;
   createdAt: Date;
   author: { id: string; name: string } | null;
 }
@@ -133,6 +135,16 @@ export class SearchRepository implements ISearchRepository {
           category: categories.name,
           views: stories.viewCount,
           reactions: stories.likeCount,
+          // Aggregated in the same projection as the rest of the row rather than in a second
+          // query per story. `tags` was hardcoded to `[]` while the `storyTags`/`tags` joins sat
+          // right there in this same FROM clause — the joins were present solely to filter, so
+          // every search result advertised no tags even when the story had several.
+          //
+          // `array_remove(..., NULL)` drops the single NULL that a LEFT JOIN produces for a story
+          // with no tags, so the projection is `{}` rather than `{NULL}`. The `FILTER` does the same
+          // job without the post-hoc array cleanup, and `array_agg` over a GROUP BY row cannot
+          // reintroduce the multiplication the page query's `groupBy(stories.id, …)` already prevents.
+          tagNames: sql<string[]>`coalesce(array_agg(${tags.name}) FILTER (WHERE ${tags.id} IS NOT NULL), '{}')`,
           createdAt: stories.createdAt,
           author: {
             id: users.id,
@@ -150,7 +162,13 @@ export class SearchRepository implements ISearchRepository {
         .limit(filters.limit)
         .offset(offset),
       db
-        .select({ total: sql<number>`count(*)` })
+        // WHY `count(distinct stories.id)` AND NOT `count(*)`. The four LEFT JOINs are shared with
+        // the page query, which is correct — the `whereClause` references `categories.slug` and
+        // `tags.slug`, so dropping the joins from the count would produce invalid SQL. But they
+        // multiply rows: a story with three tags is three rows here, so `count(*)` reported 3 for a
+        // one-story result and pagination then advertised pages that do not exist. The page query
+        // does not have this problem because it groups by `stories.id`.
+        .select({ total: sql<number>`count(distinct ${stories.id})` })
         .from(stories)
         .leftJoin(categories, eq(categories.id, stories.categoryId))
         .leftJoin(users, eq(users.id, stories.authorId))
@@ -169,7 +187,7 @@ export class SearchRepository implements ISearchRepository {
           excerpt: row.excerpt,
           status: row.status,
           category: row.category,
-          tags: [],
+          tags: row.tagNames ?? [],
           author,
           views: row.views,
           reactions: row.reactions,

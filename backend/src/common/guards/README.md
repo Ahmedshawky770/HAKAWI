@@ -9,11 +9,64 @@ must deny.** Everything below follows from that.
 | `RolesGuard`       | Is the account type / admin role sufficient?   | `@Secured`, per route             |
 | `PermissionsGuard` | Is the granted permission set sufficient?      | `@Secured` (via `SECURED_GUARDS`) |
 | `OwnershipGuard`   | Is the caller the owner of _this_ resource?    | applied per route — see below     |
-| `RestrictionGuard` | Is the account restricted (ban / restriction)? | applied per route                 |
+| `RestrictionGuard` | Is the account restricted (ban / mute)? | `@Secured` (via `SECURED_GUARDS`) — see below |
 
 All five are provided **and exported** by `CommonModule`, so `@UseGuards(SomeGuard)`
 resolves from any module. `common.module.spec.ts` pins that list; it is the exact property
-whose absence made `OwnershipGuard` dead code.
+whose absence made `OwnershipGuard` dead code, and then `RestrictionGuard` — the second
+guard to be documented as live while being wired to nothing.
+
+`restriction-guard.wiring.spec.ts` closes the loop the module spec cannot: it drives real
+HTTP through a `@Secured` route and asserts a banned account is refused. A unit test
+constructs the guard directly, so it stays green no matter how many places call it.
+
+
+---
+
+## `RestrictionGuard` — the second dead guard, and the bug that would have shipped with it
+
+`RestrictionGuard` was in neither `CommonModule.providers` nor its exports, was applied to
+zero routes, and had a passing unit suite. Six documents described it as a live control.
+`moderation.event-handler.ts` wrote `restriction:<userId>` into Valkey and **nothing ever read
+it**, so a moderation `ban` had no effect on the API at all.
+
+### The bug that wiring it would have introduced
+
+Read naively, the guard's own logic denied on the mere presence of the key. But the
+producer wrote the **raw** action for all five of `'warn' | 'mute' | 'ban' | 'content_removal'
+| 'no_action'`. So `restriction:<id>` held `'warn'` for a *warned* account — and wiring the
+guard as written would have turned every warning, every content removal and every no-op
+decision into a **total account lockout**.
+
+The guard's tautology hid this: `restrictionTypeStr === 'ban' ? 403 : 403`. Both branches were
+403, so there was no read/write distinction to notice the absence of.
+
+### What changed
+
+- **`moderation.event-handler.ts`** writes the cache key for `ban` and `mute` only, and stores
+  the normalised value — the same vocabulary `user_restrictions` has always used. The audit row
+  is still written for every action, so the moderation timeline keeps non-restricting decisions.
+- **`restriction.guard.ts`** checks the **value**, not the key's existence, so a key written by
+  an older build cannot deny by itself. `ban` → 403; `mute` → 423 on writes and reads pass; any
+  other value → allowed.
+- **`secured.decorator.ts`** composes it second in `SECURED_GUARDS`, after `JwtAuthGuard` (which
+  populates `request.user`) and before `RolesGuard`.
+
+### Why it fails open on a Valkey error
+
+`ValkeyService.exists` already returns false when its client is null. The `try/catch` is for a
+driver-level failure on a live connection, which would otherwise become a 500 on **every
+authenticated request** — this guard is on every `@Secured` route. The trade is explicit: a cache
+outage means the restriction is temporarily unenforced, which is the posture the WAF IP blocklist
+already takes, and better than taking the API down. A banned account is still stopped at login
+by `users.accessBlocked`, so the ban is not simply lifted.
+
+### `@Public()` routes are not covered
+
+`@Public()` returns from `JwtAuthGuard` and therefore from the whole composed chain, so a banned
+account can still read public content. That is intended — a ban stops account access, it does not
+make the public site disappear — but it means the control is **"every authenticated request"**,
+not "every request". `consistency-matrix.md` is worded accordingly.
 
 ---
 

@@ -15,23 +15,54 @@ export const UserDeletedSchema = z.object({
   userId: z.string(),
 });
 
+/**
+ * The story row carried on `story.created` / `story.updated` / `story.published` / `story.archived`.
+ *
+ * `SanitySyncEventHandler` builds a Sanity document from this and returned early on a missing
+ * `story`, which is what made the whole Sanity integration dead code: the client, the GROQ, the
+ * Zod validation and the circuit breaker were all real, and none of it ever ran.
+ *
+ * Optional, and the reason is the dead-letter queue rather than convenience: `dlq.service.ts`
+ * persists payloads, so a replayed event from before this field existed must still validate. A
+ * required field would make every historical DLQ entry permanently unreplayable.
+ *
+ * `publishedAt` is `z.coerce.date()` rather than `z.date()` for the same reason — a payload that
+ * round-tripped through Valkey comes back with a string date, and the handler calls
+ * `.toISOString()` on it.
+ */
+const StorySnapshotSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  excerpt: z.string().nullable().optional(),
+  content: z.string().nullable().optional(),
+  coverImage: z.string().nullable().optional(),
+  status: z.string(),
+  publishedAt: z.coerce.date().nullable().optional(),
+});
+
 export const StoryCreatedSchema = z.object({
   storyId: z.string(),
   authorId: z.string(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryUpdatedSchema = z.object({
   storyId: z.string(),
   updatedFields: z.record(z.string(), z.unknown()),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryPublishedSchema = z.object({
   storyId: z.string(),
   publishedAt: z.coerce.date(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryArchivedSchema = z.object({
   storyId: z.string(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryDeletedSchema = z.object({

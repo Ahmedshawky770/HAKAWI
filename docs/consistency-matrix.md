@@ -50,7 +50,7 @@ tables are live**, and this is the full picture.
 
 | Layer | Tables | Consistency | Notes |
 |---|---|---|---|
-| Identity | `users`, `user_restrictions` | Strong | `users` is cached with tagged invalidation; restrictions are read on every request by `RestrictionGuard` |
+| Identity | `users`, `user_restrictions` | Strong | `users` is cached with tagged invalidation; restrictions are read on every **authenticated** request by `RestrictionGuard`, which `secured.decorator.ts` composes into `@Secured`; `@Public()` routes are outside the chain by design |
 | Auth state | — (Valkey only) | Strong | Refresh-token blacklist; ⛔ no session table |
 | Content | `stories`, `categories`, `tags`, `story_tags` | Eventual | Cache-aside at 600s, tags `stories` |
 | Books | `books`, `book_categories`, `book_tags`, `reading_progress` | Eventual | Cache-aside at 600s, tags `books` |

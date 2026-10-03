@@ -58,6 +58,21 @@ export class CommentReactionsRepository implements ICommentReactionsRepository {
     return reaction;
   }
 
+  /**
+   * Mirrors `ReactionsRepository.update` for the story case. `comment_reactions_unique_idx` admits
+   * one reaction per (user, comment), so this is how a reaction's type is changed — the alternative
+   * being a DELETE followed by a POST, which briefly removes the reaction from the count.
+   */
+  async update(id: string, data: { type: string }): Promise<CommentReaction> {
+    this.logger.info(`Updating comment reaction: ${id} to type ${data.type}`);
+    const [reaction] = (await db
+      .update(commentReactions)
+      .set(data)
+      .where(eq(commentReactions.id, id))
+      .returning()) as CommentReaction[];
+    return reaction;
+  }
+
   async delete(id: string): Promise<void> {
     this.logger.info(`Deleting comment reaction: ${id}`);
     await db.delete(commentReactions).where(eq(commentReactions.id, id));

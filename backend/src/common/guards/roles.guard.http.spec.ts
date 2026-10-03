@@ -4,12 +4,14 @@ import { Controller, Get, Patch, Post } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, beforeAll, describe, it, vi } from 'vitest';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 
 import { AccountType, AdminRole } from '../constants/roles.ts';
 import { RequireAdminRole, RequirePermissions } from '../decorators/roles.decorator.ts';
+import { ValkeyService } from '../services/valkey.service.ts';
+import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { Secured } from '../decorators/secured.decorator.ts';
 import { Permission } from '../permissions/permissions.ts';
 
@@ -20,7 +22,7 @@ import { RolesGuard } from './roles.guard.ts';
 const JWT_SECRET = 'test-jwt-secret-for-roles-guard-e2e';
 
 @Controller('moderation')
-class RolesGuardE2eController {
+class RolesGuardHttpController {
   @Secured()
   @Post('reports')
   @RequirePermissions(Permission.REPORTS_CREATE)
@@ -59,7 +61,7 @@ interface TestPrincipal {
   adminRole?: string;
 }
 
-describe('RolesGuard e2e', () => {
+describe('RolesGuard over HTTP', () => {
   let app: INestApplication;
   let httpServer: Server;
   let jwtService: JwtService;
@@ -87,7 +89,7 @@ describe('RolesGuard e2e', () => {
     jwtService = new JwtService({ secret: JWT_SECRET });
 
     const moduleRef = await Test.createTestingModule({
-      controllers: [RolesGuardE2eController],
+      controllers: [RolesGuardHttpController],
       providers: [
         JwtAuthGuard,
         RolesGuard,
@@ -99,6 +101,16 @@ describe('RolesGuard e2e', () => {
         {
           provide: ConfigService,
           useValue: { get: () => JWT_SECRET },
+        },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger. This
+        // module is hand-built rather than importing `CommonModule`, so both must be provided here.
+        {
+          provide: ValkeyService,
+          useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() },
+        },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
         },
       ],
     }).compile();

@@ -186,7 +186,7 @@ await this.eventBus.emit('story.published', { storyId: id, publishedAt } as Stor
 
 The event is a **dotted string** with a **structural object cast to the class type**. The classes
 carry no behaviour, are never `instanceof`-checked, and the `as` cast means TypeScript cannot verify
-the payload shape. There is **no `EventBus` class** — only `EventBusModule`
+the payload shape. There is **no `EventBus` class and no `EventBusModule`** — `CommonModule` calls `EventEmitterModule.forRoot(...)` directly
 (`backend/src/common/event-bus.module.ts:24`), and consumers subscribe with `@OnEvent('story.published')`
 on the raw string.
 
@@ -364,7 +364,7 @@ schemas (~50 of them) and the `event-schema-registry.ts` are for.
 | `INotificationsRepository` 7 methods | 10 real methods, and it spans two tables (`notifications` + `notification_preferences`) |
 | Event classes with `timestamp: Date` and a `type` discriminator | ⛔ **No event carries a timestamp** and none has a discriminator. The real classes are minimal positional records |
 | `new StoryPublishedEvent({ storyId, authorId, timestamp })` object-literal construction | ⛔ That call style matches no call site. Real: `emit('story.published', { storyId, publishedAt } as StoryPublishedEvent)` — a dotted string plus a structural cast |
-| An `EventBus` class with `emit`/`on` | ⛔ No `EventBus` class. Only `EventBusModule`; consumers use `@OnEvent('dotted.name')` |
+| An `EventBus` class with `emit`/`on` | ⛔ No `EventBus` class and no `EventBusModule`. `CommonModule` calls `EventEmitterModule.forRoot(...)`; consumers inject `EventEmitter2` and declare handlers with `@OnEvent('dotted.name')` |
 | `UserDeletedEvent`, `NotificationReadEvent` | ⛔ Neither event exists |
 | `NotificationsService` injecting `IUsersService` + `IStoriesService` | ⛔ Not how it works. Event handlers in `modules/notifications/events/` receive the payload directly |
 | `POST /users/:id/verify` | ⛔ Does not exist. Real: `POST /users/me/verification` + `POST /users/verification/confirm` |

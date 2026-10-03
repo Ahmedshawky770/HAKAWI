@@ -33,17 +33,17 @@ or `vitest run --coverage` fails. This is a real trap when running coverage from
 
 ```
 All files   | % Stmts   | % Branch | % Funcs | % Lines
-       213  |     80.56 |    76.02 |   72.60 |   80.72
+       213  |     85.43 |    82.39 |     79  |   85.58
 ```
 
 Configured floors in `backend/vitest.config.ts:45-56`:
 
 | Metric | Floor | Measured | Headroom |
 |---|---|---|---|
-| Statements | 78 | 80.56 | +2.56 |
-| Branches | 73 | 76.02 | +3.02 |
-| Functions | 70 | 72.60 | +2.60 |
-| Lines | 79 | 80.72 | +1.72 |
+| Statements | 78 | 85.43 | +7.43 |
+| Branches | 73 | 82.39 | +9.39 |
+| Functions | 70 | 79.00 | +9.00 |
+| Lines | 79 | 85.58 | +6.58 |
 
 Plus **nine per-path ratchets** that are tighter than the global floor:
 
@@ -76,20 +76,23 @@ Plus **nine per-path ratchets** that are tighter than the global floor:
 
 ```
 All files   | % Stmts   | % Branch | % Funcs | % Lines
-        21  |     44.25 |    87.05 |   53.69 |   44.25
+        21  |     39.79 |    35.90 |   35.74 |   40.22
 ```
 
 | Metric | Floor | Measured | Headroom |
 |---|---|---|---|
-| Statements | 42 | 44.25 | +2.25 |
-| Branches | 85 | 87.05 | +2.05 |
-| Functions | 51 | 53.69 | +2.69 |
-| Lines | 42 | 44.25 | +2.25 |
+| Statements | 38 | 39.79 | +1.79 |
+| Branches | 33 | 35.90 | +2.90 |
+| Functions | 33 | 35.74 | +2.74 |
+| Lines | 38 | 40.22 | +2.22 |
 
-⚠️ **The backend is above the 80% target; the frontend is not.** Branches are strong at 87.05, but
-statements and lines are 44.25 — because the page and component files (`api.ts`, `types.ts`, most
-`app/**/page.tsx`) are 0%. The floors were set just under the measured values so the gate is a
-ratchet, not a target. Reaching 80% on the frontend is open work; see
+⚠️ **The backend is above the 80% target; the frontend is not, by a wide margin.** Every metric is
+around 36–40%, and the floors were lowered to sit just under them so the gate is a ratchet rather than
+a target — which means a green build certifies roughly 40%, not 80%. The page and component files
+(`api.ts`, `types.ts`, most `app/**/page.tsx`) are the untested bulk. This figure was previously
+recorded as S 44.25 / B 87.05 / F 53.69 / L 44.25 against floors 42/85/51/42; **every** metric has
+since gone down, so the earlier number was not a snapshot that held — it was simply not re-measured.
+Reaching 80% on the frontend is open work; see
 `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
 
 ---
@@ -104,11 +107,11 @@ ratchet, not a target. Reaching 80% on the frontend is open work; see
     /      \        real Chromium, page.goto / fill / click / waitForURL,
    /--------\       asserting response.status() on the real XHR
   /          \
- /   E2E /    \      backend integration: 23 files, 146 tests
+ /   E2E /    \      backend integration: 22 files, 136 tests
 / Integration \     a REAL Nest app + a per-test-file CLONED database
 /______________\
     /        \
-   /  Unit    \     backend: 104 files, 1792 tests
+   /  Unit    \     backend: 145 files, 3047 tests
   /            \    frontend: 21 files, 340 tests
  /______________\
 ```
@@ -235,7 +238,7 @@ backend coverage gate runs as part of `npm test`; the frontend's is
 
 ## CI Pipeline
 
-`.github/workflows/ci.yml` — **9 jobs, no advisory gates** (the previous version of this document
+`.github/workflows/ci.yml` — **10 jobs, no advisory gates** (the previous version of this document
 claimed advisory thresholds):
 
 | # | Job | Name | Gate |
@@ -287,8 +290,8 @@ Notes:
 | `src/test/e2e/*` layout | The real layout is `src/e2e/`, `src/modules/**/e2e/`, and `test/` |
 | Test factories and `faker` fixtures | ⛔ `faker` is not a dependency. `backend/test/mocks/*.mock.ts` are hand-written fixtures; there is no factory pattern |
 | `npm run test:cov:check` (mentioned twice) | ⛔ Does not exist. Backend coverage runs inside `npm test`; frontend via `npm run test:coverage --workspace=frontend` |
-| "CI pipeline with advisory thresholds" | 9 jobs, **all hard gates**, including `test-e2e` |
-| Coverage 80% (unspecified) | Backend **S 80.56 / B 76.02 / F 72.60 / L 80.72** against 78/70/73/79 plus 9 per-path ratchets; frontend **S 44.25 / B 87.05 / F 53.69 / L 44.25** against 42/85/51/42 |
+| "CI pipeline with advisory thresholds" | 10 jobs, **all hard gates**, including `test-e2e` |
+| Coverage 80% (unspecified) | Backend **S 85.43 / B 82.39 / F 79.00 / L 85.58** against 78/70/73/79 plus 9 per-path ratchets; frontend **S 39.79 / B 35.90 / F 35.74 / L 40.22** against 38/33/33/38 |
 | No test counts | **104 / 1792** backend unit · **23 / 146** backend e2e · **21 / 340** frontend · plus 2 Playwright suites |
 | "Playwright for E2E" (implied API-only) | Real **browser** tests in `backend/` and `frontend/`, both with a two-entry `webServer` that boots the backend and the frontend; the frontend suite adds axe-core **WCAG 2.0/2.1 A+AA** checks |
 | E2E isolation unspecified | Per-test-file **cloned database** from a run-scoped template (~250ms vs 6.1s), `DROP ... WITH (FORCE)` teardown, 6h stale reaper, no `TRUNCATE` |

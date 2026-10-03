@@ -5,6 +5,8 @@ import type { Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
@@ -119,6 +121,14 @@ describe('StoriesController', () => {
         {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
+        },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // This module is hand-built rather than importing `CommonModule`, so both must be provided
+        // here or Nest fails at DI resolution before any assertion runs.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
         },
       ],
     }).compile();

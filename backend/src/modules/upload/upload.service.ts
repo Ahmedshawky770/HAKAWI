@@ -1,8 +1,7 @@
 import crypto from 'crypto';
 
-import { Injectable, Inject, Optional, ForbiddenException } from '@nestjs/common';
-import type { S3 } from '@aws-sdk/client-s3';
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Injectable, Inject, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { eq } from 'drizzle-orm';
 
@@ -27,7 +26,9 @@ export class UploadService {
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(CircuitBreakerService) private readonly circuitBreaker: CircuitBreakerService,
-    @Optional() private readonly s3Client?: S3,
+    // No `@Optional()`: the client is provided by `UploadModule`, so a miss is a wiring bug that
+    // must surface at boot rather than as a `TypeError` inside the first presign call.
+    @Inject(S3Client) private readonly s3Client: S3Client,
   ) {
     this.bucket = process.env.STORAGE_BUCKET || 'hakawi-media';
     this.cdnUrl = process.env.STORAGE_CDN_URL || '';
@@ -55,7 +56,7 @@ export class UploadService {
     });
 
     const url = await this.circuitBreaker.execute('s3-presigned-url', async () =>
-      getSignedUrl(this.s3Client as S3, command, { expiresIn: 3600 }),
+      getSignedUrl(this.s3Client, command, { expiresIn: 3600 }),
     );
     const cdnUrl = this.cdnUrl ? `${this.cdnUrl}/${uniqueFilename}` : url;
 
@@ -97,12 +98,29 @@ export class UploadService {
     return upload;
   }
 
-  async deleteFile(filename: string): Promise<void> {
+  /**
+   * Deletes an object and its row, but only for the account that uploaded it.
+   *
+   * WHY THE OWNERSHIP CHECK IS HERE AND NOT IN THE CONTROLLER. The route takes a bare filename, so
+   * without a row lookup there is nothing to compare the caller against and any authenticated user
+   * can delete any object in the bucket. `uploads.uploaded_by_id` (`migrations/0004`) is the only
+   * record of who owns a key.
+   *
+   * WHY `NotFoundException` AND NOT `ForbiddenException`. A forbidden response for someone else's
+   * key confirms the key exists, which turns this route into a filename-existence oracle. Reporting
+   * "not found" for both cases keeps the endpoint indistinguishable.
+   */
+  async deleteFile(filename: string, userId: string, isSuperAdmin = false): Promise<void> {
+    const [upload] = await db.select().from(uploads).where(eq(uploads.filename, filename)).limit(1);
+
+    if (!upload || (upload.uploadedById !== userId && !isSuperAdmin)) {
+      throw new NotFoundException('Upload not found');
+    }
+
     const command = new DeleteObjectCommand({ Bucket: this.bucket, Key: filename });
-    await this.circuitBreaker.execute(
-      's3-delete',
-      async () => await this.s3Client?.send(command).catch(() => undefined),
-    );
+    await this.circuitBreaker.execute('s3-delete', async () => {
+      await this.s3Client.send(command);
+    });
     await db.delete(uploads).where(eq(uploads.filename, filename));
   }
 

@@ -114,11 +114,12 @@ export class StoriesController {
    *    published at `/my-story` while the row says `my-story-2` — two truths about one URL
    *    (Principle #9). Better to refuse and let the caller pick.
    *
-   * KNOWN GAP, not fixable in this file: `tags` is accepted and validated here, but the `stories`
-   * table has no `tags` column (it is the `story_tags` join) and `StoriesRepository` has no writer
-   * for it, so Drizzle drops the key on both the insert and the update. Nothing 400s and nothing
-   * 500s — the tags are simply not stored. Wiring it needs a repository tag writer plus a call from
-   * `StoriesService.create/update`, and that service is owned elsewhere.
+   * `tags` is persisted. It used to be accepted here and dropped on the floor: the `stories` table
+   * has no `tags` column (it is the `story_tags` join) and `StoriesRepository` had no writer for it,
+   * so Drizzle discarded the key on both the insert and the update while the API answered 200. It is
+   * now written by `StoriesRepository.replaceTags` from `StoriesService.create/update`. Omitting the
+   * field leaves the current set alone; sending `[]` clears it; an unknown name is a 400, because a
+   * silently ignored tag is indistinguishable from a saved one to the caller.
    */
   /**
    * AUTHOR-SCOPED WRITE ROUTES — `OwnershipGuard` is listed on each of them.
