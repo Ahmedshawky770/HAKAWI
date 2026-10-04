@@ -7,7 +7,7 @@ module-level schema ownership for the Hakawi database.
 Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exist.
 
 **Sources of truth, in order:**
-1. `migrations/*.sql` — 18 numbered files that create the schema
+1. `migrations/*.sql` — **22** numbered files that create the schema
 2. `backend/src/db/schema/*.ts` — the Drizzle models, 1:1 with the SQL
 3. `packages/shared-types/src/*.ts` — the TypeScript contract
 

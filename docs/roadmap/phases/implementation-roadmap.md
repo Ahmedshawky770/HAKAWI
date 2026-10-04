@@ -24,8 +24,15 @@ CI gates the backend on global floors of **79 lines / 70 functions / 73 branches
 plus nine per-path ratchets, so the effective bar is "never regress"; the 80% figure is the target,
 not a second number to track.
 
-**E2E tests: all critical flows**, in real browsers (Playwright), plus 23 database-backed
-integration files.
+**E2E tests: all critical flows**, in real browsers (Playwright), plus a **23-file / 173-test**
+database-backed suite — 11 `src/modules/**/e2e/*.e2e-spec.ts`, `test/app.e2e-spec.ts`, and **11**
+`test/*.integration-spec.ts`. ⚠️ the previous version of this line said "23 database-backed integration
+files", which counted 11 + 1 + **10**; there are 11 integration files. The count happened to land on
+23 and the breakdown did not.
+
+⚠️ **That 23-file suite was not running.** Two import bugs meant the Nest module graph could not
+build, so every one of those files skipped itself while CI stayed green. See "Two launch blockers"
+under Phase 1 and `docs/roadmap/risks.md`.
 
 ---
 
@@ -45,26 +52,84 @@ integration files.
       unpublished package from the public registry. `backend` runs `migration:run` before `start:dev`,
       so the stack can never come up healthy-looking with no schema.
 - [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **11 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`, `security`, `build`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**, and it is therefore **not** in `build`'s `needs:` — a green `build` does not prove the from-scratch migration chain applied. `migration-roundtrip` **is** in `needs:` (see below)
-- [x] Set up testing framework — **Vitest** (not Jest/Supertest), plus Playwright in `backend/`
-      and `frontend/`
+- [x] Set up testing framework — **Vitest**, plus Playwright in `frontend/`. ⚠️ the previous version
+      of this line read "**not Jest/Supertest**", which was **half false**. Jest is genuinely absent —
+      no `jest` dependency, no `jest.config`, no `@types/jest` in any of the three `package.json`
+      files. **Supertest is present**: it is a backend devDependency (`"supertest": "^7.0.0"`,
+      `backend/package.json:112`) and it drives the HTTP layer of the test suite. It is imported by
+      **34** files under `backend/src/` and **12** under `backend/test/` — 46 in all — of which **23
+      of the `src/` side** run inside the unit job (the other 11 are `e2e/**`, which
+      `backend/vitest.config.ts` excludes). "Supertest is not used here" was never true; "Jest is not
+      used here" is
 - [x] Write first tests
+- [x] Write first tests
+
+### Two launch blockers — both were shipping defects, and one of them was invisible
+
+⚠️ **These were not roadmap items. They were open defects in code this document had been recording as
+✅ complete, and they are recorded here because a roadmap that says "Phase 4 ✅" while the backend
+cannot start is worse than no roadmap.**
+
+**1. `BooksModule` ↔ `LibraryModule` formed a circular dependency with no `forwardRef()`.** Nest
+aborted the whole module graph with `The module at index [3] of the LibraryModule "imports" array is
+undefined`, and **the backend could not boot at all**. The consequence was quieter and worse: all
+**11** integration specs in `backend/test/` and the stories e2e **skipped themselves and reported
+nothing**, so the CI suite stayed green on a repository whose application did not start. `forwardRef()`
+is now on **both** sides — `books.module.ts:33` and `library.module.ts:24`.
+
+**2. `ContestsModule` imported `NotificationsModule` but never listed it in `imports`.** The import
+was dead, so `ContestsEventHandler` could not resolve `NotificationsService`. Fixed at
+`contests.module.ts:27`.
+
+**Consequence, recorded honestly:** with the graph finally building, **8 previously-never-executed
+tests failed** and had to be fixed. They were stale fixtures, not new bugs: categories and tags needed
+a content-moderator token, upload discarded its auth token, one spec targeted `POST /library` — a
+route deliberately deleted as a free-book hole and replaced by `POST /library/claim` — and the stories
+e2e assumed a draft appeared in the public list, which is exactly what Phase 2 has just closed. **A
+green suite means nothing if the suite did not run.**
 
 ### Week 2: Core Infrastructure — ✅
 - [x] Database schema design — 33 tables
 - [x] Drizzle ORM setup — query builder + type layer only; migrations are hand-written `.sql`
 - [x] Authentication module — JWT access + refresh, 5 OAuth providers, bcrypt (12 rounds)
-- [x] Authorization module — `@Secured()` composing `JwtAuthGuard` + `RolesGuard` + `PermissionsGuard`
+- [x] Authorization module — `@Secured()` composing **four** guards: `JwtAuthGuard` +
+      `RestrictionGuard` + `RolesGuard` + `PermissionsGuard`, declared once as `SECURED_GUARDS`
+      (`backend/src/common/decorators/secured.decorator.ts:31`). ⚠️ this line previously said three
+      and omitted `RestrictionGuard`, which is the guard that makes a moderation `ban` do anything
 - [x] WAF middleware — **35** typed rules in 8 layers, Valkey blocklist. One rule, `header-forbidden-forwarding-headers`, is opt-in and inert unless `WAF_BLOCK_FORWARDING_HEADERS=true`, so the count *evaluated by default* is 34. `grep -c "^    id: '" backend/src/common/waf/rules.ts` is the check; a number in a document that no longer matches it is a defect, not a rounding difference.
 - [x] Logger setup — Winston, no `console` in `src/`
-- [x] Event Bus setup — EventEmitter2 (called directly by `CommonModule`; there is **no** `EventBusModule`), **10** event-constant modules under `src/common/events/`, **16** `@OnEvent` handler files under `src/modules/*/events/`, a schema registry of **55** registered event names, and a Valkey DLQ. ⚠️ the DLQ has **no drain**: `retryDLQ`/`getDLQStats` exist with unit tests and no non-spec caller, and `retryDLQ` deletes a now-valid entry instead of re-emitting it, so a dead-lettered event is never redelivered and simply expires after 7 days
+- [x] Event Bus setup — EventEmitter2 (called directly by `CommonModule`; there is **no**
+      `EventBusModule`), **10** event-constant modules under `src/common/events/`, **16** files
+      containing `@OnEvent` under `src/modules/` (15 of them in a `*/events/` directory; the
+      sixteenth is `stories/sanity/sanity-sync.event-handler.ts`), a schema registry of **55**
+      registered event names, all pinned at `v1`, and a Valkey DLQ
+- [x] ⚠️ **Dead Letter Queue — this line previously said the DLQ has "no drain" and that "a
+      dead-lettered event is never redelivered". That was false.** The drain exists.
+      `DLQController` (`backend/src/common/events/dlq.controller.ts:35`) serves `GET /events/dlq` and
+      `POST /events/dlq/:id/replay`; `EventValidatorService.replayDeadLettered`
+      (`event-validator.service.ts:60`) **re-validates the stored payload against its registered schema
+      and re-emits it if it now passes**. `retryDLQ` — which deleted a now-valid entry instead of
+      re-emitting it, so replay was strictly worse than doing nothing — **has been deleted**.
+      `getDLQStats` still exists and is still **spec-only**: it is the one method on this path with no
+      non-spec caller, and it is the only part of the old claim that survives. `dlq.drain.spec.ts` pins
+      the drain
 - [x] Migration runner — transaction-wrapped, sha256 ledger, rollback classification
 
 **Exit Criteria — met:**
-- ✅ All tests pass (unit + integration) — 145 unit files / 3047 tests; 22 e2e files / 136 tests
-- ✅ Code coverage ≥ 80% — measured S 85.43 / B 82.39 / F 79.00 / L 85.58
+- ✅ All tests pass (unit + integration) — **151** unit files / **3228** tests; **23** e2e + integration
+      files / **173** tests. ⚠️ every figure in this line was wrong before this pass (145 / 3047 and
+      22 / 136); re-derive with `npm test --workspace=backend` and
+      `npm run test:e2e --workspace=backend`
+- ✅ Code coverage ≥ 80% — ⚠️ **all four previously published numbers were wrong.** Measured now:
+      **S 84.28 / B 80.49 / F 78.86 / L 84.45** (`backend/coverage/coverage-summary.json`), against
+      floors 78 / 73 / 70 / 79 and nine per-path ratchets. The document said S 85.43 / B 82.39 /
+      F 79.00 / L 85.58
 - ✅ Auth flow works end-to-end
 - ✅ Database connected and migrations run
-- ✅ `docker compose up -d postgres valkey` runs the datastores with **no `.env` file at all** — every value has a `${VAR:-default}` fallback. Bring the whole stack up and `backend` applies migrations before the API boots.
+- ✅ `npm run migration:status` **exists at the repository root** (`package.json:22`). ⚠️ it did not
+      before this change set, so the eight documents that told a reader to run it from the root were
+      instructing them to run a command that was not there
+- ✅ `docker compose up -d postgres valkey` runs the datastores with **no `.env` file at all** — every value has a `${VAR:-default}` fallback. Bring the whole stack up and `backend` applies migrations before the API boots
 
 ---
 
@@ -87,6 +152,35 @@ integration files.
 - [x] Search integration (PostgreSQL full-text + GIN expression indexes from migration `0014`)
 - [x] **Unit tests** (`stories.service.spec.ts`)
 - [x] **Integration tests** (`stories.controller.spec.ts`, `src/modules/stories/e2e/`)
+- [x] ⚠️ **SECURITY — `GET /api/v1/stories` was an anonymous dump of every draft.** The route is
+      `@Public()` and forwarded the caller's `status` straight into the repository filter, so with no
+      token at all a reader could list drafts and archived stories by changing one query parameter.
+      Fixed: the list route now **pins `status` to `published`** and never forwards the field, and
+      `StoriesQueryDto.status` carries `@IsIn` drawn from the module's own status tuple so a typo is a
+      **400** rather than a 200 that quietly ignores it (`stories.dto.ts:228-245`). `forbidNonWhitelisted`
+      turns the DTO's removal of any other lifecycle field into a 400 as well
+- [x] ⚠️ **SECURITY — the two detail routes returned drafts to anonymous callers.** `GET /stories/:id`
+      and `GET /stories/slug/:slug` were also `@Public()` and filtered only on the identifier, so a
+      draft or archived story was readable by anyone who knew its id or slug. Fixed with a new
+      `OptionalJwtAuthGuard`: an **unpublished** story is readable only by its author or by a caller
+      holding `Permission.CONTENT_MODERATE`, and **everyone else gets 404, not 403** — a 403 on a
+      public route confirms the story exists. An anonymous caller gets 404, the author gets 200, an
+      authenticated stranger gets 404, a moderator gets 200
+- [x] ✅ **An unusable credential on a public route is treated as anonymous, not as a 401.** That is a
+      deliberate decision, not an oversight: this client authenticates with a **15-minute httpOnly
+      cookie**, so a reader whose cookie expired mid-page would be signed out by a 401 and lose their
+      place. A malformed or expired token therefore downgrades to anonymous and the route answers
+      200/404 exactly as an anonymous caller would
+- [x] ⚠️ **`view_count` was never written over HTTP.** `incrementViewCount` existed in the service and
+      had **no route**, so the counter was structurally always zero. `POST /stories/:id/view`
+      (`stories.controller.ts:265`) is now the only HTTP writer of that column — any authenticated
+      reader, `@ThrottleTier('search')`, **204 No Content**. Its cache invalidation was **split** so a
+      single page view no longer sweeps the whole `search` cache tag and evicts every cached query in
+      the process for one story
+- [ ] ⛔ **An authenticated route listing an author's own drafts does not exist.** With the public list
+      pinned to `published`, an author has no first-class way to see their own unpublished work
+- [ ] ⛔ **No route lets the owner fetch `POST /stories/:id/view` on an archived story.** A page view on
+      an archived story is refused, and there is no owner-scoped path that is not
 
 ### Week 5: Content Management — ✅
 - [x] Categories and tags
@@ -96,6 +190,23 @@ integration files.
 - [x] Image upload (S3 via `@aws-sdk/client-s3`) — R2 is compatible but not separately configured
 - [x] **Unit tests**
 - [x] **Integration tests** (stories E2E)
+- [x] ⚠️ **`sortBy: 'relevance'` was documented and defaulted but never implemented.** There was no
+      `ts_rank` anywhere in the repository, so the "relevance" ordering silently fell through to
+      creation date and the name was a lie. It is now real `ts_rank_cd` — **cover density**, not
+      `ts_rank`, because `ts_rank` counts term frequency and is largely monotone in document length,
+      so a long story outranked a short exact match — computed over the **existing** `0014`
+      `to_tsvector('simple', …)` expression, so no new index was needed. `created_at DESC` is the
+      second key, because `ts_rank_cd` returns a float, ties are common, and `LIMIT`/`OFFSET` over a
+      non-deterministic order is a pagination bug. `sortBy=date` is now `published_at DESC NULLS LAST`
+      rather than creation date
+- [x] ⚠️ **`sortBy` was missing from the search cache key.** `?sortBy=views` and `?sortBy=date`
+      **shared one cache entry**, so whichever query warmed it first decided the order for both, for
+      the length of the TTL. `sortBy` is now part of `buildSearchCacheKey`
+- [x] ⚠️ **`frontend/src/lib/api.ts` sent `q=` to `/search`.** The DTO field is **`query`**, and the
+      global `ValidationPipe` runs with `forbidNonWhitelisted`, so **every single search from the web
+      client was a 400** and the UI rendered "no results" for every query. `q` *is* a real field, but
+      on the sibling `SearchAuthorsQueryDto` for `GET /search/authors` — which is how the mistake read
+      as correct. Fixed at `frontend/src/lib/api.ts:571-574`
 
 **Exit Criteria — met:**
 - ✅ All unit tests pass
@@ -116,6 +227,20 @@ integration files.
 - [x] Comment reactions
 - [x] **Unit tests**
 - [x] **Integration tests** (`test/follows.integration-spec.ts`, `reactions`, `comments`)
+- [x] ✅ **The top-level-comments defect this document used to carry as an open ⚠️ is closed, and the
+      old note was false on all four counts.** `GET /api/v1/comments/story/:storyId` did **not** use
+      `eq(comments.parentId, null as unknown as string)`; it uses **`isNull()`** at
+      `backend/src/modules/comments/repositories/comments/repository.ts:48`, fixed in commit
+      `01134dd`. The lines the old note cited — **45 and 52** — are a code comment and a
+      `Promise.all` destructuring respectively. `comments.repository.spec.ts:111` asserts the
+      **fixed** predicate, not the broken one. And the note's claim that "the bug is pinned with a test
+      rather than silently fixed" was **false**: there is **no `it.fails` anywhere in this
+      repository** — `grep -rn "it\.fails\|test\.fails\|describe\.fails"` over `backend/` and
+      `frontend/` returns nothing. **Two** tests now pin the fixed behaviour: `:111` (the predicate
+      itself) and `:102` (that the page and the count share one predicate, so `total` cannot disagree
+      with the rows)
+- [x] ⚠️ **`getReactionCounts` issued six sequential count queries** — one per reaction type, so the
+      cost of reading a reaction bar grew with the size of the enum. It is now **one grouped query**
 
 ### Week 7: Notifications & Messages — ✅
 - [x] Notification system
@@ -124,10 +249,50 @@ integration files.
 - [x] Conversations
 - [x] **Unit tests**
 - [x] **Integration tests** (`notifications`, `messages`)
+- [x] ⚠️ **Twelve frontend call sites pointed at routes that do not exist.** The web client called
+      `/users/:id/follow`, `/stories/:id/reactions` and `/stories/:id/comments`; **none of those
+      paths is declared by any controller**, so every follow, react and comment initiated from the
+      browser was a **404**. Corrected to the real routes — `/follows`, `/reactions/stories/:storyId`,
+      `/comments` — with a new contract test that pins each client method to the **backend controller
+      that declares it**, so the two cannot drift apart again silently
+- [ ] ⛔ **The social UI pages are still static placeholders with no call sites.** The client methods
+      are correct and pinned, but nothing on the web client invokes them yet. "12 call sites
+      corrected" means twelve *definitions* in `frontend/src/lib/api.ts`, not twelve working buttons
+- [x] ⚠️ **`PATCH /messages/messages/:messageId/read` had a doubled path segment.** Under
+      `@Controller('messages')`, the route string `messages/:messageId/read` produced
+      `PATCH /api/v1/messages/messages/:messageId/read`, so the natural path **never matched** and
+      read receipts were unmarkable over HTTP. Now `PATCH /messages/:messageId/read`
+      (`messages.controller.ts:125`). The sibling `conversations/:conversationId/read` is disjoint
+      from it by arity, so neither route can swallow the other
+- [x] ⚠️ **Duplicate notification routes.** `GET /notifications/unread/count` shadowed the real
+      `unread-count`, and `PUT /notifications/read-all` sat beside `PATCH /notifications/read-all` —
+      two spellings of one action, which is the same defect as two copies of one map. The
+      `/unread/count` and `PUT` variants are **removed**; `GET /notifications/unread-count` and
+      `PATCH /notifications/read-all` are canonical
+- [x] ⚠️ **Comment reactions were written as `type: 'story_reaction'`.** A reaction to a **comment**
+      therefore resolved to the **story-reaction** preference family, so muting comments did not stop
+      them and muting stories stopped comments. The type is now **`comment_reaction`**, and the
+      family mapping lives in exactly **one** authoritative place —
+      `backend/src/modules/notifications/preference-family.ts` — because
+      `NotificationsEmailService` used to carry a **second** copy (`typePreferenceMap`) that had
+      already drifted: no `comment_reply`, no `contest`, no `payment`
+- [x] ⚠️ **The follow/react/comment/message → notification write path had no test at all.** Added
+      `backend/test/notifications.phase3.integration-spec.ts`, **11 cases**, so the first execution of
+      the integration suite now covers the path that actually produces the product's notifications
+- [x] ⚠️ **The three contest notification handlers bypassed `NotificationsService` entirely.** They
+      wrote straight to the repository, which meant they **skipped the recipient's preferences** and
+      **never emitted `notification.created`** — so the one event anything else could have hung off
+      never fired. They now route through the service, like every other producer
 
-**Exit Criteria — met:** all five, with coverage above the gate.
+**Exit Criteria — met:** all five, with coverage above the gate. ⛔ **One known defect remains open and
+is not resolved by any of the above:** `contests.event-handler.ts:129,151,168` and
+`notifications.event-handler.ts:96,113` **both** subscribe to `winner.selected`, `contest.started` and
+`prize.distributed`, and both now write correctly through `NotificationsService`. So a contest winner
+currently receives **two** rows for winning and **two** for the prize. **One side must be declared
+canonical and the other deleted** — until then, contest notifications are duplicated in production.
 
-> ⚠️ The original "6 reaction types" is not a schema constraint; `reactions.type` is a `varchar`.
+> ⚠️ The original "6 reaction types" is not a schema constraint; `reactions.type` is a `varchar`. The
+> enumerated set is enforced by the DTO instead: `love | like | wow | sad | angry | haunted`.
 > ⛔ **Email notifications are not sent** — `EMAIL_*` configuration is documented but read only for
 > `EMAIL_FROM`; the notification module emits events, not SMTP.
 
@@ -311,7 +476,10 @@ a configured floor. The global gate applies.
       tests: the entry AUTHOR is told, not the contest's organiser, who already sees every entry in the
       dashboard; `contest.created` and `contest.completed` notify **nobody**, because the author just
       did the thing and the winner was already told by `winner.selected`; and a writer with three
-      entries is told once when a contest starts rather than three times.
+      entries is told once when a contest starts rather than three times. ⛔ **but they now
+      duplicate:** a second, also-correct handler set in
+      `notifications.event-handler.ts:96,113` subscribes to `winner.selected` and
+      `prize.distributed`, so the winner gets **two** rows for each. See Phase 3 for the full statement
 - [x] ⚠️ **The public vote tally named every voter.** `GET /contests/:id/votes` is `@Public()` and
       returned every vote's `userId`, so anyone — with no account and no relationship to the contest —
       could enumerate which accounts voted for which submission. On a platform where an account is a
@@ -351,18 +519,25 @@ global gate applies.
 
 > ✅ **The authorization hole that stood here is closed.** `@RequireAdminRole` was dead metadata —
 > no controller applied `RolesGuard`, so any authenticated user could read moderation stats.
-> `@Secured()` now wires all three guards.
+> `@Secured()` now wires **all four** guards — `JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` +
+> `PermissionsGuard`.
 
 ---
 
 ## Phase 7: Polish & Launch (Weeks 14–18) — 🔄 IN PROGRESS
 
 ### Week 14: Testing & Optimization — 🔄
-- [x] **Unit tests** — 145 files / 3047 tests, coverage above the gate (S 85.43 / L 85.58 against floors 78/79)
-- [x] **Integration tests** — 22 files / 136 tests, per-file cloned database
-- [x] **E2E tests** — real browser tests in `backend/` and `frontend/`; frontend also runs
-      axe-core WCAG 2.0/2.1 A+AA checks
-- [x] **Frontend tests** — 21 files / 340 tests
+- [x] **Unit tests** — ⚠️ **151 files / 3228 tests**, not the previously recorded 145 / 3047.
+      Coverage above the gate: **S 84.28 / L 84.45** against floors 78 / 79
+- [x] **Integration + e2e tests** — ⚠️ **23 files / 173 tests**, not the previously recorded
+      22 / 136. Per-file cloned database. ⚠️ **and they only started executing in this change set** —
+      the module-graph blockers above had every one of them skipping silently
+- [x] **E2E tests** — ⚠️ **frontend only.** `backend/playwright.config.ts` was deleted as orphaned;
+      there is no backend browser suite. `frontend/e2e/` holds **3 files / 15 tests**
+      (`journeys`, `api-critical-paths`, `accessibility`) — the document previously said **2 / 9** —
+      driven by `frontend/playwright.config.ts`, which boots both servers itself. The frontend also
+      runs axe-core WCAG 2.0/2.1 A+AA checks
+- [x] **Frontend tests** — ⚠️ **22 files / 356 tests**, not the previously recorded 21 / 340
 - [x] Security audit — CI `security` job runs `npm audit --omit=dev` and `npm audit`
 - [ ] ⛔ **Load testing (1000 concurrent users) — NOT BUILT.** No k6, Locust, autocannon, or
       Artillery config exists anywhere in the repository
@@ -373,8 +548,9 @@ global gate applies.
 ### Week 15: Event Schema Registry — ✅ SHIPPED EARLY
 Delivered in the Phase 1–2 window rather than Week 15.
 - [x] Event schema registry — `backend/src/common/events/event-schema-registry.ts`
-- [x] Dead Letter Queue — `backend/src/common/events/dlq.service.ts`
-- [x] Event versioning — every one of the **55** names in `EVENT_SCHEMAS` is pinned at `v1`; **10** event-constant modules live in `backend/src/common/events/` and the **16** `@OnEvent` handler files live under `backend/src/modules/*/events/`. Two names (`user.updated`, `refund.completed`) are registered with **no producer** and are listed in `REGISTERED_WITHOUT_PRODUCER`; `event-schemas.spec.ts` fails if a third appears
+- [x] Dead Letter Queue — `backend/src/common/events/dlq.service.ts`, **with a drain**:
+      `GET /events/dlq` and `POST /events/dlq/:id/replay` on `DLQController`
+- [x] Event versioning — every one of the **55** names in `EVENT_SCHEMAS` is pinned at `v1`; **10** event-constant modules live in `backend/src/common/events/` and **16** files contain `@OnEvent` under `backend/src/modules/` (15 in a `*/events/` directory, plus `stories/sanity/sanity-sync.event-handler.ts`). Two names (`user.updated`, `refund.completed`) are registered with **no producer** and are listed in `REGISTERED_WITHOUT_PRODUCER`; `event-schemas.spec.ts` fails if a third appears
 - [x] Event validation — `event-validator.service.ts`
 - [x] **Unit tests** (event bus)
 
@@ -405,8 +581,11 @@ Delivered in the Phase 1–2 window rather than Week 15.
       `nginx.conf` and `scripts/` directory that `docs/deployment/backup.md` backs up do not exist
 
 ### Week 18: Final Testing & Launch — 🔄
-- [x] Full regression testing — CI runs lint, typecheck, unit, e2e, coverage, migrations, security,
-      build on every push and PR
+- [x] Full regression testing — CI runs **11 jobs** on every push and PR: `lint`, `test-unit`,
+      `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`,
+      `migration-verify`, `migration-roundtrip`, `security`, `build`. ⚠️ the document previously said
+      **10** and omitted `migration-roundtrip` — the one job that actually **runs the down scripts**,
+      which nothing had ever executed (commit `f02b1f2`)
 - [ ] ⛔ **Security penetration testing — NOT BUILT.** No pentest report, no external engagement
 - [ ] ⛔ **Performance benchmarking — NOT BUILT.** No benchmark harness
 - [ ] ⛔ **Load testing — NOT BUILT**
@@ -420,8 +599,8 @@ Delivered in the Phase 1–2 window rather than Week 15.
 
 | Exit criterion | Status |
 |---|---|
-| All tests pass (unit, integration, E2E) | ✅ |
-| Code coverage ≥ 80% | ✅ backend (S 85.43 / B 82.39 / F 79.00 / L 85.58); ⚠️ frontend S 39.79 / L 40.22, with the gate set to 38/38 rather than the target |
+| All tests pass (unit, integration, E2E) | ✅ 151 unit files / 3228 tests · 23 e2e + integration files / 173 tests · 22 frontend files / 356 tests · 3 Playwright files / 15 tests. ⚠️ every one of those figures was wrong before this pass |
+| Code coverage ≥ 80% | ✅ backend **S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors 78/73/70/79 + 9 ratchets; ⛔ frontend **S 40.75 / L 41.25**, with the gate set to 38/38 rather than the target |
 | Payment E2E tests pass | ✅ against fixtures; ⛔ never run against a live sandbox |
 | Performance targets met (< 200ms p95) | ⛔ not measured — no benchmark harness |
 | Security audit passed | ✅ CI `npm audit` job; ⛔ no pentest |
@@ -434,8 +613,8 @@ Delivered in the Phase 1–2 window rather than Week 15.
 | Deliverable | Status |
 |---|---|
 | Production-ready application | 🔄 feature-complete, not deployable (no artifact) |
-| Full test coverage | ✅ 1792 unit + 146 e2e + 340 frontend tests |
-| Complete documentation | 🔄 `docs/` reconciled 2026-09-30; user docs still missing |
+| Full test coverage | ✅ **3228** backend unit (151 files) + **173** backend e2e/integration (23 files) + **356** frontend (22 files) + **15** Playwright (3 files) = **3772 tests**. ⚠️ this row previously read "1792 unit + 146 e2e + 340 frontend", which is stale twice over |
+| Complete documentation | 🔄 `docs/` reconciled 2026-09-30 and again 2026-10-04; user docs still missing |
 | Live deployment | ⛔ none |
 | Monitoring and alerting | 🔄 Sentry + structured logs; ⛔ no alerting rules |
 
@@ -495,11 +674,16 @@ payment marked `failed` rather than a fabricated URL.
 
 ### Testing (All Phases)
 **Risk:** High
-**Outcome:** ✅ 3523 tests across three suites (3047 backend unit + 136 backend e2e/integration + 340
-frontend), plus 9 Playwright tests, all green, with a hard CI gate and a per-file
-cloned test database.
-**Residual risk:** frontend coverage is S 39.79 / L 40.22, well below the 80% target — and the
-frontend gate is set to 38/38, so it certifies roughly 40% rather than failing on the gap.
+**Outcome:** ✅ **3772 tests across four suites** — 3228 backend unit (151 files) + 173 backend
+e2e/integration (23 files) + 356 frontend (22 files) + 15 Playwright (3 files), all green, with a hard
+CI gate and a per-file cloned test database. ⚠️ the previous line said "3523 tests across three suites
+(3047 + 136 + 340), plus 9 Playwright" — every one of those six numbers was wrong, and Playwright is a
+fourth suite, not an aside.
+**Residual risk:** ⛔ **the integration suite had never executed** before this change set — the
+module-graph blockers made all 11 `test/*.integration-spec.ts` files skip themselves while CI stayed
+green. A green suite proves nothing if the suite did not run. ⛔ frontend coverage is S 40.75 / L 41.25,
+well below the 80% target — and the frontend gate is set to 38/38, so it certifies roughly 41% rather
+than failing on the gap.
 
 ---
 
@@ -511,9 +695,9 @@ frontend gate is set to 38/38, so it certifies roughly 40% rather than failing o
 | **Sanity CMS integration** | Medium | High | Circuit breaker, PostgreSQL fallback | ✅ |
 | **Performance bottlenecks** | Medium | Medium | Cache-aside + tagged invalidation; read replicas and load testing never built | ⛔ unmitigated |
 | **Security vulnerabilities** | Low | High | WAF (35 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
-| **Testing delays** | Medium | High | TDD, CI on every PR | ✅ |
+| **Testing delays** | Medium | High | TDD, CI on every PR | ✅ — but see the retired *silent suite skip* hazard in `risks.md` |
 | **Scope creep** | High | Medium | Phase boundaries | ✅ |
-| **Migration data loss** | Low | High | **sha256 ledger, transaction wrapping, reversibility classification** | ✅ materially reduced |
+| **Migration data loss** | Low | High | **sha256 ledger, transaction wrapping, reversibility classification** — 0 irreversible, 18 data-loss, 4 reversible across the 22 down scripts | ✅ materially reduced |
 
 ---
 
@@ -543,11 +727,13 @@ frontend gate is set to 38/38, so it certifies roughly 40% rather than failing o
       the app itself has no HTTPS redirect or `trust proxy`
 
 ### Quality
-- ✅ Backend coverage above the gate (S 85.43 / B 82.39 / F 79.00 / L 85.58 against floors 78/70/73/79)
-- ⚠️ All tests pass (unit, integration, E2E) ✅; frontend coverage 39.79 statements / 40.22 lines is below
-      the 80% target
+- ✅ Backend coverage above the gate (**S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors
+      78/70/73/79). ⚠️ the previous line published S 85.43 / B 82.39 / F 79.00 / L 85.58 — **all four
+      were wrong**
+- ⚠️ All tests pass (unit, integration, E2E) ✅; ⛔ frontend coverage is **40.75** statements /
+      **41.25** lines, below the 80% target and only just above its own 38/38 gate
 - ✅ Payment E2E tests exist
-- ✅ Code review coverage — enforced by the 10-job CI pipeline
+- ✅ Code review coverage — enforced by the **11-job** CI pipeline (the document previously said 10)
 
 ### Reliability
 - ⛔ Uptime > 99.9% — not deployed, so not applicable
@@ -623,8 +809,25 @@ Everything the roadmap claims and the repository does not contain:
 15. **Permission-decision audit trail** — see `docs/security-architecture/permissions/permissions-overview.md`
 16. **WAF admin operations endpoints** (`GET /admin/waf/blocked-ips` and friends)
 17. **Machine-readable error codes** and custom exception classes — see `docs/api-contract/error-handling.md`
-18. **Frontend coverage** at the 80% target — currently S 39.79 / B 35.90 / F 35.74 / L 40.22, with
-    the CI gate set to 38/33/33/38, so it currently certifies ~40% instead of holding the line at 80%
+18. **Frontend coverage** at the 80% target — ⚠️ currently **S 40.75 / B 35.79 / F 39.64 / L 41.25**
+    (the document previously published 39.79 / 35.90 / 35.74 / 40.22 — **all four were wrong**), with
+    the CI gate set to 38/33/33/38, so it certifies ~41% instead of holding the line at 80%
+19. **An authenticated route listing an author's own drafts** — the public story list is now pinned to
+    `published`, and nothing replaces that view for the author
+20. **A route for the owner to fetch `POST /stories/:id/view` on an archived story** — a page view on
+    archived work is refused and no owner-scoped path exists
+21. **Duplicated contest notifications** — `contests.event-handler.ts` and
+    `notifications.event-handler.ts` both handle `winner.selected` and `prize.distributed`, so a
+    winner receives **two** rows for each. One side must be declared canonical
+22. **Social UI call sites** — the client methods for follow/react/comment are now correct and pinned
+    to the backend controllers, but the pages that would call them are static placeholders
+23. **Session store** — no server-side session record; the client authenticates on a 15-minute
+    httpOnly cookie
+24. **Resource quotas** — no per-account storage/posting/rate quota beyond request throttling
+25. **Write-through caching and cache warming** — `@CacheWarmTags` has **no caller**
+26. **Consistency-violation detection and compensation mechanisms** — no reconciliation between the
+    event bus and the rows it is supposed to produce
+27. **Plugin architecture** — no extension point of any kind
 
 ---
 
@@ -650,7 +853,60 @@ Everything the roadmap claims and the repository does not contain:
 | `milestones.md` had 6 milestones ending week 16; this file had 8 ending week 18 | Adopted **8 milestones ending week 18** (M1–M8), because it maps 1:1 onto the seven phase boundaries |
 | Coverage targets disagreed: "90% auth/payments + 80% other" vs "≥ 80% everywhere" | Adopted **≥ 80% everywhere**, and stated the actual configured CI floors (79/70/73/78 + 9 per-path ratchets) so the target and the gate are not confused |
 | Open roadmap items that had shipped were still unchecked | Checked: `POST /users`, `DELETE /users/:id`, the `isVerified` write path, content moderation hooks, badge awards, the event schema registry, the DLQ, and the resilience primitives |
-| Open roadmap items that never shipped were mixed in with completed work | Listed exhaustively in **Open Items** above — 18 items, each with the file that proves it is absent |
+| Open roadmap items that never shipped were mixed in with completed work | Listed exhaustively in **Open Items** above — 18 items at the time of that pass, each with the file that proves it is absent. **The list has since grown to 27** — see the 2026-10-04 changelog below |
+
+---
+
+## Changelog — reconciliation (2026-10-04)
+
+Every figure in this document was re-derived against the tree rather than carried forward. **This is
+the second pass; the first was 2026-09-30 and it did not survive contact with a test run.**
+
+### Numbers that were wrong and are now measured
+
+| Was | Now | How to re-derive |
+|---|---|---|
+| 145 unit files / 3047 tests | **151 files / 3228 tests** | `npm test --workspace=backend` |
+| 22 e2e files / 136 tests | **23 files / 173 tests** — 11 `src/**/e2e/*.e2e-spec.ts` + 1 `test/app.e2e-spec.ts` + **11** `test/*.integration-spec.ts` | `npm run test:e2e --workspace=backend` |
+| backend coverage S 85.43 / B 82.39 / F 79.00 / L 85.58 | **S 84.28 / B 80.49 / F 78.86 / L 84.45** — **all four were wrong** | `backend/coverage/coverage-summary.json` |
+| frontend coverage S 39.79 / B 35.90 / F 35.74 / L 40.22 | **S 40.75 / B 35.79 / F 39.64 / L 41.25** — **all four were wrong** | `frontend/coverage/coverage-summary.json` |
+| frontend tests 21 files / 340 | **22 files / 356** | `npm run test:run --workspace=frontend` |
+| Playwright "real browser tests in `backend/` and `frontend/`", 2 files / 9 tests | **frontend only**, **3 files / 15 tests**. `backend/playwright.config.ts` is deleted | `ls frontend/e2e/` |
+| "10 jobs" (Week 18 exit criteria, Quality section) / "10 jobs" | **11 jobs** — `migration-roundtrip` was missing from the list | `awk '/^jobs:/{f=1;next} f&&/^  [a-z-]+:/{print}' .github/workflows/ci.yml` |
+| "3523 tests across three suites (3047 + 136 + 340), plus 9 Playwright" | **3772 across four suites** (3228 + 173 + 356 + 15) | sum of the rows above |
+| "1792 unit + 146 e2e + 340 frontend tests" | **3228 / 173 / 356** | same |
+| "23 database-backed integration files" (the total was right, the breakdown was not) | **23 files = 11 e2e in `src` + 1 app e2e + 11 integration** | `ls backend/test/*.integration-spec.ts` → 11 |
+| `@Secured()` composing 3 guards | **4**: `JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` + `PermissionsGuard` | `secured.decorator.ts:31` |
+| "16 `@OnEvent` handler files under `backend/src/modules/*/events/`" | **16 files** contain `@OnEvent`, but **15** are under a `*/events/` directory — the 16th is `stories/sanity/sanity-sync.event-handler.ts` | `grep -rl "@OnEvent" backend/src/modules \| wc -l` |
+| `backend/src/app.controller.ts:31-27` (health) | **`app.controller.ts:62-73`**, payload `:67-72`, `degraded` at `:68`. The old citation was a backwards, non-existent range | read the file |
+
+### Claims that were false and are now corrected
+
+| Was | Reality |
+|---|---|
+| "**Vitest** (not Jest/Supertest)" | Half false. Jest is genuinely absent — no `jest` dependency, config or types in any `package.json`. **Supertest is present** (`backend/package.json:112`) and is imported by **34** files under `backend/src/` and **12** under `backend/test/`; **23 of the `src/` side** run in the unit job |
+| "the DLQ has **no drain** … a dead-lettered event is never redelivered" | **False.** `DLQController` serves `GET /events/dlq` and `POST /events/dlq/:id/replay`; `replayDeadLettered` re-validates against the registered schema and re-emits. `retryDLQ` is **deleted**. `getDLQStats` is the only remaining spec-only method |
+| "`0001` is deliberately irreversible because it owns `uuid-ossp`" (asserted in `docs/roadmap/risks.md`) | **False.** All **22** down scripts classify: **0 irreversible, 18 data-loss, 4 reversible** (`0014`, `0020`, `0021`, `0022`). `0001_create_stories_tables.down.sql` declares `reversibility=data-loss`, and its down script never drops `uuid-ossp` — which was the entire stated reason |
+| Two module-graph bugs recorded nowhere while every phase below reads ✅ | `BooksModule` ↔ `LibraryModule` had no `forwardRef()` — **the backend could not boot**, and all 11 integration specs plus the stories e2e **skipped silently with CI green**. `ContestsModule` imported `NotificationsModule` without listing it. Both fixed; 8 never-run tests then failed on stale fixtures and were fixed |
+| `npm run migration:status` documented at the repo root in 8 documents | The script **did not exist at the root** before this change set. It does now (`package.json:22`) |
+
+### Corrected feature claims, recorded where they belong
+Phase 2: the anonymous draft dump on `GET /stories`, the two public detail routes that returned drafts,
+`sortBy: 'relevance'` never having been implemented, `sortBy` missing from the search cache key,
+`view_count` having no HTTP writer, and the frontend sending `q=` where the DTO field is `query` — every
+search from the web client was a 400. Phase 3: twelve client methods pointing at routes that do not
+exist, the doubled `messages/messages/:messageId` path, duplicated notification routes, comment
+reactions written as `story_reaction`, and the contest handlers bypassing `NotificationsService`. Each is
+written up in its own phase, not here.
+
+**One defect is recorded rather than fixed**, per instruction: `contests.event-handler.ts` and
+`notifications.event-handler.ts` both subscribe to `winner.selected` and `prize.distributed`, so a
+contest winner receives **two** notification rows for each. One side must be declared canonical.
+
+### Unchanged, and re-verified rather than assumed
+Coverage floors **79 / 70 / 73 / 78** and **9** per-path ratchets · frontend gate **38 / 33 / 33 / 38** ·
+**33** `CREATE TABLE` · **35** WAF rules with **34** active by default · **55** `EVENT_SCHEMAS`, all
+`v1` · **10** event-constant modules · no `EventBusModule` · no `it.fails` anywhere in the repository.
 
 ---
 

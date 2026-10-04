@@ -167,10 +167,16 @@ System / Contest) are a **presentation taxonomy**, not a stored enum. `notificat
 - ⚠️ **Thread depth is unbounded.** No column or CHECK constraint limits nesting
 - ⚠️ "Only soft delete is allowed" — ✅ correct, and doubly represented: both `is_deleted` (boolean)
   and `deleted_at` (timestamp) exist
-- ⛔ **A live bug in the query that uses the self-FK:**
-  `comments.repository.ts:45,52` uses `eq(comments.parentId, null as unknown as string)`, which emits
-  `parent_id = NULL` — never true. **`GET /api/v1/comments/story/:storyId` therefore returns zero
-  top-level comments.** It should be `isNull()`. The pinned test is `it.fails`
+- ✅ **The query bug that used to break the self-FK is fixed.** `comments.repository.ts:45-48` used to
+  read `eq(comments.parentId, null as unknown as string)`, which emits `parent_id = NULL` — never
+  true — so **`GET /api/v1/comments/story/:storyId` returned zero top-level comments for every
+  story.** It now uses `isNull(comments.parentId)`, and the row query and the count query share the
+  one `visibleTopLevel` predicate so page and count cannot drift. Fixed in commit `01134dd`. The
+  correct behaviour is pinned by `comments.repository.spec.ts:111` (asserts the `isNull` predicate)
+  and by `backend/test/comments.integration-spec.ts:50` (asserts `total === 1`).
+  **This document previously recorded the bug as open and claimed the pin was an `it.fails`. There
+  is no `it.fails` anywhere in this repository — `grep -rn "it.fails" backend` returns 0 — and the
+  fixed behaviour is pinned as fixed, not as a known failure.**
 
 ### Reaction
 
@@ -292,7 +298,7 @@ on read)
   schema per event, validated by `event-validator.service.ts` before delivery
 - The **dead letter queue** (`common/events/dlq.service.ts`) — an event whose handler throws is
   captured, not lost
-- 10 event definition files and **23 per-module handlers** under `modules/*/events/`
+- 10 event definition files and **72 `@OnEvent` handlers** under `modules/*/events/`
 
 See `docs/module-boundaries/events/event-schema-registry.md`.
 
@@ -302,7 +308,7 @@ See `docs/module-boundaries/events/event-schema-registry.md`.
 
 | Previous claim | Reality |
 |---|---|
-| Concept-only, "implementation may use different names" | Anchored to the real 33 tables, columns, and 53 event names |
+| Concept-only, "implementation may use different names" | Anchored to the real 33 tables, columns, and 55 event names |
 | 6 account types, 4 admin roles | ✅ **Correct.** Added the implication lattice and the legacy-value normalisation (`author` → `writer`, etc.) |
 | "A user cannot delete themselves" | ⛔ **False.** `DELETE /users/me` is the self-delete route and it soft-deletes |
 | "An admin cannot be downgraded directly" | ⛔ No such guard exists |
@@ -327,8 +333,8 @@ See `docs/module-boundaries/events/event-schema-registry.md`.
 | 8 events listed that do not exist | ⛔ `UserVerified`, `UserBlocked`, `BookPurchased`, `BookRented`, `ContestEnded`, `NotificationRead` |
 | "StoryDeleted — story archived" | ⚠️ `story.archived` and `story.deleted` are two distinct events |
 | Event registry "planned for Phase 7" | ✅ **Shipped early** — schema registry, validator, and DLQ |
-| — | **New:** the `comments.parentId` `eq(…, null)` bug that makes top-level comments unreachable |
-| — | **New:** `books.author` being a `varchar` rather than a UUID FK, called out as a real integrity gap |
+| — | **Fixed:** the `comments.parentId` `eq(…, null)` bug that made top-level comments unreachable — `isNull()` at `comments.repository.ts:48`, pinned by `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts` |
+| — | **New:** `books.author` being a `varchar` rather than a UUID FK, called out as a real integrity gap — **superseded by migration `0021_add_books_owner_id`**, which added `books.owner_id`; `assertOwnership` in `books.service.ts:445` now reads it |
 
 ---
 

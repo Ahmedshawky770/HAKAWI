@@ -23,7 +23,9 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 | File upload (PDFs) | Low | Medium | Use S3/R2, validate early | ✅ — presigned S3 URLs, size and MIME validation |
 | Migration complexity | Low | High | Test migrations thoroughly | ✅ — see "Risks retired by the refactor" below |
 | Timeline slippage | Medium | High | Buffer week, parallel work | 🔄 — product scope is done; the slippage is now in Phase 7 operations |
-| Team availability | Low | High | Cross-training, documentation | ✅ — `docs/` reconciled 2026-09-30 |
+| Team availability | Low | High | Cross-training, documentation | ✅ — `docs/` reconciled 2026-09-30 and re-verified 2026-10-04 |
+| **Backend cannot boot (module graph)** | Was High | **Was fatal** | `forwardRef()` on both sides of the cycle | ✅ **RETIRED 2026-10-04** — see "Risks retired" below |
+| **Integration suite silently skipping** | Was High | High | Fix the graph; assert the suite actually executes | ✅ **RETIRED 2026-10-04** — the 11 specs ran for the first time |
 | **No deployment artifact** | High | High | Build a `Dockerfile` + manifest | ⛔ **Unmitigated — the single biggest launch blocker** |
 | **No backup automation** | Medium | High | Scheduled `pg_dump` + PITR | ⛔ **Unmitigated — nothing to restore from** |
 | **No load/performance testing** | High | Medium | k6 or Artillery suite | ⛔ **Unmitigated — every p95 target is unmeasured** |
@@ -340,18 +342,38 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 3. No backup automation, so there is nothing to restore from
 4. No alert rules
 5. No WAF metrics endpoint or WAF admin operations endpoints
-6. Frontend coverage at **39.79** statements / **40.22** lines, against an 80% target — and the CI
-   gate is set to 38/33/33/38, so a passing build certifies roughly 40%, not 80%
+6. ⛔ Frontend coverage at **40.75** statements / **41.25** lines, against an 80% target — and the CI
+   gate is set to 38/33/33/38, so a passing build certifies roughly 41%, not 80%. ⚠️ **both published
+   figures were wrong** (the document said 39.79 / 40.22); re-derive from
+   `frontend/coverage/coverage-summary.json`
+7. ⛔ **A contest winner receives two notifications for winning and two for the prize.**
+   `contests.event-handler.ts:129,151,168` and `notifications.event-handler.ts:96,113` both subscribe to
+   `winner.selected`, `contest.started` and `prize.distributed`, and both now write correctly through
+   `NotificationsService`. Recorded, not fixed: **one side must be declared canonical.** This is a
+   duplicate-write defect on a user-visible surface, and it is new in this change set
+8. ⛔ **The social UI has no call sites.** The twelve frontend client methods for follow/react/comment
+   now point at real routes and are pinned by a contract test, but the pages that would invoke them are
+   static placeholders. A green contract test certifies the paths, not the product
 
 ### Risks retired by the refactor
 | Retired risk | Why |
 |---|---|
-| Migration data loss (Risk 7) | Materially reduced: sha256 content-checksum ledger, per-migration transactions, and machine-read reversibility classification (`reversible` / `data-loss` / `irreversible`), with `0001` deliberately irreversible because it owns `uuid-ossp`. See `docs/data-architecture/migrations/migration-strategy.md` |
+| **The backend could not start at all** | `BooksModule` ↔ `LibraryModule` formed a circular dependency with **no `forwardRef()`** on either side, and Nest aborted the whole graph: `The module at index [3] of the LibraryModule "imports" array is undefined`. `forwardRef()` is now on both — `books.module.ts:33`, `library.module.ts:24`. Retired 2026-10-04 |
+| **`ContestsEventHandler` could not resolve `NotificationsService`** | `contests.module.ts` imported `NotificationsModule` but never listed it in `imports`, so the import was dead. Listed at `contests.module.ts:27`. Retired 2026-10-04 |
+| **The integration suite reported green without running** | The two module bugs above made all **11** `backend/test/*.integration-spec.ts` files and the stories e2e **skip themselves** while CI stayed green. With the graph building, **8 previously-never-executed tests failed** on stale fixtures (categories/tags needed a content-moderator token, upload discarded its auth token, one spec targeted the deliberately deleted `POST /library`, the stories e2e assumed a draft appeared in the public list) and were fixed. Retired 2026-10-04 |
+| **Migration data loss (Risk 7)** | Materially reduced: sha256 content-checksum ledger, per-migration transactions, and machine-read reversibility classification (`reversible` / `data-loss` / `irreversible`). ⚠️ **the previous version of this row claimed `0001` is deliberately irreversible because it owns `uuid-ossp` — that is false.** All 22 down scripts classify: **0 irreversible, 18 data-loss, 4 reversible** (`0014`, `0020`, `0021`, `0022`). `0001_create_stories_tables.down.sql` declares `reversibility=data-loss`. Corrected 2026-10-04 |
+| **Dead-lettered events were never redelivered** | ⚠️ **this hazard was asserted in `phases/implementation-roadmap.md`, which claimed the DLQ "has no drain" and that a dead-lettered event "is never redelivered". That claim was false and is corrected there.** The drain exists: `DLQController` exposes `GET /events/dlq` and `POST /events/dlq/:id/replay`; `EventValidatorService.replayDeadLettered` re-validates the stored payload against its registered schema and re-emits it. `retryDLQ` — which deleted a now-valid entry without re-emitting it — is **deleted**. `getDLQStats` remains the one spec-only method on the path. Retired 2026-10-04 |
+| **Documentation instructed readers to run a script that did not exist** | `npm run migration:status` was named in **8** documents under `docs/` (`grep -rln "npm run migration:status" docs/ \| wc -l` → 8) **from the repository root**, where the script did not exist — it was in `backend/package.json` only, so a reader following any of them got `Missing script`. It now exists at the root (`package.json:22`) and delegates to the backend. Retired 2026-10-04 |
 | Unauthorised access to moderation stats | Closed: `@Secured()` wires `RolesGuard`, so `@RequireAdminRole` is no longer dead metadata |
 | Rate limiting ineffective behind a load balancer | Closed: `ValkeyThrottlerStorage` shares counters across instances |
 | Cache staleness with no invalidation strategy | Closed: cache-aside with tagged invalidation and hit-rate metrics at `GET /api/v1/metrics/cache` |
 | Resilience primitives as dead code | Closed: `CircuitBreakerService` is injected into `auth.service.ts` and `sanity.service.ts`; `ResilientHttpClient` fronts the Paymob client |
 | Payment gateway fabricating checkout URLs | Closed: `PaymobClient` fails cleanly with 503 and marks the local payment `failed` |
+| Anonymous callers could dump every draft | Closed: `GET /stories` pins `status` to `published`; the two detail routes use `OptionalJwtAuthGuard` and return **404, not 403**, to anyone who is neither the author nor a `CONTENT_MODERATE` holder |
+| Every web-client search was a 400 | Closed: `frontend/src/lib/api.ts` sent `q=` where `SearchFiltersDto` declares `query`, under `forbidNonWhitelisted`. The UI showed "no results" for everything |
+| Every follow/react/comment from the web client was a 404 | Closed: twelve call sites corrected to the routes the controllers actually declare, pinned by a contract test (⛔ but the pages have no call sites — see item 8 above) |
+| Muted comments still delivered comment-reaction notifications | Closed: the type is now `comment_reaction`, resolved through the single map in `notifications/preference-family.ts` |
+| Read receipts were unmarkable over HTTP | Closed: `PATCH /messages/messages/:messageId/read` had a doubled path segment; it is now `PATCH /messages/:messageId/read` |
 
 ---
 
@@ -367,6 +389,29 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 | No status on any risk | Added a status column to the risk summary and to the decision-point table |
 | — | Added **Risks retired by the refactor**, so the register does not keep warning about hazards that have been closed |
 | Plan A assumed a deployable artifact | Marked explicitly as not achievable in the current state; Plan C is now identified as the plan that fits |
+
+---
+
+## Changelog — reconciliation (2026-10-04)
+
+**This pass retires hazards rather than adding them.** A register that keeps warning about a closed
+risk is as misleading as one that never recorded a live one, and this one had done both.
+
+| Problem in this document | Resolution |
+|---|---|
+| **The two launch blockers were not in the register at all.** `BooksModule` ↔ `LibraryModule` had no `forwardRef()` and the backend could not boot; `ContestsModule` imported `NotificationsModule` without listing it | Added to the summary table as **retired risks** with the evidence and the fix locations, so the record of what they were is kept without the register continuing to flag them |
+| The integration suite was reported as "23 files" green while **every one of those files was skipping itself** | Recorded as its own retired risk. The 11 specs ran for the first time; 8 then failed on stale fixtures and were fixed. ⚠️ the summary table never distinguished "green" from "executed", which is how a broken application shipped a green board |
+| Risk 7's retired row claimed **`0001` is deliberately irreversible because it owns `uuid-ossp`** | ⛔ **False.** All 22 down scripts classify: **0 irreversible, 18 data-loss, 4 reversible** (`0014`, `0020`, `0021`, `0022`). `0001_create_stories_tables.down.sql` declares `reversibility=data-loss` |
+| Frontend coverage published as **39.79** statements / **40.22** lines | **40.75 / 41.25** (`frontend/coverage/coverage-summary.json`). **Both were wrong** |
+| The Week 18 decision list had no entry for duplicated contest notifications or the unwired social UI | Added as items 7 and 8 of "What blocks the Week 18 decision" — both are ⛔, both are new in this change set, and neither is infrastructure |
+| The DLQ was nowhere in this register, though `implementation-roadmap.md` claimed it had **no drain** and never redelivered | Added to the retired table with the correction: the drain exists (`GET /events/dlq`, `POST /events/dlq/:id/replay`), `retryDLQ` is deleted, `getDLQStats` is the only spec-only method |
+| Eight documents instructed readers to run `npm run migration:status` **from the repo root**, where the script did not exist | Recorded as a retired documentation hazard; the root script now exists (`package.json:22`) |
+| Every retired-risk row cited only the "why" | Rows now carry the file and line where the fix landed, so each claim is checkable against the tree |
+
+### Still open, and unchanged by this pass
+No deployment artifact · no backup automation · no load test or benchmark · no alert rules · no WAF
+metrics or admin endpoints · frontend coverage at ~41% · ⛔ **now also**: duplicated contest
+notifications, and social UI pages with no call sites.
 
 ---
 

@@ -43,6 +43,12 @@ circuit breakers, retry, timeout and fallback primitives** were scheduled for We
 shipped during Phases 1–2, and **Phase 6 moderation was completed before Phase 4 payments**. The
 dependency chain above describes the plan, not the delivery order.
 
+Two defects sat **across** the ordering rather than inside any phase, and were open the whole
+18 weeks: `BooksModule` ↔ `LibraryModule` had no `forwardRef()`, so the backend could not boot at all,
+and `ContestsModule` imported `NotificationsModule` without listing it. The second consequence matters
+more than either bug: **all 11 integration specs skipped themselves while CI stayed green.** Both fixed
+2026-10-04; see `risks.md` for the retired-risk entries.
+
 ---
 
 ## Milestones
@@ -75,6 +81,14 @@ All of it lives in Phase 7. The full list, with evidence for each absence, is in
 - ⛔ Security penetration testing
 - ⛔ Live-sandbox payment testing
 
+Phases 1–6 are marked ✅, but a ✅ records that the phase's **items** shipped, not that the code was
+correct when it did. Three phases shipped defects that were only found by executing the suite and
+reading the routes: **Phase 1** could not boot the application; **Phase 2** leaked every draft to an
+anonymous caller and returned 400 for every web-client search; **Phase 3** shipped twelve frontend
+methods pointing at routes no controller declares. All are fixed. The two Phase 3-era items still ⛔ are
+listed in `implementation-roadmap.md` under Open Items: duplicated contest notifications, and social UI
+pages with no call sites.
+
 ---
 
 ## Changelog — reconciliation (2026-09-30)
@@ -89,6 +103,15 @@ All of it lives in Phase 7. The full list, with evidence for each absence, is in
 | — | Recorded that the strict sequential ordering did not hold: Phase 7's event-registry and resilience work shipped early, and moderation completed before payments |
 
 ---
+
+## Changelog — reconciliation (2026-10-04)
+
+| Previous | Reality |
+|---|---|
+| The phase summary read as six clean ✅ phases, with the dependencies section noting only that delivery order differed from plan | ⚠️ **two launch blockers were open across the whole 18 weeks and appeared in no row**: `BooksModule` ↔ `LibraryModule` had no `forwardRef()`, so the backend could not boot; and `ContestsModule` imported `NotificationsModule` without listing it, so `ContestsEventHandler` could not resolve its service. Recorded here, in Phase 1 of the canonical roadmap, and as retired risks in `risks.md` |
+| Nothing in this file recorded that the test suites were green | ⚠️ **all 11 `backend/test/*.integration-spec.ts` files were skipping themselves** because the module graph could not build — so "Phase 4 ✅" included a commerce suite that had never run a request. Fixed 2026-10-04 |
+| "What is still open" listed nine infrastructure items only | Two ⛔ items are neither infrastructure nor product and are added by reference: **duplicated contest notifications** (two handlers subscribe to `winner.selected` and `prize.distributed`) and **social UI pages with no call sites**. Both are enumerated in `implementation-roadmap.md` Open Items |
+| This file carried no test or coverage figures, so it could not itself go stale | Correct — and it still cannot. The numbers live in `phases/implementation-roadmap.md`, `milestones.md` and `deliverables.md`, where all of them were wrong before 2026-10-04 and are now measured |
 
 *This is a summary. See [`implementation-roadmap.md`](./phases/implementation-roadmap.md) for complete
 phase details, exit criteria, testing strategy, critical path, and risk management.*

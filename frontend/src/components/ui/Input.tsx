@@ -104,12 +104,8 @@ export function Select({
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(inputId, error, hint)}
-        className={controlClassName(error, `cursor-pointer appearance-none bg-no-repeat pe-9 ${className}`.trim())}
-        style={{
-          backgroundImage: CHEVRON,
-          backgroundSize: "1rem",
-          backgroundPosition: "left 0.75rem center",
-        }}
+        className={controlClassName(error, `hk-select cursor-pointer appearance-none bg-no-repeat ${className}`.trim())}
+        style={{ backgroundImage: CHEVRON, backgroundSize: "1rem" }}
         {...props}
       >
         {options.map((option) => (
@@ -127,6 +123,9 @@ export function Select({
  * native select cannot host an SVG element, and `currentColor` is not available
  * in a data URI — so the stroke is pinned to the mid-tone that clears 3:1 in both
  * themes, which is the same reason the control's border uses `control-line`.
+ *
+ * Its POSITION lives in `.hk-select` (globals.css), because the trailing edge is
+ * the right in English and the left in Arabic.
  */
 const CHEVRON =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a837b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";

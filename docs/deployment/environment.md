@@ -61,9 +61,19 @@ VALKEY_PASSWORD=
 ⛔ **Removed, read by nothing:** `VALKEY_DB`, `VALKEY_TTL_SESSION`, `VALKEY_TTL_RATE_LIMIT`,
 `VALKEY_TTL_WAF`. TTLs are set per call, not by a global policy variable.
 
-> The adapter `backend/src/redis-io.adapter.ts` reads **`REDIS_HOST` / `REDIS_PORT` /
-> `REDIS_PASSWORD`** — not `VALKEY_*` — because it configures `@socket.io/redis-adapter`. Both
-> variable families exist in the code; the socket adapter uses the `REDIS_*` names.
+> **Corrected.** The adapter `backend/src/redis-io.adapter.ts:29-31` reads **`valkey.host` /
+> `valkey.port` / `valkey.password`** through `ConfigService` — the same `VALKEY_*`-first
+> resolution the cache uses. This document previously said it read `REDIS_HOST` / `REDIS_PORT` /
+> `REDIS_PASSWORD` "because it configures `@socket.io/redis-adapter`", which was **wrong**: the
+> adapter is the one component that used a different variable family, which meant a Docker Compose
+> deployment pointed websocket fan-out at `localhost:6379` while the cache connected correctly —
+> invisible on one instance, silent fan-out loss on several. That is fixed
+> (`docs/adr/005-security-and-correctness-hardening.md`).
+> `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` remain **optional fallback names** accepted by
+> `config/valkey.config.ts` and `common/services/valkey.service.ts`, for operators migrating from
+> Redis. You do **not** need both families set.
+> ⚠️ `backend/.env.example:24-30` still documents the old behaviour and is stale; it is outside
+> this document set and is reported rather than edited.
 
 ### JWT — ✅ real
 `backend/src/config/jwt.config.ts`; both secrets are zod-validated to a **minimum of 32
@@ -417,12 +427,20 @@ with NodeNext `.js` specifiers it cannot resolve.
       overrides, both timeouts, the auth-token cache TTL, and the retry attempt count |
 | — | **Added:** all 5 `CIRCUIT_BREAKER_*` and all 5 `RETRY_*` variables, plus `DEFAULT_OPERATION_TIMEOUT_MS` |
 | — | **Corrected:** sandbox vs live is selected by the **credential set**, not the base URL; both modes use `https://accept.paymob.com/api` |
-| — | **Corrected:** `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` exist alongside the `VALKEY_*` family, for the Socket.IO adapter |
-| `backend/src/config/configuration.ts` as a single config factory | ⛔ Does not exist. Seven `registerAs()` factories, each zod-validated |
-| `frontend/next.config.js` with an `env` block | ⛔ `next.config.ts` is empty |
+| — | **Corrected:** `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` are **optional fallback names** for `config/valkey.config.ts` and `ValkeyService`, not a Socket.IO-adapter requirement. The adapter reads `valkey.*` via `ConfigService` (`redis-io.adapter.ts:29-31`) |
+| `backend/src/config/configuration.ts` as a single config factory | ⛔ Does not exist. **7** `registerAs()` factories, each zod-validated: `app`, `database`, `jwt`, `paymob`, `throttle`, `valkey`, `waf`. (`encryption.config.ts` deliberately does **not** register one — its reason is written in the file) |
+| `frontend/next.config.js` with an `env` block | ⛔ No `env` block, and the file is `next.config.ts` not `.js`. It is not empty — it sets exactly one thing, `transpilePackages: ["@hakawi/shared-types"]` |
 | Frontend `NEXT_PUBLIC_SANITY_*`, `NEXT_PUBLIC_ANALYTICS_ID`, `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_APP_ENV/NAME/VERSION` | ⛔ Read by nothing. Only `NEXT_PUBLIC_API_URL` is real |
 
-**67 distinct variables are read by the backend**, up from the 25 this document previously listed.
+**Variable count.** This document previously asserted "**67** distinct variables are read by the
+backend". ⛔ **That number is not reproducible and has been withdrawn.** It depends entirely on how you
+count — a direct `process.env.X` reference is not the same thing as a key in a `zod` schema, and a
+variable read in only one branch counts the same as one read everywhere. Measured on 2026-10-04:
+**58** direct `process.env.NAME` references in non-spec backend sources, **61** uppercase keys
+declared across `backend/src/config/*.ts` zod schemas, and a union of the two that includes
+aliases and derived names. Rather than print a third plausible-looking number, the count is recorded
+as **unknown**. The authoritative inventory is `.env.example` and the config factories themselves,
+which are enumerated above variable by variable.
 
 ---
 

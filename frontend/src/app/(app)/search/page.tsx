@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
@@ -17,9 +18,45 @@ type SearchPhase = "idle" | "searching" | "done";
 
 const SUGGESTED_TERMS = ["رعب", "واقعي", "أساطير"];
 
+/**
+ * WHY THE PAGE IS SPLIT IN TWO.
+ *
+ * The header's search field is a real `<form action="/search" method="get">`, so
+ * it works with JavaScript switched off — and a GET with no script means the
+ * query has to arrive in the URL. Reading it needs `useSearchParams`, which the
+ * App Router may only call inside a Suspense boundary. So the page is a boundary
+ * around a client component that reads the URL, and the benefit is not technical:
+ * **a search is a shareable link**, and a URL you cannot paste to someone is a
+ * result you cannot send to anyone.
+ */
 export default function SearchPage() {
+  return (
+    <Suspense fallback={<SearchFrame />}>
+      <SearchClient />
+    </Suspense>
+  );
+}
+
+/**
+ * What is on screen for the instant it takes the router to read the URL: the page
+ * title, and nothing else. A frame that already has its title keeps the column
+ * from jumping when the results arrive.
+ */
+function SearchFrame() {
   const strings = useStrings();
-  const [query, setQuery] = useState("");
+  return (
+    <div className="animate-rise">
+      <PageHeader title={strings.navSearch} />
+    </div>
+  );
+}
+
+function SearchClient() {
+  const strings = useStrings();
+  const params = useSearchParams();
+  const urlQuery = (params.get("q") ?? "").trim();
+
+  const [query, setQuery] = useState(urlQuery);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [phase, setPhase] = useState<SearchPhase>("idle");
@@ -45,6 +82,20 @@ export default function SearchPage() {
     if (!query.trim()) return;
     void runSearch(query);
   };
+
+  /*
+   * Run the search the URL asks for, once per distinct query. The ref is what
+   * makes this safe under React's strict double-invocation of effects: without
+   * it, a remount in development fires the same request twice and the second one
+   * wins the race.
+   */
+  const searchedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!urlQuery || searchedRef.current === urlQuery) return;
+    searchedRef.current = urlQuery;
+    setQuery(urlQuery);
+    void runSearch(urlQuery);
+  }, [urlQuery]);
 
   const retry = () => {
     if (!submittedQuery) return;

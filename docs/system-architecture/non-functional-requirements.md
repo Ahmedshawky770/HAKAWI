@@ -81,16 +81,27 @@ recorded latency data anywhere in the repository. Nothing below may be cited as 
 
 ### Rate Limits by Endpoint Type — ⚠️ rewritten: the table was fiction
 
-**There are exactly four tiers**, defined in `backend/src/config/throttle.config.ts:26-63` and
-applied per route with `@ThrottleTier(...)`. The previous version listed eight endpoint-specific
-limits; **none of them matched the implementation.**
+**There are exactly five tiers**, declared in `THROTTLE_TIER_NAMES`
+(`backend/src/config/throttle.config.ts:4`) and applied per route with `@ThrottleTier(...)`, with
+`FALLBACK_THROTTLE_TIER = 'default'` for an undecorated route. The version of this table before the
+current one listed eight endpoint-specific limits; **none of them matched the implementation.**
+
+⛔ **This table previously said "exactly four tiers" and omitted the `session` tier entirely**, and
+gave `default` as **100/min** — the pre-correction value. The `session` tier exists because refresh is
+*machine* traffic: it shared the `auth` budget of 10/min per IP, so ten automatic refreshes across one
+office NAT or mobile CGNAT blocked the whole egress address for a minute and logged out every user
+behind it.
 
 | Tier | Limit | Window | Scope | `blockDurationMs` | Overrides |
 |------|-------|--------|-------|-------------------|-----------|
-| `default` | 100 | 60s | per user (IP when unauthenticated) | 0 | `THROTTLE_DEFAULT_LIMIT`, `THROTTLE_DEFAULT_TTL` |
+| `default` | **30** | 60s | per user (IP when unauthenticated) | 0 | `THROTTLE_DEFAULT_LIMIT`, `THROTTLE_DEFAULT_TTL` |
 | `auth` | **10** | 60s | **per IP** | 60s | `THROTTLE_AUTH_LIMIT`, `THROTTLE_AUTH_TTL` |
+| `session` | **120** | 60s | **per IP** | 0 | `THROTTLE_SESSION_LIMIT`, `THROTTLE_SESSION_TTL` |
 | `upload` | **5** | 60s | per user | 60s | `THROTTLE_UPLOAD_LIMIT`, `THROTTLE_UPLOAD_TTL` |
 | `search` | **50** | 60s | per user | 0 | `THROTTLE_SEARCH_LIMIT`, `THROTTLE_SEARCH_TTL` |
+
+⚠️ The `tracker: 'user'` on `default`, `upload` and `search` **degrades to per-IP in practice**,
+because `JwtAuthGuard` is not an `APP_GUARD` and `request.user` is unset when `ThrottlerGuard` runs.
 
 Corrections to the previous table:
 - ⛔ **"Auth 5/min per IP"** → the real `auth` tier is **10/min per IP**
@@ -391,9 +402,17 @@ const envSchema = z.object({
 policy. This is a real operational gap: `allkeys-lru` eviction on a Valkey instance also holding the
 refresh-token blacklist and the rate-limit counters would silently drop security state.
 
-⚠️ Separately, `backend/src/redis-io.adapter.ts` configures the Socket.IO Redis adapter from
-`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` — a **different variable family** from the
-`VALKEY_*` the cache uses. Both families exist and must both be set.
+✅ **Corrected — the Socket.IO adapter no longer reads a different variable family.**
+`backend/src/redis-io.adapter.ts:29-31` reads `valkey.host`, `valkey.port` and `valkey.password`
+through `ConfigService`, i.e. the **same** `VALKEY_*`-first resolution as the cache. This document
+previously stated the adapter read `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` and that "both
+families must both be set"; that was the defect recorded in
+[`docs/adr/005-security-and-correctness-hardening.md`](../adr/005-security-and-correctness-hardening.md)
+and it is **fixed**. `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` still exist as **fallback**
+names accepted by `config/valkey.config.ts` and `common/services/valkey.service.ts` for operators
+migrating from Redis — they are an operator convenience, **not** an adapter-specific requirement.
+⚠️ `backend/.env.example:24-30` still carries the stale comment claiming the adapter reads
+`REDIS_*` only; that file is outside this document set and is reported, not corrected here.
 
 ### Cache Invalidation Rules
 
@@ -607,7 +626,7 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 | Requirement | Implementation | Status |
 |-------------|----------------|--------|
-| **API rate limits** | Per-user and per-IP limits | ✅ Real — 4 tiers, `ValkeyThrottlerStorage` |
+| **API rate limits** | Per-user and per-IP limits | ✅ Real — **5** tiers, `ValkeyThrottlerStorage` |
 | **Login rate limits** | ~~5 attempts per minute per IP~~ | ✅ Real at **10/min per IP** (the `auth` tier). The previous figure was wrong |
 | **Password reset** | 3 attempts per hour per email | ⛔ **NOT IMPLEMENTED.** `/auth/forgot-password` is on the `auth` tier (10/min per IP) and nothing else |
 | **API key rotation** | Every 90 days | ⛔ No API keys exist; `ENCRYPTION_KEY`, `JWT_SECRET`, and `REFRESH_TOKEN_SECRET` are secrets but nothing rotates them |
@@ -689,10 +708,10 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 
 | Requirement | Target | Status |
 |-------------|--------|--------|
-| **Code coverage** | > 80% overall, 90% for critical modules | ✅ **Backend met:** S 85.43 / 82.39 / 79.00 / 85.58 against floors 78/70/73/79 plus 9 per-path ratchets. ⚠️ **Frontend not met:** S 39.79 / 35.90 / 35.74 / 40.22 against floors 38/33/33/38 — the frontend gate encodes the current number rather than the target, so a passing build certifies roughly 40%. ⛔ The "90% for critical modules" tier was never configured as a floor. **The unified roadmap target is ≥ 80% everywhere** — this "90% for critical modules" split is retired |
+| **Code coverage** | > 80% overall, 90% for critical modules | ✅ **Backend met:** S 84.28 / B 80.49 / F 78.86 / L 84.45 against floors S 78 / B 73 / F 70 / L 79 (`backend/vitest.config.ts:77-91`) plus 9 per-path ratchets. ⚠️ **Frontend not met:** S 40.75 / B 35.79 / F 39.64 / L 41.25 against floors 38/33/33/38 (`frontend/vitest.config.ts:47-52`) — the frontend gate encodes the current number rather than the target, so a passing build certifies roughly 40%. ⛔ The "90% for critical modules" tier was never configured as a floor. **The unified roadmap target is ≥ 80% everywhere** — this "90% for critical modules" split is retired |
 | **Cyclomatic complexity** | < 10 per function | ⛔ No complexity rule is configured in `backend/.eslintrc.cjs` |
 | **Technical debt ratio** | < 5% | ⛔ Not measured; no tooling |
-| **Code review coverage** | 100% of changes | ⚠️ A 10-job CI pipeline gates every push and PR, but no `CODEOWNERS` file and no required-reviewer configuration exist in the repo |
+| **Code review coverage** | 100% of changes | ⚠️ An 11-job CI pipeline gates every push and PR, but no `CODEOWNERS` file and no required-reviewer configuration exist in the repo |
 
 ### Documentation
 
@@ -753,7 +772,7 @@ checklist, so it is replaced by a status-per-claim table.
 | Throughput targets | ⛔ Never measured | — |
 | Cache hit rate > 90% | 🔄 **Instrumented, not verified** | `GET /api/v1/metrics/cache` reports `hits`/`misses`/`hitRate`. No threshold is enforced and no value has been recorded |
 | Resource utilisation targets | ⛔ No metrics pipeline | No Prometheus endpoint, no metrics registry |
-| Rate limiting implemented | ✅ **Real** | 4 tiers over `ValkeyThrottlerStorage`; real 429 tests |
+| Rate limiting implemented | ✅ **Real** | **5** tiers over `ValkeyThrottlerStorage`; real 429 tests |
 | Rate limit values | ⚠️ **Corrected** | 100/10/5/50, not the 8-row table the previous version listed |
 | Resource quotas per user/tenant | ⛔ **Not implemented** | No tiers, no balances, no counters. Rate limits ≠ quotas |
 | Circuit breakers configured | ⚠️ **Partially** | Wired into Sanity, Paymob, and OAuth. Not into S3, email (doesn't exist), PostgreSQL, or Valkey |
@@ -782,13 +801,16 @@ checklist, so it is replaced by a status-per-claim table.
 
 A short and real list:
 
-- ✅ **Rate limiting** — 4 tiers, Valkey-backed, shared across instances, real 429 tests, fail-open by design
+- ✅ **Rate limiting** — **5** tiers (`default` 30/min/user, `auth` 10/min/IP, `session` 120/min/IP,
+  `upload` 5/min/user, `search` 50/min/user), Valkey-backed, shared across instances, real 429 tests,
+  fail-open by design
 - ✅ **Cache-aside with tag invalidation**, plus **hit-rate metrics** at `GET /api/v1/metrics/cache`
 - ✅ **Circuit breakers, retry with backoff, timeout, and fallback** — wired into the three external
   services that exist
-- ✅ **Test depth** — 145 unit files / 3047 tests, 22 e2e files / 136 tests against a real cloned
-  database, 340 frontend tests, 2 real-browser Playwright suites with axe-core WCAG checks
-- ✅ **Backend coverage above its gate**; **frontend is the gap** — S 39.79 / B 35.90 / F 35.74 / L 40.22, which is the one measured number that got worse rather than better
+- ✅ **Test depth** — 151 unit files / 3228 tests, 23 e2e/integration files / 173 tests against a real
+  cloned database, 22 frontend files / 356 tests, 3 real-browser Playwright suites / 15 tests with
+  axe-core WCAG checks
+- ✅ **Backend coverage above its gate** — S 84.28 / B 80.49 / F 78.86 / L 84.45; **frontend is the gap** at S 40.75 / B 35.79 / F 39.64 / L 41.25, still roughly 40% against an 80% target. Note the backend floors are **S 78 / B 73 / F 70 / L 79**, which this document previously printed as "78/70/73/79" with branches and functions transposed
 - ✅ **Error tracking**, structured logging, and correlation IDs
 - ✅ **The event schema registry and DLQ**, which shipped early
 - ✅ **bcrypt at cost 12**, separate JWT secrets, refresh-token rotation with reuse detection
@@ -816,7 +838,7 @@ A short and real list:
 | Previous claim | Reality |
 |---|---|
 | Per-phase checklist marking ✅ for response time, dashboards, backup strategy, and load testing | ⛔ **All four are false.** Replaced with a status-per-claim table plus a short "what is genuinely satisfied" list |
-| 8 rate-limit rows (auth 5/IP, auth 10/user, public 50/IP, upload 10/user, search 50/IP, comments 30/user, webhooks unlimited) | ✅ Reality is **4 tiers**: 100/user, 10/IP, 5/user, 50/user. Comments have no tier; webhooks are not whitelisted |
+| 8 rate-limit rows (auth 5/IP, auth 10/user, public 50/IP, upload 10/user, search 50/IP, comments 30/user, webhooks unlimited) | ✅ Reality is **5 tiers**: `default` 30/user, `auth` 10/IP, `session` 120/IP, `upload` 5/user, `search` 50/user. Comments have no tier; webhooks are not whitelisted. ⛔ This row previously said "4 tiers: 100/user, 10/IP, 5/user, 50/user" — the count was short by the `session` tier and the `default` limit was the pre-correction 100/min |
 | Resource quotas per user/tenant with 7 rows and a `QuotaExceededException` | ⛔ **No quota system exists.** Rate limits are not quotas |
 | A `ThrottlerGuard` keyed `rate-limit:{key}:{endpoint}` | ⛔ No such guard and no per-endpoint key. Nest's guard + `ValkeyThrottlerStorage`, keyed per tier |
 | Circuit breakers on 5 services at a 50% failure threshold | ⚠️ Wired on **3** (Sanity, Paymob, OAuth). Not on S3 or email. The threshold is an absolute count (`5`), not a rate |
@@ -833,7 +855,7 @@ A short and real list:
 | "Backup frequency: daily full, hourly incremental" / "retention 30 days" | ⛔ **Nothing backs up automatically** |
 | RPO 1 hour / RTO 4 hours | ⛔ Unachievable — nothing to restore from |
 | "PostgreSQL: read replicas, 1 primary + 3 replicas" | ⛔ **Not built** |
-| "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (85.43 / 82.39 / 79.00 / 85.58); frontend not (39.79 / 35.90 / 35.74 / 40.22). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
+| "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (S 84.28 / B 80.49 / F 78.86 / L 84.45); frontend not (S 40.75 / B 35.79 / F 39.64 / L 41.25). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
 | "Cyclomatic complexity < 10 per function" | ⛔ No such lint rule |
 | "README: every module" | ⛔ Only `modules/search/README.md` exists |
 | "Changelog: updated with every release" | ⛔ **No CHANGELOG in the repository** |

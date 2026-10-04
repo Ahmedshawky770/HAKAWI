@@ -1,13 +1,33 @@
 # Architecture Principles
 ## حكاوي (Hakawi) - Core Principles
 
-> **Latest change-set review.** A 488-file uncommitted change set was audited line by line and
-> hardened. Every fix, and the reasoning behind each one — including the trade-offs that were
-> accepted rather than hidden — is recorded in
-> [`docs/adr/005-security-and-correctness-hardening.md`](adr/005-security-and-correctness-hardening.md).
-> The verdict tables below reflect that work. Verified after it: backend 2918 tests, frontend 340,
-> `tsc --noEmit` clean across three workspaces, 0 lint errors, `prettier --check` clean,
-> `npm audit --omit=dev` at 0 vulnerabilities.
+> **Latest change-set review.** This review has been re-verified against the current tree
+> (2026-10-04), and the earlier round — a 488-file uncommitted change set recorded in
+> [`docs/adr/005-security-and-correctness-hardening.md`](adr/005-security-and-correctness-hardening.md)
+> — is preserved as *Round 2* below.
+>
+> **The most important finding of this round is not a verdict, it is a lesson.** The backend
+> **could not boot at all**, and the entire DB-backed suite — 23 e2e/integration files — **skipped
+> silently while CI stayed green**. Two independent causes, both now fixed:
+>
+> 1. `books.module.ts` ↔ `library.module.ts` formed a genuine circular module dependency with no
+>    `forwardRef()`. Nest aborted the graph with *"The module at index [3] of the LibraryModule
+>    `imports` array is undefined"* — before any test body ran.
+> 2. `contests.module.ts` imported `NotificationsModule` but never listed it in `imports`, so
+>    `ContestsEventHandler` could not resolve `NotificationsService`: *"Nest can't resolve
+>    dependencies of the ContestsEventHandler (Symbol(CONTESTS_REPOSITORY), ?, WinstonLoggerService)"*.
+>
+> Both failures happen inside `DependenciesScanner.scanForModules` — **before** `beforeAll`, so each
+> spec reported as skipped rather than failed, and a skipped suite exits 0. That is precisely why
+> Principle #4 exists and why no verdict in this document should be read as more trustworthy than
+> the evidence printed beside it. Eight e2e/integration tests that had **never executed** were also
+> failing once the suite could actually run; all eight are fixed.
+>
+> Verified after this round: **backend 3228 unit tests in 151 files**, **173 e2e/integration tests
+> in 23 files**, **frontend 356 tests in 22 files** plus **15 Playwright tests in 3 files**;
+> `tsc --noEmit` clean, 0 lint errors, `prettier --check` clean, `npm audit --omit=dev` at 0
+> vulnerabilities. Backend coverage **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend coverage
+> **S 40.75 / B 35.79 / F 39.64 / L 41.25**. **11 CI jobs**, all hard gates.
 
 ---
 
@@ -511,14 +531,39 @@ Every `pgTable` in `backend/src/db/schema/*.ts` uses `uuid()` primary keys. `@ha
 declares every ID as `string`. `docs/03_ids_as_strings.md` matches the code.
 
 ### #4 Document Problems — 🔄 IN PROGRESS
-- ✅ 24 ADRs / decision records, 17 principle documents, and a full deployment/testing/roadmap set
-- ✅ `docs/` reconciled against the code on 2026-09-30
+- ⛔ **Correction to the previous version of this document.** It claimed "**24** ADRs / decision
+  records" and "⛔ **No CHANGELOG**, despite Principle #4 listing one as a documentation type". Both
+  were wrong on measurement. `docs/adr/` holds **5** ADRs (`001`–`005`), not 24; adding
+  `docs/11_decisions.md` and `docs/architecture-principles-deviations.md` gives **7** decision
+  records. And a **`CHANGELOG.md` exists at the repository root** — added in commit `febf264` as
+  "the CHANGELOG that Principle #4 requires and the repository lacked". The ⛔ in *Unbuilt Features*
+  below is retracted for the same reason.
+- ✅ 7 decision records (5 ADRs + `11_decisions.md` + `architecture-principles-deviations.md`),
+  17 per-principle documents, 2 indexes, and a full deployment/testing/roadmap set
+- ✅ **This round is itself the evidence.** The backend could not boot, and the whole DB-backed
+  suite skipped green (see the header). Two causes, both fixed: `books.module.ts` ↔
+  `library.module.ts` circular dependency with no `forwardRef()`; `contests.module.ts` importing
+  `NotificationsModule` without listing it in `imports`, leaving `ContestsEventHandler` unable to
+  resolve `NotificationsService`. Both abort the module graph in `DependenciesScanner.scanForModules`,
+  **before `beforeAll`**, so every affected spec reported *skipped* rather than *failed* — and a
+  skipped suite exits 0. **This is the strongest argument the principle has for existing:** the
+  verdicts below are only as good as the evidence printed beside them, and for several defects
+  documented here as settled — books ownership, the notification route spellings, the doubled
+  `messages/messages` path — the evidence was an assertion rather than a test result. 8
+  e2e/integration tests that had never executed were also failing once the suite could run; all
+  eight are fixed
+- ✅ `docs/` reconciled against the code on 2026-09-30, and this set re-reconciled on 2026-10-04 —
+  which is how the fabricated `parent_id = NULL` "known bug" (documented in four places as open,
+  and twice as pinned by an `it.fails` that does not exist anywhere in this repository) was found
+  and retracted. A stale-doc audit found it; re-reading had not
 - ⚠️ `docs/module-boundaries/**` contains four near-duplicate files
   (`contracts.md` + `contracts/module-contracts.md`, `dependency-rules.md` +
   `dependencies/dependency-rules.md`, `interfaces.md` + `interfaces/shared-interfaces.md`) with no
   statement of which is canonical
 - ⛔ No user-facing documentation
-- ⛔ No CHANGELOG, despite Principle #4 listing one as a documentation type
+- ⛔ `.env.example` still carries a stale comment claiming `redis-io.adapter.ts` reads `REDIS_*` only
+  (`backend/.env.example:24-30`). The code reads `valkey.*`; the comment is wrong and is outside the
+  documentation set — reported, not edited
 
 ### #5 Architecture Before Code — 🔄 IN PROGRESS
 - ✅ C4 model (`c4-model/`), system architecture, data architecture, module boundaries, and API
@@ -530,15 +575,23 @@ declares every ID as `string`. `docs/03_ids_as_strings.md` matches the code.
 
 ### #6 Minimize Migrations — ✅ ENFORCED
 The strongest principle in the set, and now mechanised rather than aspirational:
-- ✅ 18 numbered `.sql` files at repo-root `migrations/` are the single source of truth
+- ✅ 22 numbered `.sql` files at repo-root `migrations/` are the single source of truth
 - ✅ `drizzle-kit up:pg` (a schema push that discarded history) is **gone**
 - ✅ Every migration is **transaction-wrapped** (`migration-runner.ts:218,247`)
 - ✅ A **sha256 content-checksum ledger** makes editing an applied file a hard error
   (`backend/src/db/migrations/migration-runner.ts:296`)
 - ✅ Rollback is driven by sidecars with **machine-read reversibility headers**, classified
   `reversible` / `data-loss` (needs `--allow-data-loss`) / `irreversible` (never runs)
-- ✅ `0001_create_stories_tables` is deliberately **irreversible** because it owns the shared
-  `uuid-ossp` extension — dropping it would cascade into every `uuid_generate_v4()` default
+- ⛔ **Correction to the previous version of this document.** It claimed `0001_create_stories_tables`
+  is "deliberately **irreversible** because it owns the shared `uuid-ossp` extension — dropping it
+  would cascade into every `uuid_generate_v4()` default". **That was a misclassification.**
+  `migrations/down/0001_create_stories_tables.down.sql:1` now carries
+  `reversibility=data-loss data-loss=rows` and states in its own reason that **the script never drops
+  the extension** — so the hazard the old text described is already avoided by omission. The script
+  destroys rows, which is exactly `data-loss`. Measured distribution across all 22 down scripts:
+  **0 `irreversible`, 18 `data-loss`, 4 `reversible`**. The practical consequence: a rollback chain
+  reaching `0001` no longer fails outright with no override — it asks for confirmation and runs. See
+  `migrations/README.md` and `docs/data-architecture/migrations/migration-strategy.md`
 - ✅ `npm run db:check` lints the chain statically with no database, and runs as a **hard CI gate**
 - ✅ An **advisory lock** (`pg_advisory_lock`) serialises `up` and `down` across processes. Two pods
   running `migration:run` concurrently — a blue/green deploy, or two CI jobs against one database —
@@ -555,8 +608,13 @@ The strongest principle in the set, and now mechanised rather than aspirational:
   `drizzle.config.ts` and declared nowhere, so `db:studio` had never worked; both are now declared
 
 ### #7 Loose Coupling — ⚠️ PARTIAL
-- ✅ **Event-driven communication is real:** EventEmitter2 with 16 event modules, 19 per-module
-  handlers, a schema registry, a validator, and a **dead letter queue**
+- ✅ **Event-driven communication is real:** EventEmitter2 with a registry of **55 event schemas**
+  across **10** `*.events.ts` schema modules, **72 `@OnEvent` handler methods** in **16**
+  event-handler files spanning **14** modules, a validator, and a **dead letter queue** that has a
+  drain (`GET /api/v1/events/dlq`, `POST /api/v1/events/dlq/:id/replay`, `DLQController`,
+  `SUPER_ADMIN`). ⛔ **Correction to the previous version of this row:** it said "16 event modules,
+  19 per-module handlers". 16 is the number of *event-handler files*, not modules, and **19
+  handlers is wrong by a factor of nearly four** — there are 72
 - ✅ The circuit breaker / retry / timeout / fallback primitives are **wired**, not dead code:
   `CircuitBreakerService` is injected into `auth.service.ts` and `sanity.service.ts`;
   `ResilientHttpClient` fronts `PaymobClient`
@@ -568,15 +626,33 @@ The strongest principle in the set, and now mechanised rather than aspirational:
   `src/modules/**/repositories/`, but several services bypass them
 - ✅ `OwnershipGuard` is now wired on `PATCH`/`DELETE /comments/:id` and on `PATCH`, `/publish`,
   `/archive`, `DELETE /stories/:id`, through a per-module resolver that goes through that module's
-  repository interface. `PATCH`/`DELETE /books/:id` are **still unprotected**, because the `books`
-  table has no owner column — `books.author` is a `varchar` display name compared against a UUID.
-  That needs a migration and a decision, not a wiring change; it is recorded in
-  `backend/src/common/guards/README.md` rather than half-solved.
+  repository interface
+- ⛔ **Correction to the previous version of this document.** It claimed `PATCH`/`DELETE /books/:id`
+  are "**still unprotected**, because the `books` table has no owner column — `books.author` is a
+  `varchar` display name compared against a UUID". **Both halves of that are out of date.** Migration
+  **`0021_add_books_owner_id.sql`** added `books.owner_id uuid REFERENCES users(id)` (index
+  `books_owner_id_idx`; `backend/src/db/schema/books.schema.ts:49`), and `BooksService` reads it
+  through a private `assertOwnership` helper (`books.service.ts:445`) called on **update** (`:173`),
+  **publish** (`:196`), **archive** (`:227`) and **delete** (`:385`) — each throwing
+  `ForbiddenException`, with a distinct message for the unowned case (`ownerId === null`, i.e. a
+  book predating 0021) so an operator files "these need claiming" rather than "my books are locked".
+  Both routes also carry `@UseGuards(JwtAuthGuard)` (`books.controller.ts:53,103`), so an
+  unauthenticated caller gets 401 before ownership is even considered.
+- ⚠️ **How books differ from comments and stories, stated precisely rather than as a gap:** books
+  enforces ownership in the **service**, not through `OwnershipGuard`. The guard is therefore still
+  not wired on the books routes, and `books` has no ownership resolver like
+  `comment-ownership.resolver.ts`. The enforcement is real and returns 403; it simply sits one layer
+  down, so it is not visible to anything that audits `@UseGuards` alone.
 
 ### #8 Open/Closed — ⚠️ PARTIAL
 - ✅ Extension points exist: the `PaymobClient` sits behind `ResilientHttpClient`; the throttler
-  storage is an interface with a Valkey implementation; the 34 WAF rules are a **data-driven table**
-  where a new rule is a new entry, not a new branch
+  storage is an interface with a Valkey implementation; the **35** WAF rules
+  (`backend/src/common/waf/rules.ts`) are a **data-driven table** where a new rule is a new entry,
+  not a new branch. ⛔ **Correction:** this line previously said **34**, contradicting §#15 of the
+  same document ("35 typed rules in 8 layers") and the code, which defines **35** rules, every one of
+  them `enabledByDefault: true`. There is no rule disabled by default; `WafConfig.enabledOptInControls`
+  is `[]` except `blockForwardingHeaders` when `WAF_BLOCK_FORWARDING_HEADERS` is set, and that is an
+  additional control, not a 35th-to-36th rule
 - ✅ The `Secured` decorator composes guards without editing them; the `@Cacheable` /
   `@CacheInvalidateTags` decorators add caching without touching service code
 - ⚠️ "Plugin architecture for optional features" does not exist. The email delivery path is
@@ -796,11 +872,21 @@ mechanically checkable.
 | Principle | Before | After | Why |
 |---|---|---|---|
 | #6 Minimize migrations | ✅ | ✅ | Advisory lock, per-migration lock/statement timeouts, and a prefix check that closes the sandwiched out-of-order case. `push-schema.ts` deleted; `drizzle-kit` declared |
-| #7 Loose coupling | ⚠️ | ⚠️ | `OwnershipGuard` wired on comments and stories via per-module repository resolvers. Books write routes still unprotected — the table has no owner column |
+| #7 Loose coupling | ⚠️ | ⚠️ | `OwnershipGuard` wired on comments and stories via per-module repository resolvers. ⛔ **Retracted by Round 3:** the same row said "Books write routes still unprotected — the table has no owner column"; migration `0021` added `books.owner_id` and `assertOwnership` now enforces it |
 | #9 SSOT | ✅ | ✅ | Valkey connection resolved once for the cache *and* the Socket.IO adapter; the published-secret rule shared by the JWT and encryption configs |
 | #14 AP as default | ⚠️ | ⚠️ | Unchanged verdict, but `default` rate limit corrected from an accidental 10× loosening to 30/min, and the `user` tracker's per-IP degradation is documented where it is configured |
 | #15 Proactive defense | ⚠️ | ⚠️ | WAF prose false-positives eliminated by tightening four patterns; SSRF host-shape rule added; body-size bypass closed; a `session` tier separates machine refresh from human login. Still ⚠️ — no admin endpoints, no metrics, no CSP, no XXE, no quotas |
 | #16 Hybrid consistency | ⚠️ | ⚠️ | The `parent_id = NULL` bug that made top-level comments always empty is fixed. Still ⚠️ — no violation detection, no compensation mechanism |
+
+#### Round 3 — the change set that found the application would not boot (2026-10-04)
+
+| Principle | Before | After | Why |
+|---|---|---|---|
+| #4 Document problems | 🔄 | 🔄 | Verdict unchanged, and the evidence for it got worse before it got better. ⛔ **The backend could not boot**: a `books.module.ts` ↔ `library.module.ts` circular dependency with no `forwardRef()`, plus `contests.module.ts` importing `NotificationsModule` without listing it in `imports`. Both abort the module graph before `beforeAll`, so the whole 23-file DB-backed suite **skipped** and CI stayed green. Also retracted here: "24 ADRs" (**5** exist) and "No CHANGELOG" (**`CHANGELOG.md` exists**, commit `febf264`). 8 e2e/integration tests that had never executed were also failing; all fixed |
+| #5 Architecture before code | 🔄 | 🔄 | Verdict unchanged, but a C4/module-boundaries audit of the Phase-3 routes found that the shipped `frontend/src/lib/api.ts` called `POST /users/:id/follow`, `POST /stories/:id/reactions` and `GET/POST /stories/:id/comments` — **none of which the backend serves**. The architecture was drawn, and the implementation contradicted it, and the client's unit test mocked the same wrong URL so it stayed green. Correct paths recorded in `docs/module-boundaries/overview/module-boundaries.md`; the client is fixed |
+| #6 Minimize migrations | ✅ | ✅ | Verdict unchanged. ⛔ **One claim corrected:** `0001_create_stories_tables` is **not** irreversible. Measured across all 22 down scripts: **0 `irreversible`, 18 `data-loss`, 4 `reversible`** — `0001` is `data-loss`, and its down script never drops `uuid-ossp`, which was the entire stated reason. A rollback chain reaching `0001` now asks and runs instead of failing outright |
+| #7 Loose coupling | ⚠️ | ⚠️ | Verdict unchanged, but the concrete gap closed: `PATCH`/`DELETE /books/:id` are **protected** — `@UseGuards(JwtAuthGuard)` plus `assertOwnership` (`books.service.ts:445`) on update/publish/archive/delete, backed by `books.owner_id` from migration `0021`. Still ⚠️ because ownership for books sits in the service rather than in `OwnershipGuard`, and 26 files across 18 modules still import `src/db/index.ts` directly |
+| #16 Hybrid consistency | ⚠️ | ⚠️ | Verdict unchanged, and the `parent_id` record in §#16 was **already correct**. What changed is the three other documents: `consistency-matrix.md`, `c4-model/code/domain-concepts.md` and `data-architecture/erd/entity-relationship.md` all still presented the fixed bug as open, and two of them claimed the pin was an `it.fails` — **no `it.fails` exists anywhere in this repository** (`grep -rn "it.fails" backend` → 0). All three now agree with this section: the bug was real, it is fixed at `comments.repository.ts:48` with `isNull`, and the fixed behaviour is pinned by `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts`. **No principle verdict was upgraded in this round** |
 
 #### Round 1
 
@@ -808,7 +894,7 @@ mechanically checkable.
 |---|---|---|---|
 | #11 Valkey cache | ⚠️ PARTIAL — TTL ✅, cache-aside ✅, tag invalidation ✅, **hit-rate monitoring ❌** | ⚠️ PARTIAL — **hit-rate monitoring ✅**, but write-through ⛔ and cache-warming ⛔ | `GET /api/v1/metrics/cache` now serves live `hits` / `misses` / `hitRate`. Still not COMPLIANT: `@CacheWarmTags` has no caller and no write-through path exists |
 | #12 Reduce synchronization | ⚠️ PARTIAL — resilience primitives were **dead code** | 🔄 IN PROGRESS | `CircuitBreakerService` injected into `auth.service.ts` and `sanity.service.ts`; `ResilientHttpClient` fronts `PaymobClient`; DLQ catches failed handlers. PostgreSQL and Valkey still have no breaker |
-| #15 Proactive defense | ⚠️ PARTIAL — rate limiting *claimed* against an in-memory store that contradicted `11_decisions.md`; WAF layers partial | ⚠️ PARTIAL — **rate limiting is now real**; WAF still partial | 4 tiers over `ValkeyThrottlerStorage` with 429 tests; WAF admin endpoints, metrics, CSP and XXE coverage all still missing |
+| #15 Proactive defense | ⚠️ PARTIAL — rate limiting *claimed* against an in-memory store that contradicted `11_decisions.md`; WAF layers partial | ⚠️ PARTIAL — **rate limiting is now real**; WAF still partial | **5** tiers over `ValkeyThrottlerStorage` with 429 tests; WAF admin endpoints, metrics, CSP and XXE coverage all still missing. ⛔ This row previously said "4 tiers" |
 | #1 Zero `any` | ✅ | ✅ | `eslint src/ test/ e2e/` → 0 errors |
 | #6 Minimize migrations | ✅ | ✅ | transaction wrapping, sha256 ledger, reversibility classification, `db:check` CI gate |
 | #9 SSOT | ✅ | ✅ | `AuthorSummary.name` is now `string \| null`; `Exact<A,B>` drift assertions |
@@ -840,10 +926,17 @@ capability inventory.
 | **Monitoring dashboards + alerting** | #4, #15 | ⛔ **Not built.** Sentry receives errors and `GET /api/v1/metrics/cache` reports hit rate, but there is no dashboard definition and **no alert rule anywhere in the repository** |
 | **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⛔ **Not built.** No `SELECT … FOR UPDATE`, no version column. The only money-path concurrency control is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges* |
 | **User documentation** | #4, #5 | ⛔ **Not built.** No user-facing docs exist outside `docs/` |
-| **CHANGELOG** | #4 (explicitly listed as a documentation type) | ⛔ **Not built.** No CHANGELOG file in the repository |
+| ~~**CHANGELOG**~~ | #4 (explicitly listed as a documentation type) | ✅ **Built — this entry is retracted.** `CHANGELOG.md` exists at the repository root (commit `febf264`), following Keep a Changelog 1.1.0 with an `[Unreleased]` section. The previous version of this table said "⛔ Not built. No CHANGELOG file in the repository", which was false |
 | **Email delivery** | #15, #9 | ⛔ **Not built.** No SMTP client. Only `EMAIL_FROM` is read, by `notifications-email.service.ts` |
 
-All 16 are tracked in `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
+**15 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true.
+All are tracked in `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
+
+And one defect is materially worse than anything in that table:
+
+| Feature | Which principle assumes it | Reality |
+|---|---|---|
+| **The application can be started at all** | #5 (architecture before code), #7 (loose coupling), #4 (document problems) | ⛔ **It could not, until this change set.** `books.module.ts` ↔ `library.module.ts` formed a circular module dependency with no `forwardRef()`, and `contests.module.ts` imported `NotificationsModule` without listing it in `imports`. Both abort the Nest module graph in `DependenciesScanner.scanForModules` — before any test body runs. Every DB-backed spec therefore *skipped* rather than *failed*, CI stayed green, and no architecture document in this repository noticed. Both are fixed. It is recorded here because Principle #4 is the control that would have caught it: the defect was invisible to every gate that existed |
 
 ---
 

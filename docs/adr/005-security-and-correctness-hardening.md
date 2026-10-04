@@ -459,3 +459,52 @@ rules, a CHANGELOG, and user-facing documentation. These are tracked in
 `docs/01_ARCHITECTURE_PRINCIPLES.md` under *Unbuilt Features These Principles Assume* and in
 `docs/roadmap/phases/implementation-roadmap.md`. None of them is a defect in this change set; they
 are the standing gap between the principles and the code, which that document is honest about.
+
+---
+
+## Addendum — 2026-10-04: the figures above have drifted
+
+**This is an addendum, not a revision.** Everything above is the historical record of a decision taken
+and verified at the time it was taken, and it is left exactly as written. The gate table in
+*Consequences* reported:
+
+> `npm run test` (backend) → **2918 passed / 139 files** · `npm run test:run` (frontend) → **340 passed
+> / 21 files**
+
+**Those numbers were correct when measured and are no longer correct.** The suites have grown since:
+
+| Gate | As recorded above (2026-09-30) | Measured now (2026-10-04) |
+|---|---|---|
+| `npm run test` (backend unit) | 2918 passed / 139 files | **3228 passed / 151 files** |
+| `npm run test:run` (frontend) | 340 passed / 21 files | **356 passed / 22 files** |
+| Backend e2e / integration | *not in the table above* | **173 tests / 23 files, 0 skipped** |
+| Frontend browser (Playwright) | *not in the table above* | **15 tests / 3 files** |
+| Backend coverage | *not in the table above* | **S 84.28 / B 80.49 / F 78.86 / L 84.45** |
+
+⛔ **One line above is now wrong in substance, not just in its numbers:**
+
+> *"The books write routes remain without ownership enforcement (see decision 23)."*
+
+That gap was **closed** after this ADR was written. Migration **`0021_add_books_owner_id.sql`** added
+`books.owner_id uuid REFERENCES users(id)`, and `BooksService` now enforces it through
+`assertOwnership` (`books.service.ts:445`) on update, publish, archive and delete. Decision 23's
+*diagnosis* still stands — the guard could not answer ownership for books because the table had no
+owner column — but the recommended remedy in that decision has since been carried out. See
+`docs/01_ARCHITECTURE_PRINCIPLES.md` §#7.
+
+### For the current numbers
+
+Do not read this ADR for current figures. It is a decision record. The live numbers are in
+**`docs/testing/testing-strategy.md`**, which carries its own dated reconciliation table.
+
+That document also records the finding that matters most for reading *any* gate result in this
+repository, including the ones above: **the backend could not boot, and the entire DB-backed suite
+skipped while CI stayed green.** The module graph failed to construct — a `books`↔`library` circular
+dependency with no `forwardRef()`, and `contests.module.ts` importing `NotificationsModule` without
+listing it in `imports` — and both failures happen before `beforeAll`, so every affected spec was
+reported as *skipped* rather than *failed*. A suite in which everything is skipped exits 0.
+
+That is a caution about gate results generally, and it is why the `test-e2e` row above is absent:
+this ADR's verification table never included the database-backed suite, so it could not have
+revealed the problem even if the numbers had been checked continuously. Both causes are fixed, and 8
+tests that had never executed were failing once the suite could run.

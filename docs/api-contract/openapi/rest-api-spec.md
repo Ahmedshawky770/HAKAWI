@@ -150,24 +150,32 @@ plural form. The publisher dashboard routes the previous version omitted are all
 `POST /payments` · `GET /payments/:id` · `PATCH /payments/:id/status` · `POST /payments/:id/refund` ·
 `GET /payments/:id/refunds` · `POST /payments/webhooks/paymob` (`@Public()`, 200 on success)
 
-### Notifications — 9 (`notifications.controller.ts`) — ⚠️ two read-all spellings
-`GET /notifications` · `GET /unread` · `GET /unread/count` · `GET /unread-count` ·
-`GET /preferences` · `PATCH /preferences` · `PATCH /:id/read` · `PATCH /read-all` ·
-`PUT /read-all` · `DELETE /:id`
+### Notifications — 8 (`notifications.controller.ts`)
+`GET /notifications` · `GET /notifications/unread` · `GET /notifications/unread-count` ·
+`GET /notifications/preferences` · `PATCH /notifications/preferences` ·
+`PATCH /notifications/:id/read` · `PATCH /notifications/read-all` · `DELETE /notifications/:id`
 
-⚠️ **`unread/count` and `unread-count` are both routes.** The frontend calls `/notifications/unread-count`;
-both work. `read-all` is reachable by **both** `PATCH` and `PUT`.
+⛔ **Corrected.** This section previously said "9 routes" and listed **both** `GET /unread/count`
+**and** `GET /unread-count`, plus `PUT /read-all` alongside `PATCH /read-all`, claiming "both work".
+**None of the three extra spellings exists.** `notifications.controller.ts` registers exactly
+**8** routes; the surviving paths are `GET /notifications/unread-count` and
+`PATCH /notifications/read-all`. The duplicates were removed, so any client or document still
+calling `/notifications/unread/count` or issuing `PUT /notifications/read-all` gets a 404.
 
 ### Messages — 6 (`messages.controller.ts`)
 `POST /messages/conversations` · `GET /messages/conversations` ·
 `GET /messages/conversations/:conversationId/messages` ·
 `POST /messages/conversations/:conversationId/messages` ·
-`PATCH /messages/messages/:messageId/read` · `PATCH /messages/conversations/:conversationId/read` ·
+`PATCH /messages/:messageId/read` · `PATCH /messages/conversations/:conversationId/read` ·
 `GET /messages/conversations/:conversationId/unread`
 
-⚠️ **`PATCH /messages/messages/:messageId/read` is a doubled segment** — the controller base is
-`messages` and the route is `messages/:messageId/read`. The real path is
-`/api/v1/messages/messages/:messageId/read`.
+⛔ **Corrected.** This section previously documented `PATCH /messages/messages/:messageId/read` and
+described the doubled segment as the "real path". It was a defect: the controller base `messages`
+plus the route segment `messages/:messageId/read` meant only the doubled path resolved, so
+per-message read receipts were unreachable over HTTP. The redundant prefix is dropped —
+`messages.controller.ts:125` is now `@Patch(':messageId/read')`, giving
+`PATCH /api/v1/messages/:messageId/read`. The conversation-wide route is
+`PATCH /messages/conversations/:conversationId/read` and is a different path.
 
 ### Moderation — 8 (`moderation.controller.ts`)
 `POST /moderation/reports` · `GET /moderation/reports` · `PATCH /moderation/reports/:id` ·

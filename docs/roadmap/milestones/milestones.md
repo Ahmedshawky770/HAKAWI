@@ -49,7 +49,8 @@ Establish the project foundation: authentication, database, and basic infrastruc
 - [x] PostgreSQL database configured — 33 tables
 - [x] Valkey cache configured
 - [x] Docker Compose for local development — ⚠️ services only; **no `Dockerfile` exists**
-- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **10 jobs**
+- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **11 jobs**. ⚠️ the previous version of
+      this line said **10** and omitted `migration-roundtrip`
 
 ### Acceptance Criteria
 1. **Project Structure** ✅
@@ -98,9 +99,9 @@ cd frontend && npm run dev
 curl http://localhost:3001/api/v1/health
 
 # 8. Run the test suites
-npm test                                        # backend unit: 145 files / 3047 tests
-npm run test:e2e --workspace=backend             # 22 files / 136 tests
-npm run test:run --workspace=frontend            # 21 files / 340 tests
+npm test                                        # backend unit: 151 files / 3228 tests
+npm run test:e2e --workspace=backend             # 23 files / 173 tests
+npm run test:run --workspace=frontend            # 22 files / 356 tests
 ```
 
 `GET /api/v1/health` returns:
@@ -112,7 +113,18 @@ npm run test:run --workspace=frontend            # 21 files / 340 tests
   "timestamp": "…"
 }
 ```
-(`status` is `degraded` if either dependency is down — `backend/src/app.controller.ts:31-27`.)
+(`status` is `degraded` if either dependency is down — `backend/src/app.controller.ts:62-73`, the
+payload at `:67-72` and the `degraded` branch at `:68`. ⚠️ this citation previously read
+**`app.controller.ts:31-27`**, which is a backwards, non-existent range.)
+
+> ⚠️ `npm run migration:status` **did not exist at the repository root** until this change set. Steps 3
+> above would have failed with `Missing script`. It exists now (`package.json:22`) and delegates to the
+> backend workspace. Eight documents across `docs/` told readers to run it from the root.
+
+> ⚠️ **These figures were all wrong before this pass** — 145/3047, 22/136 and 21/340 respectively. The
+> integration count also hides something: until this change set, **all 11
+> `test/*.integration-spec.ts` files were skipping themselves** because the Nest module graph could not
+> build, so "23 files green" meant 23 files that never ran. See `docs/roadmap/risks.md`.
 
 ### Exit Conditions — met
 - All acceptance criteria met
@@ -168,11 +180,18 @@ curl -X POST http://localhost:3001/api/v1/stories/<id>/publish \
   -H "Authorization: Bearer <accessToken>"
 
 # Search
-curl "http://localhost:3001/api/v1/stories?q=Test"
+curl "http://localhost:3001/api/v1/stories?search=Test"
 ```
 
-> ⚠️ The create-story body takes `categoryId` (a UUID), not `category` (a slug). The previous
-> version of this document showed `"category":"fiction"`, which the API does not accept.
+> ⚠️ Two corrections. The query field is **`search`**, not `q` — `StoriesQueryDto` declares `search`
+> (`backend/src/modules/stories/dto/stories.dto.ts:231`) and the global `ValidationPipe` runs with
+> `forbidNonWhitelisted`, so `?q=Test` is a **400**, not an empty result. (`q` *is* a real field, but on
+> the sibling `SearchAuthorsQueryDto` for `GET /search/authors` — which is how the mistake read as
+> correct.) The web client had the mirror-image bug and sent `q=` to `/search`, which is why the UI
+> reported no results for every query.
+>
+> The create-story body takes `categoryId` (a UUID), not `category` (a slug). The previous version of
+> this document showed `"category":"fiction"`, which the API does not accept.
 
 ### Exit Conditions — met
 - All user flows work end-to-end
@@ -203,36 +222,126 @@ Follows, reactions, comments, notifications, and messages.
 5. **Messages** ✅ — conversations, history, `is_read` / `read_at`
 
 ### Verification Steps
+
+⚠️ **The previous version of this block was rewritten in full.** Three of its five commands hit routes
+that **no controller declares** — `POST /users/:id/follow`, `POST /stories/:id/reactions` and
+`POST /stories/:id/comments` — and the fifth, `POST /messages/conversations` with `{"recipientId",
+"content"}`, **silently created an empty conversation and sent nothing**. The real routes are below.
+Every path is under the global prefix `api/v1`; the API is on **3001** and the frontend on **3000**.
+
 ```bash
-curl -X POST http://localhost:3001/api/v1/users/<id>/follow \
+# ── Follows ─────────────────────────────────────────────────────────────
+curl -X POST http://localhost:3001/api/v1/follows \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"followingId":"<userId>"}'
+
+curl -X DELETE http://localhost:3001/api/v1/follows/<userId> \
   -H "Authorization: Bearer <accessToken>"
 
-curl -X POST http://localhost:3001/api/v1/stories/<id>/reactions \
+curl "http://localhost:3001/api/v1/follows/user/<userId>/followers" \
+  -H "Authorization: Bearer <accessToken>"
+
+curl "http://localhost:3001/api/v1/follows/user/<userId>/following" \
+  -H "Authorization: Bearer <accessToken>"
+
+curl http://localhost:3001/api/v1/follows/check/<userId> \
+  -H "Authorization: Bearer <accessToken>"
+
+# ── Reactions — type is one of love|like|wow|sad|angry|haunted ───────────
+curl -X POST http://localhost:3001/api/v1/reactions/stories/<storyId> \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
   -d '{"type":"love"}'
 
-curl -X POST http://localhost:3001/api/v1/stories/<id>/comments \
+curl -X DELETE http://localhost:3001/api/v1/reactions/stories/<storyId> \
+  -H "Authorization: Bearer <accessToken>"
+
+curl http://localhost:3001/api/v1/reactions/stories/<storyId>/counts
+
+# ── Comments — the collection is the bare @Controller('comments') ─────────
+curl http://localhost:3001/api/v1/comments/story/<storyId>
+
+curl "http://localhost:3001/api/v1/comments/<commentId>/replies"
+
+curl -X POST http://localhost:3001/api/v1/comments \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
-  -d '{"content":"Great story!"}'
+  -d '{"storyId":"<storyId>","content":"Great story!"}'
 
+curl -X PATCH http://localhost:3001/api/v1/comments/<commentId> \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Great story, revised."}'
+
+curl -X DELETE http://localhost:3001/api/v1/comments/<commentId> \
+  -H "Authorization: Bearer <accessToken>"
+
+curl -X POST http://localhost:3001/api/v1/comments/<commentId>/reactions \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"love"}'
+
+# ── Notifications — unread-count (not /unread/count), PATCH /read-all ────
 curl http://localhost:3001/api/v1/notifications \
   -H "Authorization: Bearer <accessToken>"
 
+curl http://localhost:3001/api/v1/notifications/unread-count \
+  -H "Authorization: Bearer <accessToken>"
+
+curl -X PATCH http://localhost:3001/api/v1/notifications/<id>/read \
+  -H "Authorization: Bearer <accessToken>"
+
+curl -X PATCH http://localhost:3001/api/v1/notifications/read-all \
+  -H "Authorization: Bearer <accessToken>"
+
+# ── Messages — creating a conversation and sending are two calls ─────────
 curl -X POST http://localhost:3001/api/v1/messages/conversations \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
-  -d '{"recipientId":"<id>","content":"Hello!"}'
+  -d '{"recipientId":"<userId>"}'
+
+curl -X POST http://localhost:3001/api/v1/messages/conversations/<conversationId>/messages \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Hello!"}'
+
+curl -X PATCH http://localhost:3001/api/v1/messages/<messageId>/read \
+  -H "Authorization: Bearer <accessToken>"
 ```
 
-> ⚠️ **Known bug.** `GET /api/v1/comments/story/:storyId` uses
-> `eq(comments.parentId, null as unknown as string)`, which emits `parent_id = NULL` and is never
-> true, so it always returns zero top-level comments
-> (`backend/src/modules/comments/repositories/comments.repository.ts:45,52`). It should be
-> `isNull()`. The bug is pinned with a test rather than silently fixed.
+Three of these were themselves broken and are corrected above:
 
-### Exit Conditions — met, with the top-level-comments bug above open.
+- ⚠️ `PATCH /messages/messages/:messageId/read` had a **doubled path segment** — the route string
+  `messages/:messageId/read` under `@Controller('messages')` produced a path that never matched, so
+  read receipts were unmarkable over HTTP. Now `PATCH /messages/:messageId/read`
+  (`messages.controller.ts:125`).
+- ⚠️ `GET /notifications/unread/count` and `PUT /notifications/read-all` were **duplicate routes**
+  beside `unread-count` and `PATCH /read-all`. The duplicates are removed.
+- ⚠️ `reactions.type` is a `varchar`, so the enumeration is enforced by `@IsIn` in the DTO rather than by
+  the schema. `love | like | wow | sad | angry | haunted`.
+
+> ⛔ **The web client called three of these wrongly, and all of it was a 404.** `frontend/src/lib/api.ts`
+> used `/users/:id/follow`, `/stories/:id/reactions` and `/stories/:id/comments` — **none of which any
+> controller declares**. Twelve call sites are corrected to the routes above and pinned by
+> `frontend/src/lib/api.contract.test.ts` against the backend controller that declares each one. **But the
+> social UI pages are still static placeholders with no call sites**: the client methods are correct and
+> pinned, and nothing invokes them yet.
+
+> ✅ **Resolved — the top-level-comments defect this milestone used to carry as open is closed.** The
+> previous version of this document said: *"Known bug. `GET /api/v1/comments/story/:storyId` uses
+> `eq(comments.parentId, null as unknown as string)` … It should be `isNull()`. The bug is pinned with a
+> test rather than silently fixed."* **That was false on all four counts.** The repository uses
+> **`isNull()`** at `backend/src/modules/comments/repositories/comments/repository.ts:48`, fixed in commit
+> `01134dd`. The lines it cited — **45 and 52** — are a code comment and a `Promise.all` destructure. And
+> `comments.repository.spec.ts:111` asserts the **fixed** predicate (`and(eq(storyId), isNull(parentId),
+> eq(isDeleted, false))`), not the broken one. And "pinned with a test rather than silently fixed"
+> implies `it.fails`, and **there is no `it.fails` anywhere in this repository** —
+> `grep -rn "it\.fails\|test\.fails\|describe\.fails"` over `backend/` and `frontend/` returns nothing.
+> Two tests now pin the fixed behaviour: `comments.repository.spec.ts:111` (the predicate itself) and
+> `:102` (that the page and the count share one predicate, so `total` cannot disagree with the rows).
+
+### Exit Conditions — met.
 
 ---
 
@@ -396,8 +505,15 @@ Shipped early (during Phases 1–2), not in Weeks 15–16.
 
 ### Deliverables
 - [x] Event schema registry — `common/events/event-schema-registry.ts`
-- [x] Dead Letter Queue — `common/events/dlq.service.ts`
-- [x] Event versioning — **55** registered event names, **10** event-constant modules, **16** `@OnEvent` handler files. `EventBusModule` has been deleted; `CommonModule` calls `EventEmitterModule.forRoot(...)` directly
+- [x] Dead Letter Queue — `common/events/dlq.service.ts`, **with a working drain**: `DLQController`
+      serves `GET /events/dlq` and `POST /events/dlq/:id/replay`, and
+      `EventValidatorService.replayDeadLettered` re-validates the stored payload against its schema
+      before re-emitting it. ⚠️ the previous version of this line carried the dead-letter queue as a
+      plain ✅ with no drain mentioned, while `implementation-roadmap.md` simultaneously claimed it had
+      none and that a dead-lettered event was never redelivered — the two documents contradicted each
+      other and the code sided with neither. `retryDLQ` is deleted; `getDLQStats` is the only remaining
+      spec-only method
+- [x] Event versioning — **55** registered event names, all `v1`, **10** event-constant modules, and **16** files containing `@OnEvent` under `backend/src/modules/` (15 in a `*/events/` directory, plus `stories/sanity/sanity-sync.event-handler.ts`). `EventBusModule` has been deleted; `CommonModule` calls `EventEmitterModule.forRoot(...)` directly
 - [x] Event validation — `event-validator.service.ts`
 - [x] Circuit breakers — ✅ **wired**, not dead code: injected into `auth.service.ts` and
       `stories/sanity/sanity.service.ts`
@@ -427,7 +543,15 @@ npm test --workspace=backend -- \
 Complete testing, optimisation, and deploy to production.
 
 ### Deliverables
-- [x] Comprehensive tests — **3047** backend unit (145 files), **136** backend e2e/integration (22 files), **340** frontend (21 files), **9** Playwright (2 files)
+- [x] Comprehensive tests — ⚠️ **every figure in this line was wrong.** **3228** backend unit
+      (**151** files), **173** backend e2e/integration (**23** files = 11 `src/**/e2e/*.e2e-spec.ts` +
+      1 `test/app.e2e-spec.ts` + **11** `test/*.integration-spec.ts`), **356** frontend (**22** files),
+      **15** Playwright (**3** files, frontend only). The previous line read "3047 backend unit (145
+      files), 136 backend e2e/integration (22 files), 340 frontend (21 files), 9 Playwright (2 files)"
+- [x] ⚠️ **and the e2e/integration suite only started executing in this change set.** All 11
+      `test/*.integration-spec.ts` files were **skipping themselves** because `BooksModule` ↔
+      `LibraryModule` had no `forwardRef()` and the Nest graph could not build — while CI stayed green.
+      8 previously-never-executed tests then failed on stale fixtures and were fixed
 - [x] Security audit in CI — `npm audit --omit=dev` + `npm audit`
 - [x] Monitoring setup — Sentry (`@sentry/nestjs@11.1.0`) + Winston
 - [ ] ⛔ **Production deployment — NOT BUILT.** No `Dockerfile`, no manifest, no IaC, no deploy
@@ -442,11 +566,18 @@ Complete testing, optimisation, and deploy to production.
 - [ ] ⛔ **Security penetration testing — NOT BUILT**
 - [ ] ⛔ **User documentation — NOT BUILT**
 - [ ] ⛔ **Alerting rules — NOT BUILT**
+- [ ] ⛔ **Duplicated contest notifications** — `contests.event-handler.ts` and
+      `notifications.event-handler.ts` both subscribe to `winner.selected` and `prize.distributed`, so a
+      winner gets **two** rows for each. Recorded, not fixed: one side must be declared canonical
+- [ ] ⛔ **Social UI pages have no call sites** — the twelve corrected client methods are pinned to the
+      real routes, but nothing on the web client invokes them
 
 ### Acceptance Criteria
-1. **Testing** 🔄 — ✅ backend above the gate; ⚠️ frontend is S 39.79 / B 35.90 / F 35.74 / L 40.22
-   against an 80% target, and the gate itself is set to 38/33/33/38 — it encodes the current number
-   rather than the target
+1. **Testing** 🔄 — ✅ backend above the gate (**S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors
+   78/73/70/79 and 9 ratchets); ⛔ frontend is **S 40.75 / B 35.79 / F 39.64 / L 41.25** against an 80%
+   target, and the gate itself is set to 38/33/33/38 — it encodes the current number rather than the
+   target. ⚠️ **both quadruples were wrong before this pass** (the document said 85.43/82.39/79.00/85.58
+   and 39.79/35.90/35.74/40.22)
 2. **Performance** ⛔ — no benchmark harness exists, so no target has been measured
 3. **Security** 🔄 — CI audit passes; ⛔ no pentest, ⛔ no WAF metrics endpoint, ⛔ no admin
    operations endpoints to manage blocks
@@ -457,9 +588,9 @@ Complete testing, optimisation, and deploy to production.
 
 ```bash
 # 1. All test suites
-npm test                                              # backend unit + coverage gate
-npm run test:e2e --workspace=backend                 # 22 e2e/integration files, needs a live PostgreSQL and Valkey
-npm run test:run --workspace=frontend
+npm test                                              # backend unit + coverage gate: 151 files / 3228 tests
+npm run test:e2e --workspace=backend                 # 23 e2e/integration files / 173 tests, needs a live PostgreSQL and Valkey
+npm run test:run --workspace=frontend                # 22 files / 356 tests
 npm run test:coverage --workspace=frontend
 
 # 2. Quality gates
@@ -469,7 +600,7 @@ npm run build                                        # shared-types, then backen
 
 # 3. Migrations
 npm run db:check                                     # static, no database
-npm run migration:status
+npm run migration:status                             # exists at the root as of 2026-10-04; did not before
 npm run migration:verify
 
 # 4. Security audit
@@ -479,6 +610,10 @@ npm audit --omit=dev
 **Scripts that do not exist** and were previously documented here:
 `test:coverage` (root), `test:perf`, `security:scan`, `deploy:staging`, `test:smoke`. None of these
 appears in the root, `backend`, or `frontend` `package.json`.
+
+**Scripts that did not exist and now do**: `npm run migration:status` **at the repository root**. It was
+in `backend/package.json` only, and this document's own step 3 above instructed the reader to run it from
+the root, where it returned `Missing script`.
 
 ### Exit Conditions — not met
 - ⛔ Production deployed
@@ -528,6 +663,33 @@ M8 is the current blocker, and its blockers are enumerated in
 | Rental body shown with `"duration":"one_week"` | The API takes `durationDays` as an **integer** in `[1,3,7,14,30,90]` (`@IsIn`). An enumeration, but not a `CREATE TYPE` enum, and the key is `durationDays` not `duration` |
 | M1 "Docker Compose for local development" listed as met | Kept, with the note that there is **no `Dockerfile`** — it is services only |
 | Moderation listed under M6 Production with no status | Now its own milestone M6, ✅, including the note that the `@RequireAdminRole` authorization hole is closed |
+
+---
+
+## Changelog — reconciliation (2026-10-04)
+
+Three of this document's verification blocks were executed against the code rather than read. Two were
+wrong; one was false on all four of its claims.
+
+| Problem | Resolution |
+|---|---|
+| **M3's "Known bug" note about top-level comments was false on all four counts.** It said the repository uses `eq(parentId, null as unknown as string)` at `comments/repository.ts:45,52`; that the cited lines were the defect; that a test pinned the bug rather than fixing it; and the exit condition repeated the bug as open | **Deleted and replaced with a "Resolved" note.** The repository uses `isNull()` at `comments/repository.ts:48` (commit `01134dd`); lines **45 and 52** are a code comment and a `Promise.all` destructure; `comments.repository.spec.ts:111` asserts the **fixed** predicate; and there is **no `it.fails` anywhere in the repository**. Two tests pin it — `:111` (the predicate) and `:102` (page and count share one predicate). The M3 exit condition no longer reads "with the top-level-comments bug above open" |
+| **M3's verification block sent three requests to routes that do not exist.** `POST /users/:id/follow`, `POST /stories/:id/reactions` and `POST /stories/:id/comments` are declared by no controller, and the fifth command — `POST /messages/conversations` with `{"recipientId","content"}` — created an empty conversation and sent nothing | **Rewritten in full**, 20 commands against the real routes: `/follows`, `/reactions/stories/:storyId`, `/comments` (the bare collection, not a story sub-route), `/notifications/unread-count`, `PATCH /notifications/read-all`, and the two-step conversation-then-message sequence |
+| **M2's search curl returned 400.** `?q=Test` is not a field on `StoriesQueryDto`; the field is **`search`**, and `forbidNonWhitelisted` turns the unknown key into a 400 | Corrected to `?search=Test`, with a note that `q` is real but belongs to the sibling `SearchAuthorsQueryDto` — which is how the mistake survived review |
+| Health citation `backend/src/app.controller.ts:31-27` | **`:62-73`** (payload `:67-72`, `degraded` at `:68`). The old range was backwards and did not exist |
+| CI described as **10 jobs** | **11** — `migration-roundtrip` was missing, and it is the only job that runs the down scripts |
+| "22 e2e/integration files, needs a live PostgreSQL and Valkey" — presented as a passing suite | **23 files / 173 tests**, and the note that until this change set **all 11 integration specs were skipping themselves** because the module graph could not build. "Needs a live database" was true and hid the fact that nothing had ever connected |
+| Every test figure (145/3047, 22/136, 21/340, 2/9) | **151/3228, 23/173, 22/356, 3/15** |
+| Both coverage quadruples | backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend **S 40.75 / B 35.79 / F 39.64 / L 41.25**. All eight previously published values were wrong |
+| `npm run migration:status` instructed from the repo root | ⚠️ **that script did not exist at the root** — this document's own step 3 would have failed with `Missing script`. It exists now (`package.json:22`), and both places that name it say so |
+| M7 listed the DLQ as a bare ✅ while `implementation-roadmap.md` claimed it had no drain and never redelivered | M7 now states the drain that exists (`GET /events/dlq`, `POST /events/dlq/:id/replay`), notes `retryDLQ` is deleted and `getDLQStats` is the remaining spec-only method, and records that the two documents used to contradict each other |
+| M2's `@Secured()` composed three guards | Not stated here, but the four-guard composition (`JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` + `PermissionsGuard`) is now recorded in `phases/implementation-roadmap.md`, which previously omitted `RestrictionGuard` — the guard that makes a moderation `ban` do anything |
+| Two M8 items are new and unfixed | ⛔ duplicated contest notifications (two handlers subscribe to `winner.selected` and `prize.distributed`), and ⛔ social UI pages with no call sites. Both are recorded rather than softened |
+
+### Re-verified and unchanged
+Coverage floors 79/70/73/78 with 9 per-path ratchets · frontend gate 38/33/33/38 · ports 3001 (API) and
+3000 (frontend) · global prefix `api/v1` · `durationDays` as an integer in `[1,3,7,14,30,90]` ·
+`categoryId` as a UUID · the five non-existent scripts listed above.
 
 ---
 

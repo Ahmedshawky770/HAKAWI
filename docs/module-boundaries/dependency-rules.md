@@ -3,6 +3,28 @@
 
 This document defines dependency rules and circular dependency prevention for the Hakawi platform.
 
+> ⛔ **Large parts of this document describe a system that does not exist.** It was written against a
+> planned layout and never reconciled with the repository. Measured against the tree:
+>
+> - ⛔ **There is no "Core Module", no "Interactions Module", and no `Config Module`** as drawn in
+>   *Module Dependency Graph* below. There is no module registry at all — Nest wires each
+>   `backend/src/modules/*/`*.module.ts` by hand through `app.module.ts`. The ASCII graph is
+>   fictional; `docs/module-boundaries/overview/module-boundaries.md` holds the real graph.
+> - ⛔ **The project uses Drizzle, not TypeORM.** `@nestjs/typeorm` appears only in the package list
+>   below. `backend/package.json` declares `drizzle-orm` and `drizzle-kit`; there is no `typeorm` and
+>   no `@nestjs/typeorm`.
+> - ⛔ **The `@core/*`, `@users/*`, `@stories/*`, `@interactions/*` path aliases do not exist.**
+>   `backend/tsconfig.json` has **no `compilerOptions.paths` at all**. Internal imports are relative.
+> - ⚠️ The *Design Rules* below are sound as principles and are applied in the real code; it is the
+>   concrete illustrations that are fiction.
+> - ⛔ **Rule 2, "Acyclic Dependencies", was violated until this change set** in the most expensive way
+>   possible: `books.module.ts` ↔ `library.module.ts` formed a real circular module dependency with no
+>   `forwardRef()`, and the application **could not boot at all**. Both sides now carry `forwardRef()`.
+>   See `docs/architecture-principles-deviations.md` → *Principle #4*.
+>
+> `docs/module-boundaries/dependencies/dependency-rules.md` is a second, shorter file at the same
+> level. Neither is declared canonical.
+
 ---
 
 ## Dependency Principles
@@ -370,35 +392,43 @@ export class StoriesService {
 
 ### Package Dependencies
 
+⛔ **The list below was wrong.** It names `@nestjs/typeorm`; the project uses **Drizzle**.
+
 ```
 backend/
 ├── package.json
 │   ├── @nestjs/core
 │   ├── @nestjs/common
-│   ├── @nestjs/typeorm
 │   ├── @nestjs/jwt
 │   ├── @nestjs/passport
+│   ├── drizzle-orm
+│   ├── drizzle-kit
 │   └── ...
 ```
 
 ### Internal Dependencies
 
+⛔ **There are no path aliases.** `backend/tsconfig.json` declares **no
+`compilerOptions.paths`**; the block below was aspirational and has never existed. Internal imports
+are relative (`../db/index.ts`, `../../common/common.module.ts`), and `@hakawi/shared-types` is the
+only package-style import, consumed from the workspace `packages/shared-types/`.
+
 ```typescript
-// Use path aliases for internal imports
-{
-  "compilerOptions": {
-    "paths": {
-      "@core/*": ["lib/core/*"],
-      "@users/*": ["lib/users/*"],
-      "@stories/*": ["lib/stories/*"],
-      "@interactions/*": ["lib/interactions/*"],
-      "@notifications/*": ["lib/notifications/*"],
-      "@books/*": ["lib/books/*"],
-      "@payments/*": ["lib/payments/*"]
-    }
-  }
-}
+// This block is NOT the project's configuration. It is what this document used to assert.
+// {
+//   "compilerOptions": {
+//     "paths": {
+//       "@core/*": ["lib/core/*"],
+//       "@users/*": ["lib/users/*"],
+//       ...
+//     }
+//   }
+// }
 ```
+
+What actually enforces module isolation is the repository-token pattern, not aliases: a module
+exports its own `*_REPOSITORY` interface token, and a consumer injects it. See
+`docs/module-boundaries/dependencies/dependency-rules.md`.
 
 ---
 

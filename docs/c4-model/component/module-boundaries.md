@@ -32,7 +32,7 @@ deliberate direct service calls.
 | Module | Responsibility | Notable |
 |---|---|---|
 | **DatabaseModule** | The `pg` Pool and the Drizzle instance | The module-level singleton every other module imports |
-| **CommonModule** | Every cross-cutting primitive | `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard`, `RestrictionGuard`, `AllExceptionsFilter`, `LoggingInterceptor`, `CacheInterceptor` + `CacheMetrics`, `WafMiddleware`, `ValkeyThrottlerStorage`, the event bus with its schema registry and DLQ, the resilience module, Sentry, `ValkeyService`, `EncryptionService` |
+| **CommonModule** | Every cross-cutting primitive | `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard`, `RestrictionGuard`, `OwnershipGuard`, `AllExceptionsFilter`, `LoggingInterceptor`, `CacheInterceptor` + `CacheMetrics`, `WafMiddleware`, `ValkeyThrottlerStorage`, the event bus with its schema registry and DLQ, the resilience module, Sentry, `ValkeyService`, `EncryptionService`. `@Secured()` composes **4** guards; `OptionalJwtAuthGuard` is **not** in `CommonModule` — `StoriesModule` registers it for the two public story-detail routes |
 | **SharedCacheModule** | `@Global()` cache-aside | `TaggedCacheService` — the tag set and invalidation mechanism |
 
 ### Identity — 3
@@ -100,8 +100,8 @@ there is no `contest_badges` table.
 | **Follows** | `POST /follows`, `DELETE /follows/:followingId`, `GET /follows/user/:userId/followers`, `/following`, `/stats`, `GET /follows/check/:followingId` | ⚠️ base path is `/follows`, **not** `/users/:id/follow` |
 | **Reactions** | `POST`/`DELETE`/`GET /reactions/stories/:storyId`, `/counts`, `/me` | ⚠️ base path is `/reactions/stories/:storyId`, **not** `/stories/:id/reactions` |
 | **Comments** | `GET /comments/story/:storyId`, `GET /comments/:id/replies`, `POST/PATCH/DELETE /comments` | ⚠️ base path is `/comments`. Threading via the `parent_id` self-FK |
-| **Notifications** | 9 routes incl. `unread/count`, `unread-count`, `preferences`, `read-all` (both `PATCH` and `PUT`) | **The event-bus sink for 8 modules.** Handlers live in `modules/notifications/events/` |
-| **Messages** | conversations, messages, `PATCH /messages/messages/:messageId/read` | Socket.IO gateway + Redis adapter. ⚠️ the doubled `messages/messages` segment is real |
+| **Notifications** | **8 routes**: `GET /notifications`, `GET /notifications/unread`, `GET /notifications/unread-count`, `GET /notifications/preferences`, `PATCH /notifications/preferences`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`, `DELETE /notifications/:id` | **The event-bus sink for 8 modules.** Handlers live in `modules/notifications/events/`. ⛔ **Corrected:** this row previously said "9 routes incl. `unread/count`, `unread-count`, `preferences`, `read-all` (both `PATCH` and `PUT`)". Both `unread/count` and `PUT /read-all` have been **removed**; the surviving paths are `unread-count` and `PATCH read-all`, and the controller registers **8** routes, not 9 |
+| **Messages** | conversations, messages, **`PATCH /messages/:messageId/read`** | Socket.IO gateway + Redis adapter. ⛔ **Corrected:** this row previously said `PATCH /messages/messages/:messageId/read` and called the doubled segment "real". It was real, and it was a defect: the base `messages` plus the route segment `messages/:messageId/read` meant only the doubled path resolved, so per-message read receipts were unreachable over HTTP. The redundant prefix is dropped — see the comment at `messages.controller.ts:106-124`. `PATCH /messages/conversations/:conversationId/read` (mark the whole conversation) is a different route and cannot shadow it |
 | **ReadingProgress** | 5 routes under `/reading-progress` | ⛔ absent from the previous version. Consumes `book.*` events |
 | **Users / Badges** | see Identity above | — |
 
@@ -203,12 +203,12 @@ scheduler.
 
 | Component | Reality |
 |---|---|
-| **Database Service** | ✅ The `pg` Pool + Drizzle. ⚠️ it is a **module-level singleton**, not injectable — the reason 26 files across 19 modules import `src/db/index.ts` directly, and the reason the e2e suite needs a cloned database per test file |
+| **Database Service** | ✅ The `pg` Pool + Drizzle. ⚠️ it is a **module-level singleton**, not injectable — the reason 26 files across 18 modules import `src/db/index.ts` directly, and the reason the e2e suite needs a cloned database per test file |
 | **Cache Service** | ✅ `TaggedCacheService` — cache-aside with tag invalidation, `STORY`/`BOOK` 600s, `PAYMENT` 300s, default 3600s |
-| **Rate Limiter** | ✅ `ValkeyThrottlerStorage` over 4 tiers. Fail-open. Was described here as "Cache Service → rate limiting"; it is a separate, dedicated store |
-| **Event Bus** | ✅ EventEmitter2 with a schema registry, a validator, and a **dead letter queue**. 53 event names |
+| **Rate Limiter** | ✅ `ValkeyThrottlerStorage` over **5** tiers (`default`, `auth`, `session`, `upload`, `search` — `THROTTLE_TIER_NAMES` in `throttle.config.ts:4`). ⛔ **Corrected:** this line previously said **4 tiers**; there have been five since the `session` tier was added, and the file’s own comment on `THROTTLE_TIER_NAMES` warns that "all five tiers run" for an undecorated route. Fail-open. Was described here as "Cache Service → rate limiting"; it is a separate, dedicated store |
+| **Event Bus** | ✅ EventEmitter2 with a schema registry, a validator, and a **dead letter queue**. 55 event names |
 | **Logger Service** | ✅ Winston, with correlation IDs threaded from the WAF middleware. ⚠️ `winston.createLogger` is called with no `level`, so `debug()` and `verbose()` are discarded |
-| **WAF Middleware** | ✅ 34 typed rules in 8 layers, a Valkey-backed IP blocklist, `X-Waf-*` and `X-RateLimit-*` headers. ⚠️ **no admin operations endpoints and no metrics endpoint** |
+| **WAF Middleware** | ✅ **35** typed rules in 8 layers, every one `enabledByDefault: true` (⛔ this line previously said **34**, contradicting §#15 of `docs/01_ARCHITECTURE_PRINCIPLES.md` and `backend/src/common/waf/rules.ts`), a Valkey-backed IP blocklist, `X-Waf-*` and `X-RateLimit-*` headers. ⚠️ **no admin operations endpoints and no metrics endpoint** |
 | **Observability** | ✅ `@sentry/nestjs@11.1.0` via `common/observability/sentry.config.ts`; `GET /api/v1/metrics/cache` |
 
 ---
@@ -231,7 +231,7 @@ import { db } from '../../db/index.ts';
 const user = await db.query.users.findFirst(...);
 ```
 
-**Measured:** 18 `I*Repository` interfaces exist across 17 files, but **26 files in 19 modules**
+**Measured:** 18 `I*Repository` interfaces exist across 17 files, but **26 files in 18 modules**
 import `db/index.ts` directly — `messages.service.ts`, `stories.service.ts`,
 `moderation.service.ts`, `admin-dashboard.service.ts`, and others. There is no lint rule, no
 architecture test, and no CI gate enforcing this. It is a convention, not an enforced boundary.
@@ -263,7 +263,7 @@ Controller → Guard → Pipe → Service → Repository → Database, with the 
 `ThrottlerGuard` upstream and `AllExceptionsFilter` + `LoggingInterceptor` downstream.
 
 ### Asynchronous — ✅ the primary cross-module channel
-**53 event names** · 10 definition files in `common/events/` · **23 per-module handlers** under
+**55 event names** · 10 definition files in `common/events/` · **72 `@OnEvent` handlers** under
 `modules/*/events/` · a schema registry · a validator · a **dead letter queue**.
 
 Non-critical work — notifications, library access grants, reading progress, prize distribution,
@@ -333,12 +333,12 @@ mutably used, which is a wider coupling than the boundary rule intends.
 | Moderation event `content.reported` | ⛔ Real name is `moderation.report.created` |
 | Moderation "Depends on Stories/Comments (content)" | ⚠️ Reports are **polymorphic** (`target_id` + `target_type`), not FKs |
 | **Series / Playlists** | ⛔ Neither module exists. Added ⛔ **Badges, Library, Rentals, ReadingProgress, Categories, Tags, Upload, Search, SharedCache, Database** |
-| Event bus "planned" | ✅ **Shipped.** 53 events, 10 definition files, 23 handlers, a registry, a validator, a DLQ |
+| Event bus "planned" | ✅ **Shipped.** 55 events, 10 definition files, 72 `@OnEvent` handlers, a registry, a validator, a DLQ |
 | `this.eventBus.publish(new StoryCreatedEvent(...))` / `IEventBus.subscribe` | ⛔ No `publish`, no `IEventBus`, no `subscribe`. Real: `emit('story.created', payload as StoryCreatedEvent)` + `@OnEvent` |
-| "No direct database access across modules" | ⚠️ **PARTIAL.** 26 files in 19 modules import `db/index.ts` directly; no enforcement mechanism |
+| "No direct database access across modules" | ⚠️ **PARTIAL.** 26 files in 18 modules import `db/index.ts` directly; no enforcement mechanism |
 | "No direct service calls" | ⚠️ **PARTIAL.** One deliberate exception: `BooksService → PaymentsService` |
 | "Auth → Users is a read-only repository dependency" | ⚠️ **False.** Auth uses `create` and `update` through the shared repository |
-| "Read the module's README.md" | ⚠️ Per-module READMEs do not exist (only `modules/search/README.md`) |
+| "Read the module's README.md" | ✅ **There are 25 of them.** `find backend/src -name README.md` returns 25 files, including one per module (`modules/auth/README.md`, `modules/books/README.md`, … `modules/search/README.md`) plus `common/guards`, `common/waf`, `common/throttler`, `common/observability`, `db/migrations`, `modules/shared/cache` and `modules/email-verification`. ⛔ This row previously claimed "Per-module READMEs do not exist (only `modules/search/README.md`)" |
 | Shared Kernel: rate limiting under "Cache Service" | ✅ Real, but it is a dedicated `ValkeyThrottlerStorage`, not the cache |
 | — | **New:** the 4-tab frontend/backend route mismatches (comments, reactions, follows, upload, moderation) recorded in `api-contract/openapi/rest-api-spec.md` |
 

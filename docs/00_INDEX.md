@@ -17,11 +17,13 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 3 | `11_decisions.md` | Architecture Decision Records (ADRs) | ✅ 2026-09-30 (ADR-008 corrected) |
 | 4 | `consistency-matrix.md` | Per-data-type consistency classification | ✅ 2026-09-30 |
 | 5 | `adr/001`–`adr/004` | Drizzle · NestJS · Valkey · EventEmitter2 decisions | ✅ 004 corrected |
+| 5b | `adr/005` | Security and correctness hardening of the unreviewed change set | ✅ accepted |
+| 5c | `adr/006` | **The backend could not boot, and the suites that should have caught it were green** | ✅ accepted |
 | 6 | `c4-model/README.md` | C4 model index | ✅ 2026-09-30 |
 | 7 | `c4-model/context/*` | System context, actors, external systems | ✅ 2026-09-30 |
 | 8 | `c4-model/container/*` | Container diagram and per-container detail | ✅ 2026-09-30 (Next.js 16.3.5, no Shadcn) |
 | 9 | `c4-model/component/module-boundaries.md` | C4 component view: module responsibilities, dependency rules | ✅ 2026-09-30 (fully rewritten) |
-| 9b | `c4-model/code/domain-concepts.md` | C4 code view: domain vocabulary mapped to the real tables and 53 events | ✅ 2026-09-30 (fully rewritten) |
+| 9b | `c4-model/code/domain-concepts.md` | C4 code view: domain vocabulary mapped to the real tables and 55 events | ✅ 2026-09-30 (fully rewritten) |
 | 10 | `system-architecture/overview/high-level-architecture.md` | System architecture overview | ✅ 2026-09-30 |
 | 11 | `system-architecture/non-functional-requirements.md` | NFRs, with a per-claim verification status | ✅ 2026-09-30 (fully rewritten) |
 | 12 | `system-architecture/ui-ux-design-system.md` | UI/UX design system | ⚠️ not audited |
@@ -34,7 +36,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 19 | `security-architecture/overview/security-architecture.md` | Security architecture | ✅ 2026-09-30 |
 | 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions | ✅ 2026-09-30 (MFA marked unbuilt) |
 | 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 51 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
-| 22 | `security-architecture/waf/waf-overview.md` | 34 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
+| 22 | `security-architecture/waf/waf-overview.md` | 35 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
 | 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ⚠️ not audited |
 | 24 | `security/{authentication,authorization,compliance,data-protection,waf-rules}.md` | Flat security set | ⚠️ not audited — see the `security-architecture/` set instead |
 | 25 | `module-boundaries/overview/module-boundaries.md` | **Authoritative module inventory** — 23 registered modules | ✅ 2026-09-30 (fully rewritten) |
@@ -193,7 +195,7 @@ docs/
 ├── 11_decisions.md                  # ┘ ADRs
 ├── 11_valkey_as_cache_layer.md
 ├── consistency-matrix.md            # Per-data-type consistency classification
-├── adr/                             # 001-drizzle 002-nestjs 003-valkey 004-eventemitter2
+├── adr/                             # 001-drizzle 002-nestjs 003-valkey 004-eventemitter2 005-hardening 006-boot-failure
 ├── c4-model/                        # C4 model docs
 │   ├── README.md
 │   ├── context/                     # System context, actors, external systems

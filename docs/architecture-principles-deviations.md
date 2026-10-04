@@ -9,6 +9,55 @@ the deviation is tolerated for now, and what would close it.
 
 ---
 
+## ⛔ Principle #4 — "Document Problems": the backend could not boot, and every gate said it was fine
+
+This is first because it is the largest entry here and because it is a statement about the
+**reliability of every other verdict in this repository**, not about one module.
+
+**What was true.** The Nest module graph could not be constructed. Two independent causes:
+
+| # | Site | Symptom |
+|---|---|---|
+| 1 | `books.module.ts` ↔ `library.module.ts` | A genuine circular module dependency with **no `forwardRef()`** on either side, so one class evaluated to `undefined` at import time. Nest aborted with *"The module at index [3] of the LibraryModule `imports` array is undefined"* |
+| 2 | `contests.module.ts:5` | Imported `NotificationsModule` but never listed it in `imports`, so the import was dead and `ContestsEventHandler` could not resolve `NotificationsService`: *"Nest can't resolve dependencies of the ContestsEventHandler (Symbol(CONTESTS_REPOSITORY), ?, WinstonLoggerService)"* |
+
+**Why the whole 23-file DB-backed suite went green anyway.** Both failures happen inside
+`DependenciesScanner.scanForModules`, which runs **before any test body and before `beforeAll`**.
+Every affected spec was therefore reported as *skipped*, not *failed* — and a suite in which
+everything is skipped exits **0**. The application could not start, the entire database-backed suite
+had never run. (`test-e2e` exits 1, so that job is red — but each test is reported as *skipped*,
+which is how the state was recorded as passing.)
+
+Only the frontend container came up, which is why this survived: nothing in the deployment pipeline
+boots the backend.
+
+**Why this belongs under Principle #4 specifically.** The principle says *"A problem solved but not
+documented is a problem waiting to be solved again"*. Its converse is worse and is what happened
+here: a problem **not detected** is a problem that gets documented as working. Six defects in this
+repository were described in these documents as complete — `books` ownership, the `parent_id` query,
+the DLQ drain, three notification routes, and the Socket.IO adapter's configuration — while the
+system could not boot and the suite that would have caught them never executed. Once the suite could
+run, **8 e2e/integration tests that had never executed were failing**; all eight are fixed.
+
+**What would have caught it.** Any one of these, all of which are cheap:
+
+- A boot smoke test — `NestFactory.create(AppModule)` in a job with no database, asserted only for
+  "does not throw". The whole class of defect is a constructor-time error, so it needs no fixture.
+- `--passWithNoTests` treated as a failure, and `bail`/explicit expected-test-count assertions in
+  `vitest.config.e2e.ts`, so an all-skipped run cannot exit 0.
+- `forbidNonWhitelisted` on the module graph is not a thing, but a lint rule banning a module import
+  that is not present in its own `imports` array is: that is precisely defect #2, and it is
+  statically checkable.
+
+**Status: resolved.** `forwardRef()` is on both sides of the books/library cycle and
+`NotificationsModule` is listed in `contests.module.ts`'s `imports`. Verified numbers afterwards:
+**3228** backend unit tests in **151** files, **173** e2e/integration tests in **23** files, **0**
+skipped. The `TEST_DB_PORT` / `TEST_DB_HOST` / `TEST_DB_USER` / `TEST_DB_PASSWORD` overrides were
+added at the same time, because a hardcoded 5432 made the suite unrunnable anywhere that port was
+already claimed — an environment failure indistinguishable, in the output, from this one.
+
+---
+
 ## Principle #7 — "No direct database access across modules"
 
 **Rule.** Every module integrates through interfaces and contracts, never through another module's
@@ -71,8 +120,8 @@ interesting part.
 enforcement includes "migrations tested on production-like data" and "rollback strategy for every
 migration".
 
-**Deviation.** `migrations/down/` exists for all 20 migrations and `db:check` verifies it
-structurally, but CI exercises only the **up** path. No job runs up → down → up, so the 20 rollback
+**Deviation.** `migrations/down/` exists for all **22** migrations and `db:check` verifies it
+structurally, but CI exercises only the **up** path. No job runs up → down → up, so the 22 rollback
 scripts have never been executed by anything automated. `assertReversible` and the ledger are unit
 tested against fixtures, not against a real chain.
 
@@ -89,8 +138,8 @@ does — that job is still gated to `main` because it is the expensive one.
 
 The assertion that gave it teeth, and the reason it does not simply trust the ledger:
 
-> With `0013`'s `DROP TABLE` lines removed, the rollback **succeeded**, the runner marked 21
-> migrations `rolled_back_at`, and `npm run migration:verify` reported
+> With `0013`'s `DROP TABLE` lines removed, the rollback **succeeded**, the runner marked the rest
+> of the chain `rolled_back_at` (21 of 22 at the time the job was written), and `npm run migration:verify` reported
 > *"Verified 22 migration(s): no checksum drift, no orphaned ledger rows"* — while `badges` and
 > `user_badges` were still standing in the database. The ledger records the intent; only Postgres
 > knows the outcome. So the job asks Postgres what tables exist, and it does not ask the runner.

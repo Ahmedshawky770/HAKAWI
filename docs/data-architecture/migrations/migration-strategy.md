@@ -11,7 +11,7 @@ Status markers: ✅ implemented · ⚠️ partial · ⛔ not implemented.
 
 The migration system was **rebuilt** during 2026-09. The current system is:
 
-- **18 numbered `.sql` files at the repository-root `migrations/` directory** are the single source
+- **22 numbered `.sql` files at the repository-root `migrations/` directory** are the single source
   of truth for schema.
 - `backend/src/db/migrations/` holds the **runner** (discovery, checksum ledger, execution,
   rollback), not the migrations themselves.
@@ -68,21 +68,29 @@ Total schema: **33 tables** across the chain, matching `backend/src/db/schema/*.
 
 ## Commands
 
-All commands run through `backend/src/db/migrations/migration-runner.ts` via `tsx`. From the repo
-root, `npm run <script>` forwards to the `backend` workspace.
+All commands run through `backend/src/db/migrations/migration-runner.ts` via `tsx`.
 
-| Command | What it does |
-|---|---|
-| `npm run migration:run` | Apply every pending migration in order. Skips applied ones. Transaction-wrapped per migration. |
-| `npm run migration:run:production` | Same, plus `--allow-production`. Required when `NODE_ENV=production`. |
-| `npm run migration:run:staging` | Same as `migration:run` (a distinct name for pipeline clarity). |
-| `npm run migration:rollback` | Roll back. Classification decides whether it is allowed. |
-| `npm run migration:status` | Table of every migration: `MIGRATION`, `STATE`, `APPLIED AT`, `MS`, `REVERSIBILITY`, `DETAIL`. |
-| `npm run migration:list` | One line per file: id, first 12 chars of the checksum, reversibility, statement count. Works without a database. |
-| `npm run migration:verify` | Checksum-drift and orphan-ledger audit. Non-zero exit on drift. |
-| `npm run db:check` | **Static** migration-chain lint — no database required. |
-| `npm run migration:create` | `tsx scripts/generate-migration.ts` — scaffolds the next numbered `.sql` and its `.down.sql`. |
-| `npm run db:generate` | Alias of `migration:create`. |
+⛔ **Corrected — not every command forwards from the repo root.** This document previously stated
+flatly that "from the repo root, `npm run <script>` forwards to the `backend` workspace". That is
+true of only **five** scripts. The root `package.json` declares exactly `migration:run`,
+`migration:status`, `migration:verify`, `db:check`, `seed:dev` and `seed:test`; every other name in
+the table below lives only in `backend/package.json` and needs `--workspace=backend` when run from
+the root. The "runs from the repo root" column below is measured against `package.json`, not assumed.
+
+| Command | Root `package.json`? | What it does |
+|---|---|---|
+| `npm run migration:run` | ✅ yes | Apply every pending migration in order. Skips applied ones. Transaction-wrapped per migration. |
+| `npm run migration:run:production` | ⛔ **no** — `backend` workspace only | Same, plus `--allow-production`. Required when `NODE_ENV=production`. |
+| `npm run migration:run:staging` | ⛔ **no** — `backend` workspace only | Same as `migration:run` (a distinct name for pipeline clarity). |
+| `npm run migration:rollback` | ⛔ **no** — `backend` workspace only | Roll back. Classification decides whether it is allowed. |
+| `npm run migration:status` | ✅ yes | Table of every migration: `MIGRATION`, `STATE`, `APPLIED AT`, `MS`, `REVERSIBILITY`, `DETAIL`. |
+| `npm run migration:list` | ⛔ **no** — `backend` workspace only | One line per file: id, first 12 chars of the checksum, reversibility, statement count. Works without a database. |
+| `npm run migration:verify` | ✅ yes | Checksum-drift and orphan-ledger audit. Non-zero exit on drift. |
+| `npm run db:check` | ✅ yes | **Static** migration-chain lint — no database required. |
+| `npm run migration:create` | ⛔ **no** — `backend` workspace only | `tsx scripts/generate-migration.ts` — scaffolds the next numbered `.sql` and its `.down.sql`. |
+| `npm run db:generate` | ⛔ **no** — `backend` workspace only | Alias of `migration:create`. |
+
+Run the ⛔ rows as `npm run <script> --workspace=backend` from the root, or `cd backend` first.
 
 ### Flags
 
@@ -130,25 +138,33 @@ header; the runner parses it and refuses to proceed on a missing or unparseable 
 | Classification | Runner behaviour | Real examples |
 |---|---|---|
 | `reversible` | Runs. No extra flag. | `0014_create_search_indexes` — drops three GIN indexes, touches no rows. |
-| `data-loss`` | **Refuses** without `--allow-data-loss`. The `reason` must say what is destroyed. | `0009_create_payments_tables` (the money ledger), `0000_create_users_table` (every user row), `0018_add_report_source` (re-tightens `NOT NULL` on `reporter_id`). |
-| `irreversible` | **Never runs.** Throws `MigrationNotReversibleError` regardless of any flag. | `0001_create_stories_tables`. |
+| `data-loss` | **Refuses** without `--allow-data-loss`. The `reason` must say what is destroyed. | `0009_create_payments_tables` (the money ledger), `0000_create_users_table` (every user row), `0018_add_report_source` (re-tightens `NOT NULL` on `reporter_id`). |
+| `irreversible` | **Never runs.** Throws `MigrationNotReversibleError` regardless of any flag. | ⛔ **None.** No migration in the chain uses this classification today (see the distribution below). The runner still supports it. |
 
-### Why `0001` is irreversible
+### ⛔ There is no `irreversible` migration, and `0001` is not one
 
-`0001_create_stories_tables.sql` creates the shared **`uuid-ossp`** extension. Dropping it would
-cascade into the default of every `uuid_generate_v4()` column in the database, including tables
-this migration does not own. Its header says so:
+⛔ **Corrected.** This section previously argued that `0001_create_stories_tables` is
+`irreversible` **because it creates the shared `uuid-ossp` extension**, and quoted a
+`reversibility=irreversible` header that no longer exists. The measured distribution across all 22
+down scripts is **0 `irreversible`, 18 `data-loss`, 4 `reversible`**.
 
-```
--- hakawi:down reversibility=irreversible data-loss=rows reason=Also creates the shared
-uuid-ossp extension. Dropping it would cascade into the default of every uuid_generate_v4()
-column in the database, including tables this migration does not own. Re-create the extension
-and the four tables with a forward migration instead.
-```
+`migrations/down/0001_create_stories_tables.down.sql:1` now reads
+`reversibility=data-loss data-loss=rows`, and its own reason records that the script **never drops
+the extension**. The hazard the old text described — dropping `uuid-ossp` cascading into the default
+of every `uuid_generate_v4()` column in the database, including tables this migration does not own —
+is therefore already avoided, by omission rather than by a refusal.
 
-The correct response to a bad `0001` is a **forward** migration, not a rollback. This is the
-mechanism that makes Principle #6 ("minimize database migrations", "data loss is irreversible")
-enforceable rather than aspirational.
+What the script actually does is 14 executable `DROP` statements over `story_tags`, `stories`,
+`tags` and `categories`, destroying every row in them. That is `data-loss`, and it now requires
+`--allow-data-loss` like every other destructive step. It was the **only** migration in the chain
+that `assertReversible` refused unconditionally, so a rollback chain reaching `0001` previously
+failed outright instead of asking; that is no longer true.
+
+The response to a bad `0001` remains a **forward** migration where a rollback would destroy data —
+that is what Principle #6 ("minimize database migrations", "data loss is irreversible") means. What
+was wrong was calling the classification itself `irreversible`. Re-running `0001` forward after a
+rollback restores the schema, because it is written with `CREATE EXTENSION IF NOT EXISTS` and
+`CREATE TABLE IF NOT EXISTS` throughout.
 
 ### Writing a new down script
 
@@ -233,10 +249,11 @@ npm run migration:verify
 
 ### 5. Test the rollback
 ```bash
-npm run migration:rollback -- --to 0015        # back to before 0016
-npm run migration:rollback -- --steps 1        # undo one
-# if the target is classified data-loss:
-npm run migration:rollback -- --steps 1 --allow-data-loss
+# from the repo root, migration:rollback is a backend-workspace script:
+npm run migration:rollback --workspace=backend -- --to 0015        # back to before 0016
+npm run migration:rollback --workspace=backend -- --steps 1        # undo one
+# if the target is classified data-loss (18 of the 22 down scripts are):
+npm run migration:rollback --workspace=backend -- --steps 1 --allow-data-loss
 ```
 
 ### 6. Deploy
@@ -262,7 +279,15 @@ npm run migration:verify
 need `--allow-data-loss` and a `reason` that names what is lost.
 
 ### Table and extension removals
-`irreversible` where a shared object is involved (the `uuid-ossp` case), otherwise `data-loss`.
+`data-loss` when rows are destroyed, `reversible` when only indexes or empty columns are dropped.
+
+⛔ **Corrected:** this section previously prescribed `irreversible` "where a shared object is
+involved (the `uuid-ossp` case)". No migration uses `irreversible`, and the `uuid-ossp` case was a
+misapplication of the rule — `0001` creates the extension and its down script never drops it, so
+nothing about the extension is at stake in the rollback. Reserve `irreversible` for a step that
+genuinely cannot be undone (an external side effect, a dropped extension that other objects
+depend on); it should be a rare, deliberate choice, not the default answer for "this destroys
+rows".
 
 ### Data migrations — the two-phase pattern
 Still the right approach, and the reversibility header is where it is recorded:
@@ -321,7 +346,7 @@ Still the right approach, and the reversibility header is where it is recorded:
 
 | Previous claim | Reality | Evidence |
 |---|---|---|
-| Migrations in `backend/src/migrations/`, named `YYYYMMDDHHMMSS_*.ts` | 18 numbered `.sql` files at the **repository-root** `migrations/`; no timestamp format | `migrations/`, `backend/src/db/migrations/migration-discovery.ts` |
+| Migrations in `backend/src/migrations/`, named `YYYYMMDDHHMMSS_*.ts` | **22** numbered `.sql` files at the **repository-root** `migrations/`; no timestamp format | `migrations/`, `backend/src/db/migrations/migration-discovery.ts` |
 | `export async function up(db: any)` / `down(db: any)` | Never existed, and violates the zero-`any` rule | `backend/.eslintrc.cjs` sets `no-explicit-any: 'error'` |
 | Drizzle-generated migrations | `drizzle-kit up:pg` **removed** — it was a schema push that discarded history. `migration:create` now scaffolds SQL. | no `drizzle.config.ts` push target; `backend/scripts/generate-migration.ts` |
 | `npm run migration:rollback` "documented but did not exist" | ✅ Now real, with `--steps`, `--to`, `--allow-data-loss` | `backend/package.json`, `migration-cli.ts` |
@@ -334,8 +359,10 @@ Still the right approach, and the reversibility header is where it is recorded:
 | Zero-downtime enforcement | ⚠️ Aspiration only; the runner records risk, it does not prevent it | — |
 
 **Newly documented (was missing entirely):** the classification policy, the four flags, the
-transaction and checksum guarantees, the legacy-checksum adoption behaviour, and the reason
-`0001_create_stories_tables` is deliberately irreversible.
+transaction and checksum guarantees, and the legacy-checksum adoption behaviour.
+
+⛔ **Retracted from the same list:** "the reason `0001_create_stories_tables` is deliberately
+irreversible". It is `data-loss`, and the reason has been corrected above.
 
 ---
 

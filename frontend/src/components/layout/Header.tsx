@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Brand } from "./Brand";
 import { IconButton } from "@/components/ui/Button";
@@ -26,6 +27,7 @@ import { Icon } from "@/components/ui/Icon";
  * content down and breaks the scroll position.
  */
 export function Header() {
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const { locale, toggleLocale, strings } = useLocale();
 
@@ -36,7 +38,22 @@ export function Header() {
       <div className="mx-auto flex h-full max-w-7xl items-center gap-3 px-4 sm:px-6">
         <Brand href="/" size="sm" className="lg:hidden" />
 
-        <form action="/search" method="get" role="search" className="relative flex-1 max-w-md">
+        {/* A REAL FORM, so search works with JavaScript switched off. The submit
+            handler intercepts it for the client-side transition the rest of the app
+            uses; remove the handler and the form still submits to `/search`. */}
+        <form
+          action="/search"
+          method="get"
+          role="search"
+          className="relative flex-1 max-w-md"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const query = new FormData(event.currentTarget).get("q");
+            const term = typeof query === "string" ? query.trim() : "";
+            if (!term) return;
+            router.push(`/search?q=${encodeURIComponent(term)}`);
+          }}
+        >
           <label htmlFor="header-search" className="sr-only">
             {strings.searchLabel}
           </label>

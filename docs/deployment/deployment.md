@@ -20,7 +20,7 @@
 | **Frontend** | Vercel | Plausible. `next build` succeeds; the root `build` script builds shared-types first |
 | **Backend** | Railway | ⛔ **Not deployable as written.** There is no `Dockerfile` in the repository — `find . -name "Dockerfile*"` returns nothing. Railway's container deploy has no artifact to build |
 | **Database** | Railway Managed PostgreSQL | Plausible. Schema comes from `migrations/*.sql` |
-| **Cache** | Railway Managed Valkey | Plausible. ⚠️ the Socket.IO adapter reads `REDIS_*`, not `VALKEY_*` |
+| **Cache** | Railway Managed Valkey | Plausible. The Socket.IO adapter reads `valkey.*` through `ConfigService`, the same `VALKEY_*` family the cache uses. ⛔ there is still **no `Dockerfile` in the repository** |
 | **Storage** | Cloudflare R2 | Plausible via the S3-compatible SDK. ⛔ there is no `STORAGE_ENDPOINT` variable |
 | **Monitoring** | Sentry | ✅ Real. `@sentry/nestjs@11.1.0`, `common/observability/sentry.config.ts` |
 
@@ -34,9 +34,9 @@ the missing `Dockerfile` is a missing file. See
 
 ### Code Quality
 
-- [ ] All backend unit tests pass — `npm test` (145 files / 3047 tests, includes the coverage gate)
-- [ ] Backend e2e tests pass — `npm run test:e2e --workspace=backend` (22 files / 136 tests)
-- [ ] Frontend tests pass — `npm run test:run --workspace=frontend` (21 files / 340 tests)
+- [ ] All backend unit tests pass — `npm test` (151 files / 3228 tests, includes the coverage gate)
+- [ ] Backend e2e tests pass — `npm run test:e2e --workspace=backend` (23 files / 173 tests — 11 `src/**/e2e-spec.ts` + `test/app.e2e-spec.ts` + 11 `test/*integration-spec.ts`)
+- [ ] Frontend tests pass — `npm run test:run --workspace=frontend` (22 files / 356 tests)
 - [ ] Frontend coverage gate passes — `npm run test:coverage --workspace=frontend`
 - [ ] Linting passes — `npm run lint` (0 errors)
 - [ ] TypeScript passes — `npm run typecheck`
@@ -131,9 +131,6 @@ DB_PASSWORD=${{Postgres.PGPOST}}
 VALKEY_HOST=${{Valkey.HOST}}
 VALKEY_PORT=${{Valkey.PORT}}
 VALKEY_PASSWORD=${{Valkey.PASSWORD}}
-REDIS_HOST=${{Valkey.HOST}}
-REDIS_PORT=${{Valkey.PORT}}
-REDIS_PASSWORD=${{Valkey.PASSWORD}}
 JWT_SECRET=<≥32 chars, different from REFRESH_TOKEN_SECRET>
 REFRESH_TOKEN_SECRET=<≥32 chars>
 ENCRYPTION_KEY=<generated>
@@ -160,10 +157,19 @@ WAF_FAIL_MODE=closed
 | `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` | ⛔ Read by nothing. No SMTP client is wired. See `docs/deployment/environment.md` |
 | `STORAGE_PROVIDER=r2` | ⛔ `STORAGE_PROVIDER` is **not read** by any config factory. R2 works through S3 compatibility, not a provider switch |
 | `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | ✅ still real — but they come from `STORAGE_*`, which is a real family; the *provider* value is not |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | ✅ still **accepted**, but only as an optional fallback in `config/valkey.config.ts` / `ValkeyService`. The Socket.IO adapter reads `valkey.*` through `ConfigService`, so these are **not required** |
 
 **Added:** `ENCRYPTION_KEY`, `PAYMOB_ENVIRONMENT`, `PAYMOB_INTEGRATION_ID`, `SENTRY_ENVIRONMENT`,
 `SENTRY_TRACES_SAMPLE_RATE`, `FRONTEND_URL`, `ENABLE_SWAGGER`, `THROTTLE_TRUST_PROXY`,
-`WAF_ENABLED`, `WAF_FAIL_MODE`, and the `REDIS_*` trio for the Socket.IO adapter.
+`WAF_ENABLED`, `WAF_FAIL_MODE`.
+
+**Removed from the recommended set:** the `REDIS_*` trio. This document previously listed
+`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` as required "for the Socket.IO adapter". **That was
+wrong** — `redis-io.adapter.ts:29-31` reads `valkey.host` / `valkey.port` / `valkey.password`
+through `ConfigService`, so `VALKEY_*` alone is sufficient. `REDIS_*` survives only as an
+**optional** fallback accepted by `config/valkey.config.ts` and `ValkeyService` for operators
+migrating from Redis. Keep the `VALKEY_*` lines above; the `REDIS_*` lines are dropped rather than
+left as a second copy of the same three values.
 `PAYMOB_WEBHOOK_SECRET` is retained above and is real, but it is read directly in
 `backend/src/modules/payments/payments.service.ts:412` rather than through `paymob.config.ts`; if it is unset, every Paymob
 webhook is rejected.
@@ -187,7 +193,7 @@ The complete authoritative list is `docs/deployment/environment.md`, which follo
 
 ## Database Migrations
 
-Migrations are 18 numbered `.sql` files at the repository-root `migrations/` directory, applied by a
+Migrations are 22 numbered `.sql` files at the repository-root `migrations/` directory, applied by a
 transaction-wrapped runner with a sha256 content-checksum ledger. Full detail:
 `docs/data-architecture/migrations/migration-strategy.md`.
 
@@ -251,8 +257,18 @@ curl https://api.hakawi.com/api/v1/health
 > and it did not exist before the migration system was rebuilt.
 >
 > ⚠️ A migration whose down script is `irreversible` **will not roll back under any flag.**
-> `0001_create_stories_tables` is deliberately irreversible because it owns the shared `uuid-ossp`
-> extension. An `irreversible` failure is fixed with a forward migration.
+> ⛔ **But no migration in the chain is `irreversible`.** Measured across all 22 down scripts:
+> **0 `irreversible`, 18 `data-loss`, 4 `reversible`**. This note previously named
+> `0001_create_stories_tables` as "deliberately irreversible because it owns the shared `uuid-ossp`
+> extension" — that was a misclassification; `migrations/down/0001_create_stories_tables.down.sql:1`
+> is `reversibility=data-loss` and never drops the extension. A `data-loss` rollback **does** run, with
+> `--allow-data-loss`. The `irreversible` branch still exists in the runner for a future migration that
+> genuinely cannot be undone; nothing uses it today.
+>
+> ⚠️ `npm run migration:rollback` is a **`backend` workspace script only** — it is not in the root
+> `package.json`. From the repo root use `npm run migration:rollback --workspace=backend -- --steps 1`.
+> (`migration:run`, `migration:status`, `migration:verify` and `db:check` *are* in the root
+> `package.json`.)
 
 ---
 
@@ -260,7 +276,8 @@ curl https://api.hakawi.com/api/v1/health
 
 ### Backend Health Endpoint — ✅ real
 
-`backend/src/app.controller.ts:19-32`, with the global `api/v1` prefix:
+`backend/src/app.controller.ts:62-73` (`@Get('health')`), with the global `api/v1` prefix set at
+`main.ts:101`:
 
 ```typescript
 @Get('health')

@@ -160,11 +160,15 @@ users  (1) ──── (N) comment_reactions   user_id
 | `comments (1) ─ (N) comments (parent-child)` | ✅ Real. `comments.parent_id` is a **nullable self-FK** using Drizzle's documented self-reference form: `references((): AnyPgColumn => comments.id)` (`backend/src/db/schema/social.schema.ts:72`). Thread depth is **not** bounded by any column or check constraint |
 | — | **New:** `comments.is_deleted` (boolean) alongside `comments.deleted_at`, so soft-delete is doubly represented |
 
-⚠️ **A real bug in the relationship the schema expresses.** The self-FK is correct, but the query
-that should use it is wrong:
-`comments.repository.ts:45,52` uses `eq(comments.parentId, null as unknown as string)`, which emits
-`parent_id = NULL` — never true. `GET /api/v1/comments/story/:storyId` therefore returns **zero
-top-level comments**. It should be `isNull()`. The pinned test is `it.fails`.
+✅ **The bug that used to break this relationship was real and is now fixed.** The self-FK is correct,
+but the query that used it read `eq(comments.parentId, null as unknown as string)`, which emits
+`parent_id = NULL` — never true — so `GET /api/v1/comments/story/:storyId` returned **zero
+top-level comments** for every story. It now uses `isNull(comments.parentId)`
+(`comments.repository.ts:48`), with the row query and the count query sharing one `visibleTopLevel`
+predicate. Fixed in commit `01134dd`; pinned by `comments.repository.spec.ts:111` and
+`backend/test/comments.integration-spec.ts:50` (`total === 1`).
+**This document previously described the defect as live and stated the pin was an `it.fails`. No
+`it.fails` exists anywhere in this repository, and the fixed behaviour is pinned as fixed.**
 
 ---
 
@@ -378,9 +382,9 @@ is.
 | "`conversations` — unique participant pair" | ⚠️ `conversations_unique_idx` is a plain index despite the name |
 | Composite indexes on `stories`, `notifications (…, created_at)`, `messages (conversation_id, created_at)` | ⛔ None exist. The real composite indexes are listed above |
 | "All foreign keys indexed for join performance" | ⚠️ Most are; a specific short list is not |
-| `comments → comments` self-reference | ✅ Confirmed real — but the **query** using it is broken (`eq(parentId, null)` instead of `isNull()`), so top-level comments are never returned |
+| `comments → comments` self-reference | ✅ Confirmed real — and the **query** that used it was broken (`eq(parentId, null)` instead of `isNull()`, so top-level comments were never returned). **Fixed** at `comments.repository.ts:48`, pinned by `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts` |
 | Reports as relationships to `stories` / `comments` / `users` | ⛔ **Not foreign keys.** `reports` is polymorphic via `target_id` + `target_type` with **no referential integrity** |
-| — | **New:** `books.author` is a `varchar(255)`, not a UUID FK — the only user reference in the schema that is not a foreign key |
+| — | ~~**New:** `books.author` is a `varchar(255)`, not a UUID FK~~ — **superseded by migration `0021_add_books_owner_id.sql`**, which added `books.owner_id uuid REFERENCES users(id)` (`books.schema.ts:49`, index `books_owner_id_idx`). It is nullable and deliberately **not** backfilled: it cannot be derived from a display name, so an operator claims pre-existing books explicitly. `books.author` remains a display name |
 | — | **New:** `categories.parent_id` self-reference (sub-categories) was missing |
 | — | **New:** the payments/refunds ERD group did not exist |
 | — | **New:** `reports.reporter_id` is nullable since `0018`, enabling auto-filed reports |

@@ -480,6 +480,25 @@
     unicode-bidi: isolate;
   }
 
+  /*
+   * The select's chevron.
+   *
+   * It belongs to the field's TRAILING edge, which is the right in English and
+   * the left in Arabic, and `background-position` is one of the few places a
+   * stylesheet has to know which way round it is — so it is stated here, once,
+   * rather than hard-coded `left` in the component and left to be wrong in one of
+   * the two directions. The padding stays logical, so the text never runs under
+   * the glyph.
+   */
+  .hk-select {
+    background-position: right 0.75rem center;
+    padding-inline-end: 2.25rem;
+  }
+
+  [dir="rtl"] .hk-select {
+    background-position: left 0.75rem center;
+  }
+
   /* Directional glyphs mirror with the layout. Arrows and chevrons point the
      way the reader moves; a back arrow that kept pointing left in Arabic
      sends people the wrong way. */

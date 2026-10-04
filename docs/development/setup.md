@@ -243,9 +243,9 @@ npm run seed:dev           # Seed development data
 npm run seed:test          # Seed test data
 
 # Testing
-npm run test               # Unit tests (145 files / 3047 tests)
+npm run test               # Unit tests (151 files / 3228 tests)
 npm run test:cov           # Unit tests with the coverage gate
-npm run test:e2e           # Integration/e2e (22 files / 136 tests) — needs live PostgreSQL + Valkey
+npm run test:e2e           # Integration/e2e (23 files / 173 tests) — needs live PostgreSQL + Valkey
 
 # Linting
 npm run lint               # Run ESLint (checker, no --fix)
@@ -273,7 +273,7 @@ npm run typecheck          # tsc --noEmit
 
 # Testing
 npm run test               # Watch mode
-npm run test:run           # 21 files / 340 tests
+npm run test:run           # 22 files / 356 tests
 npm run test:coverage      # With the coverage gate
 npm run test:e2e           # Playwright: journeys + axe-core accessibility
 ```

@@ -45,7 +45,7 @@ Reconciled against `backend/src/db/schema/*.ts` on 2026-09-30.
 ## What Is Actually Implemented
 
 The previous version of this document said only **Users** and **Auth Tokens** existed, because it
-was written when only Phase 1 had shipped. That is no longer true. **21 backend modules and 33
+was written when only Phase 1 had shipped. That is no longer true. **22 backend modules and 33
 tables are live**, and this is the full picture.
 
 | Layer | Tables | Consistency | Notes |
@@ -88,11 +88,18 @@ redeploying.
 - Comments are ordered by `parent_id` + `created_at`; a reply cannot precede its parent because it
   references it.
 - Messages are ordered by timestamp within a conversation.
-- ⚠️ **Known bug:** `GET /api/v1/comments/story/:storyId` uses
+- ⚠️ **Fixed defect, corrected here:** `GET /api/v1/comments/story/:storyId` used to read
   `eq(comments.parentId, null as unknown as string)`, which emits `parent_id = NULL` and is never
-  true, so **top-level comments are never returned**
-  (`backend/src/modules/comments/repositories/comments.repository.ts:45,52`). The causal ordering
-  rule is correct in the schema; the query that would use it is wrong.
+  true, so **top-level comments were never returned**
+  (`backend/src/modules/comments/repositories/comments.repository.ts`). It now reads
+  `isNull(comments.parentId)` at line 48, and the row query and the count query share one
+  `visibleTopLevel` predicate so page and count cannot drift. Fixed in commit `01134dd`; pinned by
+  `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts:50`
+  (`total === 1`).
+  **This document previously listed the bug as open. That was wrong — the causal ordering rule was
+  never at fault, and there is no `it.fails` in this repository.** The residual ⚠️ is the one
+  Principle #16 records as well: causal consistency here is a **schema property, not an enforced
+  mechanism** — nothing rejects a write that violates the ordering.
 
 ---
 
@@ -129,7 +136,7 @@ There is **no Prometheus endpoint, no metrics registry, and no alerting rule** i
 
 | Previous claim | Reality |
 |---|---|
-| "Phase 1: only **Users** and **Auth Tokens** are implemented" | ⛔ Outdated. **21 backend modules and 33 tables are live**, across 13 functional layers. Replaced with a full inventory |
+| "Phase 1: only **Users** and **Auth Tokens** are implemented" | ⛔ Outdated. **22 backend modules and 33 tables are live**, across the 12 functional layers of the inventory above. Replaced with a full inventory |
 | "Valkey cache with **immediate invalidation**" for Users and Stories | ✅ **Confirmed real** — the cache is tagged (`books`, `stories`, `payments`) and `@CacheInvalidateTags` fires on every write. The claim was right; the document understated how much depends on it |
 | "Cache hit-rate monitoring (planned for Phase 7)" | ✅ **Live now**, at `GET /api/v1/metrics/cache` |
 | "Consistency-violation detection (planned for Phase 7)" | ⛔ Still not built |
@@ -138,7 +145,7 @@ There is **no Prometheus endpoint, no metrics registry, and no alerting rule** i
 | Inventory "PostgreSQL with optimistic locking (Phase 4+)" | ⛔ No inventory entity and no locking exist |
 | "Cache TTL ensures data converges within 5 minutes" | Measured: 600s stories/books, 300s payments, 3600s default — and **not configurable**, since no `CACHE_TTL_*` variable is read |
 | "Messages: PostgreSQL with timestamp ordering" | ✅ Confirmed, plus a Socket.IO + Redis adapter for delivery |
-| — | **Newly recorded:** the `parent_id = NULL` bug that makes top-level comments unreachable, and the absence of payment double-charge detection |
+| — | **Corrected:** the `parent_id = NULL` bug is **fixed** (`isNull` at `comments.repository.ts:48`, pinned by `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts`). This document previously recorded it as an open bug and, in the C4 and ERD copies, as pinned by an `it.fails` — there is no `it.fails` in this repository. The absence of payment double-charge detection is also recorded, and is still ⛔ |
 
 ---
 

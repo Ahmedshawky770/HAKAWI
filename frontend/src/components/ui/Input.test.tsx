@@ -167,4 +167,13 @@ describe("Select", () => {
     expect(screen.getByLabelText("التصنيف")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("alert")).toHaveTextContent("اختر تصنيفاً");
   });
+
+  it("puts its chevron on the trailing edge through .hk-select, not a hard-coded side", () => {
+    // `background-position` cannot be logical, so the flip is stated once in the
+    // stylesheet for both directions rather than guessed in the component.
+    const { container } = render(<Select label="التصنيف" options={OPTIONS} />);
+    const select = container.querySelector("select");
+    expect(select?.className).toContain("hk-select");
+    expect(select?.getAttribute("style")).not.toContain("left");
+  });
 });

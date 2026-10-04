@@ -3,6 +3,14 @@
 
 This document provides a Postman collection for testing the Hakawi API.
 
+> ⛔ **Phase-3 routes corrected.** Every route below that is addressed under `/users/{{userId}}/follow`,
+> `/stories/{{storyId}}/comments` or `/stories/{{storyId}}/reactions` returned **404**: none of those
+> paths exists. The controllers are `@Controller('follows')`, `@Controller('comments')` and
+> `@Controller('reactions')`. They are now `POST /follows` (target in the **body** as `followingId`),
+> `DELETE /follows/:followingId`, `GET /follows/user/:userId/{followers,following}`,
+> `GET/POST /comments`, and `POST`/`DELETE`/`GET` `/reactions/stories/:storyId`. `Mark All as Read` was
+> `POST /notifications/read-all`; the verb has never existed — it is `PATCH`.
+
 ---
 
 ## Collection Structure
@@ -271,16 +279,24 @@ Hakawi API
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/users/{{userId}}/follow",
+              "raw": "{{baseUrl}}/follows",
               "host": ["{{baseUrl}}"],
-              "path": ["users", "{{userId}}", "follow"]
+              "path": ["follows"]
             },
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
-            ]
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"followingId\": \"{{userId}}\"\n}"
+            }
           }
         },
         {
@@ -288,9 +304,9 @@ Hakawi API
           "request": {
             "method": "DELETE",
             "url": {
-              "raw": "{{baseUrl}}/users/{{userId}}/follow",
+              "raw": "{{baseUrl}}/follows/{{userId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["users", "{{userId}}", "follow"]
+              "path": ["follows", "{{userId}}"]
             },
             "header": [
               {
@@ -305,9 +321,9 @@ Hakawi API
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/users/{{userId}}/followers?page=1&limit=20",
+              "raw": "{{baseUrl}}/follows/user/{{userId}}/followers?page=1&limit=20",
               "host": ["{{baseUrl}}"],
-              "path": ["users", "{{userId}}", "followers"]
+              "path": ["follows", "user", "{{userId}}", "followers"]
             },
             "header": [
               {
@@ -322,9 +338,9 @@ Hakawi API
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/users/{{userId}}/following?page=1&limit=20",
+              "raw": "{{baseUrl}}/follows/user/{{userId}}/following?page=1&limit=20",
               "host": ["{{baseUrl}}"],
-              "path": ["users", "{{userId}}", "following"]
+              "path": ["follows", "user", "{{userId}}", "following"]
             },
             "header": [
               {
@@ -455,7 +471,7 @@ Hakawi API
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/stories/{{storyId}}/comments?page=1&limit=20",
+              "raw": "{{baseUrl}}/comments/story/{{storyId}}?page=1&limit=20",
               "host": ["{{baseUrl}}"],
               "path": ["stories", "{{storyId}}", "comments"]
             }
@@ -466,9 +482,9 @@ Hakawi API
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/stories/{{storyId}}/comments",
+              "raw": "{{baseUrl}}/comments",
               "host": ["{{baseUrl}}"],
-              "path": ["stories", "{{storyId}}", "comments"]
+              "path": ["comments"]
             },
             "header": [
               {
@@ -538,9 +554,9 @@ Hakawi API
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/stories/{{storyId}}/reactions",
+              "raw": "{{baseUrl}}/reactions/stories/{{storyId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["stories", "{{storyId}}", "reactions"]
+              "path": ["reactions", "stories", "{{storyId}}"]
             },
             "header": [
               {
@@ -563,9 +579,9 @@ Hakawi API
           "request": {
             "method": "DELETE",
             "url": {
-              "raw": "{{baseUrl}}/stories/{{storyId}}/reactions",
+              "raw": "{{baseUrl}}/reactions/stories/{{storyId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["stories", "{{storyId}}", "reactions"]
+              "path": ["reactions", "stories", "{{storyId}}"]
             },
             "header": [
               {
@@ -580,9 +596,9 @@ Hakawi API
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/stories/{{storyId}}/reactions",
+              "raw": "{{baseUrl}}/reactions/stories/{{storyId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["stories", "{{storyId}}", "reactions"]
+              "path": ["reactions", "stories", "{{storyId}}"]
             }
           }
         }
@@ -628,7 +644,7 @@ Hakawi API
         {
           "name": "Mark All as Read",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "url": {
               "raw": "{{baseUrl}}/notifications/read-all",
               "host": ["{{baseUrl}}"],

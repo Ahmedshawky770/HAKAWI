@@ -78,7 +78,7 @@ to fire on natural-language content. The full 73-test suite
 
 ### Tiers
 
-Rate limiting is **not** part of the WAF middleware. It is `@nestjs/throttler` with four tiers
+Rate limiting is **not** part of the WAF middleware. It is `@nestjs/throttler` with five tiers
 defined in `backend/src/config/throttle.config.ts:26-63` and selected per route with
 `@ThrottleTier('auth' | 'upload' | 'search')`.
 
@@ -119,7 +119,7 @@ database-backed suite. Leave both unset in production.
 
 ---
 
-## Threat Detection — ✅ implemented, 34 typed rules
+## Threat Detection — ✅ implemented, 35 typed rules
 
 Rule ids grouped by layer, all from `backend/src/common/waf/rules.ts`:
 
@@ -369,7 +369,7 @@ is missing.
 | `WAF_RATE_LIMIT_*` variables | ⛔ Never existed. Rate limiting is the 4 throttler tiers | `backend/src/config/throttle.config.ts` |
 | `WAF_ADMIN_EMAIL`, `WAF_STRICT_REFERRER`, `WAF_FINGERPRINT_PROTECTION` | ⛔ Read by no code; present only in `backend/.env.example` | zero references in `backend/src` |
 | "Valkey with in-memory fallback" | ✅ Valkey via `ValkeyThrottlerStorage`, fail-open | `backend/src/common/throttler/valkey-throttler.storage.ts` |
-| Rate-limit numbers 10 / 100 / 5 / 50 | ✅ Now actually true (four tiers, real 429 tests) | `backend/src/config/throttle.config.ts:26-63` |
+| Rate-limit numbers 10 / 100 / 5 / 50 | ✅ Now actually true (five tiers — `default` is 30/min, and `session` was added so machine refresh does not share the `auth` budget; real 429 tests) | `backend/src/config/throttle.config.ts:26-63` |
 | `X-RateLimit-*` headers | ✅ Real | `backend/src/common/waf/headers.ts:1-6` |
 | IP blocking temp/permanent + auto-unblock | ✅ Real, Valkey TTL | `backend/src/common/waf/ip-blocklist.service.ts:79-164` |
 | `ipBlocker.block(ip, durationSeconds, reason)` | Signature is `block(ip, BlockOptions)` | `backend/src/common/waf/ip-blocklist.service.ts:79` |

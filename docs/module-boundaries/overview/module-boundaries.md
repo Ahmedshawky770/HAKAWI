@@ -120,7 +120,7 @@ graph TB
 | **Rentals** | Rental lifecycle, extensions, expiry |
 | **Search** | PostgreSQL full-text search over stories, plus the `search` tier of rate limiting |
 | **Database** | The `pg` Pool and the Drizzle instance |
-| **Common** | Every cross-cutting primitive: `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard`, `RestrictionGuard`, `AllExceptionsFilter`, `LoggingInterceptor`, `CacheInterceptor`/`CacheMetrics`, `WafMiddleware`, `ValkeyThrottlerStorage`, the event bus with its schema registry and DLQ, the resilience module, Sentry, and `TaggedCacheService` |
+| **Common** | Every cross-cutting primitive: `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard`, `RestrictionGuard`, `OwnershipGuard`, `AllExceptionsFilter`, `LoggingInterceptor`, `CacheInterceptor`/`CacheMetrics`, `WafMiddleware`, `ValkeyThrottlerStorage`, the event bus with its schema registry and DLQ, the resilience module, Sentry, and `TaggedCacheService`. `@Secured()` composes **4** guards (`JwtAuthGuard` → `RestrictionGuard` → `RolesGuard` → `PermissionsGuard`); `OwnershipGuard` is per-route via `@UseGuards`, and the newer **`OptionalJwtAuthGuard`** is registered by `StoriesModule` alone (`stories.module.ts:32`) for the two public story-detail routes — it is deliberately not exported. It shares one token-extraction implementation with `JwtAuthGuard` (`common/guards/access-token.ts`), and `AuthRequest.user` stays **required** while a new `OptionalAuthRequest` carries the optional case |
 
 ---
 
@@ -280,9 +280,9 @@ is no automated payout and no call into `PaymentsModule`.
 | **ReadingProgress** | `GET/PUT /api/v1/reading-progress` | `IReadingProgressRepository`; consumes `book.*` events |
 | **Library** | `GET /api/v1/library` | `ILibraryRepository`; consumes `payment.completed`, `rental.*` |
 | **Rentals** | rentals + extensions | `IRentalsRepository`; consumes `payment.completed` |
-| **Follows** | `POST/DELETE /api/v1/users/:id/follow` | `IFollowsRepository`; emits `user.followed` / `user.unfollowed` |
-| **Reactions** | `POST/DELETE /api/v1/stories/:id/reactions` | `IReactionsRepository`; emits `story.reacted` |
-| **Comments** | `GET/POST /api/v1/stories/:id/comments`, replies, reactions | `ICommentsRepository`, `ICommentReactionsRepository` |
+| **Follows** | `POST /api/v1/follows` `{followingId}`, `DELETE /api/v1/follows/:followingId`, `GET /api/v1/follows/user/:userId/{followers,following,stats}`, `GET /api/v1/follows/check/:followingId` | `IFollowsRepository`; emits `user.followed` / `user.unfollowed` |
+| **Reactions** | `POST/DELETE/GET /api/v1/reactions/stories/:storyId`, `GET /api/v1/reactions/stories/:storyId/counts`, `GET /api/v1/reactions/stories/:storyId/me` | `IReactionsRepository`; emits `story.reacted` |
+| **Comments** | `GET /api/v1/comments/story/:storyId`, `GET /api/v1/comments/:id/replies`, `POST /api/v1/comments`, `PATCH/DELETE /api/v1/comments/:id`, `POST/DELETE/GET /api/v1/comments/:commentId/reactions` | `ICommentsRepository`, `ICommentReactionsRepository` |
 | **Notifications** | `GET /api/v1/notifications`, unread count, mark read | `INotificationsRepository`; the **sink for most of the event bus** — 8 modules emit into it |
 | **Messages** | conversations, messages, `PATCH /:messageId/read` | `IConversationsRepository`, `IMessagesRepository`; Socket.IO gateway + Redis adapter |
 | **Moderation** | reports, actions, restrictions, stats, trends | `IUsersRepository`; owns the WAF-facing `content-moderation` service and the escalation scheduler |
@@ -291,16 +291,30 @@ is no automated payout and no call into `PaymentsModule`.
 
 ---
 
+> ⛔ **Corrected — the three Phase-3 rows above (Follows, Reactions, Comments).** They previously
+> documented `POST/DELETE /api/v1/users/:id/follow`, `POST/DELETE /api/v1/stories/:id/reactions` and
+> `GET/POST /api/v1/stories/:id/comments`. **None of those paths exists.** The controllers are
+> `@Controller('follows')`, `@Controller('reactions')` and `@Controller('comments')`, with no
+> per-resource path parameter. The paths above are transcribed from
+> `follows/controllers/follows.controller.ts`, `reactions/controllers/reactions.controller.ts`,
+> `comments/controllers/comments.controller.ts` and
+> `comments/reactions/comment-reactions.controller.ts` (which is itself under
+> `@Controller('comments')`, so comment reactions are addressed as `/comments/:commentId/reactions`).
+> The previous paths were also live in `frontend/src/lib/api.ts`, so every one of those calls was a
+> 404 — see `docs/c4-model/component/module-boundaries.md`, which had already flagged the mismatch.
+
+---
+
 ## Module Boundaries Rules — ⚠️ 3 of 6 hold
 
 | # | Rule | Status | Evidence |
 |---|---|---|---|
-| 1 | **No Direct Database Access** — modules use repositories only | ⚠️ **PARTIAL.** 18 repository interfaces exist across 17 files, but **26 files across 19 modules import `src/db/index.ts` directly** (`messages.service.ts`, `stories.service.ts`, `moderation.service.ts`, `admin-dashboard.service.ts`, …). The `Repository` pattern is applied inconsistently |
-| 2 | **No Direct Service Calls** — use events or public interfaces | ⚠️ **PARTIAL.** The event bus carries **53 event names** and is the primary channel, but there are deliberate direct service injections: `Books → PaymentsService`, plus `IUsersRepository` shared from `common/users/` |
-| 3 | **No Shared State** — each module owns its data | ⚠️ **PARTIAL.** `stories` is read by Stories, Contests, Moderation, Search, Upload and Messages; `users` by 12 modules. The `users` table is the most-shared entity in the system |
-| 4 | **Explicit Contracts** — public interfaces are versioned | ⚠️ **PARTIAL.** 18 `I*Repository` interfaces exist, but ⛔ **none of them is versioned**, and no `IUsersService` / `IStoriesService` service-level interface exists. ⛔ `IStoriesRepository` has **no second implementation** — there is one Drizzle implementation, so the interface buys testability, not substitutability |
-| 5 | **Event-Driven** — cross-module communication via events | ✅ **HOLDS.** 53 event names, 10 event definition files under `common/events/`, 23 per-module handlers under `modules/*/events/`, a schema registry, a validator, and a dead letter queue |
-| 6 | **Auth/Users separation** — Auth reads Users only through the repository, never the service; Users listens to Auth events | ✅ **HOLDS.** Auth imports `IUsersRepository`; there is no `Auth → UsersModule` import in the module graph |
+| 1 | **No Direct Database Access** — modules use repositories only | ⚠️ **PARTIAL** | 18 repository interfaces exist across 17 files, but **26 files across 18 modules import `src/db/index.ts` directly** (`messages.service.ts`, `stories.service.ts`, `moderation.service.ts`, `admin-dashboard.service.ts`, …). The `Repository` pattern is applied inconsistently |
+| 2 | **No Direct Service Calls** — use events or public interfaces | ⚠️ **PARTIAL** | The event bus carries **55 event names** and is the primary channel, but there are deliberate direct service injections: `Books → PaymentsService`, plus `IUsersRepository` shared from `common/users/` |
+| 3 | **No Shared State** — each module owns its data | ⚠️ **PARTIAL** | `stories` is read by Stories, Contests, Moderation, Search, Upload and Messages; `users` by 12 modules. The `users` table is the most-shared entity in the system |
+| 4 | **Explicit Contracts** — public interfaces are versioned | ⚠️ **PARTIAL** | 18 `I*Repository` interfaces exist, but ⛔ **none of them is versioned**, and no `IUsersService` / `IStoriesService` service-level interface exists. ⛔ `IStoriesRepository` has **no second implementation** — there is one Drizzle implementation, so the interface buys testability, not substitutability |
+| 5 | **Event-Driven** — cross-module communication via events | ✅ **HOLDS** | 55 event names, 10 event definition files under `common/events/`, 72 `@OnEvent` handlers under `modules/*/events/`, a schema registry, a validator, and a dead letter queue |
+| 6 | **Auth/Users separation** — Auth reads Users only through the repository, never the service; Users listens to Auth events | ✅ **HOLDS** | Auth imports `IUsersRepository`; there is no `Auth → UsersModule` import in the module graph |
 
 ---
 
@@ -309,8 +323,8 @@ is no automated payout and no call into `PaymentsModule`.
 The previous version of this document said the event registry was "planned". **It shipped early**,
 during Phases 1–2, together with the DLQ. See `docs/adr/004-use-event-emitter2.md`.
 
-- **53 event names** across 10 definition files in `backend/src/common/events/`
-- **23 per-module handlers** under `backend/src/modules/*/events/`
+- **55 event names** across 10 definition files in `backend/src/common/events/`
+- **72 `@OnEvent` handlers** under `backend/src/modules/*/events/`
 - `event-schema-registry.ts` — one registered schema per event, with versioning
 - `event-validator.service.ts` — a handler receiving a schema-invalid event is rejected
 - `dlq.service.ts` — an event whose handler throws is captured, not lost
@@ -348,8 +362,8 @@ See **`module-boundaries/events/event-schema-registry.md`** for the contract def
 | `POST /contests/:id/submit`, `POST /contests/:id/vote` | ⛔ Wrong paths. Real: `POST /contests/:id/submissions`, `POST /contests/:id/votes` |
 | Publisher dashboard not mentioned | ✅ Real: `GET /contests/publisher/stats`, `/publisher/:id/submissions`, `/publisher/:id/votes` |
 | Contests "Dependencies: Payments Module (prizes)" | ⛔ **False.** No Payments import. Prizes are rows in `contest_prizes`; there is no automated payout |
-| "The registry contains 30+ event schemas … planned for Phase 7" | ✅ **Shipped.** **53 event names**, 10 definition files, 23 handlers, a schema registry, a validator, and a DLQ |
-| "No Direct Database Access — modules use repositories only" | ⚠️ **PARTIAL.** 18 repository interfaces exist, but 26 files across 19 modules import `src/db/index.ts` directly |
+| "The registry contains 30+ event schemas … planned for Phase 7" | ✅ **Shipped.** **55 event names**, 10 definition files, 72 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
+| "No Direct Database Access — modules use repositories only" | ⚠️ **PARTIAL.** 18 repository interfaces exist, but 26 files across 18 modules import `src/db/index.ts` directly |
 | "No Direct Service Calls" | ⚠️ **PARTIAL.** The event bus is primary, but `Books → PaymentsService` is a deliberate direct call |
 | "Public interfaces are versioned" | ⚠️ **PARTIAL.** 18 `I*Repository` interfaces exist; **none is versioned**, and no `IUsersService` / `IStoriesService` exists |
 | "Auth does NOT depend on Users" | ✅ Still true at the module level, but Auth imports the **shared** `IUsersRepository` from `common/users/`, so the coupling is real |

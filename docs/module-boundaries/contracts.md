@@ -22,9 +22,9 @@ Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exi
 |---|---|---|
 | 1. **Interface Segregation** — small, focused interfaces | ✅ | 18 `I*Repository` interfaces, each scoped to one table or table group |
 | 2. **Dependency Inversion** — depend on abstractions | ⚠️ | The repository layer is inverted. **The service layer is not** — see the note below |
-| 3. **Explicit Dependencies** — all dependencies declared | ⚠️ | 18 repository interfaces are declared; 26 files across 19 modules import `src/db/index.ts` directly |
-| 4. **Versioned APIs** — backward compatibility maintained | ⛔ **NOT IMPLEMENTED.** No `I*Repository` interface carries a version. `IStoriesRepository` has exactly one implementation, so there is nothing to keep compatible with |
-| 5. **Event-Driven** — async communication via events | ✅ | 53 event names, 10 definition files, 23 handlers, a schema registry, a validator, and a DLQ |
+| 3. **Explicit Dependencies** — all dependencies declared | ⚠️ | 18 repository interfaces are declared; 26 files across 18 modules import `src/db/index.ts` directly |
+| 4. **Versioned APIs** — backward compatibility maintained | ⛔ **NOT IMPLEMENTED** | No `I*Repository` interface carries a version. `IStoriesRepository` has one implementation and no substitutability behind it. ⛔ **Corrected:** the row previously merged the Status and Reality columns into one cell, which left the table with three columns against a four-column header and shifted every cell left when rendered |
+| 5. **Event-Driven** — async communication via events | ✅ | 55 event names, 10 definition files, 72 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
 
 ### ⚠️ There are no service-level interfaces
 
@@ -303,7 +303,7 @@ What actually exists:
   contract
 - `backend/test/mocks/{repositories,stories}.mock.ts` — hand-written repository doubles (⛔ not
   `faker` fixtures; `faker` is not a dependency)
-- **2 Playwright browser suites** that exercise the flows end to end, including axe-core WCAG
+- **3 Playwright browser suites** that exercise the flows end to end, including axe-core WCAG
   checks on the frontend
 
 Contract shape is protected by **compile-time drift assertions** instead:
@@ -372,7 +372,7 @@ schemas (~50 of them) and the `event-schema-registry.ts` are for.
 | No `POST /users` / `DELETE /users/:id` | ✅ **Both now exist** (super-admin only) |
 | `{ stories: Story[]; pagination: {...} }` | ⚠️ The shared `Paginated<T>` envelope from `@hakawi/shared-types` |
 | `POST /stories` with `category: string` | ⚠️ The API takes `categoryId` (a UUID) |
-| **Pact contract testing** | ⛔ **Pact is not a dependency.** The example describes a tool the project does not have. Real protection: 23 DB-backed integration files, 2 Playwright suites, `Exact<A,B>` compile-time drift assertions, ~50 frontend Zod response schemas, and the event schema registry |
+| **Pact contract testing** | ⛔ **Pact is not a dependency.** The example describes a tool the project does not have. Real protection: 23 DB-backed e2e/integration files, 3 Playwright suites, `Exact<A,B>` compile-time drift assertions, ~50 frontend Zod response schemas, and the event schema registry |
 | "Versioned APIs" as a design rule | ⛔ **No interface carries a version.** `IStoriesRepository` has one implementation |
 | "6 months deprecation / 12 months sunset" | ⛔ No deprecation or sunset mechanism exists |
 | Error format with `errors[]` and 7 error codes | ⛔ The field is `details` and is always `[]`; **no error codes are implemented** |
