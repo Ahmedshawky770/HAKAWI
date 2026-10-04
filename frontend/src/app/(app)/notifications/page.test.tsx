@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { NOTIFICATION } from "@/test-utils/fixtures";
@@ -34,6 +35,19 @@ const READ_NOTIFICATION: Notification = {
   isRead: true,
   readAt: "2026-01-01T11:00:00.000Z",
 };
+
+/**
+ * The unread counter is one `role="status"`-free text label beside the figure,
+ * so these two helpers keep the assertions about the COUNT readable instead of
+ * asserting on a whole string that has to change whenever the copy is edited.
+ */
+function unreadLabel(): HTMLElement {
+  return screen.getByText("إشعار غير مقروء");
+}
+
+function unreadValue(): string | null {
+  return unreadLabel().previousElementSibling?.textContent ?? null;
+}
 
 describe("notifications page", () => {
   beforeEach(() => {
@@ -85,7 +99,8 @@ describe("notifications page", () => {
   it("shows the unread count returned by the dedicated count endpoint", async () => {
     render(<NotificationsPage />);
 
-    expect(await screen.findByText("1 unread")).toBeInTheDocument();
+    expect(await screen.findByText("إشعار غير مقروء")).toBeInTheDocument();
+    expect(unreadValue()).toBe("1");
     expect(mockedApi.getUnreadNotificationCount).toHaveBeenCalledTimes(1);
   });
 
@@ -101,7 +116,7 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: READ_NOTIFICATION.title });
-    expect(screen.queryByText(/unread/)).not.toBeInTheDocument();
+    expect(screen.queryByText("إشعار غير مقروء")).not.toBeInTheDocument();
   });
 
   it("renders an explicit empty state when there is no notification", async () => {
@@ -110,15 +125,15 @@ describe("notifications page", () => {
 
     render(<NotificationsPage />);
 
-    expect(await screen.findByText("No notifications yet.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark as read" })).not.toBeInTheDocument();
+    expect(await screen.findByText("لا توجد إشعارات بعد.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "تعليم كمقروء" })).not.toBeInTheDocument();
   });
 
   it("offers a mark as read action only for an unread notification", async () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    expect(screen.getAllByRole("button", { name: "Mark as read" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "تعليم كمقروء" })).toHaveLength(1);
   });
 
   it("marks a notification as read and decrements the unread counter", async () => {
@@ -126,15 +141,15 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    await user.click(screen.getByRole("button", { name: "Mark as read" }));
+    await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     await waitFor(() => {
       expect(mockedApi.markNotificationAsRead).toHaveBeenCalledWith(NOTIFICATION.id);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Mark as read" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "تعليم كمقروء" })).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("1 unread")).not.toBeInTheDocument();
+    expect(screen.queryByText("إشعار غير مقروء")).not.toBeInTheDocument();
   });
 
   it("keeps the notification visible after marking it as read", async () => {
@@ -142,7 +157,7 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    await user.click(screen.getByRole("button", { name: "Mark as read" }));
+    await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     expect(screen.getByRole("heading", { name: NOTIFICATION.title })).toBeInTheDocument();
   });
@@ -153,13 +168,13 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    await user.click(screen.getByRole("button", { name: "Mark as read" }));
+    await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     await waitFor(() => {
       expect(mockedApi.markNotificationAsRead).toHaveBeenCalled();
     });
-    expect(screen.getByRole("button", { name: "Mark as read" })).toBeInTheDocument();
-    expect(screen.getByText("1 unread")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "تعليم كمقروء" })).toBeInTheDocument();
+    expect(screen.getByText("إشعار غير مقروء")).toBeInTheDocument();
   });
 
   it("renders the failure of the notification list", async () => {
@@ -168,7 +183,7 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     expect(await screen.findByText("Failed to load notifications")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "الإشعارات" })).not.toBeInTheDocument();
   });
 
   it("renders the unauthorized failure of a session that expired", async () => {
@@ -194,8 +209,8 @@ describe("notifications page", () => {
 
     render(<NotificationsPage />);
 
-    expect(await screen.findByText("Unread count unavailable")).toBeInTheDocument();
-    expect(screen.queryByText(/unread$/)).not.toBeInTheDocument();
+    expect(await screen.findByText("تعذّر جلب العدد")).toBeInTheDocument();
+    expect(screen.queryByText("إشعار غير مقروء")).not.toBeInTheDocument();
   });
 
   it("does not claim a zero unread count when the count request failed", async () => {
@@ -204,8 +219,8 @@ describe("notifications page", () => {
 
     render(<NotificationsPage />);
 
-    expect(await screen.findByText("Unread count unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("0 unread")).not.toBeInTheDocument();
+    expect(await screen.findByText("تعذّر جلب العدد")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
   it("still offers the mark as read action when the count request failed", async () => {
@@ -214,7 +229,7 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    expect(screen.getByRole("button", { name: "Mark as read" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "تعليم كمقروء" })).toBeInTheDocument();
   });
 
   it("keeps the unavailable count after marking a notification as read", async () => {
@@ -224,12 +239,12 @@ describe("notifications page", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
-    await user.click(screen.getByRole("button", { name: "Mark as read" }));
+    await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     await waitFor(() => {
       expect(mockedApi.markNotificationAsRead).toHaveBeenCalledWith(NOTIFICATION.id);
     });
-    expect(screen.getByText("Unread count unavailable")).toBeInTheDocument();
+    expect(screen.getByText("تعذّر جلب العدد")).toBeInTheDocument();
   });
 
   it("requests both the list and the count exactly once", async () => {
@@ -243,7 +258,7 @@ describe("notifications page", () => {
   it("stops announcing the loading state once the page is ready", async () => {
     render(<NotificationsPage />);
 
-    await screen.findByRole("heading", { name: "Notifications" });
+    await screen.findByRole("heading", { name: "الإشعارات" });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
