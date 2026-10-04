@@ -628,7 +628,19 @@ showing both the feed and the rail makes **one** request. A second fetch of the
 same list is not a performance detail: it is a second answer that can disagree
 with the first.
 
-### 7.4 Failure is never a browser dialog
+### 7.4 A view is a URL
+
+The header's search is a real `<form action="/search" method="get">` that the
+router intercepts for a client-side transition, and `/search` reads `q` off the
+URL behind a Suspense boundary. Removing either half still works: without the
+handler the form submits, without the boundary the page would not prerender.
+
+The point is not resilience, it is that **a search is a link**. A result a reader
+cannot copy into a message is a result they cannot send to anyone, and the same
+argument is why the category filter belongs in the query string rather than in a
+component's state.
+
+### 7.5 Failure is never a browser dialog
 
 `alert()` is banned. A failure is an inline `ErrorMessage`, a toast, or both:
 inline when the page cannot continue, a toast when an optimistic action is
@@ -668,6 +680,11 @@ fixed field count and fixed Arabic labels because that spec queries them by name
   `scaleX(-1)`), applied by the `Icon` component to arrows, chevrons and the
   sign-out glyph. A back arrow that keeps pointing left sends people the wrong
   way.
+- **Trailing-edge affordances follow the trailing edge.** `Select`'s chevron sits
+  on the field's end side — right in English, left in Arabic — with the padding
+  logical and the flip written once in `.hk-select`, because
+  `background-position` is one of the few properties a stylesheet cannot express
+  without knowing the direction.
 
 ---
 

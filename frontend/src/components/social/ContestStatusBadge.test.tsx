@@ -33,8 +33,8 @@ describe("contestStatusTone", () => {
     expect(contestStatusTone("active")).toBe("success");
   });
 
-  it("gives the voting window the warning tone", () => {
-    expect(contestStatusTone("voting")).toBe("warning");
+  it("gives the voting window the accent tone, because voting is the phase a reader can act in", () => {
+    expect(contestStatusTone("voting")).toBe("accent");
   });
 
   it("keeps the shared table for the statuses both vocabularies define", () => {

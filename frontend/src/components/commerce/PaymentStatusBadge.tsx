@@ -1,23 +1,17 @@
 import React from "react";
-import { isPaymentStatus } from "@hakawi/shared-types";
 
 import { Badge, PAYMENT_STATUS_TONES, toneFor, type BadgeTone } from "@/components/ui/Badge";
 
 /**
  * The payment status pill.
  *
- * Same shape of gap as the contest one: `PAYMENT_STATUS_TONES` covers
- * `pending`, `completed`, `failed` and `refunded`, while
- * `PAYMENT_STATUSES` (`packages/shared-types/src/payment.ts`) is `pending`,
- * `processing`, `completed`, `failed`, `cancelled`, `refunded`. The shared map
- * decides for the four it defines; `API_STATUS_TONES` decides for the two it
- * misses.
+ * Tone from the shared table, which is keyed by `PAYMENT_STATUSES` — the contract
+ * the API validates against, not a hand-written subset. The local overlay that
+ * used to cover `processing` and `cancelled` is gone for the same reason as the
+ * contest one: two tables for one fact is a fact that will disagree with itself.
+ *
+ * Only the Arabic labels are local, because only they are presentation.
  */
-const API_STATUS_TONES: Record<string, BadgeTone> = {
-  processing: "info",
-  cancelled: "neutral",
-};
-
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
   pending: "قيد المراجعة",
   processing: "قيد المعالجة",
@@ -28,9 +22,7 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
 };
 
 export function paymentStatusTone(status: string): BadgeTone {
-  if (status in PAYMENT_STATUS_TONES) return toneFor(PAYMENT_STATUS_TONES, status);
-  if (isPaymentStatus(status)) return API_STATUS_TONES[status] ?? "neutral";
-  return "neutral";
+  return toneFor(PAYMENT_STATUS_TONES, status);
 }
 
 export function paymentStatusLabel(status: string): string {
