@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" width="900" height="470" role="img" aria-labelledby="title desc">
+  <title id="title">Hakawi dark palette</title>
+  <desc id="desc">Every design token of the dark theme with its hex value and measured contrast against the surface it is painted on.</desc>
+  <rect width="900" height="470" fill="#0d0b0a"/>
+
+  <text x="28" y="42" font-family="Georgia, serif" font-size="22" fill="#efece6">Hakawi — dark palette</text>
+  <text x="28" y="64" font-family="system-ui, sans-serif" font-size="13" fill="#a8a49e">default theme · canvas #0d0b0a · every value is a token in globals.css</text>
+
+  <!-- 60% / 30% / 10% band -->
+  <text x="28" y="98" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.5" fill="#85807a">60 · 30 · 10</text>
+
+  <!-- surfaces -->
+  <g font-family="system-ui, sans-serif" font-size="12">
+    <rect x="28" y="110" width="200" height="86" rx="10" fill="#0d0b0a" stroke="#2a2624"/>
+    <text x="44" y="136" fill="#efece6">canvas</text>
+    <text x="44" y="156" fill="#a8a49e" font-size="11">#0d0b0a</text>
+    <text x="44" y="176" fill="#85807a" font-size="10">page background</text>
+
+    <rect x="244" y="110" width="200" height="86" rx="10" fill="#1a1615" stroke="#2a2624"/>
+    <text x="260" y="136" fill="#efece6">surface</text>
+    <text x="260" y="156" fill="#a8a49e" font-size="11">#1a1615</text>
+    <text x="260" y="176" fill="#85807a" font-size="10">cards, panels</text>
+
+    <rect x="460" y="110" width="200" height="86" rx="10" fill="#241f1d" stroke="#2a2624"/>
+    <text x="476" y="136" fill="#efece6">surface-raised</text>
+    <text x="476" y="156" fill="#a8a49e" font-size="11">#241f1d</text>
+    <text x="476" y="176" fill="#85807a" font-size="10">inputs, hovered rows</text>
+
+    <rect x="676" y="110" width="196" height="86" rx="10" fill="#1a1615" stroke="#726d66" stroke-width="2"/>
+    <text x="692" y="136" fill="#efece6">control-line</text>
+    <text x="692" y="156" fill="#a8a49e" font-size="11">#726d66</text>
+    <text x="692" y="176" fill="#85807a" font-size="10">form borders · 3.18:1</text>
+  </g>
+
+  <!-- ink -->
+  <text x="28" y="228" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.5" fill="#85807a">INK</text>
+  <g font-family="system-ui, sans-serif">
+    <text x="28" y="258" font-size="26" fill="#efece6">Muted Papyrus</text>
+    <text x="28" y="278" font-size="11" fill="#a8a49e">--hk-ink #efece6 · 15.23:1 on surface</text>
+    <text x="330" y="258" font-size="20" fill="#a8a49e">Faded Papyrus</text>
+    <text x="330" y="278" font-size="11" fill="#85807a">--hk-ink-muted #a8a49e · 7.24:1</text>
+    <text x="600" y="258" font-size="16" fill="#85807a">Faint ink</text>
+    <text x="600" y="278" font-size="11" fill="#85807a">--hk-ink-faint #85807a · 5.02:1</text>
+  </g>
+
+  <!-- accents -->
+  <text x="28" y="322" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.5" fill="#85807a">ACCENT · REACTIONS AND PRIMARY ACTION · NEVER BLUE</text>
+  <g font-family="system-ui, sans-serif">
+    <rect x="28" y="334" width="272" height="56" rx="12" fill="#ff9100"/>
+    <text x="48" y="368" font-size="16" font-weight="600" fill="#0d0b0a">اكتب قصة  →  on-accent #0d0b0a</text>
+
+    <rect x="316" y="334" width="272" height="56" rx="12" fill="#1a1615" stroke="#ff9100" stroke-width="2"/>
+    <text x="336" y="362" font-size="15" fill="#ff9100">❤  ٤٢   accent-ink</text>
+    <text x="336" y="380" font-size="10" fill="#a8a49e">--hk-accent-ink #ff9100 · 7.95:1</text>
+
+    <rect x="604" y="334" width="268" height="56" rx="12" fill="#1a1615" stroke="#00e5ff" stroke-width="2"/>
+    <text x="624" y="362" font-size="15" fill="#00e5ff">رابط  chrome-ink</text>
+    <text x="624" y="380" font-size="10" fill="#a8a49e">--hk-chrome-ink #00e5ff · 11.67:1</text>
+  </g>
+
+  <!-- semantic -->
+  <text x="28" y="424" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.5" fill="#85807a">SEMANTIC — EACH STATE OWNS ITS COLOUR, DECLARED IN Badge.tsx</text>
+  <g font-family="system-ui, sans-serif" font-size="12">
+    <rect x="28" y="432" width="200" height="26" rx="13" fill="#10b981" fill-opacity="0.14" stroke="#10b981" stroke-opacity="0.3"/>
+    <text x="46" y="449" fill="#34d399">success #10b981 / #34d399</text>
+    <rect x="244" y="432" width="200" height="26" rx="13" fill="#f59e0b" fill-opacity="0.14" stroke="#f59e0b" stroke-opacity="0.3"/>
+    <text x="262" y="449" fill="#fbbf24">warning #f59e0b / #fbbf24</text>
+    <rect x="460" y="432" width="200" height="26" rx="13" fill="#ef4444" fill-opacity="0.14" stroke="#ef4444" stroke-opacity="0.3"/>
+    <text x="478" y="449" fill="#f87171">error #ef4444 / #f87171</text>
+    <rect x="676" y="432" width="196" height="26" rx="13" fill="#3b82f6" fill-opacity="0.14" stroke="#3b82f6" stroke-opacity="0.3"/>
+    <text x="694" y="449" fill="#7dabff">info #3b82f6 / #7dabff</text>
+  </g>
+</svg>

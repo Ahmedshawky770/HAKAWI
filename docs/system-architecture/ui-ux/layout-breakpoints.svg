@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" role="img" aria-labelledby="title desc">
+  <title id="title">Hakawi layout at three breakpoints</title>
+  <desc id="desc">Desktop shows a 240px start column, a 672px feed and a 280px trending rail. Tablet drops the rail. Mobile drops the columns and shows a five-item bottom bar.</desc>
+  <rect width="960" height="360" fill="#0d0b0a"/>
+  <defs>
+    <style>
+      .lbl { font: 12px system-ui, sans-serif; fill: #a8a49e; }
+      .ttl { font: 15px system-ui, sans-serif; fill: #efece6; font-weight: 600; }
+      .dim { font: 10px system-ui, sans-serif; fill: #85807a; }
+    </style>
+  </defs>
+
+  <text x="28" y="34" font-family="Georgia, serif" font-size="20" fill="#efece6">Three columns, and what each breakpoint drops</text>
+
+  <!-- DESKTOP -->
+  <text x="28" y="72" class="ttl">Desktop · ≥1280px</text>
+  <text x="28" y="90" class="dim">rail appears at xl</text>
+  <rect x="28" y="100" width="440" height="196" rx="8" fill="#0d0b0a" stroke="#2a2624"/>
+  <rect x="28" y="100" width="440" height="26" rx="8" fill="#1a1615" stroke="#2a2624"/>
+  <text x="40" y="117" class="lbl">header · sticky top-0 · h-14</text>
+  <rect x="32" y="132" width="98" height="158" rx="6" fill="#1a1615" stroke="#2a2624"/>
+  <text x="44" y="152" class="lbl">start</text>
+  <text x="44" y="168" class="dim">w-60</text>
+  <text x="44" y="182" class="dim">240px</text>
+  <rect x="138" y="132" width="200" height="158" rx="6" fill="#1a1615" stroke="#00e5ff" stroke-opacity="0.35"/>
+  <text x="152" y="152" class="lbl">middle</text>
+  <text x="152" y="168" class="dim">max-w-2xl</text>
+  <text x="152" y="182" class="dim">672px</text>
+  <text x="152" y="206" class="dim">the only</text>
+  <text x="152" y="218" class="dim">scrolling column</text>
+  <rect x="346" y="132" width="118" height="158" rx="6" fill="#1a1615" stroke="#2a2624"/>
+  <text x="358" y="152" class="lbl">end</text>
+  <text x="358" y="168" class="dim">w-70</text>
+  <text x="358" y="182" class="dim">280px</text>
+  <text x="358" y="204" class="dim">trending</text>
+
+  <!-- TABLET -->
+  <text x="516" y="72" class="ttl">Tablet · 768–1023px</text>
+  <text x="516" y="90" class="dim">rail dropped first</text>
+  <rect x="516" y="100" width="200" height="196" rx="8" fill="#0d0b0a" stroke="#2a2624"/>
+  <rect x="516" y="100" width="200" height="26" rx="8" fill="#1a1615" stroke="#2a2624"/>
+  <text x="526" y="117" class="lbl">header</text>
+  <rect x="524" y="132" width="184" height="126" rx="6" fill="#1a1615" stroke="#00e5ff" stroke-opacity="0.35"/>
+  <text x="538" y="152" class="lbl">feed</text>
+  <text x="538" y="168" class="dim">centred</text>
+  <rect x="524" y="264" width="184" height="24" rx="6" fill="#1a1615" stroke="#2a2624"/>
+  <text x="538" y="280" class="lbl">bottom bar</text>
+
+  <!-- MOBILE -->
+  <text x="756" y="72" class="ttl">Mobile · &lt;768px</text>
+  <text x="756" y="90" class="dim">columns dropped</text>
+  <rect x="756" y="100" width="176" height="196" rx="8" fill="#0d0b0a" stroke="#2a2624"/>
+  <rect x="756" y="100" width="176" height="26" rx="8" fill="#1a1615" stroke="#2a2624"/>
+  <text x="766" y="117" class="lbl">header</text>
+  <rect x="764" y="132" width="160" height="126" rx="6" fill="#1a1615" stroke="#00e5ff" stroke-opacity="0.35"/>
+  <text x="778" y="152" class="lbl">full width</text>
+  <text x="778" y="170" class="dim">pb-24 so the</text>
+  <text x="778" y="182" class="dim">last card clears</text>
+  <rect x="764" y="264" width="160" height="24" rx="6" fill="#1a1615" stroke="#2a2624"/>
+  <text x="774" y="280" class="lbl">5 items · 44px</text>
+
+  <text x="28" y="330" class="dim">The feed is never wider than 65ch of measure: a 1400px column of Arabic prose is unreadable whatever the font.</text>
+  <text x="28" y="348" class="dim">The bottom bar holds five items; a sixth would push the 44px touch targets below the minimum on a 320px screen.</text>
+</svg>
