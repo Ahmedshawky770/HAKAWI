@@ -43,8 +43,17 @@
   --hk-canvas: #0d0b0a; /* Deep Obsidian Ink — page background          */
   --hk-surface: #1a1615; /* Warm Charcoal — cards, panels              */
   --hk-surface-raised: #241f1d; /* one step up, for hover/inset rows     */
-  --hk-line: #2a2624; /* Warm Gray — borders and dividers            */
-  --hk-line-strong: #3a3532; /* borders that must read as interactive   */
+  --hk-line: #2a2624; /* Warm Gray — dividers and card edges        */
+  --hk-line-strong: #3a3532; /* emphasised edges, non-interactive     */
+  /*
+   * The form-control boundary, and the only border token whose contrast is
+   * load-bearing. WCAG 1.4.11 asks for 3:1 on anything a reader must be able to
+   * identify: `--hk-line` is 1.20:1 on a card and 1.48:1 on a control, both
+   * decorative, but an input whose edge is 1.2:1 against its own background is
+   * an input a low-vision reader may not see at all. This value is 3.18:1 against
+   * `--hk-surface-raised`, which is what an input is filled with.
+   */
+  --hk-control-line: #726d66;
 
   /* Ink — text. Every ratio below is measured against --hk-surface and is
      reproduced in the contrast table in the design system. */
@@ -105,8 +114,10 @@
   --hk-canvas: #faf6ee; /* Soft Cream Book-page                         */
   --hk-surface: #ffffff; /* Warm White                                  */
   --hk-surface-raised: #f4efe6;
-  --hk-line: #e8e4de; /* Light Sepia                                  */
+  --hk-line: #e8e4de; /* Light Sepia — dividers and card edges         */
   --hk-line-strong: #d6d0c7;
+  /* 3.27:1 against --hk-surface-raised. Same role as the dark value. */
+  --hk-control-line: #8a837b;
 
   --hk-ink: #2a2421; /* Dark Sepia, 14.20:1                          */
   --hk-ink-muted: #6b6560; /* Medium Sepia, 5.33:1                     */
@@ -157,6 +168,7 @@
   --color-surface-raised: var(--hk-surface-raised);
   --color-line: var(--hk-line);
   --color-line-strong: var(--hk-line-strong);
+  --color-control-line: var(--hk-control-line);
 
   --color-ink: var(--hk-ink);
   --color-ink-muted: var(--hk-ink-muted);

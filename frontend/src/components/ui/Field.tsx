@@ -26,8 +26,10 @@ export interface FieldProps {
 }
 
 const CONTROL_BASE =
-  "w-full rounded-lg border bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint " +
-  "transition-colors duration-200 hover:border-line-strong focus:border-chrome " +
+  // `border-control-line`, not `border-line`: this edge is what identifies the
+  // control, so it carries the 3:1 that WCAG 1.4.11 asks for.
+  "w-full rounded-lg border border-control-line bg-surface-raised px-3 py-2 text-base text-ink " +
+  "placeholder:text-ink-faint transition-colors duration-200 hover:border-chrome focus:border-chrome " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
 const CONTROL_INVALID = "border-error focus:border-error";
@@ -82,7 +84,7 @@ export function Field({
 
 /** The class list a control needs, given its validity. Shared by all three. */
 export function controlClassName(error: string | undefined, extra: string | undefined): string {
-  return `${CONTROL_BASE} ${error ? CONTROL_INVALID : "border-line"} ${extra ?? ""}`.trim();
+  return `${CONTROL_BASE} ${error ? CONTROL_INVALID : ""} ${extra ?? ""}`.trim();
 }
 
 export { describedBy, CONTROL_BASE };
