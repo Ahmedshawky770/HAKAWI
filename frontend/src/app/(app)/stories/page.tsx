@@ -1,75 +1,126 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Loading } from "@/components/ui/Loading";
-import { StoryByline, StoryCategory } from "@/components/story/StoryMeta";
-import { Story } from "@/types/api";
+import React, { useCallback, useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
+import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { Select } from "@/components/ui/Input";
+import { StoryCardCompact } from "@/components/story/StoryCard";
+import { STORY_CATEGORY_FILTER_OPTIONS } from "@/components/story/StoryCategoryOptions";
+import { StoryFeedSkeleton } from "@/components/story/StoryCard";
+import type { Story } from "@/types/api";
+
+const STORY_LIST_LIMIT = 20;
+
+/**
+ * The story index: the whole catalogue, filterable by category.
+ *
+ * ONE COLUMN, NOT THREE. The feed column this page renders inside is 672px wide
+ * (§5 of the design system). A three-column grid inside it gives each card about
+ * 200px, which is too narrow for the Arabic title to take more than one line and
+ * leaves the excerpt three words long — the card becomes a thumbnail with a
+ * caption. `StoryCardCompact` is the variant built for exactly this: no cover,
+ * a three-line excerpt, the byline and the view count.
+ *
+ * The filter is a labelled `Select` (not a bare `<select>`), so it is announced,
+ * focusable with the product's ring and sized like every other control in the
+ * product. Selecting a category refetches with that filter and nothing else
+ * changes: the request, the limit and the response handling are the ones this page
+ * always made.
+ */
 export default function StoriesPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [category, setCategory] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await api.listStories({ page: 1, limit: 20, category: category || undefined });
-        setStories(data.stories);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "فشل تحميل القصص");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+  const load = useCallback(() => {
+    api
+      .listStories({
+        page: 1,
+        limit: STORY_LIST_LIMIT,
+        category: category || undefined,
+      })
+      .then(
+        (data) => setStories(data.stories),
+        (failure) => setError(failure instanceof Error ? failure.message : "فشل تحميل القصص"),
+      )
+      .finally(() => setLoading(false));
   }, [category]);
 
-  if (loading) return <Loading />;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Retry owns the "start again" state, so the mounting effect stays async-only. */
+  function retry() {
+    setLoading(true);
+    setError("");
+    void load();
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">القصص</h1>
-        <Link href="/stories/create">
-          <Button>إنشاء قصة</Button>
-        </Link>
-      </div>
-      <div className="mb-6">
-        <select
+    <div>
+      <PageHeader
+        title="القصص"
+        description="كل الحكايات المنشورة، وأحدثها أولاً."
+        action={
+          <ButtonLink href="/stories/create" variant="primary">
+            اكتب قصة
+          </ButtonLink>
+        }
+      />
+
+      <div className="mb-6 max-w-xs">
+        <Select
+          label="التصنيف"
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">جميع التصنيفات</option>
-          <option value="fiction">خيال</option>
-          <option value="non-fiction">واقعي</option>
-          <option value="poetry">شعر</option>
-          <option value="fantasy">فانتازيا</option>
-        </select>
+          onChange={(event) => setCategory(event.target.value)}
+          options={STORY_CATEGORY_FILTER_OPTIONS}
+        />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {stories.map((story) => (
-          <Card key={story.id}>
-            <CardBody>
-              <Link href={`/stories/${story.id}`} className="block">
-                <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">{story.title}</h3>
-                <StoryByline author={story.author} className="text-sm text-gray-600 mt-1" />
-                <div className="flex gap-4 mt-3 text-sm text-gray-500">
-                  <span>{story.views.toLocaleString()} مشاهدة</span>
-                  <span>{story.reactions} تفاعل</span>
-                </div>
-                <StoryCategory category={story.category} className="mt-3" />
-              </Link>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+
+      {error ? (
+        <ErrorMessage
+          error={error}
+          title="تعذّر تحميل القصص"
+          onRetry={retry}
+          retryLabel="أعد المحاولة"
+        />
+      ) : loading ? (
+        <div aria-busy="true">
+          <span role="status" className="sr-only">
+            جارٍ التحميل…
+          </span>
+          <StoryFeedSkeleton count={4} variant="compact" />
+        </div>
+      ) : stories.length === 0 ? (
+        <EmptyState
+          icon="book"
+          title="لا توجد قصص بعد"
+          description={
+            category
+              ? "لا توجد قصص في هذا التصنيف. جرّب تصنيفاً آخر أو اكتب أول قصة."
+              : "لم يُنشر شيء بعد. كن أول من يروي حكاية."
+          }
+          action={
+            <ButtonLink href="/stories/create" variant="primary">
+              اكتب قصة
+            </ButtonLink>
+          }
+        />
+      ) : (
+        <ul className="space-y-4">
+          {stories.map((story) => (
+            <li key={story.id}>
+              <StoryCardCompact story={story} />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -1,5 +1,12 @@
 import React from "react";
 
+import {
+  CONTEST_STATUSES,
+  LIBRARY_ITEM_STATUSES,
+  PAYMENT_STATUSES,
+  RENTAL_STATUSES,
+} from "@hakawi/shared-types";
+
 export type BadgeTone = "neutral" | "accent" | "chrome" | "success" | "warning" | "error" | "info";
 
 const TONES: Record<BadgeTone, string> = {
@@ -15,11 +22,22 @@ const TONES: Record<BadgeTone, string> = {
 /**
  * The status pill.
  *
- * Every status in the product — owned, rented, active, overdue, draft — is a
+ * Every status in the product — owned, rented, active, expired, pending — is a
  * badge, and each maps to a semantic tone. Before this component the mapping
  * was a table of Tailwind colour pairs repeated in three pages, which meant a
  * "rented" pill was blue on one page and grey on another. The mapping now lives
- * once, here, and the state vocabulary lives beside it.
+ * once, here.
+ *
+ * THE KEYS ARE THE API'S VOCABULARY, NOT AN INVENTED ONE. Each table below is
+ * keyed by the shared-types constant it serves (`CONTEST_STATUSES`,
+ * `PAYMENT_STATUSES`, `LIBRARY_ITEM_STATUSES`, `RENTAL_STATUSES`) rather than by
+ * words that read nicely in English. The first version of this file used
+ * `upcoming | open | closed | judging` for contests and silently rendered every
+ * live contest as a neutral "closed" pill, because the API sends `active` and
+ * `voting` and never sends either of those three.
+ *
+ * `assertEveryStatusIsMapped` below is the guard: it fails the build if the
+ * shared contract grows a status and this file does not learn it.
  */
 export function Badge({
   children,
@@ -39,11 +57,7 @@ export function Badge({
   );
 }
 
-/**
- * The status vocabulary of the library, rentals and payments domains, expressed
- * as tones. Presentation only — the API decides the state, this decides the
- * colour (Principle #9: one place per fact).
- */
+/** Library items: owned, rented, reading, completed. */
 export const LIBRARY_STATUS_TONES: Record<string, BadgeTone> = {
   owned: "success",
   rented: "chrome",
@@ -51,29 +65,81 @@ export const LIBRARY_STATUS_TONES: Record<string, BadgeTone> = {
   completed: "neutral",
 };
 
+/** Rentals: active, expired, returned, cancelled. */
 export const RENTAL_STATUS_TONES: Record<string, BadgeTone> = {
   active: "success",
-  returned: "neutral",
   expired: "error",
-  overdue: "error",
+  returned: "neutral",
+  cancelled: "neutral",
 };
 
+/** Payments: pending, processing, completed, failed, cancelled, refunded. */
 export const PAYMENT_STATUS_TONES: Record<string, BadgeTone> = {
   pending: "warning",
+  processing: "info",
   completed: "success",
   failed: "error",
+  cancelled: "neutral",
   refunded: "info",
 };
 
+/** Contests: draft, active, voting, completed, cancelled. */
 export const CONTEST_STATUS_TONES: Record<string, BadgeTone> = {
-  upcoming: "info",
-  open: "success",
-  closed: "neutral",
-  judging: "warning",
+  draft: "neutral",
+  active: "success",
+  voting: "accent",
   completed: "chrome",
   cancelled: "error",
 };
 
+/** Submission entries: pending, approved, rejected. */
+export const SUBMISSION_STATUS_TONES: Record<string, BadgeTone> = {
+  pending: "warning",
+  approved: "success",
+  rejected: "error",
+};
+
+/** Moderation items: the statuses `moderation.ts` declares. */
+export const MODERATION_STATUS_TONES: Record<string, BadgeTone> = {
+  open: "info",
+  in_review: "warning",
+  resolved: "success",
+  dismissed: "neutral",
+};
+
 export function toneFor(map: Record<string, BadgeTone>, status: string): BadgeTone {
   return map[status] ?? "neutral";
+}
+
+/**
+ * Every status the API can send, and the tone it renders as.
+ *
+ * Exported so a page can label a status without inventing a second vocabulary,
+ * and so the contract below can be asserted against the shared constants.
+ */
+export const STATUS_TONES: Record<string, Record<string, BadgeTone>> = {
+  library: LIBRARY_STATUS_TONES,
+  rental: RENTAL_STATUS_TONES,
+  payment: PAYMENT_STATUS_TONES,
+  contest: CONTEST_STATUS_TONES,
+  submission: SUBMISSION_STATUS_TONES,
+  moderation: MODERATION_STATUS_TONES,
+};
+
+const CONTRACTS: { domain: string; table: Record<string, BadgeTone>; statuses: readonly string[] }[] = [
+  { domain: "library", table: LIBRARY_STATUS_TONES, statuses: LIBRARY_ITEM_STATUSES },
+  { domain: "rental", table: RENTAL_STATUS_TONES, statuses: RENTAL_STATUSES },
+  { domain: "payment", table: PAYMENT_STATUS_TONES, statuses: PAYMENT_STATUSES },
+  { domain: "contest", table: CONTEST_STATUS_TONES, statuses: CONTEST_STATUSES },
+];
+
+/** Throws when a shared status has no tone: the build fails, not the design. */
+export function assertEveryStatusIsMapped(): void {
+  for (const { domain, table, statuses } of CONTRACTS) {
+    for (const status of statuses) {
+      if (!table[status]) {
+        throw new Error(`Badge: ${domain} status "${status}" has no tone`);
+      }
+    }
+  }
 }

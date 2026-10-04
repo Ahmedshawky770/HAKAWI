@@ -45,8 +45,10 @@ export function TrendingRail() {
             {strings.trendingTitle}
           </h2>
 
+          {/* aria-hidden: the loading state is announced once, by the query's own
+              status region. Three placeholder rows are not content. */}
           {isLoading && (
-            <ul className="space-y-3">
+            <ul className="space-y-3" aria-hidden="true">
               {[0, 1, 2].map((index) => (
                 <li key={index} className="flex gap-3">
                   <Skeleton className="size-6 shrink-0" rounded="rounded-md" />

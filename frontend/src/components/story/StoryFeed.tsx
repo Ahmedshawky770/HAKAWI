@@ -65,7 +65,7 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
         <span className="sr-only" role="status">
           جارٍ تحميل القصص
         </span>
-        <StoryFeedSkeleton count={3} />
+        <StoryFeedSkeleton count={3} variant={variant} />
       </div>
     );
   }
@@ -102,7 +102,7 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
               <span role="status" className="text-sm text-ink-muted">
                 جارٍ تحميل المزيد…
               </span>
-              <StoryFeedSkeleton count={1} />
+              <StoryFeedSkeleton count={1} variant={variant} />
             </>
           ) : (
             <IconButton label="تحميل المزيد من القصص" name="plus" onClick={() => void query.fetchNextPage()} />

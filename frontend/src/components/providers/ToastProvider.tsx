@@ -81,9 +81,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* A live region WITHOUT `role="status"`. The role would make this empty
+          region match `getByRole("status")` on every page in the product, so the
+          first loading state and the first toast would be indistinguishable in
+          a test and ambiguous for a screen reader scanning landmarks. A bare
+          `aria-live` announces additions exactly the same. */}
       <div
         className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6"
-        role="status"
         aria-live="polite"
       >
         {toasts.map((toast) => (

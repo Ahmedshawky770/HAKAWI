@@ -98,8 +98,31 @@ export function StoryCardCompact({ story }: { story: Story }) {
   );
 }
 
-/** The placeholder for both variants, at the same height as the real thing. */
-export function StoryCardSkeleton() {
+/**
+ * The placeholder, at the same height as the card it stands in for.
+ *
+ * The `variant` matters as much as the shimmer. A full card is roughly 300px
+ * tall with its 192px cover; a compact one is roughly 130px. Showing the tall
+ * placeholder in a compact list moves every row under the reader by two screens
+ * when the data lands — a layout shift the performance budget (§9) does not
+ * allow. Both shapes are therefore declared here, next to the cards they
+ * mirror, instead of being reconstructed by whoever renders a list.
+ */
+export function StoryCardSkeleton({ variant = "full" }: { variant?: "full" | "compact" }) {
+  if (variant === "compact") {
+    return (
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <Skeleton className="mb-2 h-6 w-3/4" />
+        <Skeleton className="mb-1.5 h-4 w-full" />
+        <Skeleton className="mb-3 h-4 w-4/5" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
       <Skeleton className="mb-4 h-48 w-full" rounded="rounded-lg" />
@@ -120,11 +143,11 @@ export function StoryCardSkeleton() {
  * the page height is roughly right before the data lands and the scrollbar does
  * not jump on arrival (Cumulative Layout Shift < 0.1, §10).
  */
-export function StoryFeedSkeleton({ count = 3 }: { count?: number }) {
+export function StoryFeedSkeleton({ count = 3, variant = "full" }: { count?: number; variant?: "full" | "compact" }) {
   return (
-    <div className="space-y-6" aria-hidden="true">
+    <div className={`${variant === "compact" ? "space-y-4" : "space-y-6"}`} aria-hidden="true">
       {Array.from({ length: count }, (_, index) => (
-        <StoryCardSkeleton key={index} />
+        <StoryCardSkeleton key={index} variant={variant} />
       ))}
     </div>
   );

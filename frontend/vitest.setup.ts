@@ -64,10 +64,17 @@ function installIntersectionObserver(): void {
 installMatchMedia();
 installIntersectionObserver();
 
+/**
+ * The theme and the locale live on `<html>`, so a test that flips one leaks it
+ * into every test that follows in the same file — a header test that switches to
+ * English would silently change the labels the next test asserts on. Reset them
+ * here, once, rather than in each file.
+ */
 beforeEach(() => {
   window.localStorage.clear();
-  document.documentElement.removeAttribute("data-theme");
   document.documentElement.setAttribute("data-theme", "dark");
+  document.documentElement.setAttribute("lang", "ar");
+  document.documentElement.setAttribute("dir", "rtl");
 });
 
 afterEach(() => {
