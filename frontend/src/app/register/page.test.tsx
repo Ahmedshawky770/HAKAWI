@@ -59,9 +59,10 @@ describe("register page", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
-  it("names the home link so it is not an unlabelled control", () => {
-    render(<RegisterPage />);
-    expect(screen.getByRole("link", { name: "حكاوي - الصفحة الرئيسية" })).toHaveAttribute("href", "/");
+  it("shows the wordmark without linking it to the authenticated home", () => {
+    const { container } = render(<RegisterPage />);
+    expect(container).toHaveTextContent("حكاوي");
+    expect(screen.queryByRole("link", { name: /^حكاوي/ })).not.toBeInTheDocument();
   });
 
   it("renders every required field of the registration form", () => {

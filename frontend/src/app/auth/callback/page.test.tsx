@@ -4,10 +4,15 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
-import { router } from "@/test-utils/navigation-mock";
+import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { AUTH_USER, SESSION_RESPONSE } from "@/test-utils/fixtures";
 import { api, setStoredUser } from "@/lib/api";
 import AuthCallbackPage from "@/app/auth/callback/page";
+
+vi.mock("next/link", () => ({
+  __esModule: true,
+  default: AnchorLink,
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,

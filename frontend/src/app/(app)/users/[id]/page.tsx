@@ -1,12 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { Card, CardBody } from "@/components/ui/Card";
+import { Avatar } from "@/components/ui/Avatar";
+import { ButtonLink } from "@/components/ui/Button";
+import { Card, CardBody, CardFooter } from "@/components/ui/Card";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
 import { PublicUserProfile } from "@/types/api";
 
+/**
+ * Somebody else's public profile.
+ *
+ * The page renders what the profile endpoint answers and nothing else: there is
+ * no follow control here because this client has no state to follow with — no
+ * session, no cached relationship, and a follow button that always guesses
+ * would be a control that lies. The footer offers the two lists that do exist
+ * as routes instead.
+ */
 export default function PublicUserPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
@@ -26,7 +38,7 @@ export default function PublicUserPage() {
         const data = await api.getUser(resolvedId);
         setUser(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load user");
+        setError(err instanceof Error ? err.message : "فشل تحميل الملف الشخصي");
       } finally {
         setLoading(false);
       }
@@ -35,29 +47,31 @@ export default function PublicUserPage() {
   }, [id]);
 
   if (loading) return <Loading />;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!user) return <div className="p-6">User not found</div>;
+  if (error) return <ErrorMessage error={error} />;
+  if (!user) return <div className="text-ink-muted">المستخدم غير موجود</div>;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <Card>
-        <CardBody>
-          <div className="flex items-start gap-6">
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.name} className="w-24 h-24 rounded-full object-cover" />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl font-bold">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{user.name}</h1>
-              <p className="text-gray-600">@{user.username}</p>
-              <p className="text-gray-500 mt-2">{user.bio || "No bio yet"}</p>
-            </div>
+    <Card>
+      <CardBody>
+        <div className="flex flex-col items-start gap-6 sm:flex-row">
+          <Avatar src={user.avatar} name={user.name} size="xl" />
+
+          <div className="min-w-0 flex-1">
+            <h1 className="font-arabic-heading text-2xl font-bold text-ink">{user.name}</h1>
+            <p className="font-latin text-sm text-ink-muted">@{user.username}</p>
+            <p className="mt-3 text-sm leading-7 text-ink-muted">{user.bio || "لا توجد نبذة شخصية بعد"}</p>
           </div>
-        </CardBody>
-      </Card>
-    </div>
+        </div>
+      </CardBody>
+
+      <CardFooter>
+        <ButtonLink href={`/users/${user.id}/followers`} variant="ghost" size="sm">
+          المتابعون
+        </ButtonLink>
+        <ButtonLink href={`/users/${user.id}/following`} variant="ghost" size="sm">
+          المتابَعون
+        </ButtonLink>
+      </CardFooter>
+    </Card>
   );
 }

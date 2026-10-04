@@ -1,14 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getStoredUser } from "@/lib/api";
+import { LOGIN_ROUTE } from "@/lib/routes";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Loading } from "@/components/ui/Loading";
+import { Card, CardBody, PageHeader } from "@/components/ui/Card";
+import { Input, Textarea } from "@/components/ui/Input";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { Loading } from "@/components/ui/Loading";
 
+/**
+ * The editor for the reader's own profile.
+ *
+ * The page loads the current profile rather than seeding the form from the
+ * stored session, because the session copy is the one summary the backend
+ * updates lazily: it is what the header renders, not what this form should
+ * overwrite. A reader with no session has nothing to edit, so the page leaves
+ * for the login route instead of rendering an empty form over an empty id.
+ */
 export default function EditProfilePage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -21,7 +31,7 @@ export default function EditProfilePage() {
     async function load() {
       const stored = getStoredUser();
       if (!stored) {
-        router.push("/login");
+        router.push(LOGIN_ROUTE);
         return;
       }
       try {
@@ -45,7 +55,7 @@ export default function EditProfilePage() {
     try {
       const stored = getStoredUser();
       if (!stored) {
-        router.push("/login");
+        router.push(LOGIN_ROUTE);
         return;
       }
       await api.updateUser(stored.id, { name, bio });
@@ -60,28 +70,28 @@ export default function EditProfilePage() {
   if (loading) return <Loading />;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">تعديل الملف الشخصي</h1>
+    <div className="space-y-6">
+      <PageHeader title="تعديل الملف الشخصي" description="الاسم والنبذة هما ما يراه القراء على قصصك" />
+
       <Card>
         <CardBody>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && <ErrorMessage error={error} />}
+
             <Input label="الاسم الكامل" type="text" required value={name} onChange={(e) => setName(e.target.value)} />
-            <div className="w-full">
-              <label className="block text-sm font-medium text-gray-700 mb-1">النبذة الشخصية</label>
-              <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={4}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="أخبرنا عن نفسك..."
-              />
-            </div>
-            <div className="flex gap-3">
+            <Textarea
+              label="النبذة الشخصية"
+              rows={4}
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="أخبرنا عن نفسك..."
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" loading={saving}>
                 حفظ التغييرات
               </Button>
-              <Button variant="secondary" type="button" onClick={() => router.back()}>
+              <Button variant="ghost" type="button" onClick={() => router.back()}>
                 إلغاء
               </Button>
             </div>

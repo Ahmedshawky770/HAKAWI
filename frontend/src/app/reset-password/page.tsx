@@ -5,9 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { messageOnlySchema } from "@/lib/schemas";
-import { AUTHENTICATED_HOME_ROUTE, LOGIN_ROUTE } from "@/lib/routes";
+import { LOGIN_ROUTE } from "@/lib/routes";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { PASSWORD_HINT } from "@/components/auth/copy";
 import { Button } from "@/components/ui/Button";
+import { ErrorMessage, SuccessMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
+
+const SUCCESS_TEXT = "تم إعادة تعيين كلمة المرور بنجاح! جاري التحويل لتسجيل الدخول...";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -57,60 +62,47 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div>
-          <Link
-            href={AUTHENTICATED_HOME_ROUTE}
-            aria-label="حكاوي - الصفحة الرئيسية"
-            className="flex items-center justify-center gap-2 mb-6"
-          >
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">ح</span>
-            </div>
-          </Link>
-          <h1 className="text-center text-3xl font-extrabold text-gray-900">إعادة تعيين كلمة المرور</h1>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div role="alert" className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          {success ? (
-            <div className="rounded-md bg-green-50 p-4">
-              <p className="text-sm text-green-800">تم إعادة تعيين كلمة المرور بنجاح! جاري التحويل لتسجيل الدخول...</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <Input
-                label="كلمة المرور الجديدة"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-              <Input
-                label="تأكيد كلمة المرور الجديدة"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-              <Button type="submit" loading={loading} className="w-full">
-                إعادة تعيين كلمة المرور
-              </Button>
-            </div>
-          )}
-          <div className="text-center">
-            <Link href="/login" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-              العودة لتسجيل الدخول
-            </Link>
-          </div>
-        </form>
-      </div>
-    </div>
+    <AuthShell
+      title="إعادة تعيين كلمة المرور"
+      description="اختر كلمة مرور جديدة، وسيتم تسجيلك بها عند الدخول التالي"
+      footer={
+        <Link href={LOGIN_ROUTE} className="font-medium text-chrome-ink hover:text-chrome-hover">
+          العودة لتسجيل الدخول
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {error && <ErrorMessage error={error} />}
+
+        {success ? (
+          <SuccessMessage title="تم">{SUCCESS_TEXT}</SuccessMessage>
+        ) : (
+          <>
+            <Input
+              label="كلمة المرور الجديدة"
+              type="password"
+              required
+              autoComplete="new-password"
+              hint={PASSWORD_HINT}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <Input
+              label="تأكيد كلمة المرور الجديدة"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <Button type="submit" loading={loading} block>
+              إعادة تعيين كلمة المرور
+            </Button>
+          </>
+        )}
+      </form>
+    </AuthShell>
   );
 }

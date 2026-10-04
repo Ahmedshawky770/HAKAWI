@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, setStoredUser } from "@/lib/api";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { PASSWORD_HINT } from "@/components/auth/copy";
 import { Button } from "@/components/ui/Button";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
 
 export default function RegisterPage() {
@@ -53,84 +56,76 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <Link
-            href={AUTHENTICATED_HOME_ROUTE}
-            aria-label="حكاوي - الصفحة الرئيسية"
-            className="flex items-center justify-center gap-2 mb-6"
-          >
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">H</span>
-            </div>
+    <AuthShell
+      title="إنشاء حساب جديد"
+      footer={
+        <>
+          لديك حساب بالفعل؟{" "}
+          <Link href="/login" className="font-medium text-chrome-ink hover:text-chrome-hover">
+            تسجيل الدخول
           </Link>
-          <h1 className="text-center text-3xl font-extrabold text-gray-900">إنشاء حساب جديد</h1>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            لديك حساب بالفعل؟{" "}
-            <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              تسجيل الدخول
-            </Link>
-          </p>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div role="alert" className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          <div className="space-y-4">
-            <Input
-              label="الاسم الكامل"
-              type="text"
-              required
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="أحمد محمد"
-            />
-            <Input
-              label="اسم المستخدم"
-              type="text"
-              required
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              placeholder="ahmed"
-            />
-            <Input
-              label="البريد الإلكتروني"
-              type="email"
-              required
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="example@mail.com"
-            />
-            <Input
-              label="كلمة المرور"
-              type="password"
-              required
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-            />
-            <Input
-              label="تأكيد كلمة المرور"
-              type="password"
-              required
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              placeholder="••••••••"
-            />
-          </div>
-          <Button type="submit" loading={loading} className="w-full">
-            إنشاء الحساب
-          </Button>
-        </form>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {error && <ErrorMessage error={error} />}
+
+        <Input
+          label="الاسم الكامل"
+          type="text"
+          required
+          name="name"
+          autoComplete="name"
+          value={formData.name}
+          onChange={handleChange}
+          placeholder="أحمد محمد"
+        />
+        <Input
+          label="اسم المستخدم"
+          type="text"
+          required
+          name="username"
+          autoComplete="username"
+          value={formData.username}
+          onChange={handleChange}
+          placeholder="ahmed"
+        />
+        <Input
+          label="البريد الإلكتروني"
+          type="email"
+          required
+          name="email"
+          autoComplete="email"
+          value={formData.email}
+          onChange={handleChange}
+          placeholder="example@mail.com"
+        />
+        <Input
+          label="كلمة المرور"
+          type="password"
+          required
+          name="password"
+          autoComplete="new-password"
+          hint={PASSWORD_HINT}
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="••••••••"
+        />
+        <Input
+          label="تأكيد كلمة المرور"
+          type="password"
+          required
+          name="confirmPassword"
+          autoComplete="new-password"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          placeholder="••••••••"
+        />
+
+        <Button type="submit" loading={loading} block>
+          إنشاء الحساب
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

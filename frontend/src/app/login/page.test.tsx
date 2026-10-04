@@ -54,9 +54,11 @@ describe("login page", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
-  it("names the home link so it is not an unlabelled control", () => {
-    render(<LoginPage />);
-    expect(screen.getByRole("link", { name: "حكاوي - الصفحة الرئيسية" })).toHaveAttribute("href", "/");
+  it("shows the wordmark without linking it to the authenticated home", () => {
+    const { container } = render(<LoginPage />);
+    expect(container).toHaveTextContent("حكاوي");
+    expect(screen.queryByRole("link", { name: "حكاوي - الصفحة الرئيسية" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^حكاوي/ })).not.toBeInTheDocument();
   });
 
   it("renders a labelled email field that is required and of type email", () => {
