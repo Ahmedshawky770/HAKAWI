@@ -13,15 +13,15 @@ describe("Loading", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
   });
 
-  it("renders the default loading text", () => {
+  it("renders the default loading text in the product's language", () => {
     render(<Loading />);
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
   });
 
   it("renders a custom loading text", () => {
     render(<Loading text="جاري التحميل" />);
     expect(screen.getByText("جاري التحميل")).toBeInTheDocument();
-    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+    expect(screen.queryByText("جارٍ التحميل…")).not.toBeInTheDocument();
   });
 
   it("renders the status region without a text node when the text is empty", () => {
@@ -37,24 +37,34 @@ describe("Loading", () => {
     expect(svg?.getAttribute("class")).toContain("animate-spin");
   });
 
+  it("paints the spinner with the accent token", () => {
+    const { container } = render(<Loading />);
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain("text-accent");
+  });
+
   it("applies the small size", () => {
     const { container } = render(<Loading size="sm" />);
-    expect(container.querySelector("svg")?.getAttribute("class")).toContain("h-4");
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain("size-4");
   });
 
   it("applies the medium size by default", () => {
     const { container } = render(<Loading />);
-    expect(container.querySelector("svg")?.getAttribute("class")).toContain("h-8");
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain("size-8");
   });
 
   it("applies the large size", () => {
     const { container } = render(<Loading size="lg" />);
-    expect(container.querySelector("svg")?.getAttribute("class")).toContain("h-12");
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain("size-12");
+  });
+
+  it("can own the whole screen for a route-level guard", () => {
+    const { container } = render(<Loading fullScreen />);
+    expect(container.firstElementChild?.className).toContain("min-h-[70dvh]");
   });
 
   it("never renders an error message", () => {
     render(<Loading />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Error" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "حدث خطأ" })).not.toBeInTheDocument();
   });
 });

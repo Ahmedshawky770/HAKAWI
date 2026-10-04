@@ -2,11 +2,12 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { router } from "@/test-utils/navigation-mock";
 import { createDeferred } from "@/test-utils/support";
+import { createTestQueryClient, renderWithProviders } from "@/test-utils/render";
 import { api, clearStoredUser, getStoredRefreshToken } from "@/lib/api";
 import { LogoutButton } from "@/components/layout/LogoutButton";
 
@@ -41,12 +42,12 @@ describe("LogoutButton", () => {
   });
 
   it("renders a sign out button", () => {
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
     expect(screen.getByRole("button", { name: SIGN_OUT })).toBeEnabled();
   });
 
   it("calls the logout endpoint", async () => {
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -57,7 +58,7 @@ describe("LogoutButton", () => {
 
   it("forwards the stored refresh token when the client holds one", async () => {
     mockedGetStoredRefreshToken.mockReturnValue("refresh-token");
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -67,7 +68,7 @@ describe("LogoutButton", () => {
   });
 
   it("clears the stored user and its tokens", async () => {
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -77,7 +78,7 @@ describe("LogoutButton", () => {
   });
 
   it("sends the visitor back to the login page", async () => {
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -88,7 +89,7 @@ describe("LogoutButton", () => {
 
   it("clears the session even when the server refuses the logout", async () => {
     mockedApi.logout.mockRejectedValue(new Error("Invalid refresh token"));
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -100,7 +101,7 @@ describe("LogoutButton", () => {
 
   it("ends the local session even when the network is unreachable", async () => {
     mockedApi.logout.mockRejectedValue(new TypeError("Failed to fetch"));
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     await signOut();
 
@@ -113,7 +114,7 @@ describe("LogoutButton", () => {
   it("disables the control while the logout request is in flight", async () => {
     const deferred = createDeferred<{ message: string }>();
     mockedApi.logout.mockReturnValue(deferred.promise);
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     const button = screen.getByRole("button", { name: SIGN_OUT });
     await signOut();
@@ -131,7 +132,7 @@ describe("LogoutButton", () => {
   it("ignores a second click while the first logout is still in flight", async () => {
     const deferred = createDeferred<{ message: string }>();
     mockedApi.logout.mockReturnValue(deferred.promise);
-    render(<LogoutButton />);
+    renderWithProviders(<LogoutButton />);
 
     const button = screen.getByRole("button", { name: SIGN_OUT });
     await signOut();
@@ -141,6 +142,19 @@ describe("LogoutButton", () => {
     deferred.resolve({ message: "Logged out" });
     await waitFor(() => {
       expect(mockedClearStoredUser).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("clears the cached feed, so the next reader never sees this reader's data", async () => {
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(["stories", "feed", {}], { pages: [{ stories: [{ id: "story-1" }] }] });
+
+    renderWithProviders(<LogoutButton />, { queryClient });
+
+    await signOut();
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(["stories", "feed", {}])).toBeUndefined();
     });
   });
 

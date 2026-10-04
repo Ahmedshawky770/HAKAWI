@@ -64,7 +64,7 @@ describe("notifications page", () => {
 
     render(<NotificationsPage />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Loading...");
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("requests the first page of notifications", async () => {

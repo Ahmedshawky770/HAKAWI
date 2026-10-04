@@ -2,9 +2,10 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 vi.mock("next/link", () => ({
@@ -19,17 +20,21 @@ vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
 
-const NAV_LABELS = [
-  "Dashboard",
-  "Stories",
-  "Books",
-  "My Library",
-  "Contests",
-  "Messages",
-  "Notifications",
-  "Payments",
-  "Rentals",
-];
+const PRIMARY_LABELS = ["الرئيسية", "القصص", "الكتب", "مكتبتي", "المسابقات"];
+const SECONDARY_LABELS = ["الرسائل", "الإشعارات", "الإيجارات", "المدفوعات"];
+
+/** The start column renders two labelled navigation landmarks, not one. */
+function navs(): HTMLElement[] {
+  return screen.getAllByRole("navigation") as HTMLElement[];
+}
+
+function mainNav(): HTMLElement {
+  return navs()[0];
+}
+
+function secondaryNav(): HTMLElement {
+  return navs()[1];
+}
 
 describe("Sidebar", () => {
   beforeEach(() => {
@@ -37,109 +42,114 @@ describe("Sidebar", () => {
   });
 
   it("renders one link per navigation destination", () => {
-    render(<Sidebar />);
-    for (const label of NAV_LABELS) {
+    renderWithProviders(<Sidebar />);
+    for (const label of [...PRIMARY_LABELS, ...SECONDARY_LABELS]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });
 
-  it("renders the navigation inside a nav landmark", () => {
-    render(<Sidebar />);
-    const nav = screen.getByRole("navigation");
-    expect(nav.querySelectorAll("a")).toHaveLength(NAV_LABELS.length);
+  it("labels each navigation landmark separately", () => {
+    renderWithProviders(<Sidebar />);
+    expect(mainNav()).toHaveAttribute("aria-label", "التنقل الرئيسي");
+    expect(secondaryNav()).toHaveAttribute("aria-label", "روابط جانبية");
+    expect(mainNav().querySelectorAll("a")).toHaveLength(PRIMARY_LABELS.length);
+    expect(secondaryNav().querySelectorAll("a")).toHaveLength(SECONDARY_LABELS.length);
   });
 
   it("exposes the complementary landmark that wraps the navigation", () => {
-    render(<Sidebar />);
-    expect(screen.getByRole("complementary")).toContainElement(screen.getByRole("navigation"));
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("complementary")).toContainElement(mainNav());
   });
 
   it("links each destination to its route", () => {
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Stories" })).toHaveAttribute("href", "/stories");
-    expect(screen.getByRole("link", { name: "My Library" })).toHaveAttribute("href", "/library");
-    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/notifications");
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "القصص" })).toHaveAttribute("href", "/stories");
+    expect(screen.getByRole("link", { name: "مكتبتي" })).toHaveAttribute("href", "/library");
+    expect(screen.getByRole("link", { name: "الإشعارات" })).toHaveAttribute("href", "/notifications");
   });
 
   it("brands the sidebar with a link back to the authenticated home", () => {
-    render(<Sidebar />);
-    const brand = screen.getByRole("link", { name: /Hakawi/ });
+    renderWithProviders(<Sidebar />);
+    const brand = screen.getByRole("link", { name: /حكاوي/ });
     expect(brand).toHaveAttribute("href", "/");
+  });
+
+  it("offers the primary writing action above the navigation", () => {
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "اكتب قصة" })).toHaveAttribute("href", "/stories/create");
   });
 
   it("marks the authenticated home as the current page", () => {
     pathnameMock.mockReturnValue("/");
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "الرئيسية" })).toHaveAttribute("aria-current", "page");
   });
 
   it("does not link any destination to the removed dashboard route", () => {
-    render(<Sidebar />);
+    renderWithProviders(<Sidebar />);
     const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
     expect(hrefs).not.toContain("/dashboard");
   });
 
   it("does not mark the authenticated home as current on any other route", () => {
     pathnameMock.mockReturnValue("/profile");
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current", "page");
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "الرئيسية" })).not.toHaveAttribute("aria-current");
   });
 
   it("keeps a section active on its nested routes", () => {
     pathnameMock.mockReturnValue("/stories/abc/comments");
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Stories" })).toHaveAttribute("aria-current", "page");
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "القصص" })).toHaveAttribute("aria-current", "page");
   });
 
   it("marks exactly one destination as the current page", () => {
     pathnameMock.mockReturnValue("/library/book-1");
-    render(<Sidebar />);
+    renderWithProviders(<Sidebar />);
     const current = screen.getAllByRole("link").filter((link) => link.getAttribute("aria-current") === "page");
     expect(current).toHaveLength(1);
-    expect(current[0]).toHaveTextContent("My Library");
+    expect(current[0]).toHaveTextContent("مكتبتي");
   });
 
   it("marks nothing as current on an unrelated route", () => {
     pathnameMock.mockReturnValue("/search");
-    render(<Sidebar />);
+    renderWithProviders(<Sidebar />);
     expect(screen.queryAllByRole("link", { current: "page" })).toHaveLength(0);
   });
 
   it("does not treat a shared prefix as the active section", () => {
     pathnameMock.mockReturnValue("/booksellers");
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Books" })).not.toHaveAttribute("aria-current", "page");
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("link", { name: "الكتب" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("keeps the active destination apart from the inactive ones by token, not by colour alone", () => {
+    pathnameMock.mockReturnValue("/payments");
+    renderWithProviders(<Sidebar />);
+
+    expect(screen.getByRole("link", { name: "المدفوعات" }).className).toContain("bg-accent-soft");
+    expect(screen.getByRole("link", { name: "القصص" }).className).toContain("text-ink-muted");
+  });
+
+  it("renders a sign out control", () => {
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByRole("button", { name: "تسجيل الخروج" })).toBeInTheDocument();
+  });
+
+  it("keeps the sign out control outside both navigation landmarks", () => {
+    renderWithProviders(<Sidebar />);
+    for (const nav of navs()) {
+      expect(nav.querySelectorAll("button")).toHaveLength(0);
+    }
+    expect(screen.getByRole("complementary")).toContainElement(
+      screen.getByRole("button", { name: "تسجيل الخروج" }),
+    );
   });
 
   it("renders the same destinations for a signed out visitor", () => {
     window.localStorage.removeItem("hakawi_user");
-    render(<Sidebar />);
-    expect(screen.getAllByRole("link")).toHaveLength(NAV_LABELS.length + 1);
-  });
-
-  it("renders the same destinations for a signed in user", () => {
-    window.localStorage.setItem("hakawi_user", JSON.stringify({ id: "u1", email: "a@b.c", name: "أحمد" }));
-    render(<Sidebar />);
-    expect(screen.getAllByRole("link")).toHaveLength(NAV_LABELS.length + 1);
-  });
-
-  it("keeps the active destination styled apart from the inactive ones", () => {
-    pathnameMock.mockReturnValue("/payments");
-    render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Payments" }).className).toContain("bg-blue-50");
-    expect(screen.getByRole("link", { name: "Stories" }).className).toContain("text-gray-700");
-  });
-
-  it("renders a sign out control", () => {
-    render(<Sidebar />);
-    expect(screen.getByRole("button", { name: "تسجيل الخروج" })).toBeInTheDocument();
-  });
-
-  it("keeps the sign out control outside the navigation landmark", () => {
-    render(<Sidebar />);
-    const nav = screen.getByRole("navigation");
-    expect(nav.querySelectorAll("button")).toHaveLength(0);
-    expect(screen.getByRole("complementary")).toContainElement(screen.getByRole("button", { name: "تسجيل الخروج" }));
+    renderWithProviders(<Sidebar />);
+    // Brand, the write CTA, and the nine destinations.
+    expect(screen.getAllByRole("link")).toHaveLength(PRIMARY_LABELS.length + SECONDARY_LABELS.length + 2);
   });
 });

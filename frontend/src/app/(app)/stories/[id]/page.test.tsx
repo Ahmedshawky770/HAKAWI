@@ -39,7 +39,7 @@ describe("story detail page", () => {
 
     render(<StoryDetailPage />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Loading...");
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("requests the story of the route parameter", async () => {

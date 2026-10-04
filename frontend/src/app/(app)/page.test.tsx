@@ -31,7 +31,7 @@ describe("authenticated home page", () => {
 
     render(<AuthenticatedHomePage />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Loading...");
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("renders the dashboard heading as the page title", async () => {

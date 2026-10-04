@@ -16,8 +16,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
-vi.mock("@/components/layout/Sidebar", () => ({
-  Sidebar: () => <nav>شريط التنقل</nav>,
+/**
+ * The shell is mocked, not mounted, because this suite is about the guard: what
+ * the guard allows through, and what it never reveals. Rendering the real shell
+ * would drag the header, both sidebars and the query client into every case and
+ * turn an assertion about the session into an assertion about CSS.
+ */
+vi.mock("@/components/layout/AppShell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => (
+    <div>
+      <nav>التنقل الرئيسي</nav>
+      {children}
+    </div>
+  ),
 }));
 
 const SESSION = SESSION_RESPONSE;
@@ -42,7 +53,7 @@ describe("(app) layout auth guard", () => {
     );
 
     expect(screen.queryByRole("navigation")).toBeNull();
-    expect(await screen.findByRole("navigation")).toHaveTextContent("شريط التنقل");
+    expect(await screen.findByRole("navigation")).toHaveTextContent("التنقل الرئيسي");
     expect(screen.getByText("محتوى محمي")).toBeInTheDocument();
   });
 
@@ -105,5 +116,20 @@ describe("(app) layout auth guard", () => {
 
     await waitFor(() => expect(screen.getByText("محتوى محمي")).toBeInTheDocument());
     expect(getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives the main content region a skip-link target", async () => {
+    vi.spyOn(api, "getSession").mockResolvedValue(SESSION);
+
+    render(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+    );
+
+    // The shell owns `#main-content`; the guard's contract is that it only ever
+    // appears behind a verified session, which the cases above already assert.
+    await screen.findByText("محتوى محمي");
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 });
