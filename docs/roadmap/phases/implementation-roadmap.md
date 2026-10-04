@@ -44,7 +44,7 @@ integration files.
       `./backend` put `/app` outside the workspace graph and `npm install` there tried to fetch an
       unpublished package from the public registry. `backend` runs `migration:run` before `start:dev`,
       so the stack can never come up healthy-looking with no schema.
-- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **10 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `security`, `build`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**; and `build`'s `needs:` omits it, so a green `build` does not prove the from-scratch migration chain applied
+- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **11 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`, `security`, `build`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**, and it is therefore **not** in `build`'s `needs:` — a green `build` does not prove the from-scratch migration chain applied. `migration-roundtrip` **is** in `needs:` (see below)
 - [x] Set up testing framework — **Vitest** (not Jest/Supertest), plus Playwright in `backend/`
       and `frontend/`
 - [x] Write first tests

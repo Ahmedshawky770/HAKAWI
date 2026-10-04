@@ -474,6 +474,162 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
 
+  # The `migration-verify` job above proves the UP path: apply, verify, apply again, verify. It never
+  # touched a down script, so the twenty-two rollback scripts in `migrations/down/` had never been
+  # executed by anything automated. That is a real gap and it is the one that bites during an incident:
+  # a migration that cannot be rolled back is discovered at the moment somebody needs it.
+  #
+  # WHY THIS RUNS ON EVERY PULL REQUEST AND NOT ONLY ON `main`. `migration-verify` is gated on a push to
+  # main because it costs a full Postgres. This one costs about two seconds of migration work — the
+  # expensive part of the job is `npm ci`, which every job pays anyway. Gating the cheapest, most
+  # protective job to the branch that gets five pulls a day would be the wrong trade.
+  migration-roundtrip:
+    name: Migration Round Trip (down and back)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [migration-premerge]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply every migration
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # The count is written to the step summary rather than compared to a hard-coded number. A fixed
+      # number would have to be edited on every migration, and the edit is the moment someone stops
+      # reading the job.
+      - name: Record the applied table count
+        id: applied
+        run: |
+          count=$(psql "$DATABASE_URL" -tAc "select count(*) from information_schema.tables where table_schema = 'public';")
+          echo "tables_after_apply=$count" >> "$GITHUB_OUTPUT"
+          echo "Applied $count public tables." >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
+
+      - name: Roll every migration back
+        # `--to 0000_create_users_table` leaves 0000 applied and drops everything after it, so the
+        # assertion below is about what REMAINS rather than about an empty database. `--to 0000`
+        # would be a bare number and the runner resolves that as a filename, which fails the naming
+        # convention — the id has to be spelled out.
+        #
+        # `--allow-data-loss` is not optional here and never will be: every down script in this chain is
+        # classified `data-loss` because rolling a schema back necessarily destroys the rows written
+        # since. The flag is the runner's way of making that explicit, and this is a throwaway CI
+        # database, so the loss is the point rather than an accident.
+        run: npm run migration:rollback --workspace=backend -- --to 0000_create_users_table --allow-data-loss
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # The assertion that gives this job its teeth. `migration:status` exiting zero is not enough —
+      # it reports what the LEDGER believes, and the ledger is the thing a broken down script would have
+      # already marked as rolled back. Asking Postgres what tables actually exist is the independent
+      # check: a down script that recorded the rollback without dropping its objects leaves the ledger
+      # clean and the schema wrong, and only this sees it.
+      - name: Assert the down scripts actually dropped their objects
+        run: |
+          set -euo pipefail
+          remaining=$(psql "$DATABASE_URL" -tAc "select table_name from information_schema.tables where table_schema = 'public' order by 1;")
+          echo "Tables remaining after rollback:$remaining"
+          echo "Tables remaining after rollback:$remaining" >> "$GITHUB_STEP_SUMMARY"
+
+          # `users` is 0000's own table and stays because the rollback target is 0000.
+          # `drizzle_migrations` is the ledger, which the runner owns and never drops.
+          expected=$'drizzle_migrations\nusers'
+          if [ "$remaining" != "$expected" ]; then
+            echo "::error::A down script recorded the rollback without dropping its objects."
+            echo "Expected exactly 'users' and 'drizzle_migrations' to remain; got: $remaining"
+            exit 1
+          fi
+
+      - name: Assert the ledger agrees
+        run: |
+          set -euo pipefail
+          # Queried rather than parsed out of `migration:status`. The runner's log output carries ANSI
+          # colour and its column spacing is a presentation choice, so `grep` over it is an assertion
+          # about formatting. This asks the ledger itself, and `rolled_back_at is null` is exactly the
+          # question: which migrations does this database currently believe are live?
+          active=$(psql "$DATABASE_URL" -tAc "select count(*) from drizzle_migrations where rolled_back_at is null;")
+          echo "Migrations the ledger considers applied: $active"
+          echo "Migrations the ledger considers applied after rollback: $active" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$active" -ne 1 ]; then
+            echo "::error::Expected exactly one live migration after rolling back to 0000, found $active."
+            psql "$DATABASE_URL" -tAc "select migration_id from drizzle_migrations where rolled_back_at is null;"
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
+
+      - name: Re-apply every migration
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Verify the ledger after re-apply
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # Same table count as the first apply, compared against the value captured then rather than a
+      # literal. A forward script that is not re-runnable over a rolled-back schema shows up here as a
+      # missing table, which is the failure mode the re-apply in `migration-verify` cannot see because
+      # that job never removed anything.
+      - name: Assert the re-applied schema matches the first apply
+        run: |
+          set -euo pipefail
+          count=$(psql "$DATABASE_URL" -tAc "select count(*) from information_schema.tables where table_schema = 'public';")
+          echo "Tables after re-apply: $count (was ${{ steps.applied.outputs.tables_after_apply }})"
+          echo "Tables after re-apply: $count" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" != "${{ steps.applied.outputs.tables_after_apply }}" ]; then
+            echo "::error::The re-applied schema does not match the first apply."
+            echo "A forward script is not re-runnable over a rolled-back schema."
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -516,7 +672,16 @@ jobs:
     name: Build Application
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, security]
+    # `migration-roundtrip` is in this list and `migration-verify` is not, deliberately and in
+    # opposite directions from how they used to look:
+    #
+    #   - `migration-verify` is EXCLUDED because it only runs on a push to `main` (its `if:` gate).
+    #     Listing a skipped job in `needs:` would make `build` permanently unsatisfiable on every pull
+    #     request, so it is left out and the gap is stated in `docs/roadmap/phases/implementation-roadmap.md`.
+    #   - `migration-roundtrip` is INCLUDED because it has no such gate: it runs on every pull request,
+    #     costs about two seconds of migration work, and is the assertion that catches a migration
+    #     which cannot be rolled back — the failure an operator meets during an incident.
+    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, security]
     steps:
       - uses: actions/checkout@v4
 

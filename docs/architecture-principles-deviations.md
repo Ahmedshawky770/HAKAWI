@@ -61,7 +61,11 @@ change to test files and carries no production risk.
 
 ---
 
-## Principle #6 — "Migrations tested on production-like data", as CI exercises it
+## ~~Principle #6 — "Migrations tested on production-like data"~~ — RESOLVED
+
+**Status: closed by `migration-roundtrip` (`.github/workflows/ci.yml`).** What the job asserts, and
+what it was blind to before, is written up below in full because the reason it exists is the
+interesting part.
 
 **Rule.** Migrations are high-risk, requiring careful planning, thorough testing and peer review;
 enforcement includes "migrations tested on production-like data" and "rollback strategy for every
@@ -77,9 +81,19 @@ shapes plus idempotency, down and re-apply; `0020` across its three properties i
 duplicate-refusal path — but that was done by hand and is not a gate, so the next migration gets none
 of it automatically.
 
-**What would close it.** Add a `migration-roundtrip` CI job: apply, roll back to zero with
-`--allow-data-loss`, re-apply, verify checksums. It roughly doubles the Postgres cost of the existing
-`migration-verify` job, which is why it is a decision rather than an omission.
+**CLOSED — `migration-roundtrip` (see the deviation table above).** The job applies the chain, rolls
+every migration back, asserts that the down scripts actually dropped their objects, re-applies, and
+asserts the schema matches the first apply. It runs on every pull request and is in `build`'s
+`needs:`. It cost about two seconds of migration work, not the extra Postgres `migration-verify`
+does — that job is still gated to `main` because it is the expensive one.
+
+The assertion that gave it teeth, and the reason it does not simply trust the ledger:
+
+> With `0013`'s `DROP TABLE` lines removed, the rollback **succeeded**, the runner marked 21
+> migrations `rolled_back_at`, and `npm run migration:verify` reported
+> *"Verified 22 migration(s): no checksum drift, no orphaned ledger rows"* — while `badges` and
+> `user_badges` were still standing in the database. The ledger records the intent; only Postgres
+> knows the outcome. So the job asks Postgres what tables exist, and it does not ask the runner.
 
 ---
 
