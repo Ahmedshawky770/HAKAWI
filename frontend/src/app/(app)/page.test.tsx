@@ -3,6 +3,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { createDeferred, jsonResponse } from "@/test-utils/support";
@@ -102,5 +103,58 @@ describe("authenticated home page", () => {
 
     const link = await screen.findByRole("link", { name: new RegExp(STORY.title) });
     expect(link).toHaveAttribute("href", `/stories/${STORY.id}`);
+  });
+
+  it("fills the loading state with shaped story placeholders, not a bare spinner", () => {
+    fetchMock.mockReturnValue(createDeferred<Response>().promise);
+
+    const { container } = render(<AuthenticatedHomePage />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
+    // Every placeholder is a shimmer block; a spinner would leave this empty.
+    expect(container.querySelectorAll(".hk-skeleton").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("keeps the page title while the list is still loading", () => {
+    fetchMock.mockReturnValue(createDeferred<Response>().promise);
+
+    render(<AuthenticatedHomePage />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("لوحة التحكم");
+  });
+
+  it("offers the action that fills an empty dashboard", async () => {
+    fetchMock.mockResolvedValue(listResponse([]));
+
+    render(<AuthenticatedHomePage />);
+
+    expect(await screen.findByText("لا توجد قصص بعد")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "اكتب قصة" })[0]).toHaveAttribute("href", "/stories/create");
+  });
+
+  it("announces a failed list in an alert region and retries it", async () => {
+    const user = userEvent.setup({ delay: null });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: "Unauthorized" }, 401));
+
+    render(<AuthenticatedHomePage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unauthorized");
+    expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+
+    fetchMock.mockResolvedValue(listResponse([STORY]));
+    await user.click(screen.getByRole("button", { name: "أعد المحاولة" }));
+
+    expect(await screen.findByRole("heading", { level: 3, name: STORY.title })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a single level one heading on the dashboard", async () => {
+    fetchMock.mockResolvedValue(listResponse([STORY]));
+
+    render(<AuthenticatedHomePage />);
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("لوحة التحكم");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 });

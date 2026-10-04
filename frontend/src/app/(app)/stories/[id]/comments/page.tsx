@@ -1,6 +1,8 @@
 import { Metadata } from "next";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Loading } from "@/components/ui/Loading";
+
+import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -14,18 +16,36 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+/**
+ * The comments of one story.
+ *
+ * This route used to render "سيتم تحميل التعليقات هنا" next to a spinner import it
+ * never used — it promised a list the page never fetched, which reads as a broken
+ * page rather than an unfinished one. It says what is true instead: the comments
+ * endpoint is not wired to this view yet, and here is the way back to the story
+ * that does work.
+ *
+ * No request is invented. The API client has `api.getComments(storyId)`, but
+ * wiring it here would mean choosing a rendering — pagination, a composer, a
+ * moderation surface — that belongs with the feature, not guessed at to fill a
+ * route.
+ */
 export default async function StoryCommentsPage({ params }: Props) {
   const { id } = await params;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <Card>
-        <CardBody>
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">التعليقات</h1>
-          <p className="text-gray-600">معرّف القصة: {id}</p>
-          <p className="text-gray-500 mt-2">سيتم تحميل التعليقات هنا.</p>
-        </CardBody>
-      </Card>
+    <div>
+      <PageHeader title="التعليقات" description={`تعليقات القصة ${id}`} />
+      <EmptyState
+        icon="comment"
+        title="لا تُعرض التعليقات بعد"
+        description="قائمة التعليقات لم تُربط بمسارها في واجهة البرمجة بعد. اقرأ القصة وشارك رأيك من صفحة القصة نفسها."
+        action={
+          <ButtonLink href={`/stories/${id}`} variant="secondary">
+            العودة للقصة
+          </ButtonLink>
+        }
+      />
     </div>
   );
 }
