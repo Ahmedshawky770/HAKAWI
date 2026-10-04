@@ -702,6 +702,14 @@ Additional: `QueryClient` with `staleTime` 5 minutes and `refetchOnWindowFocus`
 off; infinite queries keyed per filter; `IntersectionObserver` for the sentinel;
 no icon font, no CSS framework, one stylesheet.
 
+Covers are plain `<img loading="lazy" decoding="async">` inside a fixed-height
+container rather than `next/image`. The optimisation that matters most here is
+already covered — the browser never fetches an off-screen cover, and the reserved
+height means no layout shift — while `next/image` would need the upload CDN's
+hostname in `images.remotePatterns`, and that host is not knowable from the
+frontend at build time. Converting the covers is a one-line change per component
+the moment it is.
+
 ---
 
 ## 10. Design tokens
@@ -871,10 +879,13 @@ is worse than one that does not exist.
    and infinite scroll the DOM never grows past a few hundred cards in practice,
    and windowing a feed of variable-height Arabic text costs more in scroll
    jank than it saves.
-6. **No rich text editor.** The original document named TipTap for the composer.
+6. **Covers are `<img>`, not `next/image`.** Lazy loading, async decoding and a
+   reserved height cover the two costs that matter; the optimiser needs the CDN
+   hostname, which the frontend does not know. See §9.
+7. **No rich text editor.** The original document named TipTap for the composer.
    The composer is a plain textarea: it posts the same content, and shipping an
    editor nobody has asked for yet is not a design decision.
-7. **Four pages are honest placeholders.** `stories/[id]/comments`,
+8. **Four pages are honest placeholders.** `stories/[id]/comments`,
    `stories/[id]/reactions`, `users/[id]/followers` and `users/[id]/following`
    have API routes but no client. Each states that plainly instead of rendering a
    spinner that never resolves.

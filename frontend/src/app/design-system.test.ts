@@ -209,7 +209,7 @@ describe("the design system document", () => {
   });
 
   it("names the components and the layers the product actually has", () => {
-    for (const module of [
+    for (const path of [
       "components/ui/Button.tsx",
       "components/ui/Card.tsx",
       "components/ui/Input.tsx",
@@ -234,8 +234,8 @@ describe("the design system document", () => {
       "components/story/StoryFeed.tsx",
       "lib/queries.ts",
     ]) {
-      expect(doc, `the conformance matrix never mentions ${module}`).toContain(module);
-      expect(() => readFileSync(join(REPO_ROOT, "frontend", "src", module), "utf8")).not.toThrow();
+      expect(doc, `the conformance matrix never mentions ${path}`).toContain(path);
+      expect(() => readFileSync(join(REPO_ROOT, "frontend", "src", path), "utf8")).not.toThrow();
     }
   });
 });
