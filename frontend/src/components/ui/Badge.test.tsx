@@ -12,7 +12,6 @@ import {
   RENTAL_STATUSES,
 } from "@hakawi/shared-types";
 import {
-  assertEveryStatusIsMapped,
   Badge,
   CONTEST_STATUS_TONES,
   LIBRARY_STATUS_TONES,
@@ -20,6 +19,8 @@ import {
   PAYMENT_STATUS_TONES,
   RENTAL_STATUS_TONES,
   STATUS_TONES,
+  findUnmappedStatus,
+  STATUS_CONTRACTS,
   SUBMISSION_STATUS_TONES,
   toneFor,
 } from "@/components/ui/Badge";
@@ -61,7 +62,26 @@ function renderStatuses() {
 
 describe("the status→tone tables", () => {
   it("covers every status the API can send, in every domain", () => {
-    expect(() => assertEveryStatusIsMapped()).not.toThrow();
+    // The same check the module runs while it loads: nothing is unmapped.
+    expect(findUnmappedStatus()).toBeNull();
+  });
+
+  it("detects a status the tables have not learned, which is what the import guard throws on", () => {
+    const broken = [{ domain: "contest", table: {}, statuses: CONTEST_STATUSES }];
+    const unmapped = findUnmappedStatus(broken);
+
+    expect(unmapped?.domain).toBe("contest");
+    // Reported in the contract's own order, so the message names the first gap.
+    expect(unmapped?.statuses[0]).toBe("draft");
+  });
+
+  it("contracts exactly the domains it claims to", () => {
+    expect(STATUS_CONTRACTS.map((contract) => contract.domain)).toEqual([
+      "library",
+      "rental",
+      "payment",
+      "contest",
+    ]);
   });
 
   it("is keyed by the shared vocabulary rather than by invented words", () => {

@@ -126,20 +126,42 @@ export const STATUS_TONES: Record<string, Record<string, BadgeTone>> = {
   moderation: MODERATION_STATUS_TONES,
 };
 
-const CONTRACTS: { domain: string; table: Record<string, BadgeTone>; statuses: readonly string[] }[] = [
+export interface StatusContract {
+  domain: string;
+  table: Record<string, BadgeTone>;
+  statuses: readonly string[];
+}
+
+export const STATUS_CONTRACTS: StatusContract[] = [
   { domain: "library", table: LIBRARY_STATUS_TONES, statuses: LIBRARY_ITEM_STATUSES },
   { domain: "rental", table: RENTAL_STATUS_TONES, statuses: RENTAL_STATUSES },
   { domain: "payment", table: PAYMENT_STATUS_TONES, statuses: PAYMENT_STATUSES },
   { domain: "contest", table: CONTEST_STATUS_TONES, statuses: CONTEST_STATUSES },
 ];
 
-/** Throws when a shared status has no tone: the build fails, not the design. */
-export function assertEveryStatusIsMapped(): void {
-  for (const { domain, table, statuses } of CONTRACTS) {
-    for (const status of statuses) {
-      if (!table[status]) {
-        throw new Error(`Badge: ${domain} status "${status}" has no tone`);
-      }
+/** Throws when a shared status has no tone. Returns the offending contract. */
+export function findUnmappedStatus(contracts: StatusContract[] = STATUS_CONTRACTS): StatusContract | null {
+  for (const contract of contracts) {
+    for (const status of contract.statuses) {
+      if (!contract.table[status]) return { ...contract, statuses: [status] };
     }
   }
+  return null;
+}
+
+/**
+ * The guard, RUN AT IMPORT.
+ *
+ * Calling this only from a test would mean the promise depends on someone
+ * remembering to write that test, and the first thing that imported `Badge`
+ * before it existed would have shipped the gap. Executing it while this module
+ * loads means any consumer — a test, a page, a production bundle — fails
+ * immediately the moment a shared contract grows a status these tables have not
+ * learned.
+ */
+const UNMAPPED = findUnmappedStatus();
+if (UNMAPPED) {
+  throw new Error(
+    `Badge: the ${UNMAPPED.domain} status "${UNMAPPED.statuses[0]}" has no tone. Add it to the shared table.`,
+  );
 }

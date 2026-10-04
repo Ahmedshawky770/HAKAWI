@@ -396,7 +396,29 @@ one that can wait.
 
 ![Breakpoints](ui-ux/layout-breakpoints.svg)
 
-### 5.5 Responsive rules
+### 5.5 The unauthenticated frame
+
+`/login`, `/register`, `/forgot-password` and `/reset-password` share one layout,
+`components/auth/AuthShell.tsx`:
+
+```
+┌──────────────────────────────┐
+│            ▣ حكاوي           │   wordmark, inert: every page in this flow
+│                              │   requires a session, so a link home goes
+│        تسجيل الدخول          │   nowhere and bounces twice before it settles
+│      ┌────────────────┐      │
+│      │  the form      │      │   one Card: the only raised surface on screen
+│      └────────────────┘      │
+│   ليس لديك حساب؟ سجّل       │   the way out of this page
+└──────────────────────────────┘
+```
+
+Four hand-written copies of this column had already drifted — one linked its
+wordmark to `/`, one drew a Latin `H` instead of the Arabic mark, and two invented
+their own confirmation boxes. It is one component now, and the page is the
+component plus a form.
+
+### 5.6 Responsive rules
 
 | Component | Mobile | Tablet | Desktop |
 |-----------|--------|--------|---------|
@@ -536,7 +558,7 @@ off the screen.
 | State | Component | Rule |
 |-------|-----------|------|
 | A whole region is pending | `Loading` | `role="status"`, polite, with visible text |
-| A list is loading | `Skeleton`, `ListRowSkeleton`, `StoryFeedSkeleton` | `aria-hidden`, exact real dimensions |
+| A list is loading | `Skeleton`, `ListRowSkeleton`, `StoryFeedSkeleton` | `aria-hidden`, exact real dimensions, `variant="full" \| "compact"` so the placeholder matches the card it stands in for |
 | A list is empty | `EmptyState` | names what is missing and offers the one action that fills it |
 | Something failed | `ErrorMessage` | `role="alert"`, semantic error tokens, retry when recoverable |
 | Something succeeded | `SuccessMessage` | `role="status"`, success tokens |
@@ -797,6 +819,7 @@ Every rule in this document, and the file that implements it.
 | Trending rail | `frontend/src/components/layout/TrendingRail.tsx` |
 | Bottom bar | `frontend/src/components/layout/BottomNav.tsx` |
 | Wordmark | `frontend/src/components/layout/Brand.tsx` |
+| Unauthenticated frame | `frontend/src/components/auth/AuthShell.tsx` |
 | Story card, compact card, skeletons, `formatCompact` | `frontend/src/components/story/StoryCard.tsx` |
 | Composer | `frontend/src/components/story/StoryCreatorCard.tsx` |
 | Reactions, optimism, reaction counts | `frontend/src/components/story/ReactionBar.tsx` |
