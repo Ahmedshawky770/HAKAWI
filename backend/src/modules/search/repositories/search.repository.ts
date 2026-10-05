@@ -5,6 +5,7 @@ import { WinstonLoggerService } from '../../../common/services/winston-logger.se
 import { db } from '../../../db/index.ts';
 import { stories, categories, tags, storyTags } from '../../../db/schema/stories.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
+import type { SearchSortField } from '../dto/search.dto.ts';
 import type {
   ISearchRepository,
   SearchResult,
@@ -72,6 +73,89 @@ interface CategorySearchRow {
 const searchAuthorsPredicate = (query: string): SQL =>
   sql`to_tsvector('simple', ${users.name}) @@ websearch_to_tsquery('simple', ${query})`;
 
+/**
+ * The indexed document expression, spelled ONCE, used by both the predicate and the ranking.
+ *
+ * WHY IT IS A NAMED FUNCTION RATHER THAN A TEMPLATE INLINED TWICE. `migrations/0014_create_search_indexes.sql`
+ * builds `stories_search_idx` on `to_tsvector('simple', title || ' ' || COALESCE(excerpt, ''))`, and
+ * Postgres will only use a GIN expression index when the query's expression tree matches the indexed
+ * one. A second, separately written copy of that expression is exactly how the same divergence
+ * documented on `searchAuthorsPredicate` got introduced in the first place — both copies compiled,
+ * both returned rows, and only one of them was the indexed one. So the ranking cannot be allowed to
+ * spell its own.
+ *
+ * WHY 'simple' AND WHY IT IS A LITERAL, not a bind: same reasoning as `searchAuthorsPredicate` — the
+ * configuration has to be part of the parsed expression for the index to match, and 'english' would
+ * also mis-stem the Arabic half of this corpus.
+ */
+const storyDocument = sql`to_tsvector('simple', ${stories.title} || ' ' || COALESCE(${stories.excerpt}, ''))`;
+
+/**
+ * The `tsquery` for a search term, built once and used by both the predicate and the ranking.
+ *
+ * WHY ONE FRAGMENT AND NOT THE STRING TWICE. The predicate and the ranking have to lex the term with
+ * the same configuration, and that is precisely the divergence documented on `searchAuthorsPredicate`
+ * — the page said 'simple', the count said 'english', both ran, and only `total` was wrong. Building
+ * the tsquery once means a future change to term normalisation has exactly one place to change.
+ *
+ * WHY THE TERM IS STILL BOUND TWICE. Drizzle renders an interpolated `sql` fragment independently at
+ * each position and renumbers binds per statement, so the ranking necessarily carries its own copy of
+ * the term. That is harmless — the value is identical — and it is the reason `storyOrderBy` refuses to
+ * rank without a term: a rank over a tsquery that is not in the WHERE clause would describe a
+ * different document set than the one being paged.
+ */
+const storyTsQuery = (term: string): SQL => sql`websearch_to_tsquery('simple', ${term})`;
+
+/**
+ * The single `ORDER BY` for every story search, as a function of the sort field and whether a search
+ * term exists.
+ *
+ * WHY RELEVANCE IS `ts_rank_cd` AND NOT THE `created_at` FALL-THROUGH IT USED TO BE. `sortBy`
+ * defaulted to `'relevance'` in `SearchService` and `relevance` is listed first in
+ * `SEARCH_SORT_FIELDS`, so "search returns relevant results" was a documented, defaulted behaviour
+ * that no code implemented — there is no `ts_rank` anywhere in `backend/src`, and the default sort
+ * silently ordered by recency. Every user who asked for the best match got the newest document.
+ *
+ * `ts_rank_cd` (cover density) rather than `ts_rank`: `ts_rank` counts how often a term occurs and
+ * is largely monotone in document length, so a long story outranks a short exact match. `ts_rank_cd`
+ * also rewards proximity, which is the whole reason a reader searching for a phrase expects the story
+ * containing the phrase together to come first. Ranking over `storyDocument` — the indexed
+ * expression — is what makes the sort affordable: the GIN index already materialises that tsvector
+ * per row, so the rank reuses it instead of re-lexing `title` and `excerpt` for every row.
+ *
+ * WHY `created_at DESC` IS THE SECOND KEY. `ts_rank_cd` returns a float and ties are common — every
+ * row that matches the tsquery equally scores equally. Without a deterministic second key, `LIMIT` +
+ * `OFFSET` may return the same row on two pages or skip one entirely, which is a pagination bug
+ * rather than a cosmetic one.
+ *
+ * WHY RELEVANCE WITHOUT A SEARCH TERM IS RECENCY, NOT ZERO. `GET /search?category=fiction` is a
+ * legitimate browse call with no `query`, and there is no tsquery to be relevant to; `ts_rank_cd`
+ * over an empty query is a constant, so ranking on it would make the sort a no-op that looks like an
+ * answer. Recency is the honest reading of "no relevance signal available", and it is the same
+ * answer an unrecognised sort field gets.
+ *
+ * WHY `date` IS `NULLS LAST` RATHER THAN A BARE `desc(published_at)`. Postgres orders NULLs FIRST
+ * under `DESC` and LAST under `ASC` — the opposite of what a reader expects from a descending date
+ * list. `published_at` is NULL for every draft and every archived story (`migrations/0001`), so the
+ * oldest-looking rows sorted to the very top of "newest first". Drizzle's `SQL` exposes no
+ * `nullsLast()` builder (its `Column.nullsLast()` configures an INDEX, not an `ORDER BY`), so the
+ * clause is written out.
+ */
+function storyOrderBy(sortBy: SearchSortField, term: string | undefined): SQL {
+  switch (sortBy) {
+    case 'views':
+      return desc(stories.viewCount);
+    case 'reactions':
+      return desc(stories.likeCount);
+    case 'date':
+      return sql`${stories.publishedAt} desc nulls last`;
+    case 'relevance':
+      return term === undefined
+        ? desc(stories.createdAt)
+        : sql`ts_rank_cd(${storyDocument}, ${storyTsQuery(term)}) desc, ${stories.createdAt} desc`;
+  }
+}
+
 @Injectable()
 export class SearchRepository implements ISearchRepository {
   constructor(@Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService) {}
@@ -84,7 +168,7 @@ export class SearchRepository implements ISearchRepository {
     status?: string;
     page: number;
     limit: number;
-    sortBy: string;
+    sortBy: SearchSortField;
   }): Promise<{ results: SearchResult[]; total: number }> {
     this.logger.debug('Searching stories');
     const offset = (filters.page - 1) * filters.limit;
@@ -92,9 +176,7 @@ export class SearchRepository implements ISearchRepository {
     const conditions = [isNull(stories.deletedAt)];
 
     if (filters.query) {
-      conditions.push(
-        sql`to_tsvector('simple', ${stories.title} || ' ' || COALESCE(${stories.excerpt}, '')) @@ websearch_to_tsquery('simple', ${filters.query})`,
-      );
+      conditions.push(sql`${storyDocument} @@ ${storyTsQuery(filters.query)}`);
     }
 
     if (filters.category) {
@@ -114,15 +196,12 @@ export class SearchRepository implements ISearchRepository {
     }
 
     const whereClause = and(...conditions);
-
-    let orderBy = desc(stories.createdAt);
-    if (filters.sortBy === 'views') {
-      orderBy = desc(stories.viewCount);
-    } else if (filters.sortBy === 'reactions') {
-      orderBy = desc(stories.likeCount);
-    } else if (filters.sortBy === 'date') {
-      orderBy = desc(stories.publishedAt);
-    }
+    // Resolved ONCE and handed to both the predicate and the ranking, so the rows being ranked are
+    // provably the rows being paged. The truthiness test is deliberately the same one the predicate
+    // uses: an empty term means "browse by filter", and ranking on a term that was not matched
+    // against anything would order a result set the tsquery never described.
+    const term = filters.query ? filters.query : undefined;
+    const orderBy = storyOrderBy(filters.sortBy, term);
 
     const [results, [{ total }]] = await Promise.all([
       db

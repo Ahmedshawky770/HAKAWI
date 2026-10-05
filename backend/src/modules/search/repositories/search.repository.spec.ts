@@ -82,6 +82,15 @@ describe('SearchRepository', () => {
    */
   const sqlOf = (index = 0): { sql: string; params: unknown[] } => dialect.sqlToQuery(whereOf(index) as SQL);
 
+  /**
+   * The first ORDER BY key the nth query was given, rendered to SQL.
+   *
+   * The sort is where `sortBy='relevance'` was documented, defaulted and never implemented, so it has
+   * to be asserted as text: a Drizzle object comparison would not show whether the clause ranks at
+   * all, and would happily accept a bare `desc(created_at)` dressed up as the same shape.
+   */
+  const orderBySql = (index = 0): string => dialect.sqlToQuery(firstArgsOf(chains[index]!, 'orderBy')?.[0] as SQL).sql;
+
   beforeEach(() => {
     vi.clearAllMocks();
     control = installMockDb(db);
@@ -252,26 +261,82 @@ describe('SearchRepository', () => {
       expect(firstArgsOf(chains[0]!, 'offset')).toEqual([40]);
     });
 
-    it('orders by creation date for the relevance sort and for an unknown one', async () => {
-      control.queue([], [{ total: 0 }], [], [{ total: 0 }]);
+    it('ranks the matches by ts_rank_cd instead of falling through to creation date', async () => {
+      control.queue([], [{ total: 0 }]);
 
-      await repository.searchStories({ page: 1, limit: 20, sortBy: 'relevance' });
-      await repository.searchStories({ page: 1, limit: 20, sortBy: 'nonsense' });
+      await repository.searchStories({ query: 'cities', page: 1, limit: 20, sortBy: 'relevance' });
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.createdAt)]);
-      expect(firstArgsOf(chains[2]!, 'orderBy')).toEqual([desc(stories.createdAt)]);
+      // The defect this pins: `relevance` is the first entry of SEARCH_SORT_FIELDS and the service
+      // default, and it used to order by `created_at` — so "search returns relevant results" ordered
+      // by recency and every reader asking for the best match got the newest document instead.
+      // Asserted on the leading key, because the recency fallback was a *trailing* key here too and
+      // a plain `toContain('created_at')` would pass on both.
+      expect(orderBySql().startsWith('ts_rank_cd(')).toBe(true);
+      expect(orderBySql()).toContain('ts_rank_cd(');
     });
 
-    it('orders by the requested metric for each named sort', async () => {
-      control.queue([], [{ total: 0 }], [], [{ total: 0 }], [], [{ total: 0 }]);
+    it('ranks over the exact expression migrations/0014 indexed, so the GIN index stays usable', async () => {
+      control.queue([], [{ total: 0 }]);
 
-      await repository.searchStories({ page: 1, limit: 20, sortBy: 'views' });
-      await repository.searchStories({ page: 1, limit: 20, sortBy: 'reactions' });
+      await repository.searchStories({ query: 'cities', page: 1, limit: 20, sortBy: 'relevance' });
+
+      // A rank spelled over a different expression than `stories_search_idx` still returns rows —
+      // it just cannot use the index, and re-lexing title+excerpt per row is the whole cost the
+      // migration was applied to avoid. Pinned to 'simple' and to the literal, for the same reason
+      // `searchAuthors` pins its own configuration.
+      const indexed = 'to_tsvector(\'simple\', "stories"."title" || \' \' || COALESCE("stories"."excerpt", \'\'))';
+      expect(orderBySql()).toContain(indexed);
+      expect(orderBySql()).toContain("websearch_to_tsquery('simple', $1)");
+      expect(orderBySql()).not.toContain('english');
+    });
+
+    it('breaks a relevance tie on creation date, so paging cannot repeat or skip a row', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.searchStories({ query: 'cities', page: 1, limit: 20, sortBy: 'relevance' });
+
+      // ts_rank_cd is a float and ties are common; LIMIT/OFFSET over a non-deterministic order is a
+      // pagination bug, not a cosmetic one.
+      expect(orderBySql()).toContain('desc, "stories"."created_at" desc');
+    });
+
+    it('falls back to recency for relevance with no search term, because nothing is relevant to it', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.searchStories({ category: 'classics', page: 1, limit: 20, sortBy: 'relevance' });
+
+      // `GET /search?category=fiction` is a legitimate browse with no tsquery. Ranking on a constant
+      // would be a no-op that looks like an answer, so recency is the honest reading.
+      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.createdAt)]);
+      expect(orderBySql()).not.toContain('ts_rank_cd');
+    });
+
+    it('orders the date sort newest-published first with unpublished stories last', async () => {
+      control.queue([], [{ total: 0 }]);
+
       await repository.searchStories({ page: 1, limit: 20, sortBy: 'date' });
 
+      // Postgres orders NULLs FIRST under DESC, and `published_at` is NULL for every draft and every
+      // archived story — so the rows that were never published sorted to the top of "newest first".
+      expect(orderBySql()).toBe('"stories"."published_at" desc nulls last');
+    });
+
+    it('orders by view count for the views sort', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.searchStories({ page: 1, limit: 20, sortBy: 'views' });
+
       expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.viewCount)]);
-      expect(firstArgsOf(chains[2]!, 'orderBy')).toEqual([desc(stories.likeCount)]);
-      expect(firstArgsOf(chains[4]!, 'orderBy')).toEqual([desc(stories.publishedAt)]);
+      expect(orderBySql()).toBe('"stories"."view_count" desc');
+    });
+
+    it('orders by like count for the reactions sort', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.searchStories({ page: 1, limit: 20, sortBy: 'reactions' });
+
+      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.likeCount)]);
+      expect(orderBySql()).toBe('"stories"."like_count" desc');
     });
 
     it('rethrows a database error', async () => {

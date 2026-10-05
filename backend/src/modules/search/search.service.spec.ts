@@ -7,7 +7,12 @@ import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { SearchService } from './search.service.ts';
 import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
 import type { SearchResponse } from './types.ts';
-import { SEARCH_CACHE_NAMESPACE, SEARCH_CACHE_TAG, SEARCH_CACHE_TTL_SECONDS } from './cache-keys.ts';
+import {
+  SEARCH_CACHE_NAMESPACE,
+  SEARCH_CACHE_TAG,
+  SEARCH_CACHE_TTL_SECONDS,
+  SEARCH_DEFAULT_SORT,
+} from './cache-keys.ts';
 
 type MockSearchRepository = {
   searchStories: ReturnType<
@@ -290,6 +295,58 @@ describe('SearchService', () => {
         limit: 10,
         sortBy: 'date',
       });
+    });
+  });
+
+  /**
+   * The cache key is the whole correctness boundary of a TTL cache: any input the repository can see
+   * and any input that changes its output has to be inside it. These assert that through the one
+   * observable — the `key` handed to `TaggedCacheService` — rather than against the builder directly,
+   * because a unit test that only ever exercised `buildSearchCacheKey` would still pass if the
+   * service stopped calling it.
+   */
+  describe('search cache key', () => {
+    const keyFor = async (filters: Parameters<SearchService['search']>[0]): Promise<string> => {
+      vi.mocked(searchRepository.searchStories).mockResolvedValue({ results: [], total: 0 });
+      vi.mocked(cache.getOrSet).mockClear();
+      await searchService.search(filters);
+      const options = vi.mocked(cache.getOrSet).mock.calls[0]?.[0] as { key: string };
+      return options.key;
+    };
+
+    it('should give each sort its own cache entry, so one cannot be served to another', async () => {
+      // The defect: `sortBy` was absent from the key, so `?query=x&sortBy=views` and
+      // `?query=x&sortBy=date` collided on one entry for its full 300-second TTL and whichever landed
+      // first was served to both — a caller asking for the most-read stories was shown the
+      // most-recently-published ones, with nothing in the response to say so.
+      const byViews = await keyFor({ query: 'x', sortBy: 'views' });
+      const byDate = await keyFor({ query: 'x', sortBy: 'date' });
+      const byRelevance = await keyFor({ query: 'x', sortBy: 'relevance' });
+      const byReactions = await keyFor({ query: 'x', sortBy: 'reactions' });
+
+      expect(new Set([byViews, byDate, byRelevance, byReactions]).size).toBe(4);
+    });
+
+    it('should default an omitted sort to the one the repository is asked for', async () => {
+      const key = await keyFor({ query: 'x' });
+
+      // Same resolved value for both halves. If the key defaulted independently of the repository
+      // call, an omitted sort and an explicit `?sortBy=relevance` would be two entries for one
+      // result set — a silent doubling of the index rather than a visible bug.
+      expect(key).toBe(await keyFor({ query: 'x', sortBy: SEARCH_DEFAULT_SORT }));
+      expect(searchRepository.searchStories).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: SEARCH_DEFAULT_SORT }),
+      );
+    });
+
+    it('should still separate the sorts that were already in the key', async () => {
+      const base = await keyFor({ query: 'x', page: 2, limit: 5, status: 'published' });
+
+      expect(await keyFor({ query: 'y', page: 2, limit: 5, status: 'published' })).not.toBe(base);
+      expect(await keyFor({ query: 'x', page: 3, limit: 5, status: 'published' })).not.toBe(base);
+      expect(await keyFor({ query: 'x', page: 2, limit: 6, status: 'published' })).not.toBe(base);
+      expect(await keyFor({ query: 'x', page: 2, limit: 5, status: 'draft' })).not.toBe(base);
+      expect(await keyFor({ query: 'x', page: 2, limit: 5, status: 'published' })).toBe(base);
     });
   });
 

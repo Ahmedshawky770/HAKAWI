@@ -2,6 +2,7 @@ import { Controller, Get, Query, Inject, BadRequestException } from '@nestjs/com
 
 import { Public } from '../../common/decorators/roles.decorator.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
+import { PUBLIC_STORY_STATUS } from '../stories/types.ts';
 
 import { SearchService } from './search.service.ts';
 import { SearchAuthorsQueryDto, SearchFiltersDto } from './dto/search.dto.ts';
@@ -22,13 +23,21 @@ export class SearchController {
    * contract, but a public search is by definition an index of published content, so the value is
    * pinned here instead of read from the query string.
    *
-   * A caller that legitimately wants its own drafts has `GET /stories`, which is authenticated and
-   * already scoped by `OwnershipGuard` on the write side and by `authorId` on the read side.
+   * The same rule is applied by `StoriesController.findAll`, and both routes read it from the one
+   * `PUBLIC_STORY_STATUS` constant rather than each spelling the literal. That matters because the
+   * two routes used to DISAGREE: this one was pinned while `GET /stories` was not, and `GET /stories`
+   * is `@Public()` too — the comment here used to justify the pin by claiming that route "is
+   * authenticated and already scoped by `authorId`", which was never true of either claim. A comment
+   * asserting a security property that the code does not have is worse than no comment, because it
+   * is read as the reason nobody else checked.
+   *
+   * The privileged counterpart is still missing rather than provided here: an author cannot list
+   * their own drafts over HTTP. See the gap note on `StoriesController.findAll`.
    */
   @Public()
   @Get()
   async search(@Query() query: SearchFiltersDto) {
-    return this.searchService.search({ ...(query as SearchFilters), status: 'published' });
+    return this.searchService.search({ ...(query as SearchFilters), status: PUBLIC_STORY_STATUS });
   }
 
   /**

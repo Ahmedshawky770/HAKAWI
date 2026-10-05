@@ -6,7 +6,13 @@ import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
 import { SEARCH_REPOSITORY } from './interfaces/search-repository.interface.ts';
 import type { SearchResponse, SearchFilters } from './types.ts';
-import { SEARCH_CACHE_NAMESPACE, SEARCH_CACHE_TAG, SEARCH_CACHE_TTL_SECONDS } from './cache-keys.ts';
+import {
+  SEARCH_CACHE_NAMESPACE,
+  SEARCH_CACHE_TAG,
+  SEARCH_CACHE_TTL_SECONDS,
+  SEARCH_DEFAULT_SORT,
+  buildSearchCacheKey,
+} from './cache-keys.ts';
 
 @Injectable()
 export class SearchService {
@@ -26,9 +32,14 @@ export class SearchService {
       throw new BadRequestException('At least one search parameter is required');
     }
 
+    // Resolved BEFORE the cache key is built, so the sort that identifies this page in the cache is
+    // the same sort the repository is asked for. Resolving it inside the loader instead would make
+    // the key depend on a value the key itself does not carry.
+    const sortBy = filters.sortBy ?? SEARCH_DEFAULT_SORT;
+
     const { value } = await this.cache.getOrSet<SearchResponse>({
       namespace: SEARCH_CACHE_NAMESPACE,
-      key: this.buildCacheKey(filters),
+      key: buildSearchCacheKey({ ...filters, query, sortBy }),
       ttl: SEARCH_CACHE_TTL_SECONDS,
       tags: [SEARCH_CACHE_TAG],
       load: async () => {
@@ -40,7 +51,7 @@ export class SearchService {
           status: filters.status,
           page,
           limit,
-          sortBy: filters.sortBy || 'relevance',
+          sortBy,
         });
 
         this.logger.info(
@@ -91,18 +102,6 @@ export class SearchService {
 
   async searchCategories(query: string): Promise<{ id: string; name: string; slug: string; storiesCount: number }[]> {
     return this.searchRepository.searchCategories(query);
-  }
-
-  private buildCacheKey(filters: SearchFilters): string {
-    const parts = ['search'];
-    if (filters.query) parts.push(`q:${encodeURIComponent(filters.query)}`);
-    if (filters.category) parts.push(`cat:${filters.category}`);
-    if (filters.tag) parts.push(`tag:${filters.tag}`);
-    if (filters.authorId) parts.push(`author:${filters.authorId}`);
-    if (filters.status) parts.push(`status:${filters.status}`);
-    parts.push(`page:${filters.page ?? 1}`);
-    parts.push(`limit:${filters.limit ?? 20}`);
-    return parts.join(':');
   }
 
   private highlightText(text: string, query: string): string {

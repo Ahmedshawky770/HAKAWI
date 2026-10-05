@@ -86,11 +86,16 @@ describe('SearchController', () => {
         took: 10,
       });
 
-      const res = await request(httpServer).get('/search?q=test').expect(200);
+      const res = await request(httpServer).get('/search?query=test').expect(200);
 
       expect(res.body).toHaveProperty('results');
       expect(res.body).toHaveProperty('total', 0);
-      expect(searchService.search).toHaveBeenCalled();
+      // Assert the ARGUMENTS, not just that the service was reached. This spec built a bare Nest
+      // application with no `useGlobalPipes`, so it structurally cannot observe the global
+      // `ValidationPipe` — and it used to assert `?q=test`, which the real app answers 400 because
+      // the DTO field is `query` and `main.ts` sets `forbidNonWhitelisted: true`. Asserting only
+      // `toHaveBeenCalled()` let a query string the production pipe rejects pass as a green test.
+      expect(searchService.search).toHaveBeenCalledWith(expect.objectContaining({ query: 'test' }));
     });
   });
 
