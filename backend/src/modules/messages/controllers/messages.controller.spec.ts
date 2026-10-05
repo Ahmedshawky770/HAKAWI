@@ -187,7 +187,11 @@ describe('MessagesController', () => {
     });
   });
 
-  describe('PATCH /messages/messages/:messageId/read', () => {
+  // Regression guard for the doubled-segment route. `@Controller('messages')` +
+  // `@Patch('messages/:messageId/read')` only ever resolved `PATCH /messages/messages/:messageId/read`,
+  // which no client would guess, so the natural path answered 404. The two cases below pin both
+  // halves of the fix: the natural path resolves, and the doubled one no longer does.
+  describe('PATCH /messages/:messageId/read', () => {
     it('should mark a message as read', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
@@ -202,15 +206,42 @@ describe('MessagesController', () => {
       });
 
       const res = await request(httpServer)
-        .patch('/messages/messages/22222222-2222-4222-8222-222222222222/read')
+        .patch('/messages/22222222-2222-4222-8222-222222222222/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('isRead', true);
       expect(messagesService.markAsRead).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222', 'user-1');
     });
+
+    it('should no longer resolve the doubled messages/messages path', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      await request(httpServer)
+        .patch('/messages/messages/22222222-2222-4222-8222-222222222222/read')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+
+      expect(messagesService.markAsRead).not.toHaveBeenCalled();
+      expect(messagesService.markAllAsRead).not.toHaveBeenCalled();
+    });
+
+    it('should reject a non-UUID in the messageId position instead of falling through', async () => {
+      // `ParseUUIDPipe` is the last line of defence against `:messageId` absorbing a literal path
+      // segment such as `conversations`; without it such a caller would reach the service.
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      await request(httpServer)
+        .patch('/messages/conversations/read')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(400);
+
+      expect(messagesService.markAsRead).not.toHaveBeenCalled();
+    });
   });
 
+  // The two `read` routes are disjoint by segment count (two after `messages` versus three), so this
+  // case is what proves `:messageId` is not swallowed by — and cannot swallow — the conversation route.
   describe('PATCH /messages/conversations/:conversationId/read', () => {
     it('should mark all messages in conversation as read', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
@@ -224,6 +255,7 @@ describe('MessagesController', () => {
 
       expect(res.body).toEqual({ message: 'All messages marked as read' });
       expect(messagesService.markAllAsRead).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'user-1');
+      expect(messagesService.markAsRead).not.toHaveBeenCalled();
     });
   });
 

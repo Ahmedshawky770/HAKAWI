@@ -102,8 +102,27 @@ export class MessagesController {
     return this.messagesService.sendMessage(conversationId, req.user.sub, content);
   }
 
+  /**
+   * `PATCH /messages/:messageId/read`.
+   *
+   * This was `@Patch('messages/:messageId/read')` under `@Controller('messages')`, so the controller
+   * base and the route segment both contributed a `messages` and the ONLY path that resolved was
+   * `PATCH /api/v1/messages/messages/:messageId/read`. The natural path was a 404, and no client
+   * guesses a doubled segment — so read receipts for one message were unreachable over HTTP. The
+   * route segment drops its redundant prefix rather than the controller base: `messages` is the
+   * module's public noun and `backend/src/modules/messages/README.md:11` already documented the
+   * natural path, so the controller had drifted from its own module contract.
+   *
+   * WHY THIS CANNOT BE CONFUSED WITH `conversations/:conversationId/read` BELOW. Express matches a
+   * whole path, and the two shapes have different segment counts under this controller base:
+   * `:messageId/read` is two segments after `messages`, `conversations/:conversationId/read` is
+   * three. `PATCH /messages/conversations/<uuid>/read` therefore cannot reach this handler at all,
+   * and no `:messageId` can be swallowed by the conversation route either — the two are disjoint by
+   * construction, so there is no registration order that could make one shadow the other.
+   * `ParseUUIDPipe` is what rejects a caller who puts a non-UUID in the `messageId` position.
+   */
   @UseGuards(JwtAuthGuard)
-  @Patch('messages/:messageId/read')
+  @Patch(':messageId/read')
   async markAsRead(@Param('messageId', ParseUUIDPipe) messageId: string, @Request() req: { user: { sub: string } }) {
     return this.messagesService.markAsRead(messageId, req.user.sub);
   }
