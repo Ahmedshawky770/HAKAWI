@@ -78,7 +78,8 @@ export const BOOK: Book = {
   pageCount: 300,
   fileUrl: null,
   fileType: null,
-  price: 25,
+  // PIASTRES, like every amount the API sends: 2500 piastres = 25.00 EGP.
+  price: 2500,
   isFree: false,
   status: "published",
   categoryId: "literature",
@@ -102,7 +103,8 @@ export const BOOK_RECORD: BookRecord = {
   pageCount: 300,
   fileUrl: null,
   fileType: null,
-  price: 25,
+  // PIASTRES, like every amount the API sends: 2500 piastres = 25.00 EGP.
+  price: 2500,
   isFree: false,
   status: "published",
   categoryId: "literature",

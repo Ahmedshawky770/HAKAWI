@@ -114,7 +114,8 @@ describe("BookGridSkeleton", () => {
 
 describe("formatBookPrice", () => {
   it("keeps two decimals and the Egyptian pound", () => {
-    expect(formatBookPrice(25)).toBe("25.00 ج.م");
-    expect(formatBookPrice(9.5)).toBe("9.50 ج.م");
+    // The unit is PIASTRES, like every amount the API sends.
+    expect(formatBookPrice(2500)).toBe("25.00 ج.م");
+    expect(formatBookPrice(950)).toBe("9.50 ج.م");
   });
 });

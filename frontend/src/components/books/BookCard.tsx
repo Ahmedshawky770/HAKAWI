@@ -3,6 +3,7 @@
 import React from "react";
 
 import { CardLink } from "@/components/ui/Card";
+import { formatPrice } from "@/lib/money";
 import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { Book } from "@/types/api";
@@ -28,10 +29,11 @@ import type { Book } from "@/types/api";
  *   with a token-coloured placeholder underneath means a grid of twelve books,
  *   two of which have no cover, does not reflow when the images arrive (and does
  *   not move at all when they do not).
- * - **The price is `hk-numeric`**, so the figures stay in reading order inside the
- *   RTL line, and it is quoted in `ج.م` — `books.price` is an EGP amount, the same
- *   unit the rental quote is priced in, and the `$` these pages used to print was
- *   the wrong currency for the product.
+ * - **The price is `hk-numeric`** — the amount stands alone on its own line, so
+ *   the LTR isolate keeps the digits and the symbol in reading order. It is
+ *   converted from piastres and named in `ج.م` by `formatPrice`, one function with
+ *   one unit: the `$` these pages printed was the wrong currency, and the raw
+ *   integer behind it was the wrong unit.
  */
 export function BookCard({ book }: { book: Book }) {
   return (
@@ -105,7 +107,16 @@ export function BookGridSkeleton({ count = 6 }: { count?: number }) {
   );
 }
 
-/** `25.00 ج.م` — two decimals, the currency the product actually charges in. */
-export function formatBookPrice(price: number): string {
-  return `${price.toFixed(2)} ج.م`;
+/**
+ * `2500` piastres → `25.00 ج.م`.
+ *
+ * THE UNIT IS PIASTRES. `books.price` is an integer with no currency column, and
+ * `books.service.ts` forwards it to the gateway untouched, which means it is
+ * piastres (1 EGP = 100). The previous implementation printed the raw integer with
+ * a currency symbol, so a book at 25 piastres was shown as 25 pounds — a hundred
+ * times the price. `formatPrice` owns the conversion, and this is the only place
+ * the frontend performs it.
+ */
+export function formatBookPrice(price: number | null | undefined): string {
+  return formatPrice(price);
 }

@@ -5,11 +5,12 @@ import { useParams } from "next/navigation";
 import {
   DEFAULT_RENTAL_DURATION_DAYS,
   RENTAL_DURATION_DAYS,
-  RENTAL_PRICE_PER_DAY_PIASTERS,
+  rentalPriceForDays,
 } from "@hakawi/shared-types";
 
 import { api } from "@/lib/api";
 import { formatBookPrice } from "@/components/books/BookCard";
+import { formatRentalQuote } from "@/lib/money";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/Card";
@@ -33,14 +34,16 @@ const RENTAL_DURATION_LABELS_AR: Record<number, string> = {
 /**
  * What a rental of this length costs, from the same rate the backend charges.
  *
- * `RENTAL_PRICE_PER_DAY_PIASTERS` is piastres (1 EGP = 100). Showing the price from the shared
- * constant means the figure on screen and the figure in the payment cannot disagree — and the amount
- * is still re-derived server-side when the payment is created, so this is a quote for the reader, not
- * the authority. The checkout is where the money is decided.
+ * `rentalPriceForDays` is the shared rate and it is denominated in PIASTRES like
+ * every other amount in the product (1 EGP = 100) — `formatRentalQuote` performs
+ * the single division by 100 this product contains. Quoting from the shared
+ * constant means the figure on screen and the figure in the payment cannot
+ * disagree; and the amount is still re-derived server-side when the payment is
+ * created, so this is a quote for the reader, not the authority. The checkout is
+ * where the money is decided.
  */
 function formatRentPrice(days: number): string {
-  const piastres = RENTAL_PRICE_PER_DAY_PIASTERS * days;
-  return `${(piastres / 100).toLocaleString("ar-EG")} ج.م / ${days} يوم`;
+  return formatRentalQuote(rentalPriceForDays(days), days);
 }
 
 /**

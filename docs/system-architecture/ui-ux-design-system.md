@@ -15,7 +15,7 @@
 | 1 | [Design philosophy](#1-design-philosophy) | The five principles and how to weigh them |
 | 2 | [Typography](#2-typography) | Four faces, the scale, the measure |
 | 3 | [Spacing, radius, elevation](#3-spacing-radius-elevation) | The 4px base and the two shadows |
-| 4 | [Colour](#4-colour) | Both palettes, the split tokens, the measured contrast |
+| 4 | [Colour](#4-colour) | Both palettes, the split tokens, the measured contrast, money |
 | 5 | [Layout](#5-layout) | Three columns, three breakpoints, what each one drops |
 | 6 | [Components](#6-components) | Every component, its anatomy, its states, its file |
 | 7 | [UX patterns](#7-ux-patterns) | Infinite scroll, optimism, skeletons, empty states |
@@ -316,7 +316,30 @@ Every ratio below is recomputed from the tokens by
 | info text | `--hk-info-ink` on `--hk-surface` (light) | 6.70:1 | 4.5:1 |
 | form control boundary | `--hk-control-line` on `--hk-surface-raised` (light) | 3.27:1 | 3:1 |
 
-### 4.7 Rules
+### 4.7 Money
+
+Money is not a colour rule, so it gets its own rule, because it is where this
+product had the two facts that cost the most: **the currency** and **the unit**.
+
+- `RENTAL_CURRENCY` is `EGP`, and the backend sends `EGP` to the gateway. The book
+  surfaces used to print `$`.
+- Every amount the API sends is an integer in **piastres** (1 EGP = 100) —
+  `books.price`, `RENTAL_PRICE_PER_DAY_PIASTRES`. The rental quote divided by 100;
+  the book price printed the raw integer, so a book at 25 piastres was shown as
+  25 pounds.
+- Both now go through `formatPrice` in `frontend/src/lib/money.ts`, which is the
+  only division by 100 in the product and takes its symbol from
+  `RENTAL_CURRENCY`. A price is always two decimals, because a price is never
+  rounded for display.
+- **Western digits in both locales.** `toLocaleString("ar-EG")` renders
+  Arabic-Indic digits, which is how a book price came to read "25.00" two inches
+  above a quote reading "٢٥٫٠٠" for the same product. Egyptian readers
+  overwhelmingly read Western digits, every other figure here is Western, and
+  `.hk-numeric` isolates these runs as LTR.
+- A standalone amount is wrapped in `.hk-numeric`; an amount inside an Arabic
+  sentence is not, because isolating it reorders the words around it.
+
+### 4.8 Rules
 
 - **Never** pure black or pure white as a canvas in dark mode, and never a
   stock Tailwind colour anywhere.
@@ -851,6 +874,7 @@ Every rule in this document, and the file that implements it.
 | Infinite feed, sentinel, "load more" | `frontend/src/components/story/StoryFeed.tsx` |
 | Byline, category, date | `frontend/src/components/story/StoryMeta.tsx` |
 | One query key per fact, paging maths, trending derivation | `frontend/src/lib/queries.ts` |
+| Money: one currency, one unit, one division | `frontend/src/lib/money.ts` |
 | **This document, held against the stylesheet** | `frontend/src/app/design-system.test.ts` |
 
 ---
