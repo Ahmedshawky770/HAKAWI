@@ -54,9 +54,18 @@ import type {
 } from './interfaces/stories-repository.interface.ts';
 import { STORIES_REPOSITORY, isUniqueViolation } from './interfaces/stories-repository.interface.ts';
 import { deriveStorySlug, storySlugCandidates, MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
+import { assertStoryIsReadableBy } from './story-visibility.ts';
+import type { StoryViewer } from './story-visibility.ts';
 import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput, StoriesListResponse, StoryRecord } from './types.ts';
-import { toStoryResponse, toStoryRecord, reviveStoryDates, type StoryAuthor, type StoryRelations } from './types.ts';
+import {
+  toStoryResponse,
+  toStoryRecord,
+  reviveStoryDates,
+  UNPUBLISHED_STORY_STATUSES,
+  type StoryAuthor,
+  type StoryRelations,
+} from './types.ts';
 
 export const STORY_CACHE_NAMESPACE = 'story';
 export const STORIES_CACHE_TAG = 'stories';
@@ -122,7 +131,20 @@ export class StoriesService {
     return story;
   }
 
-  async findById(id: string): Promise<Story> {
+  /**
+   * WHY THE VISIBILITY CHECK IS AFTER THE CACHE AND NOT INSIDE `load`.
+   *
+   * `TaggedCacheService.getOrSet` returns a hit without ever calling `load`, and the entry is keyed
+   * on the id (or the slug) alone — it holds no viewer, because a cached value cannot hold one
+   * without becoming one-entry-per-viewer, which is what the cache exists to avoid. A check placed
+   * inside `load` would therefore run only on a MISS: the first anonymous read of a cold draft would
+   * be refused, and then the story would have been cached by nothing while the author's own read —
+   * which does pass — caches the row, and from that moment every anonymous reader is served the
+   * cached draft without `load` running again. Authorization that depends on cache state is not
+   * authorization. Running `assertStoryIsReadableBy` on the returned value means a cached draft is
+   * checked on every single read, hit or miss, which is the property that actually matters here.
+   */
+  async findById(id: string, viewer?: StoryViewer): Promise<Story> {
     const { value } = await this.cache.getOrSet<Story>({
       namespace: STORY_CACHE_NAMESPACE,
       key: id,
@@ -137,10 +159,12 @@ export class StoriesService {
         return story;
       },
     });
+    assertStoryIsReadableBy(value, viewer);
     return value;
   }
 
-  async findBySlug(slug: string): Promise<Story> {
+  /** The slug read is the id read with a different key; see `findById` for why the check sits outside `load`. */
+  async findBySlug(slug: string, viewer?: StoryViewer): Promise<Story> {
     const { value } = await this.cache.getOrSet<Story>({
       namespace: STORY_CACHE_NAMESPACE,
       key: `slug:${slug}`,
@@ -155,11 +179,21 @@ export class StoriesService {
         return story;
       },
     });
+    assertStoryIsReadableBy(value, viewer);
     return value;
   }
 
-  async findByIdWithRelations(id: string): Promise<{ story: Story; response: ReturnType<typeof toStoryResponse> }> {
-    const story = await this.findById(id);
+  /**
+   * `viewer` is forwarded rather than re-read here: the allow/deny rule lives next to the
+   * `deletedAt` check in `findById`/`findBySlug`, one helper for both, so this layer only carries the
+   * identity it was handed. An `undefined` viewer means the route saw no verified subject, which is
+   * the anonymous case the rule denies — it is never defaulted to a permissive value.
+   */
+  async findByIdWithRelations(
+    id: string,
+    viewer?: StoryViewer,
+  ): Promise<{ story: Story; response: ReturnType<typeof toStoryResponse> }> {
+    const story = await this.findById(id, viewer);
     const relations = await this.loadRelations([story]);
     return {
       story,
@@ -167,8 +201,11 @@ export class StoriesService {
     };
   }
 
-  async findBySlugWithRelations(slug: string): Promise<{ story: Story; response: ReturnType<typeof toStoryResponse> }> {
-    const story = await this.findBySlug(slug);
+  async findBySlugWithRelations(
+    slug: string,
+    viewer?: StoryViewer,
+  ): Promise<{ story: Story; response: ReturnType<typeof toStoryResponse> }> {
+    const story = await this.findBySlug(slug, viewer);
     const relations = await this.loadRelations([story]);
     return {
       story,
@@ -181,7 +218,7 @@ export class StoriesService {
     limit?: number;
     authorId?: string;
     categoryId?: string;
-    status?: string;
+    status?: string | readonly string[];
     search?: string;
   }): Promise<StoriesListResponse> {
     const page = params.page ?? 1;
@@ -199,6 +236,54 @@ export class StoriesService {
       page,
       limit,
     };
+  }
+
+  /**
+   * One author's UNPUBLISHED stories, and nothing else. This is the service half of
+   * `GET /stories/mine`; the route resolves who the caller is and forwards the identity, which is the
+   * whole of its job on this path (Principle #7).
+   *
+   * WHY A METHOD AND NOT `findAll({ authorId, ... })` FROM THE ROUTE. `findAll` is the same primitive
+   * the public list uses, and `authorId` has been a parameter of it all along — which is how the
+   * capability sat one layer below HTTP with no way to reach it. Handing the route that parameter
+   * directly would also hand it the decision of WHO, and the only thing separating "my drafts" from
+   * "everyone's drafts" would be one argument at one call site. A method whose name states the rule
+   * makes the safe shape the default shape: there is no signature here that can list another author's
+   * work, so the route cannot grow one by accident.
+   *
+   * WHY THE STATUS SET IS DECIDED HERE AND NOT AT THE ROUTE. The route's DTO can only narrow to a
+   * single unpublished status; the default — the answer to "what does this endpoint return?" — belongs
+   * beside the mapping that produces the rows, where it cannot be forgotten by a future handler.
+   *
+   * WHY A NONSENSE `status` NARROWS TO NOTHING INSTEAD OF BEING FORWARDED. The intersection is
+   * computed against `UNPUBLISHED_STORY_STATUSES`, so `status: 'published'` produces an empty set, and
+   * an empty set is `inArray`'s `false` rather than "no filter". A method called
+   * `findUnpublishedByAuthor` that could return a published story would be a lie in its own name; the
+   * DTO already answers a caller who asks for one with a 400 that names the route that serves them.
+   */
+  async findUnpublishedByAuthor(
+    authorId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      categoryId?: string;
+      search?: string;
+      status?: string;
+    },
+  ): Promise<StoriesListResponse> {
+    const status =
+      params.status === undefined
+        ? UNPUBLISHED_STORY_STATUSES
+        : UNPUBLISHED_STORY_STATUSES.filter((candidate) => candidate === params.status);
+
+    return this.findAll({
+      page: params.page,
+      limit: params.limit,
+      search: params.search,
+      categoryId: params.categoryId,
+      authorId,
+      status,
+    });
   }
 
   async toRecord(story: Story): Promise<StoryRecord> {
@@ -315,14 +400,46 @@ export class StoriesService {
     await this.eventBus.emit('story.deleted', { storyId: id, authorId: story.authorId } as StoryDeletedEvent);
   }
 
-  async incrementViewCount(id: string): Promise<void> {
+  /**
+   * `viewer` is REQUIRED here, while `findById`/`findBySlug` take it as optional. Those two are
+   * reachable without a credential — they sit on `@Public()` routes behind `OptionalJwtAuthGuard` — so
+   * `undefined` is a real case there and means "anonymous". This method sits behind `JwtAuthGuard`,
+   * which never lets a handler run without a verified subject, so an optional parameter here would be
+   * a permissive default with no caller that needs it: a missing viewer would be a programming error,
+   * and `assertStoryIsReadableBy` would answer it by silently treating the request as anonymous.
+   *
+   * WHY THE RULE IS REUSED INSTEAD OF A VIEW-SPECIFIC ONE. The counter used to be incremented for any
+   * id that existed, which made a 204 the answer to "does this draft exist?" for any account that
+   * cared to ask — the cheaper version of the oracle the detail routes were just closed against. There
+   * is exactly one allow/deny rule for reading a story, and this path is reading one; a second
+   * expression would be the "one rule, two answers" shape that produced the defect. The consequence
+   * worth stating plainly: a refusal is `NotFoundException('Story not found')` — byte-identical to the
+   * one below it for an id that never existed — so this route cannot be used to confirm that a draft
+   * is there either.
+   *
+   * AND WHAT THIS DOES NOT CHANGE. A published story is readable by anyone, so any authenticated
+   * reader still counts a view on one. That is the ordinary case and the reason the route exists; the
+   * check returns before the counter for a published row and adds nothing to that path.
+   */
+  async incrementViewCount(id: string, viewer: StoryViewer): Promise<void> {
     const story = await this.storiesRepository.findById(id);
     if (!story || story.deletedAt) {
       throw new NotFoundException('Story not found');
     }
 
+    assertStoryIsReadableBy(story, viewer);
+
     await this.storiesRepository.incrementViewCount(id);
-    await this.invalidateStoryCache(id, story.slug);
+    // Only this story's own two keys, deliberately NOT the search sweep. Exposing this over HTTP as
+    // `POST /stories/:id/view` turned the sweep from a defect nobody could reach into a per-page-view
+    // cost: `views` is projected into every cached search page, so a sweep on each view empties the
+    // entire search index of the deployment while paying `SMEMBERS` + N `DEL` to do it — the same
+    // pathology `invalidateStoryCache` already documents for the STORIES tag, one layer out. Search
+    // pages now lag the counter by at most `SEARCH_CACHE_TTL_SECONDS`, which is the right trade for a
+    // popularity metric: it stays eventually consistent by design (see the route's comment) while the
+    // cache it is read through keeps actually caching. Content writes still sweep, because a title or
+    // a status change is a correctness problem and a view is not.
+    await this.invalidateCachedStoryKeys(id, story.slug);
     this.logger.debug(`Story ${id} view count incremented and cache invalidated`, 'StoriesService');
   }
 
@@ -445,6 +562,17 @@ export class StoriesService {
    */
   private async invalidateStoryCache(id: string, slug?: string): Promise<void> {
     await this.cache.invalidateTags([SEARCH_CACHE_TAG]);
+    await this.invalidateCachedStoryKeys(id, slug);
+  }
+
+  /**
+   * Drops this story's two cached representations and nothing else.
+   *
+   * Split out of `invalidateStoryCache` so the view counter can be invalidated precisely: the
+   * difference between the two callers is whether the SEARCH projection went stale, and that is a
+   * property of WHAT changed, not of how the story is keyed. See `incrementViewCount`.
+   */
+  private async invalidateCachedStoryKeys(id: string, slug?: string): Promise<void> {
     await this.cache.invalidateKey(STORY_CACHE_NAMESPACE, id, [STORIES_CACHE_TAG]);
     if (slug) {
       await this.cache.invalidateKey(STORY_CACHE_NAMESPACE, `slug:${slug}`, [STORIES_CACHE_TAG]);

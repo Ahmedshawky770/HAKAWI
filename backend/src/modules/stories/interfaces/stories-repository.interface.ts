@@ -90,7 +90,18 @@ export interface IStoriesRepository {
     limit?: number;
     authorId?: string;
     categoryId?: string;
-    status?: string;
+    /**
+     * ONE status, or a set of them.
+     *
+     * WHY A UNION AND NOT A SECOND PARAMETER. "Every status that is not published" is a set, and the
+     * only scalar ways to express it are `status <> 'published'` (which widens on its own the moment
+     * the lifecycle grows a value) or two queries merged in the service — which cannot be, because
+     * `total` and the page window would then describe two different row sets. `IN (...)` is one
+     * predicate over one statement, so `total` and the page keep sharing it.
+     *
+     * The callers decide WHICH set; nothing here widens a set on its own.
+     */
+    status?: string | readonly string[];
     search?: string;
   }): Promise<{ stories: Story[]; total: number }>;
   create(data: CreateStoryInput): Promise<Story>;

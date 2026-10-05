@@ -1,15 +1,21 @@
 # `common/guards` — who is allowed to do what
 
-Five guards, one rule: **a guard that cannot establish the caller's right to the resource
-must deny.** Everything below follows from that.
+Five guards in `CommonModule` plus one that is registered by the module that needs it, one rule: **a
+guard that cannot establish the caller's right to the resource must deny.** Everything below follows
+from that.
 
-| Guard              | Question it answers                            | Wired                             |
-| ------------------ | ---------------------------------------------- | --------------------------------- |
-| `JwtAuthGuard`     | Is there a verified token, and who is it?      | `@UseGuards`, per route           |
-| `RolesGuard`       | Is the account type / admin role sufficient?   | `@Secured`, per route             |
-| `PermissionsGuard` | Is the granted permission set sufficient?      | `@Secured` (via `SECURED_GUARDS`) |
-| `OwnershipGuard`   | Is the caller the owner of _this_ resource?    | applied per route — see below     |
-| `RestrictionGuard` | Is the account restricted (ban / mute)? | `@Secured` (via `SECURED_GUARDS`) — see below |
+`@Secured()` composes exactly **four** of them — `JwtAuthGuard` → `RestrictionGuard` →
+`RolesGuard` → `PermissionsGuard` (`SECURED_GUARDS` in `secured.decorator.ts`). `OwnershipGuard` is
+applied per route with `@UseGuards`, and `OptionalJwtAuthGuard` is registered by its consuming
+module; neither is composed by `@Secured()`.
+
+| Guard                   | Question it answers                            | Wired                                        |
+| ----------------------- | ---------------------------------------------- | -------------------------------------------- |
+| `JwtAuthGuard`          | Is there a verified token, and who is it?      | `@UseGuards`, per route                      |
+| `RolesGuard`            | Is the account type / admin role sufficient?   | `@Secured`, per route                        |
+| `PermissionsGuard`      | Is the granted permission set sufficient?      | `@Secured` (via `SECURED_GUARDS`)            |
+| `OwnershipGuard`        | Is the caller the owner of _this_ resource?    | applied per route — see below                |
+| `RestrictionGuard`      | Is the account restricted (ban / mute)?       | `@Secured` (via `SECURED_GUARDS`) — see below |
 
 All five are provided **and exported** by `CommonModule`, so `@UseGuards(SomeGuard)`
 resolves from any module. `common.module.spec.ts` pins that list; it is the exact property
@@ -20,6 +26,59 @@ guard to be documented as live while being wired to nothing.
 HTTP through a `@Secured` route and asserts a banned account is refused. A unit test
 constructs the guard directly, so it stays green no matter how many places call it.
 
+---
+
+## `OptionalJwtAuthGuard` — a sixth guard, registered by the module that uses it
+
+It is **not** in `CommonModule`, and the table above is still the complete list of what that module
+provides. `OptionalJwtAuthGuard` answers "who is this caller _if_ they presented a credential?", and
+the module whose route needs it provides it: `StoriesModule` registers it today, for the two public
+story detail routes. Promoting it into `CommonModule` would make it available to every module for a
+capability only one route has, which is the same "looks available, is not" shape the other five were
+audited for.
+
+### What it is for
+
+`JwtAuthGuard` is applied per route by `@Secured()`, not bound as an `APP_GUARD`, and it returns
+before reading any credential on a `@Public()` route — correctly, since a public route must not be
+refused for lacking a token. The consequence is that `request.user` is never populated there, so a
+public route cannot tell an anonymous caller from the author of the story in front of it. This guard
+supplies exactly that distinction and nothing more:
+
+| Credential                      | Result                                          |
+| ------------------------------- | ----------------------------------------------- |
+| absent                          | allowed, `request.user` left unset              |
+| present and verifies            | allowed, `request.user` = verified `JwtPayload` |
+| present and does **not** verify | **allowed, `request.user` left unset** — treated as anonymous, never honoured as an identity |
+
+⛔ **Corrected.** This table previously said the third case is a **`401`** and the handler never
+runs, with three paragraphs arguing that a 401 is the important row and must not be "simplified"
+into an anonymous fallback. **The implementation does the opposite, deliberately.** Read
+`optional-jwt-auth.guard.ts`: `verifyAccessToken` is wrapped in a `try/catch` that sets
+`request.user = undefined` and `return true`.
+
+The reasoning is recorded in the guard's own class comment and it is sound. The security property
+that matters is *"an unverifiable claim is never trusted as an identity"* — falling back to the
+anonymous branch preserves that exactly, because `request.user` stays unset and the handler applies
+its rule to an anonymous caller. Nothing is granted. What a 401 adds is a refusal, not safety, and
+this client authenticates **by cookie, not header**: `api.ts` sends `credentials: "include"` and
+never sets `Authorization`, and `access_token` lives 15 minutes. So every reader who browses past
+that boundary holds a stale cookie, and a 401 on a `@Public()` route reaches `handleResponse`,
+which clears the stored user and signs them out — while trying to read a *published* story. An
+expired session would deny anonymous access to public content.
+
+The cost, stated plainly: an author whose token has expired gets 404 on their own draft rather than
+a 401 telling them to refresh. `JwtAuthGuard` still returns 401 for the same token on every
+*protected* route, so genuine authentication failure is still reported loudly where authentication
+is actually required.
+
+### It grants nothing
+
+Optional auth is not optional _authorization_. Every use has to hand the identity to the layer that
+owns the rule — for the story detail routes that is `StoriesService`, where
+`assertStoryIsReadableBy` decides and answers 404 for a viewer that is neither the author nor a
+content moderator. The guard's whole job is making "anonymous" and "identified" distinguishable
+without ever granting access.
 
 ---
 
@@ -142,35 +201,37 @@ own.
 
 ### Where it is NOT wired, and why
 
-`OwnershipGuard` is not applied to the books write routes — `PATCH /books/:id`,
-`POST /books/:id/publish`, `POST /books/:id/archive`, `DELETE /books/:id` — because **the `books`
-table has no owner column**. `books.author` is a `varchar(255)` display name, written from the
-caller's input and indexed for search, not a reference to `users.id`.
+⛔ **Corrected — books is no longer on this list.** This section previously said
+`OwnershipGuard` is not applied to `PATCH /books/:id`, `POST /books/:id/publish`,
+`POST /books/:id/archive`, `DELETE /books/:id` "because **the `books` table has no owner
+column**", and that `BooksService.update/publish/archive/delete` compare `book.author !== userId`,
+"so those four routes currently answer 403 for every caller including the real owner."
 
-A resolver here would have to compare that name against a UUID. Two honest options, and both are
-refactors rather than a wiring change:
+**Both halves were stale.** Migration **`0021_add_books_owner_id.sql`** added
+`books.owner_id uuid REFERENCES users(id)` (index `books_owner_id_idx`;
+`backend/src/db/schema/books.schema.ts:49`), and `BooksService` now enforces it through
+`assertOwnership` (`books.service.ts:445`), called on update (`:173`), publish (`:196`), archive
+(`:227`) and delete (`:385`). `book.author` is no longer compared to `userId` anywhere — the two
+places that used to (`books.service.ts:246`, `:300`, in the self-purchase and self-rental guards)
+now read the owner column, as the comments there record.
 
-1. **Add `books.owner_id uuid references users(id)`** plus a backfill, and decide which of the two
-   meanings of "author" survives — the book's _display_ author or the account that _owns_ the
-   listing. They are different facts and the schema currently has room for only one. This is a
-   migration (Principle #6) and a change to `CreateBookInput`/`UpdateBookInput`, the DTOs, the
-   `books` e2e contract and `BooksService`.
-2. **Stop pretending.** Resolve `author` through the users module by display name. That is a
-   cross-module query (Principle #7) and it makes a mutable free-text field an authorization key.
+Two things about the current state, stated precisely rather than as a new gap:
 
-Neither was done here, and nothing was half-wired: a resolver that compares a name to a UUID would
-deny every legitimate author and grant access to whoever typed a matching string.
+- **Ownership for books is enforced in the service, not by `OwnershipGuard`.** Both routes carry
+  `@UseGuards(JwtAuthGuard)` (`books.controller.ts:53,103`), so an unauthenticated caller gets 401
+  before ownership is considered; ownership then returns 403 from the service. That is real
+  enforcement. It is simply invisible to anything auditing `@UseGuards`, and books still has no
+  ownership resolver of the kind `comment-ownership.resolver.ts` provides.
+- **`owner_id` is nullable and deliberately not backfilled.** `0021` cannot derive it from a display
+  name, so pre-existing books are `ownerId === null` and `assertOwnership` throws a *distinct*
+  message for that case ("This book has no owner. It was created before ownership was recorded, so
+  an administrator must claim it…") rather than the generic "You can only update your own books".
+  The migration ships the claim query as a comment; running it is an operator decision.
 
-Worth knowing while that decision is open: `BooksService.update/publish/archive/delete` compare
-`book.author !== userId` today, so those four routes currently answer 403 for every caller including
-the real owner. That fails **closed** — it is a functional bug, not an IDOR — and it is the reason
-the gap above is a usability problem rather than an exposure. It will become an exposure the moment
-anyone "fixes" it by populating `books.author` with the caller's id and pointing the guard at that
-column. Fix the ownership column first.
-
-Also unwired, for the same reason, and left alone rather than guessed at: rentals, contests, badges
-and the library. Each needs its own investigation of whether its table has an owner column and
-whether its repository can resolve one in a single row lookup; none of them was changed here.
+Also unwired, for the same reason as ever — no owner column, or no single-row resolver — and left
+alone rather than guessed at: rentals, contests, badges and the library. Each needs its own
+investigation of whether its table has an owner column and whether its repository can resolve one in
+a single row lookup.
 
 ---
 

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { AdminRole } from '../../common/constants/roles.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
@@ -11,6 +12,8 @@ import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
 import { STORIES_CACHE_TAG, STORY_CACHE_NAMESPACE } from './stories.service.ts';
 
 import { StoriesService } from './stories.service.ts';
+import type { StoryViewer } from './story-visibility.ts';
+import { UNPUBLISHED_STORY_STATUSES } from './types.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput } from './types.ts';
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
@@ -27,7 +30,7 @@ type MockStoriesRepository = {
         limit?: number;
         authorId?: string;
         categoryId?: string;
-        status?: string;
+        status?: string | readonly string[];
         search?: string;
       }) => Promise<{ stories: Story[]; total: number }>
     >
@@ -197,6 +200,14 @@ describe('StoriesService', () => {
     updatedAt: new Date('2024-01-01'),
   };
 
+  /**
+   * `mockStory` is a DRAFT, and both read paths now decide visibility from `status`, so every read
+   * below has to name a viewer. `AUTHOR_VIEWER` is the author — the one population an unpublished
+   * story is readable to besides a content moderator. Omitting the argument is the anonymous case,
+   * and it is asserted separately rather than used by accident here.
+   */
+  const AUTHOR_VIEWER: StoryViewer = { sub: mockStory.authorId, accountType: 'writer' };
+
   beforeEach(() => {
     storiesRepository = {
       findById: vi.fn<(id: string) => Promise<Story | null>>(),
@@ -208,7 +219,7 @@ describe('StoriesService', () => {
             limit?: number;
             authorId?: string;
             categoryId?: string;
-            status?: string;
+            status?: string | readonly string[];
             search?: string;
           }) => Promise<{ stories: Story[]; total: number }>
         >(),
@@ -593,7 +604,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findCategoriesByIds).mockResolvedValue([]);
       vi.mocked(storiesRepository.findTagsByStoryIds).mockResolvedValue([]);
 
-      const result = await storiesService.findById('story-123');
+      const result = await storiesService.findById('story-123', AUTHOR_VIEWER);
 
       expect(result).toEqual(mockStory);
       expect(storiesRepository.findById).toHaveBeenCalledWith('story-123');
@@ -610,7 +621,7 @@ describe('StoriesService', () => {
     it('should return a story by slug', async () => {
       vi.mocked(storiesRepository.findBySlug).mockResolvedValue(mockStory);
 
-      const result = await storiesService.findBySlug('test-story');
+      const result = await storiesService.findBySlug('test-story', AUTHOR_VIEWER);
 
       expect(result).toEqual(mockStory);
       expect(storiesRepository.findBySlug).toHaveBeenCalledWith('test-story');
@@ -620,6 +631,117 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findBySlug).mockResolvedValue(null);
 
       await expect(storiesService.findBySlug('non-existent')).rejects.toThrow('Story not found');
+    });
+  });
+
+  /**
+   * The rule, at the layer that owns it. `GET /stories/:id` and `GET /stories/slug/:slug` are
+   * `@Public()`, so an unpublished story used to be world-readable by both keys with no account,
+   * while `GET /stories` had already been pinned to `published` — one rule, two answers.
+   *
+   * The denial is 404 rather than 403 so the response cannot be used as an oracle for which ids and
+   * slugs hold unpublished work; the tests below pin the *message* as well as the status, because a
+   * denial that named its reason would leak the very thing it hides.
+   */
+  describe('unpublished story visibility', () => {
+    const archivedStory: Story = { ...mockStory, status: 'archived' };
+
+    it.each([
+      { status: 'draft', story: mockStory },
+      { status: 'archived', story: archivedStory },
+    ])('should refuse a story whose status is $status to an anonymous caller by id', async ({ story }) => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(story);
+
+      await expect(storiesService.findById('story-123')).rejects.toThrow('Story not found');
+    });
+
+    it.each([
+      { status: 'draft', story: mockStory },
+      { status: 'archived', story: archivedStory },
+    ])('should refuse a story whose status is $status to an anonymous caller by slug', async ({ story }) => {
+      vi.mocked(storiesRepository.findBySlug).mockResolvedValue(story);
+
+      await expect(storiesService.findBySlug('test-story')).rejects.toThrow('Story not found');
+    });
+
+    it('should let the author read their own draft, which is what the edit page depends on', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      await expect(storiesService.findById('story-123', AUTHOR_VIEWER)).resolves.toMatchObject({
+        id: 'story-123',
+        status: 'draft',
+      });
+    });
+
+    it('should refuse a draft to an authenticated stranger', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      await expect(
+        storiesService.findById('story-123', { sub: 'someone-else', accountType: 'writer' }),
+      ).rejects.toThrow('Story not found');
+    });
+
+    it('should let a content moderator read an unpublished story it did not write', async () => {
+      vi.mocked(storiesRepository.findBySlug).mockResolvedValue(mockStory);
+
+      await expect(
+        storiesService.findBySlug('test-story', {
+          sub: 'moderator-1',
+          accountType: 'reader',
+          adminRole: AdminRole.CONTENT_MODERATOR,
+        }),
+      ).resolves.toMatchObject({ id: 'story-123' });
+    });
+
+    it('should refuse a reader whose account type grants no moderation authority', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      // A `writer` holds `stories:edit:own` — its own — and no `:all` and no `content:moderate`. The
+      // point of using the permission table rather than a role list is that this case is decided by
+      // the same table `PermissionsGuard` reads, so the two cannot disagree about who moderates.
+      await expect(
+        storiesService.findById('story-123', { sub: 'other-writer', accountType: 'writer' }),
+      ).rejects.toThrow('Story not found');
+    });
+
+    it('should answer the unpublished read with the same 404 as an id that does not exist', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      const denied = await storiesService.findById('story-123').catch((error: unknown) => error);
+      vi.mocked(storiesRepository.findById).mockResolvedValue(null);
+      const missing = await storiesService.findById('story-999').catch((error: unknown) => error);
+
+      expect(denied).toBeInstanceOf(NotFoundException);
+      expect(missing).toBeInstanceOf(NotFoundException);
+      expect((denied as NotFoundException).getStatus()).toBe((missing as NotFoundException).getStatus());
+      expect((denied as NotFoundException).message).toBe((missing as NotFoundException).message);
+    });
+
+    /**
+     * The cache case. The row is cached by the author's read, so the anonymous read that follows is
+     * a HIT — and `load` never runs, so a check placed inside `load` would not have executed. The
+     * rule runs on the value the cache returned, which is the only reason this passes.
+     */
+    it('should refuse a CACHED draft to an anonymous caller, not only a cold one', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      await storiesService.findById('story-123', AUTHOR_VIEWER);
+      expect(cache.store.cached('story', 'story-123')).toBe(true);
+      vi.mocked(storiesRepository.findById).mockClear();
+
+      await expect(storiesService.findById('story-123')).rejects.toThrow('Story not found');
+      expect(storiesRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should leave the cached entry in place after refusing it, so the author still reads warm', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+      await storiesService.findById('story-123', AUTHOR_VIEWER);
+      await expect(storiesService.findById('story-123')).rejects.toThrow('Story not found');
+
+      await expect(storiesService.findById('story-123', AUTHOR_VIEWER)).resolves.toMatchObject({
+        id: 'story-123',
+      });
     });
   });
 
@@ -657,6 +779,95 @@ describe('StoriesService', () => {
         status: 'published',
         search: 'test',
       });
+    });
+  });
+
+  /**
+   * The author-scoped list behind `GET /stories/mine`.
+   *
+   * It is the answer to a real defect: the public list is pinned to `published`, so a draft created at
+   * 201 could not be listed by anyone, including its author. These cases pin the two halves of the
+   * rule — WHO the rows belong to (the `authorId` argument, never a filter the caller chose) and WHICH
+   * statuses count (the unpublished set, computed here rather than at the route so no handler can
+   * forget it).
+   */
+  describe('findUnpublishedByAuthor', () => {
+    beforeEach(() => {
+      vi.mocked(storiesRepository.findAll).mockResolvedValue({ stories: [], total: 0 });
+    });
+
+    it('should scope to the given author and to the unpublished statuses when nothing was narrowed', async () => {
+      await storiesService.findUnpublishedByAuthor('user-123', {});
+
+      expect(storiesRepository.findAll).toHaveBeenCalledWith({
+        page: undefined,
+        limit: undefined,
+        search: undefined,
+        categoryId: undefined,
+        authorId: 'user-123',
+        status: UNPUBLISHED_STORY_STATUSES,
+      });
+    });
+
+    it('should carry the pagination and filters through to the same single query', async () => {
+      await storiesService.findUnpublishedByAuthor('user-123', {
+        page: 3,
+        limit: 5,
+        search: 'night',
+        categoryId: 'cat-1',
+      });
+
+      const forwarded = vi.mocked(storiesRepository.findAll).mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(forwarded).toMatchObject({
+        page: 3,
+        limit: 5,
+        search: 'night',
+        categoryId: 'cat-1',
+        authorId: 'user-123',
+      });
+      // One statement, not one per status: `total` and the page window are computed from the same
+      // predicate, and a merge of two queries could not keep them describing the same row set.
+      expect(storiesRepository.findAll).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['draft', 'archived'])('should narrow to the single unpublished status %s', async (status) => {
+      await storiesService.findUnpublishedByAuthor('user-123', { status });
+
+      expect(storiesRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ status: [status] }));
+    });
+
+    /**
+     * Fail closed. `status: 'published'` cannot reach here from HTTP (the DTO answers 400), but the
+     * method is exported and the repository is a token away, and a method named
+     * `findUnpublishedByAuthor` that could return a published story would be a lie in its own name.
+     * The intersection is empty, and an empty set is `inArray`'s `false` — never "no filter".
+     */
+    it('should narrow to nothing rather than forward a status that is not unpublished', async () => {
+      await storiesService.findUnpublishedByAuthor('user-123', { status: 'published' });
+
+      expect(storiesRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ status: [] }));
+    });
+
+    it('should keep the author in the query even when every other filter is absent', async () => {
+      await storiesService.findUnpublishedByAuthor('someone-else', {});
+
+      const forwarded = vi.mocked(storiesRepository.findAll).mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(forwarded['authorId']).toBe('someone-else');
+      // There is no code path in which the author is omitted: an unscoped list would be the public
+      // one, which is the answer this route exists not to give.
+      expect(forwarded).not.toHaveProperty('authorId', undefined);
+    });
+
+    it('should map the rows through the public list shape, not the write shape', async () => {
+      vi.mocked(storiesRepository.findAll).mockResolvedValue({ stories: [mockStory], total: 1 });
+
+      const result = await storiesService.findUnpublishedByAuthor('user-123', {});
+
+      expect(result.total).toBe(1);
+      expect(result.stories[0]).toMatchObject({ id: 'story-123', status: 'draft', views: 0 });
+      // `toStoryResponse`, so the list beside it and this one cannot grow different contracts. The
+      // author's own id is never echoed back on a list — `authorId` is an argument, not a field.
+      expect(result.stories[0]).not.toHaveProperty('authorId');
     });
   });
 
@@ -770,7 +981,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
       vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
 
-      await storiesService.incrementViewCount('story-123');
+      await storiesService.incrementViewCount('story-123', AUTHOR_VIEWER);
 
       expect(storiesRepository.incrementViewCount).toHaveBeenCalledWith('story-123');
     });
@@ -778,7 +989,86 @@ describe('StoriesService', () => {
     it('should throw NotFoundException when story not found', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(null);
 
-      await expect(storiesService.incrementViewCount('story-999')).rejects.toThrow('Story not found');
+      await expect(storiesService.incrementViewCount('story-999', AUTHOR_VIEWER)).rejects.toThrow('Story not found');
+    });
+
+    /**
+     * The oracle this route was, closed by reusing the read rule rather than writing a second one.
+     *
+     * `POST /stories/:id/view` used to take no viewer and incremented for any id that existed, so a
+     * 204 confirmed "there is a draft at this id" to any authenticated account — the cheaper version
+     * of the leak `GET /stories/:id` had just been closed against. The cases below pin that the
+     * refusal is byte-identical to the one for an id that never existed, so this write route cannot
+     * confirm a draft at all.
+     */
+    describe('the same visibility rule the detail routes use', () => {
+      const publishedStory: Story = { ...mockStory, status: 'published' };
+      const archivedStory: Story = { ...mockStory, status: 'archived' };
+      const STRANGER_VIEWER: StoryViewer = { sub: 'someone-else', accountType: 'reader' };
+
+      it.each([
+        { status: 'draft', story: mockStory },
+        { status: 'archived', story: archivedStory },
+      ])('should refuse a $status story to an authenticated stranger', async ({ story }) => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(story);
+
+        await expect(storiesService.incrementViewCount('story-123', STRANGER_VIEWER)).rejects.toThrow(
+          'Story not found',
+        );
+        // The refusal happens BEFORE the write, so a probe cannot even bump the counter.
+        expect(storiesRepository.incrementViewCount).not.toHaveBeenCalled();
+      });
+
+      it('should let the author count a view on their own draft, as the read rule allows them to read it', async () => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+        vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
+
+        await storiesService.incrementViewCount('story-123', AUTHOR_VIEWER);
+
+        expect(storiesRepository.incrementViewCount).toHaveBeenCalledWith('story-123');
+      });
+
+      it('should let a content moderator count a view on unpublished work they did not write', async () => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+        vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
+
+        await storiesService.incrementViewCount('story-123', {
+          sub: 'moderator-1',
+          accountType: 'reader',
+          adminRole: AdminRole.CONTENT_MODERATOR,
+        });
+
+        expect(storiesRepository.incrementViewCount).toHaveBeenCalledWith('story-123');
+      });
+
+      it('should still count a view for an ordinary reader on a PUBLISHED story', async () => {
+        // The normal case, and the reason the route exists. `assertStoryIsReadableBy` returns for a
+        // published row without reading a single claim, so nothing here narrows who may count a view
+        // on published content.
+        vi.mocked(storiesRepository.findById).mockResolvedValue(publishedStory);
+        vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
+
+        await storiesService.incrementViewCount('story-123', STRANGER_VIEWER);
+
+        expect(storiesRepository.incrementViewCount).toHaveBeenCalledWith('story-123');
+      });
+
+      it('should answer a refused unpublished story exactly as it answers one that does not exist', async () => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+
+        const denied = await storiesService
+          .incrementViewCount('story-123', STRANGER_VIEWER)
+          .catch((error: unknown) => error);
+        vi.mocked(storiesRepository.findById).mockResolvedValue(null);
+        const missing = await storiesService
+          .incrementViewCount('story-999', STRANGER_VIEWER)
+          .catch((error: unknown) => error);
+
+        expect(denied).toBeInstanceOf(NotFoundException);
+        expect(missing).toBeInstanceOf(NotFoundException);
+        expect((denied as NotFoundException).getStatus()).toBe((missing as NotFoundException).getStatus());
+        expect((denied as NotFoundException).message).toBe((missing as NotFoundException).message);
+      });
     });
   });
 
@@ -787,7 +1077,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
       vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
 
-      await storiesService.incrementViewCount('story-123');
+      await storiesService.incrementViewCount('story-123', AUTHOR_VIEWER);
 
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'story-123', ['stories']);
       expect(cache.invalidateKey).toHaveBeenCalledWith('story', 'slug:test-story', ['stories']);
@@ -799,8 +1089,14 @@ describe('StoriesService', () => {
      * *and* every story slug — so one page view emptied the entire story cache of the deployment
      * and still paid two `SMEMBERS` + N `DEL` per view. The old suite asserted that the sweep
      * *was* called, so it passed while the cache was being destroyed.
+     *
+     * A view no longer sweeps the SEARCH tag either. `views` is projected into every cached search
+     * page, so sweeping on each view emptied the whole search index once this method became
+     * reachable over HTTP as `POST /stories/:id/view` — the same pathology one layer out. Search
+     * pages now lag the counter by at most `SEARCH_CACHE_TTL_SECONDS`, which is the right trade for a
+     * popularity metric that is already eventually consistent.
      */
-    it('should not evict any other story when one story is viewed', async () => {
+    it('should not evict any other story, nor the whole search index, when one story is viewed', async () => {
       const storyA = { ...mockStory, id: 'story-a', slug: 'slug-a' };
       const storyB = { ...mockStory, id: 'story-b', slug: 'slug-b' };
       vi.mocked(storiesRepository.findById).mockImplementation(async (id: string) =>
@@ -810,35 +1106,44 @@ describe('StoriesService', () => {
         slug === 'slug-a' ? storyA : storyB,
       );
       vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
-      await storiesService.findById('story-a');
-      await storiesService.findBySlug('slug-a');
-      await storiesService.findById('story-b');
-      await storiesService.findBySlug('slug-b');
+      await storiesService.findById('story-a', AUTHOR_VIEWER);
+      await storiesService.findBySlug('slug-a', AUTHOR_VIEWER);
+      await storiesService.findById('story-b', AUTHOR_VIEWER);
+      await storiesService.findBySlug('slug-b', AUTHOR_VIEWER);
 
-      await storiesService.incrementViewCount('story-a');
+      await storiesService.incrementViewCount('story-a', AUTHOR_VIEWER);
       vi.mocked(storiesRepository.findById).mockClear();
 
-      // `views` is projected into the search index, so a view bump legitimately sweeps the SEARCH
-      // tag. What must never happen is the STORIES sweep, which is what emptied every cached story.
-      expect(cache.invalidateTags).not.toHaveBeenCalledWith([STORIES_CACHE_TAG]);
-      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
+      expect(cache.invalidateTags).not.toHaveBeenCalled();
       expect(cache.store.cached('story', 'story-b')).toBe(true);
       expect(cache.store.cached('story', 'slug:slug-b')).toBe(true);
       expect(cache.store.cached('story', 'story-a')).toBe(false);
       expect(cache.store.cached('story', 'slug:slug-a')).toBe(false);
 
       // Story B is still served from the cache, so the read never reaches the database again.
-      await expect(storiesService.findById('story-b')).resolves.toMatchObject({ id: 'story-b' });
+      await expect(storiesService.findById('story-b', AUTHOR_VIEWER)).resolves.toMatchObject({ id: 'story-b' });
       expect(storiesRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should still sweep the search index on a real content write, so a view cannot leak into that', async () => {
+      vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+      vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory, title: 'Renamed' });
+      vi.mocked(storiesRepository.replaceTags).mockResolvedValue(undefined);
+
+      await storiesService.update('story-123', { title: 'Renamed' }, 'user-123');
+
+      // The distinction `invalidateStoryCache` vs `invalidateCachedStoryKeys` exists for: a title or a
+      // status change makes a cached search page WRONG, whereas a view only makes it slightly stale.
+      expect(cache.invalidateTags).toHaveBeenCalledWith([SEARCH_CACHE_TAG]);
     });
 
     it('should leave the tag index tracking only the stories that are still cached', async () => {
       vi.mocked(storiesRepository.findById).mockImplementation(async (id: string) => ({ ...mockStory, id }));
       vi.mocked(storiesRepository.incrementViewCount).mockResolvedValue(undefined);
-      await storiesService.findById('story-a');
-      await storiesService.findById('story-b');
+      await storiesService.findById('story-a', AUTHOR_VIEWER);
+      await storiesService.findById('story-b', AUTHOR_VIEWER);
 
-      await storiesService.incrementViewCount('story-a');
+      await storiesService.incrementViewCount('story-a', AUTHOR_VIEWER);
 
       expect(cache.store.trackedBy('stories')).toEqual(['cache:story:story-b']);
     });
@@ -846,14 +1151,14 @@ describe('StoriesService', () => {
     it('should not touch the cache for a story that does not exist', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(null);
 
-      await expect(storiesService.incrementViewCount('story-999')).rejects.toThrow('Story not found');
+      await expect(storiesService.incrementViewCount('story-999', AUTHOR_VIEWER)).rejects.toThrow('Story not found');
       expect(cache.invalidateKey).not.toHaveBeenCalled();
     });
 
     it('should not count the increment when the story is soft deleted', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue({ ...mockStory, deletedAt: new Date() });
 
-      await expect(storiesService.incrementViewCount('story-123')).rejects.toThrow('Story not found');
+      await expect(storiesService.incrementViewCount('story-123', AUTHOR_VIEWER)).rejects.toThrow('Story not found');
       expect(storiesRepository.incrementViewCount).not.toHaveBeenCalled();
     });
   });
@@ -862,7 +1167,7 @@ describe('StoriesService', () => {
     it('should read a story through the tagged cache with the stories tag', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
 
-      await storiesService.findById('story-123');
+      await storiesService.findById('story-123', AUTHOR_VIEWER);
 
       expect(cache.getOrSet).toHaveBeenCalledWith(
         expect.objectContaining({ namespace: 'story', key: 'story-123', tags: ['stories'] }),
@@ -872,8 +1177,8 @@ describe('StoriesService', () => {
     it('should revive the dates a cache hit hands back as strings', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
 
-      await storiesService.findById('story-123');
-      const warm = await storiesService.findById('story-123');
+      await storiesService.findById('story-123', AUTHOR_VIEWER);
+      const warm = await storiesService.findById('story-123', AUTHOR_VIEWER);
 
       expect(cache.store.cached('story', 'story-123')).toBe(true);
       expect(warm.createdAt).toBeInstanceOf(Date);
@@ -884,7 +1189,7 @@ describe('StoriesService', () => {
     it('should read a story by slug under a slug scoped key', async () => {
       vi.mocked(storiesRepository.findBySlug).mockResolvedValue(mockStory);
 
-      await storiesService.findBySlug('test-story');
+      await storiesService.findBySlug('test-story', AUTHOR_VIEWER);
 
       expect(cache.getOrSet).toHaveBeenCalledWith(
         expect.objectContaining({ namespace: 'story', key: 'slug:test-story', tags: ['stories'] }),
@@ -966,7 +1271,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
       vi.mocked(storiesRepository.findAuthorsByIds).mockResolvedValue([{ id: 'user-123', name: 'Keeper' }]);
 
-      const { response } = await storiesService.findByIdWithRelations('story-123');
+      const { response } = await storiesService.findByIdWithRelations('story-123', AUTHOR_VIEWER);
 
       expect(response.author).toEqual({ id: 'user-123', name: 'Keeper' });
     });
@@ -976,7 +1281,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findCategoriesByIds).mockResolvedValue([{ id: 'cat-1', name: 'Sea Stories' }]);
       vi.mocked(storiesRepository.findTagsByStoryIds).mockResolvedValue([{ storyId: 'story-123', name: 'night' }]);
 
-      const { response } = await storiesService.findByIdWithRelations('story-123');
+      const { response } = await storiesService.findByIdWithRelations('story-123', AUTHOR_VIEWER);
 
       expect(response.category).toBe('Sea Stories');
       expect(response.tags).toEqual(['night']);
@@ -985,7 +1290,7 @@ describe('StoriesService', () => {
     it('should report a null category for a story with no category', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
 
-      const { response } = await storiesService.findByIdWithRelations('story-123');
+      const { response } = await storiesService.findByIdWithRelations('story-123', AUTHOR_VIEWER);
 
       expect(response.category).toBeNull();
     });
@@ -993,7 +1298,7 @@ describe('StoriesService', () => {
     it('should fall back to a null author name when the join finds nobody', async () => {
       vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
 
-      const { response } = await storiesService.findByIdWithRelations('story-123');
+      const { response } = await storiesService.findByIdWithRelations('story-123', AUTHOR_VIEWER);
 
       expect(response.author).toEqual({ id: 'user-123', name: null });
     });
@@ -1002,7 +1307,7 @@ describe('StoriesService', () => {
       vi.mocked(storiesRepository.findBySlug).mockResolvedValue(mockStory);
       vi.mocked(storiesRepository.findAuthorsByIds).mockResolvedValue([{ id: 'user-123', name: 'Keeper' }]);
 
-      const { response } = await storiesService.findBySlugWithRelations('test-story');
+      const { response } = await storiesService.findBySlugWithRelations('test-story', AUTHOR_VIEWER);
 
       expect(response.author.name).toBe('Keeper');
     });

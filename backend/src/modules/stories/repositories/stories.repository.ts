@@ -44,7 +44,7 @@ export class StoriesRepository implements IStoriesRepository {
     limit?: number;
     authorId?: string;
     categoryId?: string;
-    status?: string;
+    status?: string | readonly string[];
     search?: string;
   }): Promise<{ stories: Story[]; total: number }> {
     this.logger.debug('Finding all stories');
@@ -60,8 +60,17 @@ export class StoriesRepository implements IStoriesRepository {
     if (params.categoryId) {
       conditions.push(eq(stories.categoryId, params.categoryId));
     }
-    if (params.status) {
-      conditions.push(eq(stories.status, params.status));
+    if (params.status !== undefined) {
+      // A set is one predicate (`IN (...)`), never a second query: the page and the count below share
+      // this single `whereClause`, so a merge of two queries could not keep `total` equal to the rows
+      // on the page. An empty set is not "no filter" — it is `inArray`'s `false`, so an intersection
+      // that came out empty answers with nothing instead of with everything.
+      const statusFilter = params.status;
+      conditions.push(
+        typeof statusFilter === 'string'
+          ? eq(stories.status, statusFilter)
+          : inArray(stories.status, [...statusFilter]),
+      );
     }
     if (params.search) {
       conditions.push(like(stories.title, `%${params.search}%`));
@@ -70,7 +79,17 @@ export class StoriesRepository implements IStoriesRepository {
     const whereClause = and(...conditions);
 
     const [storiesResult, [{ total }]] = await Promise.all([
-      db.select().from(stories).where(whereClause).orderBy(desc(stories.publishedAt)).limit(limit).offset(offset),
+      // The second sort key is a TIE-BREAK, not a new order: `published_at` is NULL for every
+      // unpublished row, so a list of drafts was being ordered by a column that is constant for all of
+      // them, and OFFSET pagination over a non-deterministic order can repeat and skip rows across
+      // pages. Adding `created_at` makes every page of every list reproducible.
+      db
+        .select()
+        .from(stories)
+        .where(whereClause)
+        .orderBy(desc(stories.publishedAt), desc(stories.createdAt))
+        .limit(limit)
+        .offset(offset),
       db.select({ total: count() }).from(stories).where(whereClause),
     ]);
 

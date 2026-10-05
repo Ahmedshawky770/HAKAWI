@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 
 import { CommonModule } from '../../common/common.module.ts';
 import { DatabaseModule } from '../../db/database.module.ts';
@@ -16,7 +16,12 @@ import { LibraryEventHandler } from './events/library.event-handler.ts';
   // entitlement FOR. That is the dependency's whole reason to exist: without it there is no path from
   // "the gateway confirmed the payment" to "the user owns the book", which is the defect this wiring
   // closes. The read goes through `IPaymentsRepository`, and the library never writes a payment.
-  imports: [CommonModule, DatabaseModule, PaymentsModule, BooksModule],
+  //
+  // `BooksModule` is wrapped in `forwardRef` to close the cycle it shares with `BooksModule` — the two
+  // need each other's exported repository token and neither can drop its import. See the matching
+  // note in `books.module.ts`. Omitting it on either side leaves one class `undefined` at import time
+  // and Nest rejects the entire module graph before a single test runs.
+  imports: [CommonModule, DatabaseModule, PaymentsModule, forwardRef(() => BooksModule)],
   controllers: [LibraryController],
   providers: [
     LibraryService,

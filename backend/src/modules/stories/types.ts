@@ -99,6 +99,44 @@ export const BACKEND_STORY_STATUSES = [
 
 export type StoryStatus = SharedStoryStatus;
 
+/**
+ * The only status an UNAUTHENTICATED caller may ever read, in one named place.
+ *
+ * WHY THIS IS A CONSTANT AND NOT A STRING AT EACH ROUTE. `GET /stories` and `GET /search` are both
+ * `@Public()` and both used to decide independently whether a caller-supplied `status` reached the
+ * query — and they disagreed, which is how `?status=draft` became an anonymous dump of every draft
+ * in the system on the stories route while the search route had already closed the same hole. Two
+ * public read routes and two hand-written literals is two rules; a route that forgot the literal would
+ * typecheck perfectly and leak. One constant is the only thing that makes "public reads published
+ * content" a property of the codebase rather than of each route's memory.
+ *
+ * TYPED AS THE SHARED `StoryStatus`, so the literal is checked against `@hakawi/shared-types` rather
+ * than being a bare string that could drift from the contract the frontend validates against.
+ *
+ * THE SAME CONSTANT DECIDES THE DETAIL ROUTES. `assertStoryIsReadableBy` (`story-visibility.ts`) reads
+ * this value, so "published is the only status a public caller may read" is one comparison in one
+ * place across the list route, the item-by-id route and the item-by-slug route. The first half of this
+ * note describes how the constant stopped one route from forgetting; the second describes the second
+ * half of that failure — the routes that pinned it in the query string while the detail routes, which
+ * never consulted it at all, served drafts to anybody.
+ */
+export const PUBLIC_STORY_STATUS: StoryStatus = 'published';
+
+/**
+ * Every lifecycle status that is NOT the public one: the complete set of rows `GET /stories` cannot
+ * return, and therefore the whole reason an author needs a route of their own.
+ *
+ * WHY A SET AND NOT `status <> 'published'`. The exclusion is a filter that gets WIDER every time a
+ * status is added: a fourth lifecycle value would be readable by nobody through the public list and
+ * would then be handed out by the author route as if it were safe to read. Deriving the set from the
+ * same tuple `StoriesQueryDto` whitelists against means a new status has to be classified on purpose,
+ * in the one file that already holds the classification (`PUBLIC_STORY_STATUS` above), and the two
+ * cannot drift (Principle #9).
+ */
+export const UNPUBLISHED_STORY_STATUSES: readonly BackendStoryStatus[] = BACKEND_STORY_STATUSES.filter(
+  (status) => status !== PUBLIC_STORY_STATUS,
+);
+
 export type StoryAuthor = AuthorSummary;
 
 export type StoryResponse = SharedStory;

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 
 import { categories, stories, storyTags, tags } from '../../../db/schema/stories.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
@@ -148,12 +148,15 @@ describe('StoriesRepository', () => {
       expect(firstArgsOf(chains[0]!, 'offset')).toEqual([30]);
     });
 
-    it('orders by publication date, newest first', async () => {
+    it('orders by publication date, newest first, with creation date as a tie-break', async () => {
       control.queue([], [{ total: 0 }]);
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.publishedAt)]);
+      // The second key is not a different order, it is a stable one. `published_at` is NULL for every
+      // unpublished row, so the list `GET /stories/mine` returns was ordered by a column that is
+      // constant for all of it, and OFFSET pagination over that can repeat and skip rows.
+      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.publishedAt), desc(stories.createdAt)]);
     });
 
     it('hides soft-deleted stories even when no filter is supplied', async () => {
@@ -188,6 +191,43 @@ describe('StoriesRepository', () => {
       await repository.findAll({ authorId: AUTHOR_ID });
 
       expect(whereOf()).toEqual(and(isNull(stories.deletedAt), eq(stories.authorId, AUTHOR_ID)));
+    });
+
+    /**
+     * "Every status that is not published" is a SET, so the filter accepts one status or several.
+     *
+     * `IN (...)` is one predicate inside the one `whereClause` the page and the count share. Two
+     * queries merged in the service would be the alternative, and it cannot work: `total` and the page
+     * window would then describe two different row sets.
+     */
+    it('matches a SET of statuses with one predicate', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.findAll({ status: ['draft', 'archived'] });
+
+      expect(whereOf()).toEqual(and(isNull(stories.deletedAt), inArray(stories.status, ['draft', 'archived'])));
+    });
+
+    it('matches a single status as an equality, not as a one-element set', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.findAll({ status: 'draft' });
+
+      expect(whereOf()).toEqual(and(isNull(stories.deletedAt), eq(stories.status, 'draft')));
+    });
+
+    /**
+     * An empty set must mean "nothing", never "everything". `inArray` with no values compiles to
+     * `false`, which is the fail-closed direction: `StoriesService.findUnpublishedByAuthor` produces an
+     * empty set when a caller asks for a status outside the unpublished ones, and the answer it must
+     * give is an empty page.
+     */
+    it('matches an empty set to nothing rather than dropping the filter', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.findAll({ status: [] });
+
+      expect(whereOf()).toEqual(and(isNull(stories.deletedAt), sql`false`));
     });
 
     it('uses one shared visibility predicate for the page and the count', async () => {

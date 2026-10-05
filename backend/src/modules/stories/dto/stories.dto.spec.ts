@@ -3,7 +3,15 @@ import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
-import { CreateStoryDto, UpdateStoryDto, MAX_STORY_TAGS, MAX_STORY_TAG_LENGTH } from './stories.dto.ts';
+import {
+  CreateStoryDto,
+  UpdateStoryDto,
+  StoriesQueryDto,
+  MyStoriesQueryDto,
+  MAX_STORY_TAGS,
+  MAX_STORY_TAG_LENGTH,
+} from './stories.dto.ts';
+import { BACKEND_STORY_STATUSES, PUBLIC_STORY_STATUS, UNPUBLISHED_STORY_STATUSES } from '../types.ts';
 import {
   deriveStorySlug,
   storySlugCandidates,
@@ -337,6 +345,130 @@ describe('UpdateStoryDto through the production ValidationPipe', () => {
     });
 
     expect(messages).toEqual([]);
+  });
+});
+
+describe('StoriesQueryDto.status', () => {
+  const accepts = async (payload: Record<string, unknown>): Promise<boolean> => {
+    const pipe = productionPipe();
+    try {
+      await pipe.transform(payload, { type: 'query', metatype: StoriesQueryDto });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it.each(['draft', 'published', 'archived'])('accepts the lifecycle value %s', async (status) => {
+    expect(await accepts({ status })).toBe(true);
+  });
+
+  it('rejects a value outside the lifecycle instead of ignoring it', async () => {
+    // The route pins the status to `published` and never reads this field, so an unknown value
+    // cannot widen the result set — but answering 200 would tell a caller who typoed `publshed` that
+    // their filter worked. Whitelisting it makes the parameter honest about being inert.
+    expect(await accepts({ status: 'publshed' })).toBe(false);
+  });
+
+  it('still accepts an absent status, which is the ordinary public browse', async () => {
+    expect(await accepts({})).toBe(true);
+  });
+
+  it('draws its whitelist from the module status tuple rather than a second spelling of it', async () => {
+    // If the lifecycle ever grows a value, the query DTO has to accept it in the same commit. A copy
+    // of the three strings here would let the two drift (Principle #9).
+    const messages = await validate(plainToInstance(StoriesQueryDto, { status: 'draft' }));
+    expect(messages).toHaveLength(0);
+    expect(BACKEND_STORY_STATUSES).toContain('draft');
+    expect(BACKEND_STORY_STATUSES).toContain('published');
+    expect(BACKEND_STORY_STATUSES).toContain('archived');
+  });
+});
+
+/**
+ * `MyStoriesQueryDto`, the query for `GET /stories/mine`.
+ *
+ * The class is deliberately NOT a subclass of `StoriesQueryDto`, and these cases pin the two
+ * consequences of that. First, it has no `authorId`: the author is an argument of the service call,
+ * taken from the verified token, so a caller cannot even express "list somebody else's drafts" and
+ * the production pipe turns the attempt into a 400. Second, its `status` whitelist is the unpublished
+ * set, so `?status=published` is refused with a message naming `GET /stories` instead of being
+ * filtered, ignored, or answered with the author's published work.
+ */
+describe('MyStoriesQueryDto through the production ValidationPipe', () => {
+  const accepts = async (payload: Record<string, unknown>): Promise<boolean> => {
+    const pipe = productionPipe();
+    try {
+      await pipe.transform(payload, { type: 'query', metatype: MyStoriesQueryDto });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const messagesFor = async (payload: Record<string, unknown>): Promise<string[]> => {
+    const pipe = productionPipe();
+    try {
+      await pipe.transform(payload, { type: 'query', metatype: MyStoriesQueryDto });
+      return [];
+    } catch (error) {
+      const response = (error as { getResponse?: () => { message?: string | string[] } }).getResponse?.();
+      const message = response?.message;
+      if (Array.isArray(message)) {
+        return message;
+      }
+      return typeof message === 'string' ? [message] : [String(error)];
+    }
+  };
+
+  it('accepts an empty query, which is the ordinary "show me my drafts" request', async () => {
+    expect(await accepts({})).toBe(true);
+  });
+
+  it.each(['draft', 'archived'])('accepts the unpublished status %s', async (status) => {
+    expect(await accepts({ status })).toBe(true);
+  });
+
+  it('rejects `status=published`, which belongs to the route that is still public', async () => {
+    expect(await accepts({ status: 'published' })).toBe(false);
+    expect((await messagesFor({ status: 'published' })).join(' ')).toContain('GET /stories');
+  });
+
+  it('rejects a value outside the lifecycle instead of ignoring the typo', async () => {
+    expect(await accepts({ status: 'publshed' })).toBe(false);
+  });
+
+  it('rejects an authorId, which is the whole reason this route is not a query field', async () => {
+    // `StoriesQueryDto` declares no `authorId` either, so neither list DTO can name an author. That is
+    // the difference from the original leak: `?status=draft` on a `@Public()` route reached every
+    // draft in the system, and the only thing that can stop `?authorId=` doing the same is the field
+    // not existing on a DTO any route can reach.
+    expect(await accepts({ authorId: VALID_UUID_V4 })).toBe(false);
+    expect((await messagesFor({ authorId: VALID_UUID_V4 })).join(' ')).toContain('authorId');
+  });
+
+  it('draws its whitelist from the module status set rather than a second spelling of it', async () => {
+    // If the lifecycle ever grows a value, this set and `PUBLIC_STORY_STATUS` have to be reconciled in
+    // the same commit (Principle #9): every lifecycle value is either the public one or in this set,
+    // and the public one is named in exactly one place. A copy of `['draft', 'archived']` here would
+    // let the two drift, and the failure would be a route handing out a status nobody declared public.
+    const classified = BACKEND_STORY_STATUSES.filter(
+      (status) => status === PUBLIC_STORY_STATUS || UNPUBLISHED_STORY_STATUSES.includes(status),
+    );
+
+    expect(classified).toEqual([...BACKEND_STORY_STATUSES]);
+    expect(UNPUBLISHED_STORY_STATUSES).not.toContain(PUBLIC_STORY_STATUS);
+    expect(await validate(plainToInstance(MyStoriesQueryDto, { status: 'draft' }))).toHaveLength(0);
+  });
+
+  it('bounds pagination the same way the public list does', async () => {
+    expect(await accepts({ page: 1, limit: 100 })).toBe(true);
+    expect(await accepts({ page: 0 })).toBe(false);
+    expect(await accepts({ limit: 101 })).toBe(false);
+  });
+
+  it('carries search and category, which the one repository query already supports', async () => {
+    expect(await accepts({ search: 'sea', category: 'cat-1' })).toBe(true);
   });
 });
 

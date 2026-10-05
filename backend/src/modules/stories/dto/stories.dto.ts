@@ -17,6 +17,8 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 
+import { BACKEND_STORY_STATUSES, UNPUBLISHED_STORY_STATUSES } from '../types.ts';
+
 /**
  * WHY a client-supplied slug is capped at the full column width (255) while a *derived* one is
  * capped at `MAX_STORY_SLUG_LENGTH` (100). A client that hands us a slug has made a deliberate
@@ -232,8 +234,73 @@ export class StoriesQueryDto {
   @IsString()
   category?: string;
 
+  /**
+   * WHITELISTED, AND STILL NOT TRUSTED.
+   *
+   * `StoriesController.findAll` pins the status to `published` and never forwards this value, so the
+   * filter cannot widen the result set. It stays on the DTO for wire compatibility — and it now
+   * carries `@IsIn` so that a value outside the lifecycle is a 400 rather than a 200 that silently
+   * ignores the caller's typo. Without the whitelist, `?status=publshed` answers 200 with published
+   * stories and the caller has been told their filter worked; with it, the parameter is honest about
+   * what it can do, which is nothing, and says so. The list comes from the module's own status tuple
+   * (`types.ts`), not from a second spelling of the same three values (Principle #9).
+   */
+  @IsOptional()
+  @IsIn(BACKEND_STORY_STATUSES, { message: `Status must be one of: ${BACKEND_STORY_STATUSES.join(', ')}` })
+  status?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+/**
+ * The query for `GET /stories/mine` — a SEPARATE class, declared standalone rather than extending
+ * `StoriesQueryDto`, and that separation is the security property rather than a style choice.
+ *
+ * WHY NOT `extends StoriesQueryDto` WITH AN `authorId` FIELD. That is the shape of the original leak
+ * (`?status=draft` on a `@Public()` list): a caller-supplied identity in the query string, forwarded
+ * into `WHERE author_id = $1`. The moment `authorId` is declarable on a DTO it is one handler away
+ * from being forwarded, and nothing at the type level says which route may do that. Here the author
+ * has no DTO field to send: `authorId` is not a property of this class, so the route cannot express
+ * "list somebody else's drafts" even by accident, and `?authorId=<someone>` is a 400 from the global
+ * pipe's `forbidNonWhitelisted` rather than a silent success.
+ *
+ * WHY NOT A SUBCLASS WITH AN OVERRIDDEN `status`. class-validator MERGES metadata down the prototype
+ * chain, so an overridden property keeps the parent's `@IsIn(BACKEND_STORY_STATUSES)` alongside the
+ * child's. `?status=published` would then fail with two messages, one of which says published is a
+ * legal value — the caller is told the truth and the lie in the same breath.
+ *
+ * WHY `status` IS WHITELISTED TO THE UNPUBLISHED SET AT ALL. The route exists to recover work the
+ * public list cannot show, so `published` is not a narrower answer, it is a different question, and
+ * `GET /stories` already answers it. Accepting the value here and filtering on it would make the
+ * response depend on a parameter the route does not support. `?status=published` is a 400 that names
+ * the route that does, which is the same "be honest about what the parameter can do" rule that
+ * `StoriesQueryDto.status` follows.
+ *
+ * Pagination and `search` are declared rather than inherited for the same reason: the class must be
+ * readable on its own, so that adding a field to the public list can never silently widen this one.
+ */
+export class MyStoriesQueryDto {
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsIn(UNPUBLISHED_STORY_STATUSES, {
+    message: `Status must be one of: ${UNPUBLISHED_STORY_STATUSES.join(', ')}. Published stories are listed by GET /stories`,
+  })
   status?: string;
 
   @IsOptional()
