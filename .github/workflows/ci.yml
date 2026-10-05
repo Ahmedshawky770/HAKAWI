@@ -273,8 +273,38 @@ jobs:
       - name: Build shared-types
         run: npm run build --workspace=packages/shared-types
 
+      # A graph that cannot be built fails in `DependenciesScanner`, BEFORE any test body runs, so Vitest
+      # tallies every test in the affected file as SKIPPED rather than failed. Measured with that
+      # state reproduced: `test:e2e` exits 1 (so the job is red), but the report reads
+      # `numFailedTests: 4, numPendingTests: 195` — the 195 being every real test, collected and then
+      # not run. The exit code says "something broke"; the counts say what. Asserting them turns a
+      # vague red into a named failure, and stops "collected but never executed" from reading like a
+      # suite with nothing left to do.
+      #
+      # The regression this guards is in docs/adr/006-the-backend-could-not-boot.md: a books<->
+      # library cycle with no forwardRef(), plus a module importing NotificationsModule without
+      # listing it, meant the backend could not boot at all.
+      #
+      # The reporter is JSON because the default output does not expose collected/skipped counts in
+      # a form a shell can assert on.
+      # `npm run … --workspace=backend` runs with cwd = `backend/`, so the relative
+      # `--outputFile=e2e-results.json` lands at `backend/e2e-results.json`. The assert step below
+      # runs from the repository root, so it must name that path explicitly. Getting this wrong makes
+      # the guard exit 2 ("unreadable report") on every push, which is a broken pipeline rather than
+      # a caught regression.
       - name: Run e2e tests
-        run: npm run test:e2e --workspace=backend
+        run: npm run test:e2e --workspace=backend -- --reporter=json --outputFile=e2e-results.json
+
+      - name: Assert the e2e suite actually ran
+        run: node backend/scripts/assert-suite-ran.mjs backend/e2e-results.json --min-tests 150 --max-skipped 0 --label e2e
+
+      - name: Upload e2e results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: backend/e2e-results.json
+          if-no-files-found: error
 
   # Browser tests. These drive the real Next.js dev server against the real API through
   # Chromium, so they need both, a migrated database, and the browser binaries. They were

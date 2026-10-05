@@ -46,3 +46,9 @@ migrations/drizzle-draft/
 # wrote into `backend/`.
 playwright-report/
 test-results/
+
+# Machine-readable Vitest report written by the `test-e2e` job so
+# `backend/scripts/assert-suite-ran.mjs` can fail the build when the suite collected tests but did
+# not run them. Regenerated on every run, so it must never be committed — a stale report would let
+# the guard assert against the previous run's numbers.
+backend/e2e-results.json

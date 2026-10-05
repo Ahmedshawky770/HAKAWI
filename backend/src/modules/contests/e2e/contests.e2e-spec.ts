@@ -4,27 +4,35 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
 import { AppModule } from '../../../app.module.ts';
+import { AdminRole, AccountType } from '../../../common/constants/roles.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { EncryptionService } from '../../../common/utils/encryption.util.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
+import { db } from '../../../db/index.ts';
 
 interface JsonResponse<TBody> {
   status: number;
   body: TBody;
 }
 
+// `POST /auth/register` returns `{ user, tokens }`. This interface used to model the payload FLAT
+// (`{ id, email, ... }`), so every `register.body.id` in this file was `undefined` — which is why
+// `void registerPublisher.body.id` compiled, and why the category request below silently 403'd.
 interface RegisterResponseBody {
-  id: string;
-  email: string;
-  name: string;
-  username: string;
-  accountType: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    username: string;
+    accountType: string;
+  };
 }
 
 interface LoginResponseBody {
@@ -106,21 +114,46 @@ describe('Contests E2E', () => {
       accountType: 'author',
     })) as JsonResponse<RegisterResponseBody>;
 
-    void registerPublisher.body.id;
 
     const loginPublisher = (await request(httpServer).post('/auth/login').send({
       email: 'e2e-publisher@example.com',
       password: 'SecurePass123!',
     })) as JsonResponse<LoginResponseBody>;
 
-    accessToken = loginPublisher.body.tokens.accessToken;
+    // `POST /categories` is `@Secured(ADMIN)` + `@RequireAdminRole(CONTENT_MODERATOR)` +
+    // `@RequirePermissions(CONTENT_EDIT_ALL)`. This request used to be issued with the publisher's
+    // plain-author token and its status was NEVER asserted, so the 403 was swallowed, `categoryId`
+    // stayed `undefined`, and `CreateContestDto.categoryId` is `@IsOptional()` — meaning every
+    // contest created in this file silently had no category. A test that cannot fail is not a test.
+    //
+    // WHY DIRECT SQL AND NOT `usersRepository.update(...)`: `UpdateUserInput` deliberately omits
+    // `accountType` and `adminRole`, so a caller cannot promote itself through the repository. That
+    // guard is correct and is not widened here for a test. This is the same escape hatch
+    // `test-context.ts#promoteToAdmin` uses.
+    //
+    // WHY A SECOND LOGIN: the access token carries `account_type` / `admin_role` as they stood when
+    // it was minted, so the pre-promotion token is refused by `RolesGuard` even though the row is
+    // already an admin's.
+    await db.execute(sql`
+      UPDATE users
+      SET account_type = ${AccountType.ADMIN}, admin_role = ${AdminRole.CONTENT_MODERATOR}
+      WHERE id = ${registerPublisher.body.user.id}
+    `);
 
-    const categoryRes = (await request(httpServer)
+    const reloginPublisher = (await request(httpServer).post('/auth/login').send({
+      email: 'e2e-publisher@example.com',
+      password: 'SecurePass123!',
+    })) as JsonResponse<LoginResponseBody>;
+
+    accessToken = reloginPublisher.body.tokens.accessToken;
+
+    const categoryRes = await request(httpServer)
       .post('/categories')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ name: 'E2E Contest Category', slug: 'e2e-contest-category' })) as JsonResponse<CategoryResponseBody>;
+      .send({ name: 'E2E Contest Category', slug: 'e2e-contest-category' })
+      .expect(201);
 
-    categoryId = categoryRes.body.id;
+    categoryId = (categoryRes.body as CategoryResponseBody).id;
 
     const registerAuthor = (await request(httpServer).post('/auth/register').send({
       email: 'e2e-author@example.com',
@@ -130,7 +163,6 @@ describe('Contests E2E', () => {
       accountType: 'author',
     })) as JsonResponse<RegisterResponseBody>;
 
-    void registerAuthor.body.id;
 
     const registerVoter = (await request(httpServer).post('/auth/register').send({
       email: 'e2e-voter@example.com',
@@ -139,8 +171,6 @@ describe('Contests E2E', () => {
       username: 'e2evoter',
       accountType: 'reader',
     })) as JsonResponse<RegisterResponseBody>;
-
-    void registerVoter.body.id;
 
     const storyRes = await request(httpServer)
       .post('/stories')

@@ -19,6 +19,7 @@
     "db:check": "npm run db:check --workspace=backend",
     "migration:run": "npm run migration:run --workspace=backend",
     "migration:verify": "npm run migration:verify --workspace=backend",
+    "migration:status": "npm run migration:status --workspace=backend",
     "seed:dev": "npm run seed:dev --workspace=backend",
     "seed:test": "npm run seed:test --workspace=backend"
   },

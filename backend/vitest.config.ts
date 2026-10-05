@@ -44,16 +44,41 @@ const DOCUMENTED: readonly DocumentedExclusion[] = [];
  * is genuinely covered — and LOWER one only when the number above it was aspirational rather
  * than measured, because a floor nobody has ever met is a floor that measures nothing.
  *
- * Measured 2026-10-01 with `npx vitest run --coverage` (145 files, 2944 tests):
+ * Measured 2026-10-04 with `npx vitest run --coverage` (151 files, 3228 tests):
  *
- *   global            lines 86.52  statements 86.33  branches 83.31  functions 79.74
- *   common/utils      lines 97.63  statements 97.64  branches 93.27  functions 96.87
- *   common/waf        lines 96.00  statements 96.06  branches 95.23  functions 100
- *   common/throttler  lines 95.19  statements 95.23  branches 90.90  functions 94.73
- *   common/resilience lines 89.00  statements 89.00  branches 84.00  functions 100
+ *   global            lines 84.45  statements 84.28  branches 80.49  functions 78.86
+ *   common/utils      lines 97.63  statements 97.65  branches 93.28  functions 96.88
+ *   common/waf        lines 96.00  statements 96.06  branches 95.24  functions 100
+ *   common/throttler  lines 95.19  statements 95.24  branches 90.91  functions 94.74
+ *   common/resilience lines 91.49  statements 91.62  branches 86.05  functions 100
  *   valkey.service    lines 93.18  statements 93.18  branches 90.32  functions 95.23
  *   sentry.config     lines 100    statements 100    branches 98.11  functions 100
- *   badges.service    lines 81.25  statements 82.52  branches 64.00  functions 76.47
+ *   admin-dashboard   lines 100    statements 100    branches 98.07  functions 100
+ *   waf.middleware    lines 88.36  statements 88.55  branches 78.88  functions 100
+ *   badges.service    lines 86.07  statements 86.90  branches 65.90  functions 91.30
+ *
+ * ⛔ WHY THIS BLOCK WAS REWRITTEN. It previously read "Measured 2026-10-01 ... (145 files, 2944
+ * tests)" with a global of "lines 86.52 statements 86.33 branches 83.31 functions 79.74". BOTH
+ * halves were wrong: the suite is 151 files / 3228 tests, and every global metric was reported
+ * HIGHER than the suite produces. The per-path figures were closer but several had drifted too —
+ * `common/resilience` was quoted at 89.00/89.00/84.00 and is actually 91.49/91.62/86.05,
+ * `badges.service` at 81.25/82.52/64.00/76.47 and is actually 86.07/86.90/65.90/91.30, and
+ * `admin-dashboard` was not listed at all despite having its own floor.
+ *
+ * This was not a single stale edit. THREE mutually inconsistent coverage sets were circulating:
+ * this block, `docs/testing/testing-strategy.md` (85.43/82.39/79.00/85.58), and the roadmap. All
+ * three were wrong. The figure above is read from `backend/coverage/coverage-summary.json` as
+ * produced by the run, and the per-path rows are aggregated from the same file rather than
+ * transcribed. `docs/testing/testing-strategy.md` carries the full dated reconciliation.
+ *
+ * Note the ordering: the global floors below are declared lines/functions/branches/statements, so
+ * in S/B/F/L order they are 78/73/70/79. Documentation that prints them "78/70/73/79" transposes
+ * branches and functions.
+ *
+ * The TARGET is unchanged and is not what the floors encode: ≥ 80% statements, branches, functions
+ * and lines. Backend clears it. The frontend does not — S 40.75 / B 35.79 / F 39.64 / L 41.25
+ * against floors 38/33/33/38 — and its gate encodes the current number rather than the target, so a
+ * passing frontend build certifies roughly 40%.
  *
  * WHAT CHANGED AND WHY, since these were the failures on the PR:
  *
@@ -70,9 +95,9 @@ const DOCUMENTED: readonly DocumentedExclusion[] = [];
  *   The service survives without its controller, which this series merged into
  *   moderation.controller.ts.
  *
- * The global floors were left at 79/78/73/70. They pass with 7+ points of headroom, which is
- * the point of a floor: it should be a thing a regression trips, not a thing that is always
- * about to fail.
+ * The global floors were left at lines 79 / statements 78 / branches 73 / functions 70. Against the
+ * 2026-10-04 measurement they pass with 5+ points of headroom on every metric, which is the point
+ * of a floor: it should be a thing a regression trips, not a thing that is always about to fail.
  */
 const THRESHOLDS = {
   lines: 79,

@@ -22,7 +22,9 @@ Handles user authentication and authorization for the Hakawi platform.
 
 ## Security
 
-- Passwords are hashed with bcrypt (10 rounds)
+- Passwords are hashed with bcrypt (**12 rounds** — `backend/src/common/utils/password.util.ts:25`,
+  pinned by `password.util.spec.ts:67`, which reads the cost back out of the hash rather than spying
+  on bcrypt). This README previously said **10**, which the code has not used.
 - Access tokens expire in 15 minutes
 - Refresh tokens expire in 7 days
 - Refresh tokens are blacklisted on logout
