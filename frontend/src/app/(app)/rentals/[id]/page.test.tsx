@@ -1,7 +1,7 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -64,6 +64,25 @@ function respondWith(options: { rental?: Rental; progress?: ReadingProgress[] } 
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+});
+
+/**
+ * The clock is pinned. This component derives "overdue" from `endDate` against the
+ * current time, so a suite that left the real calendar in place would change its
+ * verdict on the day it ran — a test that fails because it is October is a test
+ * that hides a real bug behind a date.
+ */
+const NOW = new Date("2026-01-10T08:00:00.000Z");
+
+beforeEach(() => {
+  // `shouldAdvanceTime` keeps `waitFor` and `userEvent` working: they schedule real
+  // timers, and a fully frozen clock never fires them. The starting instant is
+  // still pinned, which is what the overdue verdict depends on.
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("rental detail page", () => {

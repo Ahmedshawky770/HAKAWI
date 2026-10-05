@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RENTAL_DURATION_DAYS } from "@hakawi/shared-types";
 
 import { RentalStatusBadge } from "./RentalStatusBadge";
+import { rentalStateView } from "./rentalState";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
@@ -72,7 +73,13 @@ export function RentalRow({
   onReturn: () => void;
 }) {
   const book = rental.book;
+  // `active` is what the server stores; whether it is still running is derived from
+  // the end date (see rentalState.ts). The extension and return actions follow the
+  // STORED status, because that is what the backend validates against: it refuses a
+  // non-active rental and still accepts an overdue one, so hiding the controls here
+  // would strand a reader who is one extension away from keeping their book.
   const isActive = rental.status === "active";
+  const state = rentalStateView(rental);
   const canExtend = isActive && rental.extendedCount < rental.maxExtensions;
 
   return (
@@ -105,7 +112,7 @@ export function RentalRow({
                 </h3>
                 <p className="mt-1 text-sm text-ink-muted">{book?.author || ""}</p>
               </div>
-              <RentalStatusBadge status={rental.status} />
+              <RentalStatusBadge status={rental.status} endDate={rental.endDate} />
             </div>
 
             <dl className="grid gap-2 text-sm text-ink-muted sm:grid-cols-2">
@@ -117,9 +124,13 @@ export function RentalRow({
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="clock" size="sm" />
-                <dt className="sr-only">تاريخ الانتهاء</dt>
-                <span>تاريخ الانتهاء:</span>
-                <dd className="hk-numeric">{new Date(rental.endDate).toLocaleDateString("ar-EG")}</dd>
+                <dt className="sr-only">{state.overdue ? "تأخر عن موعد الانتهاء" : "تاريخ الانتهاء"}</dt>
+                {/* An overdue rental's end date is a date in the past, which reads
+                    as ordinary; naming it says why the row is flagged. */}
+                <span>{state.overdue ? "تأخر عن موعد الانتهاء:" : "تاريخ الانتهاء:"}</span>
+                <dd className={`hk-numeric ${state.overdue ? "font-medium text-error-ink" : ""}`}>
+                  {new Date(rental.endDate).toLocaleDateString("ar-EG")}
+                </dd>
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="plus" size="sm" />

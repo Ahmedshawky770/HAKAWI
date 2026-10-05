@@ -42,14 +42,26 @@ const TONES: Record<BadgeTone, string> = {
 export function Badge({
   children,
   tone = "neutral",
+  /**
+   * The machine-readable state behind the pill, exposed as `data-state`.
+   *
+   * A pill has two faces: an Arabic word for a reader and an identifier for
+   * everything that is not a reader — a test asserting the pill means the right
+   * thing, and a stylesheet that needs to treat overdue differently from expired.
+   * `data-state` is the second face, and putting it on the element means neither
+   * consumer has to parse the label.
+   */
+  state,
   className = "",
 }: {
   children: React.ReactNode;
   tone?: BadgeTone;
+  state?: string;
   className?: string;
 }) {
   return (
     <span
+      data-state={state}
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap ${TONES[tone]} ${className}`.trim()}
     >
       {children}

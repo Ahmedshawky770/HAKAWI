@@ -1,13 +1,16 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { RENTAL_STATUSES } from "@hakawi/shared-types";
 
 import { renderWithProviders } from "@/test-utils/render";
 import { RENTAL_STATUS_LABELS, RentalStatusBadge } from "@/components/rental/RentalStatusBadge";
 import { RENTAL_STATUS_TONES, toneFor } from "@/components/ui/Badge";
+
+/** Pinned: the pill derives "overdue" from the end date against the clock. */
+const NOW = new Date("2026-03-10T08:00:00.000Z");
 
 /** The class each tone paints its pill with, so the wiring can be asserted without copying the map. */
 const TONE_CLASS = {
@@ -21,6 +24,14 @@ const TONE_CLASS = {
 } as const;
 
 describe("RentalStatusBadge", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("labels every status the API can send, in Arabic", () => {
     for (const status of RENTAL_STATUSES) {
       expect(RENTAL_STATUS_LABELS[status]).toBeTruthy();
@@ -51,6 +62,22 @@ describe("RentalStatusBadge", () => {
     expect(screen.getByText(RENTAL_STATUS_LABELS.expired).className).toContain(
       TONE_CLASS[toneFor(RENTAL_STATUS_TONES, "expired")],
     );
+  });
+
+  it("flags an active rental whose end date has passed, though the API still says active", () => {
+    renderWithProviders(<RentalStatusBadge status="active" endDate="2026-03-01T00:00:00.000Z" />);
+
+    const badge = screen.getByText("متأخر");
+    expect(badge.className).toContain(TONE_CLASS.error);
+    expect(badge.className).toContain("text-error-ink");
+    expect(badge).toHaveAttribute("data-state", "overdue");
+  });
+
+  it("leaves a running rental alone", () => {
+    renderWithProviders(<RentalStatusBadge status="active" endDate="2026-04-01T00:00:00.000Z" />);
+
+    expect(screen.getByText("نشط").className).toContain(TONE_CLASS.success);
+    expect(screen.getByText("نشط")).toHaveAttribute("data-state", "active");
   });
 
   it("shows a state it has no label for as it came, rather than blanking it", () => {

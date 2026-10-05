@@ -571,6 +571,28 @@ off the screen.
 `CONTEST_STATUS_TONES`) live here and are read through `toneFor`, which is how
 "rented" stopped being blue on one page and grey on another.
 
+### 6.7a A derived state is not a status
+
+A pill has two faces: an Arabic word for the reader, and a `data-state` identifier
+for a test and a stylesheet. Neither consumer has to parse the label.
+
+And a state the reader can see is not always a state the server sends. A rental is
+stored `active` until a scheduled job expires it, so three weeks after a rental
+ends the API is still saying "نشط" — while the backend's own `findOverdue()`
+(`status = 'active' AND endDate < now`) and `GET /rentals/overdue` say it is
+overdue. The pill therefore derives it from the two fields it already has
+(`rentalState.ts`), with the clock passed in so the verdict is testable.
+
+Two consequences, both deliberate:
+
+- **`RENTAL_STATUS_TONES` stays keyed by the contract.** A derived state does not
+  join the stored vocabulary, because the moment it did, two code paths would own
+  the meaning of one word.
+- **The actions follow the STORED status, not the derived one.** The backend still
+  accepts an extension for an overdue rental — it refuses only a non-`active` one —
+  so hiding the control would strand a reader who is one extension away from
+  keeping their book. The row names the date instead: "تأخر عن موعد الانتهاء".
+
 ### 6.8 Progress — `components/ui/ProgressBar.tsx`
 
 `role="progressbar"` with `aria-valuenow`, animated with `scaleX` rather than
@@ -855,7 +877,8 @@ Every rule in this document, and the file that implements it.
 | Skeletons, list rows | `frontend/src/components/ui/Skeleton.tsx` |
 | Loading region | `frontend/src/components/ui/Loading.tsx` |
 | Error and success banners | `frontend/src/components/ui/ErrorMessage.tsx` |
-| Status pills and the status→tone maps | `frontend/src/components/ui/Badge.tsx` |
+| Status pills, the status→tone maps, the import-time guard | `frontend/src/components/ui/Badge.tsx` |
+| The overdue verdict derived from a rental's dates | `frontend/src/components/rental/rentalState.ts` |
 | Avatars and initials | `frontend/src/components/ui/Avatar.tsx` |
 | Reading progress | `frontend/src/components/ui/ProgressBar.tsx` |
 | Empty states | `frontend/src/components/ui/EmptyState.tsx` |

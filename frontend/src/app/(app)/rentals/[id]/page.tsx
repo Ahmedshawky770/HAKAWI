@@ -143,7 +143,7 @@ export default function RentalDetailPage() {
         description={book?.title ? "تفاصيل الإيجار" : undefined}
         action={
           <>
-            <RentalStatusBadge status={rental.status} />
+            <RentalStatusBadge status={rental.status} endDate={rental.endDate} />
             <ButtonLink href="/rentals" variant="ghost" size="sm">
               <Icon name="chevron" size="sm" />
               العودة للإيجارات

@@ -1,7 +1,7 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -54,6 +54,25 @@ function renderRow(row: RentalWithBook, handlers: Partial<Parameters<typeof Rent
     />,
   );
 }
+
+/**
+ * The clock is pinned. This component derives "overdue" from `endDate` against the
+ * current time, so a suite that left the real calendar in place would change its
+ * verdict on the day it ran — a test that fails because it is October is a test
+ * that hides a real bug behind a date.
+ */
+const NOW = new Date("2026-01-10T08:00:00.000Z");
+
+beforeEach(() => {
+  // `shouldAdvanceTime` keeps `waitFor` and `userEvent` working: they schedule real
+  // timers, and a fully frozen clock never fires them. The starting instant is
+  // still pinned, which is what the overdue verdict depends on.
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("RentalRow", () => {
   it("names the book and links to it", () => {
