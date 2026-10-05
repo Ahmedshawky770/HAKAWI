@@ -79,16 +79,29 @@ its reversibility in a machine-read header:
   author's reason.
 - `irreversible` — never runs. `migration:rollback` refuses unconditionally.
 
-Current classification of the 16 historical migrations:
+⛔ **Corrected.** This section previously classified "the 16 historical migrations" and
+declared `0001_create_stories_tables` **irreversible** "because it also creates the shared
+`uuid-ossp` extension, and dropping that cascades into the default of every `uuid_generate_v4()`
+column", and named `0014_create_search_indexes` as "the only `reversible` migration". All three
+claims were wrong.
 
-- `0001_create_stories_tables` is **irreversible**: it also creates the shared `uuid-ossp`
-  extension, and dropping that cascades into the default of every `uuid_generate_v4()`
-  column in the database, including tables it does not own.
-- `0000`–`0013` and `0015`–`0016` are `data-loss`: they drop tables or columns. Reverse
-  order is safe because every foreign key dependency was created in order, so rolling back
-  N migrations in sequence removes the dependants first.
-- `0014_create_search_indexes` is the only `reversible` migration: it drops three GIN
-  indexes and touches no table data.
+Measured across all **22** down scripts, the distribution is **0 `irreversible`, 18 `data-loss`,
+4 `reversible`**:
+
+- **No migration is `irreversible`.** The classification is supported by the runner but nothing
+  uses it.
+- **`0001_create_stories_tables` is `data-loss`, not irreversible.** Its down script
+  (`migrations/down/0001_create_stories_tables.down.sql:1`) never drops the extension, so the
+  hazard the old text described is already avoided by omission; what it does is drop
+  `story_tags`, `stories`, `tags` and `categories` along with every row in them. It was the only
+  migration `assertReversible` refused unconditionally, which meant a rollback chain reaching it
+  failed outright instead of asking for `--allow-data-loss`. It no longer does.
+- **Four migrations are `reversible`, not one:** `0014_create_search_indexes` (drops three GIN
+  indexes), `0020_add_stories_slug_unique`, `0021_add_books_owner_id`, and the `contest_prizes`
+  amount/currency change — each drops an index or an added column and touches no row.
+- The remaining **18** are `data-loss`: they drop tables or columns. Reverse order is safe because
+  every foreign key dependency was created in order, so rolling back N migrations in sequence
+  removes the dependants first.
 
 `migration:rollback` validates **every** target before executing the first statement, so a
 refused batch never leaves the database half-rolled-back. `--to <id>` means "roll back until
