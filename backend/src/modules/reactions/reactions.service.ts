@@ -55,10 +55,24 @@ export class ReactionsService {
     return { reactions, total, page, limit };
   }
 
-  async getReactionCounts(storyId: string): Promise<ReactionCounts> {
+  /**
+   * One grouped query, not one query per type.
+   *
+   * This looped `VALID_REACTION_TYPES` and awaited `countReactionsByType` six times in sequence, so the
+   * cost of reading a story's reaction row was six fixed round trips against a `@Public()` route that
+   * every story card hits — the N+1 pattern with a constant N, which is still N+1.
+   *
+   * WHY THE ZEROS ARE ADDED HERE. `GROUP BY type` returns only the types that have rows, so a story
+   * nobody reacted to comes back as `{}`. The client renders all six keys and the repository has no
+   * way to know which six are valid — that list belongs to this module's `VALID_REACTION_TYPES`
+   * (Principle #9), so the shape is completed here rather than by the query.
+   */
+async getReactionCounts(storyId: string): Promise<ReactionCounts> {
+    const counted = await this.reactionsRepository.countByType(storyId);
+
     const counts: ReactionCounts = {};
     for (const type of VALID_REACTION_TYPES) {
-      counts[type] = await this.reactionsRepository.countReactionsByType(storyId, type);
+      counts[type] = counted[type] ?? 0;
     }
     return counts;
   }

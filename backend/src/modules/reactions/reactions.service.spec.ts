@@ -24,6 +24,7 @@ type MockReactionsRepository = {
   deleteByUserAndStory: ReturnType<typeof vi.fn<(userId: string, storyId: string) => Promise<void>>>;
   countReactions: ReturnType<typeof vi.fn<(storyId: string) => Promise<number>>>;
   countReactionsByType: ReturnType<typeof vi.fn<(storyId: string, type: string) => Promise<number>>>;
+  countByType: ReturnType<typeof vi.fn<(storyId: string) => Promise<Record<string, number>>>>;
 };
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -61,6 +62,7 @@ describe('ReactionsService', () => {
       deleteByUserAndStory: vi.fn<(userId: string, storyId: string) => Promise<void>>(),
       countReactions: vi.fn<(storyId: string) => Promise<number>>(),
       countReactionsByType: vi.fn<(storyId: string, type: string) => Promise<number>>(),
+      countByType: vi.fn<(storyId: string) => Promise<Record<string, number>>>(),
     };
 
     logger = {
@@ -320,7 +322,7 @@ describe('ReactionsService', () => {
 
   describe('getReactionCounts', () => {
     it('should return reaction counts', async () => {
-      vi.mocked(reactionsRepository.countReactionsByType).mockResolvedValue(5);
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({ like: 5 });
 
       const result = await reactionsService.getReactionCounts('story-1');
 
@@ -328,20 +330,22 @@ describe('ReactionsService', () => {
       expect(result.like).toBe(5);
     });
 
-    it('should ask for every one of the six supported types exactly once', async () => {
-      vi.mocked(reactionsRepository.countReactionsByType).mockResolvedValue(0);
+    // The N+1 this pins: `getReactionCounts` used to `await countReactionsByType` once per
+    // `VALID_REACTION_TYPES` entry, so the route cost six sequential round trips. One repository call
+    // is one query, and `reactions.repository.spec.ts` pins that the repository issues exactly one.
+    it('should read the counts with a single repository call, not one per reaction type', async () => {
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({});
 
       await reactionsService.getReactionCounts('story-1');
 
-      expect(reactionsRepository.countReactionsByType).toHaveBeenCalledTimes(6);
+      expect(reactionsRepository.countByType).toHaveBeenCalledTimes(1);
+      expect(reactionsRepository.countByType).toHaveBeenCalledWith('story-1');
+      expect(reactionsRepository.countReactionsByType).not.toHaveBeenCalled();
       expect(VALID_REACTION_TYPES).toEqual(['like', 'love', 'wow', 'sad', 'angry', 'haunted']);
-      for (const type of VALID_REACTION_TYPES) {
-        expect(reactionsRepository.countReactionsByType).toHaveBeenCalledWith('story-1', type);
-      }
     });
 
     it('should return a zero for every type when nobody reacted', async () => {
-      vi.mocked(reactionsRepository.countReactionsByType).mockResolvedValue(0);
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({});
 
       await expect(reactionsService.getReactionCounts('story-1')).resolves.toEqual({
         like: 0,
@@ -354,23 +358,33 @@ describe('ReactionsService', () => {
     });
 
     it('should keep each type count separate', async () => {
-      vi.mocked(reactionsRepository.countReactionsByType).mockImplementation(async (_storyId: string, type: string) =>
-        type === 'love' ? 12 : 1,
-      );
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({ love: 12, like: 1, haunted: 1 });
 
       const result = await reactionsService.getReactionCounts('story-1');
 
       expect(result.love).toBe(12);
       expect(result.like).toBe(1);
       expect(result.haunted).toBe(1);
+      expect(result.wow).toBe(0);
     });
 
     it('should not fall back to the untyped total count', async () => {
-      vi.mocked(reactionsRepository.countReactionsByType).mockResolvedValue(0);
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({});
 
       await reactionsService.getReactionCounts('story-1');
 
       expect(reactionsRepository.countReactions).not.toHaveBeenCalled();
+    });
+
+    // `GROUP BY type` can only return types that have rows, so a stale value would render a reaction
+    // the reader cannot see. Dropping the key rather than keeping a wrong zero is the honest reading.
+    it('should ignore a type the query returned that is not a supported reaction type', async () => {
+      vi.mocked(reactionsRepository.countByType).mockResolvedValue({ love: 3, sparkle: 7 });
+
+      const result = await reactionsService.getReactionCounts('story-1');
+
+      expect(result).not.toHaveProperty('sparkle');
+      expect(result.love).toBe(3);
     });
   });
 

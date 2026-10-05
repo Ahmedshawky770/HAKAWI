@@ -20,4 +20,13 @@ export interface IReactionsRepository {
   deleteByUserAndStory(userId: string, storyId: string): Promise<void>;
   countReactions(storyId: string): Promise<number>;
   countReactionsByType(storyId: string, type: string): Promise<number>;
+  /**
+   * Every type present on the story with its count, in ONE grouped query.
+   *
+   * Added because the service used to ask `countReactionsByType` once per supported type — six
+   * sequential round trips to render one badge row, on a `@Public()` route. `countReactionsByType` is
+   * kept because deleting an exported method is a deliberate call (Principle #8), not a side effect of
+   * adding a faster one.
+   */
+  countByType(storyId: string): Promise<Record<string, number>>;
 }

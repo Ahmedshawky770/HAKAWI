@@ -97,4 +97,24 @@ export class ReactionsRepository implements IReactionsRepository {
       .where(and(eq(reactions.storyId, storyId), eq(reactions.type, type)));
     return Number(total);
   }
+
+  /**
+   * `GROUP BY type` rather than six `count(*)` round trips.
+   *
+   * `ReactionsService.getReactionCounts` looped over `VALID_REACTION_TYPES` and issued one query per
+   * type — six sequential awaits to answer `GET /reactions/stories/:storyId/counts`, a public route
+   * every story card calls. `GROUP BY` returns only the types that actually have rows, so the caller
+   * still has to substitute 0 for the rest; that is the service's job, not the repository's, because
+   * only the service knows which types are valid.
+   */
+  async countByType(storyId: string): Promise<Record<string, number>> {
+    this.logger.debug(`Counting reactions by type for story: ${storyId}`);
+    const rows = await db
+      .select({ type: reactions.type, total: sql<number>`count(*)` })
+      .from(reactions)
+      .where(eq(reactions.storyId, storyId))
+      .groupBy(reactions.type);
+
+    return Object.fromEntries(rows.map((row: { type: string; total: number }) => [row.type, Number(row.total)]));
+  }
 }

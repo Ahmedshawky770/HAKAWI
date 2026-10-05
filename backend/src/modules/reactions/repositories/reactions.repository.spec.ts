@@ -300,4 +300,41 @@ describe('ReactionsRepository', () => {
       await expect(repository.countReactionsByType(STORY_ID, 'love')).resolves.toBe(8);
     });
   });
+
+  // `getReactionCounts` used to call `countReactionsByType` six times in a loop, which is six
+  // sequential round trips for one badge row. This describe is the query-count evidence that it no
+  // longer does: `db.select` is called exactly once, and the rows come back grouped by type.
+  describe('countByType', () => {
+    it('issues a single grouped query and returns a count per type', async () => {
+      control.queue([
+        { type: 'like', total: 4 },
+        { type: 'love', total: 2 },
+      ]);
+
+      await expect(repository.countByType(STORY_ID)).resolves.toEqual({ like: 4, love: 2 });
+      expect(db.select).toHaveBeenCalledTimes(1);
+    });
+
+    it('scopes the group to the story and groups by the type column', async () => {
+      control.queue([{ type: 'like', total: 1 }]);
+
+      await repository.countByType(STORY_ID);
+
+      expect(firstArgsOf(chains[0]!, 'from')).toEqual([reactions]);
+      expect(whereOf()).toEqual(eq(reactions.storyId, STORY_ID));
+      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([reactions.type]);
+    });
+
+    it('coerces counts delivered as text to numbers', async () => {
+      control.queue([{ type: 'haunted', total: '7' }]);
+
+      await expect(repository.countByType(STORY_ID)).resolves.toEqual({ haunted: 7 });
+    });
+
+    it('returns an empty map for a story with no reactions', async () => {
+      control.queue([]);
+
+      await expect(repository.countByType(STORY_ID)).resolves.toEqual({});
+    });
+  });
 });
