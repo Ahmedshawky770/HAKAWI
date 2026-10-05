@@ -256,8 +256,12 @@ describe("api client payload validation", () => {
   it("rejects a message only response that carries no message", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
 
+    // `ReactionsController` mounts `@Delete('stories/:storyId')`
+    // (`backend/src/modules/reactions/controllers/reactions.controller.ts`), which is the path this
+    // probe used to name wrong (`/stories/story-1/reactions`) and which the assertion therefore
+    // blessed as if it existed.
     await expectRejection(
-      api.request(messageOnlySchema, "/stories/story-1/reactions", { method: "DELETE" }),
+      api.request(messageOnlySchema, "/reactions/stories/story-1", { method: "DELETE" }),
       "Invalid server response",
     );
   });
@@ -494,12 +498,22 @@ describe("api client query building", () => {
     expect(lastCall().url).toBe("http://localhost:3001/api/v1/stories");
   });
 
-  it("maps the search query onto the q parameter", async () => {
+  // WHY `query` AND NOT `q`. `SearchController.search` binds `SearchFiltersDto`, whose field is
+  // `query` (`backend/src/modules/search/dto/search.dto.ts:12-15`), and the global ValidationPipe
+  // runs with `forbidNonWhitelisted: true` (`backend/src/main.ts:147-156`). The old assertion
+  // pinned `/search?q=harka`, so the client shipped a parameter the server rejects with a 400 and
+  // the test recorded that as the expected URL. `q` belongs to the sibling
+  // `SearchAuthorsQueryDto`, which serves `GET /search/authors`, a route this client does not call.
+  it("maps the search query onto the query parameter the search DTO declares", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [], total: 0, page: 1, limit: 20, query: "harka", took: 3 }));
 
     await api.search({ query: "harka" });
 
-    expect(lastCall().url).toContain("/search?q=harka");
+    const { url } = lastCall();
+    expect(url).toBe("http://localhost:3001/api/v1/search?query=harka");
+    // `q` is a real field on a DIFFERENT DTO (`SearchAuthorsQueryDto`, for `/search/authors`), so a
+    // substring check alone would be ambiguous about which parameter was actually sent.
+    expect([...new URL(url).searchParams.keys()]).toEqual(["query"]);
   });
 
   it("returns the unread notification count", async () => {

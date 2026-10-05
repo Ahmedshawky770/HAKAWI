@@ -15,6 +15,7 @@ import {
   countResultSchema,
   emptyResponseSchema,
   followersResponseSchema,
+  followSchema,
   followingResponseSchema,
   libraryItemSchema,
   libraryListResponseSchema,
@@ -442,65 +443,136 @@ export const api = {
 
   getPayment: (id: string) => apiRequest(paymentSchema, `/payments/${id}`),
 
-  followUser: (userId: string) => apiRequest(z.unknown(), `/users/${userId}/follow`, { method: "POST" }),
+  /**
+   * WHY THE SOCIAL CALLS BELOW DO NOT NEST UNDER `/users` OR `/stories`.
+   *
+   * Each of these features has its OWN top-level controller in the backend — `@Controller('follows')`,
+   * `@Controller('reactions')`, `@Controller('comments')` — under the `api/v1` global prefix
+   * (`backend/src/main.ts:101`). The client previously addressed them as if they were sub-resources
+   * of the actor (`/users/:id/follow`) or of the story (`/stories/:id/reactions`), which is the
+   * shape the REST *intuition* suggests and the shape the backend does not serve, so every
+   * follow / react / comment action in the web client answered 404. `api.test.ts` asserted those
+   * same invented URLs, so the suite was green while the feature was dead: the test and the bug
+   * agreed with each other.
+   *
+   * The owning controller and file for each route is named next to the call, and
+   * `api.contract.test.ts` pins every one of them to the literal path so the pair cannot drift
+   * apart again.
+   */
+  // `backend/src/modules/follows/controllers/follows.controller.ts` → `FollowsController`:
+  // `@Post()` on `@Controller('follows')`.
+  //
+  // The target of the follow is in the BODY, not the path, because the follower is never the
+  // target: `FollowsController.follow` reads the follower from `req.user.sub` and takes only the
+  // followed user from `FollowUserDto.followingId`
+  // (`backend/src/modules/follows/dto/follows.dto.ts:3-6`). `followSchema` replaces the previous
+  // `z.unknown()`, which accepted any body at all and so could not report a server that answered a
+  // different route than the one that was asked for.
+  followUser: (userId: string) =>
+    apiRequest(followSchema, "/follows", {
+      method: "POST",
+      body: JSON.stringify({ followingId: userId }),
+    }),
 
-  unfollowUser: (userId: string) => apiRequest(z.unknown(), `/users/${userId}/follow`, { method: "DELETE" }),
+  // `FollowsController` → `@Delete(':followingId')`. Answers `{ message: 'Unfollowed successfully' }`.
+  unfollowUser: (userId: string) => apiRequest(messageOnlySchema, `/follows/${userId}`, { method: "DELETE" }),
 
+  // `FollowsController` → `@Get('user/:userId/followers')`, returning `{ followers, total, page, limit }`.
   getFollowers: (userId: string, params?: { page?: number; limit?: number }) =>
     apiRequest(
       followersResponseSchema,
-      withQuery(`/users/${userId}/followers`, { page: params?.page, limit: params?.limit }),
+      withQuery(`/follows/user/${userId}/followers`, { page: params?.page, limit: params?.limit }),
     ),
 
+  // `FollowsController` → `@Get('user/:userId/following')`, returning `{ following, total, page, limit }`.
   getFollowing: (userId: string, params?: { page?: number; limit?: number }) =>
     apiRequest(
       followingResponseSchema,
-      withQuery(`/users/${userId}/following`, { page: params?.page, limit: params?.limit }),
+      withQuery(`/follows/user/${userId}/following`, { page: params?.page, limit: params?.limit }),
     ),
 
+  // `backend/src/modules/reactions/controllers/reactions.controller.ts` → `ReactionsController`:
+  // `@Controller('reactions')` with `@Get('stories/:storyId')`.
   getReactions: (storyId: string, params?: { page?: number; limit?: number }) =>
     apiRequest(
       reactionsListResponseSchema,
-      withQuery(`/stories/${storyId}/reactions`, { page: params?.page, limit: params?.limit }),
+      withQuery(`/reactions/stories/${storyId}`, { page: params?.page, limit: params?.limit }),
     ),
 
-  getReactionCounts: (storyId: string) => apiRequest(reactionCountsSchema, `/stories/${storyId}/reactions/counts`),
+  // `ReactionsController` → `@Get('stories/:storyId/counts')`. Not a paginated route, so no query string.
+  getReactionCounts: (storyId: string) => apiRequest(reactionCountsSchema, `/reactions/stories/${storyId}/counts`),
 
+  // `ReactionsController` → `@Post('stories/:storyId')` with `CreateReactionDto.type`
+  // (`backend/src/modules/reactions/dto/reactions.dto.ts:3-8`).
   addReaction: (storyId: string, type: ReactionType) =>
-    apiRequest(reactionSchema, `/stories/${storyId}/reactions`, {
+    apiRequest(reactionSchema, `/reactions/stories/${storyId}`, {
       method: "POST",
       body: JSON.stringify({ type }),
     }),
 
+  // `ReactionsController` → `@Delete('stories/:storyId')`. Answers `{ message: 'Reaction removed' }`.
   removeReaction: (storyId: string) =>
-    apiRequest(messageOnlySchema, `/stories/${storyId}/reactions`, { method: "DELETE" }),
+    apiRequest(messageOnlySchema, `/reactions/stories/${storyId}`, { method: "DELETE" }),
 
+  // `backend/src/modules/comments/controllers/comments.controller.ts` → `CommentsController`:
+  // `@Controller('comments')` with `@Get('story/:storyId')`.
   getComments: (storyId: string, params?: { page?: number; limit?: number }) =>
     apiRequest(
       commentsListResponseSchema,
-      withQuery(`/stories/${storyId}/comments`, { page: params?.page, limit: params?.limit }),
+      withQuery(`/comments/story/${storyId}`, { page: params?.page, limit: params?.limit }),
     ),
 
+  /**
+   * WHY `storyId` MOVES INTO THE BODY AND NOT INTO THE PATH.
+   *
+   * `CommentsController` declares `@Post()` on the bare `@Controller('comments')` — the collection,
+   * not a story sub-route — and `CreateCommentDto` (`backend/src/modules/comments/dto/comments.dto.ts:3-15`)
+   * carries `storyId` as a validated body field. Nest cannot route a collection `POST` on a path
+   * parameter that the controller does not declare, so the old path 404'd and the old body was
+   * missing the field the DTO requires (a 400 even if the route had matched).
+   *
+   * The public signature is UNCHANGED, so callers keep passing the story id positionally.
+   */
   createComment: (storyId: string, data: { content: string; parentId?: string }) =>
-    apiRequest(commentSchema, `/stories/${storyId}/comments`, {
+    apiRequest(commentSchema, "/comments", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ storyId, content: data.content, parentId: data.parentId }),
     }),
 
+  /**
+   * WHY `storyId` IS STILL A PARAMETER BUT IS NO LONGER SENT.
+   *
+   * `CommentsController` addresses an update as `@Patch(':id')` — the comment is the resource and
+   * the story is not part of its identity, so there is nowhere in the request for a story id. The
+   * parameter is kept because every caller already passes it and removing it would be a breaking
+   * signature change for a bug fix; it is documented here so its absence from the request is a
+   * decision rather than an oversight. `data` is `UpdateCommentDto`, which is `{ content }`.
+   */
   updateComment: (storyId: string, commentId: string, data: { content: string }) =>
-    apiRequest(commentSchema, `/stories/${storyId}/comments/${commentId}`, {
+    apiRequest(commentSchema, `/comments/${commentId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
+  /** Same reasoning as `updateComment`: `CommentsController` → `@Delete(':id')`. */
   deleteComment: (storyId: string, commentId: string) =>
-    apiRequest(messageOnlySchema, `/stories/${storyId}/comments/${commentId}`, { method: "DELETE" }),
+    apiRequest(messageOnlySchema, `/comments/${commentId}`, { method: "DELETE" }),
 
+  /**
+   * WHY `query` AND NOT `q`.
+   *
+   * `SearchController.search` binds `@Query() query: SearchFiltersDto`, and the field on that DTO
+   * is `query` (`backend/src/modules/search/dto/search.dto.ts:12-15`). The global `ValidationPipe`
+   * runs with `forbidNonWhitelisted: true` (`backend/src/main.ts:147-156`), so a `q` parameter is
+   * not ignored — it is a 400, which the search page renders as an empty result set. (`q` IS a
+   * real field, but on the sibling `SearchAuthorsQueryDto` for `GET /search/authors`, which is a
+   * different route and is not the one this function calls.)
+   */
   search: (params: { query: string; category?: string; tag?: string; page?: number; limit?: number }) =>
     apiRequest(
       searchResponseSchema,
       withQuery("/search", {
-        q: params.query,
+        query: params.query,
         category: params.category,
         tag: params.tag,
         page: params.page,
