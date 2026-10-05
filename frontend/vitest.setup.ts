@@ -40,6 +40,7 @@ function installIntersectionObserver(): void {
     readonly root = null;
     readonly rootMargin = "";
     readonly thresholds: readonly number[] = [];
+    readonly scrollMargin: string = "";
 
     observe(): void {}
     unobserve(): void {}

@@ -1,7 +1,9 @@
 import type {
   AuthResponse,
+  BadgeCatalogEntry,
   Book,
   BookRecord,
+  Contest,
   Notification,
   Payment,
   SessionResponse,
@@ -141,4 +143,19 @@ export const NOTIFICATION: Notification = {
   isRead: false,
   readAt: null,
   createdAt: "2026-01-01T10:00:00.000Z",
+};
+
+export const CONTEST: Contest = {
+  id: "contest-1",
+  title: "مسابقة القصة القصيرة",
+  description: "أفضل قصة قصيرة تفوز بجائزة",
+  categoryId: "fiction",
+  startDate: "2026-01-01T00:00:00.000Z",
+  endDate: "2026-02-01T00:00:00.000Z",
+  submissionDeadline: "2026-01-15T00:00:00.000Z",
+  status: "active",
+  createdBy: "user-1",
+  winnerId: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-02T00:00:00.000Z",
 };

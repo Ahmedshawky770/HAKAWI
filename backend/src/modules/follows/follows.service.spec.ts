@@ -4,14 +4,14 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 
-import type { Follow } from './interfaces/follows-repository.interface.ts';
+import type { Follow, FollowWithUser } from './interfaces/follows-repository.interface.ts';
 import { FollowsService } from './follows.service.ts';
 
 type MockFollowsRepository = {
   findById: Mock<(id: string) => Promise<Follow | null>>;
   findByUsers: Mock<(followerId: string, followingId: string) => Promise<Follow | null>>;
-  findFollowers: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: Follow[]; total: number }>>;
-  findFollowing: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: Follow[]; total: number }>>;
+  findFollowers: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: FollowWithUser[]; total: number }>>;
+  findFollowing: Mock<(userId: string, page: number, limit: number) => Promise<{ follows: FollowWithUser[]; total: number }>>;
   create: Mock<(data: { followerId: string; followingId: string }) => Promise<Follow>>;
   delete: Mock<(id: string) => Promise<void>>;
   countFollowers: Mock<(userId: string) => Promise<number>>;

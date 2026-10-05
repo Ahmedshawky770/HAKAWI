@@ -4,15 +4,22 @@ import type { ReactionType, StoryMutationInput, StoryPatchInput } from "@hakawi/
 
 import {
   authResponseSchema,
+  badgeCatalogSchema,
+  bookCheckoutSchema,
+  bookRecordResponseSchema,
   bookResponseSchema,
   booksListResponseSchema,
   commentSchema,
   commentsListResponseSchema,
+  contestPrizesResponseSchema,
   contestSchema,
   contestSubmissionSchema,
+  contestVoteSchema,
+  contestVotesResponseSchema,
   contestsListResponseSchema,
   conversationsListResponseSchema,
   countResultSchema,
+  downloadResponseSchema,
   emptyResponseSchema,
   followersResponseSchema,
   followSchema,
@@ -27,23 +34,27 @@ import {
   paymentSchema,
   paymentsListResponseSchema,
   publicUserProfileSchema,
+  publisherStatsSchema,
+  publisherSubmissionsResponseSchema,
+  publisherVotesResponseSchema,
   purchaseResultSchema,
   reactionSchema,
   reactionCountsSchema,
   reactionsListResponseSchema,
   readingProgressListResponseSchema,
-  rentalSchema,
-  bookCheckoutSchema,
   rentalQuoteSchema,
+  rentalSchema,
   rentalsListResponseSchema,
   reportSchema,
   reportsListResponseSchema,
+  restrictionsResponseSchema,
   searchResponseSchema,
   sessionResponseSchema,
   storiesListResponseSchema,
   storyRecordResponseSchema,
   storyResponseSchema,
   uploadTicketSchema,
+  userBadgesResponseSchema,
   userStatsSchema,
 } from "@/lib/schemas";
 
@@ -377,8 +388,17 @@ export const api = {
 
   getLibraryCount: () => apiRequest(countResultSchema, "/library/count"),
 
-  addToLibrary: (data: { bookId: string }) =>
-    apiRequest(libraryItemSchema, "/library", {
+  /**
+   * Claim a free book into the reader's library.
+   *
+   * WHY THIS CALLS `/library/claim` RATHER THAN `/library`. The old `POST /library` route
+   * accepted `{ bookId }` with no check that the book was free, no check that a payment had
+   * completed, and no check that the book was for sale. It was removed entirely because any
+   * authenticated account could grant itself ownership of a paid book for nothing. The replacement
+   * verifies `is_free` in the service, so a paid book can only be obtained through money.
+   */
+  claimLibraryItem: (data: { bookId: string }) =>
+    apiRequest(libraryItemSchema, "/library/claim", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -387,6 +407,50 @@ export const api = {
 
   accessLibraryItem: (id: string) =>
     apiRequest(libraryItemSchema, `/library/${id}/access`, {
+      method: "POST",
+    }),
+
+  createBook: (data: {
+    title: string;
+    author: string;
+    description?: string;
+    coverImage?: string;
+    isbn?: string;
+    publisher?: string;
+    publishDate?: string;
+    language?: string;
+    pageCount?: number;
+    fileUrl?: string;
+    fileType?: string;
+    price?: number;
+    isFree?: boolean;
+    categoryId?: string;
+  }) =>
+    apiRequest(bookRecordResponseSchema, "/books", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  publishBook: (id: string) =>
+    apiRequest(bookRecordResponseSchema, `/books/${id}/publish`, {
+      method: "POST",
+    }),
+
+  archiveBook: (id: string) =>
+    apiRequest(bookRecordResponseSchema, `/books/${id}/archive`, {
+      method: "POST",
+    }),
+
+  deleteBook: (id: string) =>
+    apiRequest(emptyResponseSchema, `/books/${id}`, {
+      method: "DELETE",
+    }),
+
+  findBookByIsbn: (isbn: string) =>
+    apiRequest(bookResponseSchema, `/books/isbn/${encodeURIComponent(isbn)}`),
+
+  downloadBook: (id: string) =>
+    apiRequest(downloadResponseSchema, `/books/${id}/download`, {
       method: "POST",
     }),
 
@@ -414,6 +478,64 @@ export const api = {
       body: JSON.stringify({ storyId }),
     }),
 
+  castVote: (contestId: string, submissionId: string) =>
+    apiRequest(contestVoteSchema, `/contests/${contestId}/votes`, {
+      method: "POST",
+      body: JSON.stringify({ submissionId }),
+    }),
+
+  getVotes: (contestId: string, params?: { submissionId?: string; page?: number; limit?: number }) =>
+    apiRequest(
+      contestVotesResponseSchema,
+      withQuery(`/contests/${contestId}/votes`, {
+        submissionId: params?.submissionId,
+        page: params?.page,
+        limit: params?.limit,
+      }),
+    ),
+
+  selectWinner: (contestId: string, data: { submissionId: string; winnerId: string }) =>
+    apiRequest(contestSchema, `/contests/${contestId}/winner`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  distributePrize: (contestId: string, data: {
+    submissionId: string;
+    winnerId: string;
+    prizeType: string;
+    prizeDescription?: string;
+    amount?: number;
+    currency?: string;
+  }) =>
+    apiRequest(contestPrizesResponseSchema, `/contests/${contestId}/prizes`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getPrizes: (contestId: string) =>
+    apiRequest(contestPrizesResponseSchema, `/contests/${contestId}/prizes`),
+
+  getPublisherStats: () => apiRequest(publisherStatsSchema, "/contests/publisher/stats"),
+
+  getPublisherSubmissions: (contestId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      publisherSubmissionsResponseSchema,
+      withQuery(`/contests/publisher/${contestId}/submissions`, {
+        page: params?.page,
+        limit: params?.limit,
+      }),
+    ),
+
+  getPublisherVotes: (contestId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      publisherVotesResponseSchema,
+      withQuery(`/contests/publisher/${contestId}/votes`, {
+        page: params?.page,
+        limit: params?.limit,
+      }),
+    ),
+
   getNotifications: (params?: { page?: number; limit?: number }) =>
     apiRequest(
       notificationsListResponseSchema,
@@ -426,6 +548,11 @@ export const api = {
     apiRequest(notificationSchema, `/notifications/${id}/read`, {
       method: "PATCH",
     }),
+
+  listBadges: () => apiRequest(badgeCatalogSchema, "/badges"),
+
+  listUserBadges: (userId: string, params?: { key?: string }) =>
+    apiRequest(userBadgesResponseSchema, withQuery(`/badges/users/${userId}`, { key: params?.key })),
 
   getConversations: () => apiRequest(conversationsListResponseSchema, "/messages/conversations"),
 
@@ -614,12 +741,28 @@ export const api = {
   getModerationQueue: (params?: { page?: number; limit?: number; status?: string }) =>
     apiRequest(
       reportsListResponseSchema,
-      withQuery("/moderation", { page: params?.page, limit: params?.limit, status: params?.status }),
+      withQuery("/moderation/reports", { page: params?.page, limit: params?.limit, status: params?.status }),
     ),
 
   moderateItem: (itemId: string, data: { status: "open" | "in_review" | "resolved" | "dismissed" }) =>
-    apiRequest(reportSchema, `/moderation/${itemId}`, {
+    apiRequest(reportSchema, `/moderation/reports/${itemId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+
+  createReport: (data: { targetId: string; targetType: "story" | "comment" | "user"; reason: string; description?: string }) =>
+    apiRequest(reportSchema, "/moderation/reports", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getUserRestrictions: (userId: string, params?: { includeExpired?: boolean }) =>
+    apiRequest(
+      restrictionsResponseSchema,
+      withQuery(`/moderation/users/${userId}/restrictions`, {
+        includeExpired: params?.includeExpired ? "true" : undefined,
+      }),
+    ),
+
+  getModerationStats: () => apiRequest(publisherStatsSchema, "/moderation/stats"),
 };

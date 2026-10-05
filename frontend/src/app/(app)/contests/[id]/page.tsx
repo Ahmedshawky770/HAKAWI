@@ -4,10 +4,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, getStoredUser } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -29,11 +29,36 @@ export default function ContestDetailPage() {
   const [storyId, setStoryId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [votes, setVotes] = useState<{ submissionId: string; count: number }[]>([]);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState("");
+  const [prizeSubmissionId, setPrizeSubmissionId] = useState("");
+  const [prizeType, setPrizeType] = useState<string>("cash");
+  const [prizeDescription, setPrizeDescription] = useState("");
+  const [prizeAmount, setPrizeAmount] = useState("");
+  const [prizeCurrency, setPrizeCurrency] = useState("EGP");
+
+  const currentUserId = getStoredUser()?.id ?? null;
+  const isOwner = currentUserId != null && contest != null && contest.createdBy === currentUserId;
 
   const load = useCallback(async () => {
     try {
-      const data = await api.getContest(id);
-      setContest(data);
+      const contestData = await api.getContest(id);
+      setContest(contestData);
+      try {
+        const votesData = await api.getVotes(id);
+        const grouped = votesData.votes.reduce<{ submissionId: string; count: number }[]>((acc, vote) => {
+          const existing = acc.find((item) => item.submissionId === vote.submissionId);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            acc.push({ submissionId: vote.submissionId, count: 1 });
+          }
+          return acc;
+        }, []);
+        setVotes(grouped);
+      } catch {
+        // Votes are additive; a failure here does not block the contest from loading.
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذّر تحميل المسابقة");
     } finally {
@@ -59,6 +84,62 @@ export default function ContestDetailPage() {
       notify("تم إرسال مشاركتك بنجاح", "success");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "تعذّر إرسال المشاركة");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleVote = async (submissionId: string) => {
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await api.castVote(id, submissionId);
+      notify("تم تسجيل صوتك", "success");
+      setVotes((prev) => {
+        const existing = prev.find((item) => item.submissionId === submissionId);
+        if (existing) {
+          return prev.map((item) => (item.submissionId === submissionId ? { ...item, count: item.count + 1 } : item));
+        }
+        return [...prev, { submissionId, count: 1 }];
+      });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "تعذّر تسجيل الصوت");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSelectWinner = async () => {
+    if (!selectedSubmissionId) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await api.selectWinner(id, { submissionId: selectedSubmissionId, winnerId: selectedSubmissionId });
+      setContest((prev) => (prev ? { ...prev, winnerId: selectedSubmissionId } : prev));
+      notify("تم اختيار الفائز", "success");
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "تعذّر اختيار الفائز");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDistributePrize = async () => {
+    if (!prizeSubmissionId || !prizeType) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await api.distributePrize(id, {
+        submissionId: prizeSubmissionId,
+        winnerId: prizeSubmissionId,
+        prizeType,
+        prizeDescription: prizeDescription || undefined,
+        amount: prizeAmount ? Number(prizeAmount) : undefined,
+        currency: prizeCurrency || undefined,
+      });
+      notify("تم توزيع الجائزة", "success");
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "تعذّر توزيع الجائزة");
     } finally {
       setSubmitting(false);
     }
@@ -172,6 +253,110 @@ export default function ContestDetailPage() {
           </form>
         </CardBody>
       </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-ink">الأصوات</h2>
+        </CardHeader>
+        <CardBody>
+          {votes.length === 0 ? (
+            <p className="text-sm text-ink-muted">لا توجد أصوات بعد.</p>
+          ) : (
+            <ul className="space-y-3">
+              {votes.map((vote) => (
+                <li key={vote.submissionId} className="flex items-center justify-between rounded-lg border border-line p-3">
+                  <span className="text-sm text-ink-muted">معرّف المشاركة: {vote.submissionId}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="hk-numeric text-sm font-medium text-ink">{vote.count} صوت</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={submitting}
+                      onClick={() => handleVote(vote.submissionId)}
+                    >
+                      صوت
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
+
+      {isOwner && (
+        <Card className="mt-6">
+          <CardHeader>
+            <h2 className="text-lg font-semibold text-ink">إجراءات المالك</h2>
+          </CardHeader>
+          <CardBody className="space-y-5">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-ink-muted">اختيار الفائز</p>
+              <Input
+                label="معرّف المشاركة الفائزة"
+                type="text"
+                value={selectedSubmissionId}
+                onChange={(e) => setSelectedSubmissionId(e.target.value)}
+                placeholder="معرّف المشاركة"
+                wrapperClassName="max-w-md"
+              />
+              <Button size="sm" onClick={handleSelectWinner} loading={submitting} disabled={!selectedSubmissionId}>
+                اختيار الفائز
+              </Button>
+            </div>
+
+            <div className="border-t border-line pt-5 space-y-3">
+              <p className="text-sm font-medium text-ink-muted">توزيع الجائزة</p>
+              <Input
+                label="معرّف المشاركة"
+                type="text"
+                value={prizeSubmissionId}
+                onChange={(e) => setPrizeSubmissionId(e.target.value)}
+                placeholder="معرّف المشاركة"
+                wrapperClassName="max-w-md"
+              />
+              <Select
+                label="نوع الجائزة"
+                value={prizeType}
+                onChange={(e) => setPrizeType(e.target.value)}
+                options={[
+                  { value: "cash", label: "نقدي" },
+                  { value: "other", label: "أخرى" },
+                ]}
+                wrapperClassName="max-w-md"
+              />
+              <Input
+                label="وصف الجائزة"
+                type="text"
+                value={prizeDescription}
+                onChange={(e) => setPrizeDescription(e.target.value)}
+                placeholder="وصف الجائزة"
+                wrapperClassName="max-w-md"
+              />
+              <Input
+                label="المبلغ (بالقرش)"
+                type="number"
+                min={0}
+                value={prizeAmount}
+                onChange={(e) => setPrizeAmount(e.target.value)}
+                placeholder="5000"
+                wrapperClassName="max-w-md"
+              />
+              <Input
+                label="العملة"
+                type="text"
+                value={prizeCurrency}
+                onChange={(e) => setPrizeCurrency(e.target.value)}
+                placeholder="EGP"
+                wrapperClassName="max-w-md"
+              />
+              <Button size="sm" onClick={handleDistributePrize} loading={submitting} disabled={!prizeSubmissionId || !prizeType}>
+                توزيع الجائزة
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

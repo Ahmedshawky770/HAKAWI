@@ -9,3 +9,4 @@ export * from './contest.js';
 export * from './moderation.js';
 export * from './search.js';
 export * from './upload.js';
+export * from './badge.js';

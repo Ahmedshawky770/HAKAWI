@@ -8,7 +8,7 @@ import {
   rentalPriceForDays,
 } from "@hakawi/shared-types";
 
-import { api } from "@/lib/api";
+import { api, getStoredUser } from "@/lib/api";
 import { formatBookPrice } from "@/components/books/BookCard";
 import { formatRentalQuote } from "@/lib/money";
 import { useToast } from "@/components/providers/ToastProvider";
@@ -77,14 +77,13 @@ export default function BookDetailPage() {
   const [actionError, setActionError] = useState("");
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [paymentMethodError, setPaymentMethodError] = useState("");
-  /**
-   * The rental length offered on this page.
-   *
-   * `RENTAL_DURATION_DAYS` comes from `@hakawi/shared-types`, which is also what the backend validates
-   * against — so the list a reader can pick from and the list the API accepts cannot drift, which is
-   * what a locally-duplicated array would guarantee eventually.
-   */
   const [rentalDays, setRentalDays] = useState<number>(DEFAULT_RENTAL_DURATION_DAYS);
+  const [isbn, setIsbn] = useState("");
+  const [isbnError, setIsbnError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+
+  const currentUserId = getStoredUser()?.id ?? null;
+  const isOwner = currentUserId != null && book != null && book.author === currentUserId;
 
   useEffect(() => {
     let active = true;
@@ -154,6 +153,93 @@ export default function BookDetailPage() {
     } catch (err) {
       reportFailure(err instanceof Error ? err.message : "فشل الاستئجار");
       setActionLoading(false);
+    }
+  };
+
+  const handleClaimFree = async () => {
+    if (!book) return;
+    setActionLoading(true);
+    setActionError("");
+    try {
+      await api.claimLibraryItem({ bookId: id });
+      notify("تمت إضافة الكتاب إلى مكتبتك", "success");
+    } catch (err) {
+      reportFailure(err instanceof Error ? err.message : "فشل الحصول على الكتاب");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    setActionLoading(true);
+    setActionError("");
+    try {
+      await api.publishBook(id);
+      setBook((prev) => (prev ? { ...prev, status: "published" } : prev));
+      notify("تم نشر الكتاب", "success");
+    } catch (err) {
+      reportFailure(err instanceof Error ? err.message : "فشل نشر الكتاب");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    setActionLoading(true);
+    setActionError("");
+    try {
+      await api.archiveBook(id);
+      setBook((prev) => (prev ? { ...prev, status: "archived" } : prev));
+      notify("تم أرشفة الكتاب", "success");
+    } catch (err) {
+      reportFailure(err instanceof Error ? err.message : "فشل أرشفة الكتاب");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setActionLoading(true);
+    setActionError("");
+    try {
+      await api.deleteBook(id);
+      notify("تم حذف الكتاب", "success");
+    } catch (err) {
+      reportFailure(err instanceof Error ? err.message : "فشل حذف الكتاب");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleIsbnLookup = async () => {
+    if (!isbn) {
+      setIsbnError("الرجاء إدخال ISBN");
+      return;
+    }
+    setActionLoading(true);
+    setActionError("");
+    try {
+      const data = await api.findBookByIsbn(isbn);
+      setBook(data);
+      notify("تم جلب تفاصيل الكتاب", "success");
+    } catch (err) {
+      reportFailure(err instanceof Error ? err.message : "فشل جلب الكتاب");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setActionError("");
+    try {
+      const { downloadUrl } = await api.downloadBook(id);
+      if (downloadUrl) {
+        window.location.assign(downloadUrl);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "فشل تحميل الكتاب");
+      setDownloading(false);
     }
   };
 
@@ -243,25 +329,29 @@ export default function BookDetailPage() {
           <div className="space-y-5">
             {actionError && <ErrorMessage error={actionError} title="تعذّر إتمام العملية" />}
 
-            <Input
-              label="معرّف طريقة الدفع"
-              type="text"
-              value={paymentMethodId}
-              onChange={(event) => {
-                setPaymentMethodId(event.target.value);
-                if (paymentMethodError) setPaymentMethodError("");
-              }}
-              placeholder="pm_123456"
-              error={paymentMethodError}
-              hint="معرّف طريقة الدفع المحفوظة في بوابة الدفع."
-              wrapperClassName="sm:max-w-sm"
-            />
-
-            <div>
-              <Button onClick={handlePurchase} loading={actionLoading}>
-                شراء الكتاب
+            {book.isFree && (
+              <Button onClick={handleClaimFree} loading={actionLoading} variant="secondary">
+                الحصول على الكتاب مجاناً
               </Button>
-            </div>
+            )}
+
+            {isOwner && (
+              <div className="flex flex-wrap gap-3">
+                {book.status !== "published" && (
+                  <Button onClick={handlePublish} loading={actionLoading} variant="secondary">
+                    نشر الكتاب
+                  </Button>
+                )}
+                {book.status !== "archived" && (
+                  <Button onClick={handleArchive} loading={actionLoading} variant="ghost">
+                    أرشفة الكتاب
+                  </Button>
+                )}
+                <Button onClick={handleDelete} loading={actionLoading} variant="danger">
+                  حذف الكتاب
+                </Button>
+              </div>
+            )}
 
             <div className="border-t border-line pt-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -276,10 +366,55 @@ export default function BookDetailPage() {
                   استئجار الكتاب
                 </Button>
               </div>
-              {/* The price, before anything is charged. `POST /rentals/:id/extend` and
-                  `POST /books/:id/rent` initialise a payment, so a reader sees the cost before
-                  committing rather than discovering it at a checkout. */}
               <p className="mt-3 text-sm text-ink-muted">{formatRentPrice(rentalDays)}</p>
+            </div>
+
+            <div className="border-t border-line pt-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <Input
+                  label="معرّف طريقة الدفع"
+                  type="text"
+                  value={paymentMethodId}
+                  onChange={(event) => {
+                    setPaymentMethodId(event.target.value);
+                    if (paymentMethodError) setPaymentMethodError("");
+                  }}
+                  placeholder="pm_123456"
+                  error={paymentMethodError}
+                  hint="معرّف طريقة الدفع المحفوظة في بوابة الدفع."
+                  wrapperClassName="sm:max-w-sm"
+                />
+                <Button onClick={handlePurchase} loading={actionLoading}>
+                  شراء الكتاب
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-line pt-5 space-y-3">
+              <p className="text-sm font-medium text-ink-muted">البحث عن طريق ISBN</p>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <Input
+                  label="ISBN"
+                  type="text"
+                  value={isbn}
+                  onChange={(event) => {
+                    setIsbn(event.target.value);
+                    if (isbnError) setIsbnError("");
+                  }}
+                  placeholder="978-3-16-148410-0"
+                  error={isbnError}
+                  wrapperClassName="sm:max-w-sm"
+                />
+                <Button variant="secondary" onClick={handleIsbnLookup} loading={actionLoading}>
+                  جلب التفاصيل
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-line pt-5">
+              <Button variant="secondary" onClick={handleDownload} loading={downloading}>
+                تحميل الكتاب
+              </Button>
             </div>
           </div>
         </CardBody>

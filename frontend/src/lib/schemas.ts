@@ -559,6 +559,129 @@ export const reportsListResponseSchema = z.object({
   ...pageEnvelope,
 });
 
+export const badgeCatalogSchema = z.object({
+  badges: z.array(
+    z.object({
+      key: z.string(),
+      name: z.string(),
+      description: z.string(),
+      icon: z.string(),
+      trigger: z.string(),
+      threshold: z.number(),
+    }),
+  ),
+});
+
+export const awardedBadgeSchema = z.object({
+  id: z.string(),
+  badgeId: z.string(),
+  badgeKey: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  icon: z.string().nullable(),
+  awardedAt: isoDate,
+});
+
+export const userBadgesResponseSchema = z.object({
+  badges: z.array(awardedBadgeSchema),
+});
+
+export const publisherStatsSchema = z.object({
+  totalContests: z.number(),
+  activeContests: z.number(),
+  completedContests: z.number(),
+  totalSubmissions: z.number(),
+  pendingSubmissions: z.number(),
+  approvedSubmissions: z.number(),
+  rejectedSubmissions: z.number(),
+  totalVotes: z.number(),
+  totalPrizes: z.number(),
+});
+
+export const publisherSubmissionSchema = z.object({
+  id: z.string(),
+  storyId: z.string(),
+  authorId: z.string(),
+  status: z.string(),
+  submittedAt: isoDate,
+  reviewedAt: z.string().nullable(),
+  reviewedBy: z.string().nullable(),
+  votes: z.number(),
+  storyTitle: z.string().optional(),
+  authorName: z.string().optional(),
+});
+
+export const publisherSubmissionsResponseSchema = z.object({
+  submissions: z.array(publisherSubmissionSchema),
+  ...pageEnvelope,
+});
+
+export const publisherVoteSchema = z.object({
+  id: z.string(),
+  submissionId: z.string(),
+  userId: z.string(),
+  createdAt: isoDate,
+  submissionTitle: z.string().optional(),
+  userName: z.string().optional(),
+});
+
+export const publisherVotesResponseSchema = z.object({
+  votes: z.array(publisherVoteSchema),
+  ...pageEnvelope,
+});
+
+export const downloadResponseSchema = z.object({
+  downloadUrl: z.string(),
+});
+
+export const createBookResponseSchema = bookRecordSchema;
+
+export const contestVoteSchema: z.ZodType<import("@hakawi/shared-types").ContestVote> = z.object({
+  id: z.string(),
+  contestId: z.string(),
+  submissionId: z.string(),
+  userId: z.string(),
+  createdAt: isoDate,
+});
+
+export const contestVotesResponseSchema = z.object({
+  votes: z.array(contestVoteSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+
+export const contestPrizesResponseSchema = z.object({
+  prizes: z.array(
+    z.object({
+      id: z.string(),
+      contestId: z.string(),
+      submissionId: z.string(),
+      winnerId: z.string(),
+      prizeType: z.string(),
+      prizeDescription: z.string().nullable(),
+      amount: z.number().nullable(),
+      currency: z.string().nullable(),
+      distributedAt: z.string().nullable(),
+      createdAt: isoDate,
+    }),
+  ),
+});
+
+export const restrictionsResponseSchema = z.object({
+  restrictions: z.array(
+    z.object({
+      id: z.string(),
+      userId: z.string(),
+      action: z.string(),
+      reason: z.string(),
+      durationMinutes: z.number().nullable(),
+      expiresAt: z.string().nullable(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+
 export const searchResultSchema = z.object({
   id: z.string(),
   title: z.string(),

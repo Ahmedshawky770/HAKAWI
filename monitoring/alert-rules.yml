@@ -1,0 +1,55 @@
+# Alert rules for Hakawi production monitoring.
+#
+# WHY THIS FILE EXISTS. Without explicit alert rules, a degraded service can
+# run for hours before a human notices. These rules pin the thresholds the
+# on-call engineer should expect, so the first page is actionable.
+
+groups:
+  - name: hakawi.alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "More than 5% of requests are failing"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency is above 500ms"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "PostgreSQL is unreachable"
+
+      - alert: ValkeyDown
+        expr: up{job="valkey"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey is unreachable"
+
+      - alert: PaymentWebhookFailures
+        expr: |
+          sum(rate(payments_webhook_failures_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Payment webhook is failing"
