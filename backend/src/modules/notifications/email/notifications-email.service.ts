@@ -5,6 +5,7 @@ import type { INotificationsRepository } from '../interfaces/notifications-repos
 import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
 import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
 import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
+import { preferenceForType } from '../preference-family.ts';
 
 import type { EmailTransporter } from './transporter.interface.ts';
 
@@ -28,15 +29,12 @@ export class NotificationsEmailService {
         return false;
       }
 
-      const typePreferenceMap: Record<string, keyof typeof preferences> = {
-        story_reaction: 'storyReactions',
-        comment: 'comments',
-        follow: 'follows',
-        mention: 'mentions',
-        system: 'system',
-      };
-
-      const preferenceKey = typePreferenceMap[type];
+      // The SAME resolver `NotificationsService.create` gates the row write with. This used to be a
+      // second, private `typePreferenceMap`, which had already drifted from that one — it had no
+      // `comment_reply`, so a user who muted replies still received the reply by email even after the
+      // in-app notification was correctly suppressed. Two maps that must agree are one defect twice
+      // (Principle #9), so there is now one.
+      const preferenceKey = preferenceForType(type);
       if (preferenceKey && !preferences[preferenceKey]) {
         return false;
       }

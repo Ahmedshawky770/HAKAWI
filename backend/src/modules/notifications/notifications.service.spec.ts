@@ -55,6 +55,7 @@ const DEFAULT_PREFERENCES: NotificationPreferencesResponseDto = {
   comments: true,
   follows: true,
   mentions: true,
+  messages: true,
   system: true,
 };
 
@@ -118,6 +119,7 @@ describe('NotificationsService', () => {
       comments: true,
       follows: true,
       mentions: true,
+      messages: true,
       system: true,
     });
 
@@ -350,6 +352,7 @@ describe('NotificationsService', () => {
       comments: true,
       follows: true,
       mentions: true,
+      messages: true,
       system: true,
     };
 
@@ -409,6 +412,91 @@ describe('NotificationsService', () => {
       });
 
       expect(result).toBeNull();
+    });
+
+    // THE MUTE-A-DIRECT-MESSAGE DEFECT, IN BOTH DIRECTIONS. `message` had no entry in
+    // `PREFERENCE_FOR_TYPE` and `notification_preferences` had no column for it, so `create` had
+    // nothing to consult: the recipient of a direct message could not turn it off, mute it, or opt out
+    // of it in any way — the one notification in the product with no off switch. Migration 0023 added the
+    // `messages` column and this map resolved `message` onto it.
+    it('should not write a message notification when messages is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, messages: false });
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'message',
+        title: 'New message',
+        message: 'You have a new direct message.',
+      });
+
+      expect(result).toBeNull();
+      expect(notificationsRepository.create).not.toHaveBeenCalled();
+      expect(eventValidatorService.emit).not.toHaveBeenCalled();
+    });
+
+    // The gate must be exactly as narrow as the family: muting messages must not cost a user their
+    // contest announcements and prize payments, which share the `system` column with badge awards.
+    it('should still write a message notification when only system notices are off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, system: false });
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'message',
+        title: 'New message',
+        message: 'You have a new direct message.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should write a message notification when messages is on', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue(allOn);
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'message',
+        title: 'New message',
+        message: 'You have a new direct message.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.findPreferences).toHaveBeenCalledWith('user-1');
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    // `handleCommentReacted` wrote `story_reaction` for a reaction to a COMMENT, so these two cases
+    // are the defect stated in both directions: muting comments did not silence reactions to your own
+    // comments, and muting story reactions did not spare you from comment ones. Both now behave.
+    it('should not write a comment_reaction notification when comments is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, comments: false });
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'comment_reaction',
+        title: 'New reaction to your comment',
+        message: 'Someone reacted to one of your comments.',
+      });
+
+      expect(result).toBeNull();
+      expect(notificationsRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should still write a comment_reaction notification when only storyReactions is off', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...allOn, storyReactions: false });
+      vi.mocked(notificationsRepository.create).mockResolvedValue(notification());
+
+      const result = await notificationsService.create({
+        userId: 'user-1',
+        type: 'comment_reaction',
+        title: 'New reaction to your comment',
+        message: 'Someone reacted to one of your comments.',
+      });
+
+      expect(result).not.toBeNull();
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
     });
 
     it('should write the notification when the governing preference is on', async () => {
@@ -607,6 +695,7 @@ describe('NotificationsService', () => {
         comments: false,
         follows: false,
         mentions: false,
+        messages: false,
         system: false,
       };
       vi.mocked(notificationsRepository.upsertPreferences).mockResolvedValue(allOff);
@@ -645,6 +734,25 @@ describe('NotificationsService', () => {
         'user-1',
         expect.objectContaining({ system: false }),
       );
+    });
+
+    // The write half of the mute defect: the gate above is only reachable if PATCH persists `messages`.
+    // Before migration 0023 the field did not exist on the DTO at all, so there was nothing here to
+    // persist and a user could not record the choice even if the gate had consulted it.
+    it('should persist a messages=false payload', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({ ...DEFAULT_PREFERENCES });
+      vi.mocked(notificationsRepository.upsertPreferences).mockResolvedValue({
+        ...DEFAULT_PREFERENCES,
+        messages: false,
+      });
+
+      const result = await notificationsService.updatePreferences('user-1', { messages: false });
+
+      expect(notificationsRepository.upsertPreferences).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ messages: false }),
+      );
+      expect(result.messages).toBe(false);
     });
 
     it('should preserve every existing value when the payload is empty', async () => {

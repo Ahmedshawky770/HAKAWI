@@ -49,8 +49,29 @@ Check before deploying: `npm run migration:status`.
 `--allow-data-loss`; an `irreversible` one is refused outright with no override, because there is no
 flag that can reconstruct destroyed data.
 
-`0001` is declared `irreversible` — it also creates the shared `uuid-ossp` extension, and dropping that
-would cascade into the default of every `uuid_generate_v4()` column in the database, including tables
-that migration does not own. A rollback chain that reaches `0001` therefore fails, by design. Its down
-script still carries 14 executable statements for the four tables it created, which is why the
-declaration is worth reading before assuming a chain will reach the bottom.
+### There are no `irreversible` migrations
+
+Across all 22 down scripts the measured distribution is **0 `irreversible`, 18 `data-loss`,
+4 `reversible`**.
+
+⛔ **Corrected.** This file previously declared `0001_create_stories_tables` **irreversible**, on the
+grounds that it creates the shared `uuid-ossp` extension and that dropping the extension would
+cascade into the default of every `uuid_generate_v4()` column in the database, including tables the
+migration does not own — so a rollback chain reaching `0001` would fail with no override.
+
+**That was a misclassification, and the down script says so itself.**
+`migrations/down/0001_create_stories_tables.down.sql:1` now carries
+`reversibility=data-loss data-loss=rows`, and its reason records that the script **never drops the
+extension** — so the hazard the old declaration described is avoided by omission. What the script
+actually does is drop `story_tags`, `stories`, `tags` and `categories` (14 executable statements),
+which destroys every row in them. That is exactly the `data-loss` classification, and it now requires
+`--allow-data-loss` like every other destructive rollback.
+
+The practical consequences, which the old text got backwards:
+
+- A rollback chain reaching `0001` **no longer fails outright.** It asks for confirmation and then
+  runs, like every other `data-loss` step.
+- `0001` was previously the **only** migration in the chain that `assertReversible` refused
+  unconditionally with no override, which meant a rollback chain could not be completed at all.
+- Re-running `0001` forward after a rollback restores the schema, because it is written with
+  `CREATE EXTENSION IF NOT EXISTS` and `CREATE TABLE IF NOT EXISTS` throughout.

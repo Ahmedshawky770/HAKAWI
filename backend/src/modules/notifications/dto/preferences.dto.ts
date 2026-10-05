@@ -25,6 +25,14 @@ export class NotificationPreferencesDto {
   @IsBoolean()
   mentions?: boolean;
 
+  /**
+   * Direct messages. Present because a `message` notification had no preference to consult at all until
+   * migration 0023 added the column, so a user could not silence one.
+   */
+  @IsOptional()
+  @IsBoolean()
+  messages?: boolean;
+
   @IsOptional()
   @IsBoolean()
   system?: boolean;
@@ -37,5 +45,6 @@ export class NotificationPreferencesResponseDto {
   comments: boolean;
   follows: boolean;
   mentions: boolean;
+  messages: boolean;
   system: boolean;
 }

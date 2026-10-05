@@ -32,6 +32,7 @@ type MockNotificationsRepository = {
         comments: boolean;
         follows: boolean;
         mentions: boolean;
+        messages: boolean;
         system: boolean;
       }>
     >
@@ -47,6 +48,7 @@ type MockNotificationsRepository = {
           comments: boolean;
           follows: boolean;
           mentions: boolean;
+          messages: boolean;
           system: boolean;
         },
       ) => Promise<{
@@ -56,6 +58,7 @@ type MockNotificationsRepository = {
         comments: boolean;
         follows: boolean;
         mentions: boolean;
+        messages: boolean;
         system: boolean;
       }>
     >
@@ -131,6 +134,7 @@ describe('NotificationsEmailService', () => {
           comments: boolean;
           follows: boolean;
           mentions: boolean;
+          messages: boolean;
           system: boolean;
         }>
       >(),
@@ -144,6 +148,7 @@ describe('NotificationsEmailService', () => {
             comments: boolean;
             follows: boolean;
             mentions: boolean;
+            messages: boolean;
             system: boolean;
           },
         ) => Promise<{
@@ -153,6 +158,7 @@ describe('NotificationsEmailService', () => {
           comments: boolean;
           follows: boolean;
           mentions: boolean;
+          messages: boolean;
           system: boolean;
         }>
       >(),
@@ -208,6 +214,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -236,6 +243,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -253,6 +261,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -260,6 +269,31 @@ describe('NotificationsEmailService', () => {
 
       expect(result).toBe(false);
       expect(transporter.sendMail).not.toHaveBeenCalled();
+    });
+
+    // The email path gates on the SAME resolver the row write does, so a muted direct message must be
+    // absent from both. This used to be unreachable: `message` resolved to no family at all, so the
+    // email for a direct message could not be turned off even by a user who had managed to mute the
+    // in-app row — and before migration 0023 they could not manage that either.
+    it('should not send a direct-message email when messages is false', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({
+        emailEnabled: true,
+        pushEnabled: true,
+        storyReactions: true,
+        comments: true,
+        follows: true,
+        mentions: true,
+        messages: false,
+        system: true,
+      });
+
+      const result = await service.sendNotificationEmail('user-1', 'message', 'New message', 'You have a DM.');
+
+      expect(result).toBe(false);
+      expect(transporter.sendMail).not.toHaveBeenCalled();
+      // The row is gone, so the mail must never be sent for a notification that was suppressed — this
+      // path is reached from `create` only after the row write, but it is also a public method.
+      expect(usersRepository.findById).not.toHaveBeenCalled();
     });
 
     it('should not send email when user not found', async () => {
@@ -270,6 +304,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 

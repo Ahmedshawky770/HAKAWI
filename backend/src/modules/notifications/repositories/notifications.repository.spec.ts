@@ -45,6 +45,7 @@ const ALL_CHANNELS_ENABLED = {
   comments: true,
   follows: true,
   mentions: true,
+  messages: true,
   system: true,
 };
 
@@ -292,11 +293,21 @@ describe('NotificationsRepository', () => {
         comments: true,
         follows: false,
         mentions: true,
+        messages: false,
         system: false,
       };
       control.queue([stored]);
 
       await expect(repository.findPreferences(USER_ID)).resolves.toEqual(stored);
+    });
+
+    // The column was added by migration 0023, so the read has to name it: a row stored while messages
+    // were muted must come back as `messages: false` rather than as the all-true default, or the
+    // preference would silently read as "on" and a direct message could never be suppressed.
+    it('returns the stored messages flag rather than defaulting it', async () => {
+      control.queue([{ ...ALL_CHANNELS_ENABLED, messages: false }]);
+
+      await expect(repository.findPreferences(USER_ID)).resolves.toMatchObject({ messages: false });
     });
 
     it('reads a single preferences row keyed by owner', async () => {
@@ -324,6 +335,7 @@ describe('NotificationsRepository', () => {
       comments: false,
       follows: true,
       mentions: true,
+      messages: false,
       system: false,
     };
 

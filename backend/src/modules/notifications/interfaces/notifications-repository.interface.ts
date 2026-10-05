@@ -43,6 +43,11 @@ export type NotificationPreferencesResponseDto = {
   comments: boolean;
   follows: boolean;
   mentions: boolean;
+  /**
+   * Governs the `message` notification type. Added by migration 0023; before that a direct message had
+   * no preference at all, which is why this key is a family of its own rather than part of `system`.
+   */
+  messages: boolean;
   system: boolean;
 };
 
@@ -53,5 +58,6 @@ export type UpsertNotificationPreferencesInput = {
   comments: boolean;
   follows: boolean;
   mentions: boolean;
+  messages: boolean;
   system: boolean;
 };

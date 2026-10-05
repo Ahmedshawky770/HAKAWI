@@ -145,6 +145,11 @@ export const notificationPreferences = pgTable(
     comments: boolean('comments').default(true).notNull(),
     follows: boolean('follows').default(true).notNull(),
     mentions: boolean('mentions').default(true).notNull(),
+    // A direct message is the one notification that had no column behind it, so `PREFERENCE_FOR_TYPE`
+    // had no family to resolve `message` to and a user could not silence one by any means. Added by
+    // migration 0023; the default is `true` because nobody could previously mute a message, so `true`
+    // is the behaviour every existing row already had.
+    messages: boolean('messages').default(true).notNull(),
     system: boolean('system').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

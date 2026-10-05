@@ -9,34 +9,15 @@ import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.
 import type { NotificationPreferencesResponseDto } from './interfaces/notifications-repository.interface.ts';
 import type { Notification, CreateNotificationInput, NotificationResponse } from './types.ts';
 import type { NotificationPreferencesDto } from './dto/preferences.dto.ts';
+import { preferenceForType } from './preference-family.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
 
 /**
- * WHICH PREFERENCE GOVERNS WHICH NOTIFICATION TYPE.
- *
- * `notifications_preferences` stores one boolean per family, and the family a notification belongs
- * to is a property of its type, not of whoever happened to raise it: a follow, a reaction on a
- * comment and a reaction on a story are raised by three different modules and all arrive here.
- * Resolving the family at this one write path is the only place the mapping can be enforced for
- * all of them — checking it in each handler would put the same five-line policy in five files.
- *
- * WHY A TYPE WITH NO ENTRY IS STILL DELIVERED. `contest.created`, `winner.selected`,
- * `prize.distributed` and `badge.awarded` are not in `NOTIFICATION_TYPES` and have no column behind
- * them. Dropping them would make badge awards and contest announcements structurally invisible,
- * which is the defect `BadgesService.announceAward` exists to fix. No entry therefore means "no
- * preference governs this", not "suppress".
+ * The type → preference-family mapping lives in `./preference-family.ts`, not here, because
+ * `NotificationsEmailService` used to keep a second copy of it that had already drifted. Both call
+ * sites now read the same resolver, so a new notification type cannot be governed by one delivery path
+ * and ignored by the other.
  */
-const PREFERENCE_FOR_TYPE: Readonly<Record<string, keyof NotificationPreferencesResponseDto>> = {
-  follow: 'follows',
-  story_reaction: 'storyReactions',
-  comment: 'comments',
-  comment_reply: 'comments',
-  mention: 'mentions',
-  contest: 'system',
-  payment: 'system',
-  system: 'system',
-};
-
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -81,7 +62,7 @@ export class NotificationsService {
    * response from it.
    */
   async create(input: CreateNotificationInput): Promise<Notification | null> {
-    const preference = PREFERENCE_FOR_TYPE[input.type];
+    const preference = preferenceForType(input.type);
     if (preference !== undefined) {
       const preferences = await this.notificationsRepository.findPreferences(input.userId);
       if (preferences !== undefined && preferences !== null && preferences[preference] === false) {
@@ -156,6 +137,7 @@ export class NotificationsService {
       comments: dto.comments ?? existing.comments,
       follows: dto.follows ?? existing.follows,
       mentions: dto.mentions ?? existing.mentions,
+      messages: dto.messages ?? existing.messages,
       system: dto.system ?? existing.system,
     });
     return updated;

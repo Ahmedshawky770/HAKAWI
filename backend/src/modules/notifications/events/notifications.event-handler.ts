@@ -1,27 +1,45 @@
+/**
+ * CONTEST NOTIFICATIONS ARE NOT THIS FILE'S JOB. The contests module owns them, in full, and it is
+ * canonical — see `ContestsEventHandler` in `src/modules/contests/events/contests.event-handler.ts`.
+ *
+ * This file used to answer `contest.created`, `winner.selected` and `prize.distributed` as well, so a
+ * winner received TWO rows for winning and TWO for the prize, each pair with a different type string
+ * (`contest` and `payment` from the contests module, `winner.selected` and `prize.distributed` from
+ * here), and a contest author received a row the contests module had deliberately decided they should
+ * not have. The two sides also disagreed on the facts: only the contests module knows that nobody is to
+ * be notified about `contest.created` ("nobody is notified — the author is the only party that did not
+ * already know"), and only it knows which type string a prize payment belongs to.
+ *
+ * WHY THE CONTESTS MODULE IS THE ONE THAT DECIDES (Principle #7, modules communicate through their
+ * owner's public surface; #9, one source of truth). A contest notification is a decision about a
+ * contest, taken by the module that knows the contest's rules — who the organiser is, who entered, who
+ * was paid — and its copy is written in the contests module next to those rules. A second handler in
+ * the notifications module can only ever disagree with that decision, because it has no way to know
+ * it: it sees the same event payload and no context. So the duplicate handlers are gone rather than
+ * reconciled, and this header is here so nobody re-adds them as a "belt and braces" safety net. The
+ * contests handlers already go through `NotificationsService`, so they sit behind the same preference
+ * gate and emit `notification.created` exactly as the handlers in this file do.
+ *
+ * WHAT THIS FILE DOES OWN: the social events — a follow, a story reaction, a comment, a comment
+ * reaction and a direct message — plus the `notification.created` log line. Every one of them writes
+ * through `NotificationsService`, which is the single path that consults the recipient's preferences.
+ */
 import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { NotificationCreatedEvent } from '../../../common/events/social.events.ts';
 import type {
-  ContestCreatedEvent,
-  WinnerSelectedEvent,
-  PrizeDistributedEvent,
-} from '../../../common/events/contests.events.ts';
-import type {
   UserFollowedEvent,
   CommentCreatedEvent,
   StoryReactedEvent,
   MessageSentEvent,
 } from '../../../common/events/social.events.ts';
-import type { INotificationsRepository } from '../interfaces/notifications-repository.interface.ts';
-import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
-import { NotificationsService } from '../notifications.service.ts';
-
 import type { IStoriesRepository } from '../../stories/interfaces/stories-repository.interface.ts';
 import { STORIES_REPOSITORY } from '../../stories/interfaces/stories-repository.interface.ts';
 import type { ICommentsRepository } from '../../comments/interfaces/comments-repository.interface.ts';
 import { COMMENTS_REPOSITORY } from '../../comments/interfaces/comments-repository.interface.ts';
+import { NotificationsService } from '../notifications.service.ts';
 
 /**
  * `comment.reacted` is emitted as a plain object literal
@@ -40,7 +58,6 @@ type CommentReactionCreated = {
 @Injectable()
 export class NotificationsEventHandler {
   constructor(
-    @Inject(NOTIFICATIONS_REPOSITORY) private readonly notificationsRepository: INotificationsRepository,
     @Inject(NotificationsService) private readonly notificationsService: NotificationsService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     // Each is the OWNING module's public interface, not a table handle. Principle #7's enforcement is
@@ -59,48 +76,6 @@ export class NotificationsEventHandler {
     );
   }
 
-  @OnEvent('contest.created')
-  async handleContestCreated(event: ContestCreatedEvent): Promise<void> {
-    this.logger.info(`Contest ${event.contestId} created by user ${event.createdBy}`, 'NotificationsEventHandler');
-    await this.notificationsRepository.create({
-      userId: event.createdBy,
-      type: 'contest.created',
-      title: 'Contest Created',
-      message: 'Your contest has been created successfully.',
-      data: JSON.stringify({ contestId: event.contestId }),
-    });
-  }
-
-  @OnEvent('winner.selected')
-  async handleWinnerSelected(event: WinnerSelectedEvent): Promise<void> {
-    this.logger.info(
-      `Winner selected for contest ${event.contestId}: user ${event.winnerId}`,
-      'NotificationsEventHandler',
-    );
-    await this.notificationsRepository.create({
-      userId: event.winnerId,
-      type: 'winner.selected',
-      title: 'Congratulations! You won a contest',
-      message: 'You have been selected as the winner of a contest.',
-      data: JSON.stringify({ contestId: event.contestId, submissionId: event.submissionId }),
-    });
-  }
-
-  @OnEvent('prize.distributed')
-  async handlePrizeDistributed(event: PrizeDistributedEvent): Promise<void> {
-    this.logger.info(
-      `Prize distributed for contest ${event.contestId} to winner ${event.winnerId}`,
-      'NotificationsEventHandler',
-    );
-    await this.notificationsRepository.create({
-      userId: event.winnerId,
-      type: 'prize.distributed',
-      title: 'Prize Distributed',
-      message: 'Your prize has been distributed.',
-      data: JSON.stringify({ contestId: event.contestId, prizeId: event.prizeId }),
-    });
-  }
-
   // ---------------------------------------------------------------------------
   // Social notifications.
   //
@@ -111,9 +86,10 @@ export class NotificationsEventHandler {
   // only ever store settings that suppressed nothing, because nothing read them.
   //
   // WHY EVERY HANDLER GOES THROUGH `NotificationsService` AND NOT THE REPOSITORY. The service is
-  // the only path that consults the recipient's preferences and emits `notification.created`; the
-  // three contest handlers above predate that contract and still write through the repository
-  // directly. Migrating them is a separate, deliberate change rather than a silent one here.
+  // the only path that consults the recipient's preferences and emits `notification.created`.
+  // `NOTIFICATIONS_REPOSITORY` is not injected here at all, so this file cannot bypass the gate even
+  // by accident — and neither can the contests module, whose handlers write through the same service
+  // (see the header comment above for why those live over there).
   //
   // WHY SOME RECIPIENTS ARE RESOLVED AND ONE IS NOT. `message.sent` now carries `recipientId`,
   // because `MessagesService` had already loaded the conversation to validate participation and was
@@ -191,7 +167,12 @@ export class NotificationsEventHandler {
     await this.deliver('comment.reacted', event.commentId, () =>
       this.notificationsService.create({
         userId: recipient,
-        type: 'story_reaction',
+        // `comment_reaction`, NOT `story_reaction`. The family a notification belongs to is resolved
+        // from its type, so writing `story_reaction` here gated a reaction to a COMMENT on the
+        // `storyReactions` preference: muting comments did not silence reactions to your comments, and
+        // muting story reactions did not spare you from comment ones. Both were wrong. See
+        // `./preference-family.ts`.
+        type: 'comment_reaction',
         title: 'New reaction to your comment',
         message: 'Someone reacted to one of your comments.',
         data: JSON.stringify({ commentId: event.commentId, reactionType: event.reactionType }),

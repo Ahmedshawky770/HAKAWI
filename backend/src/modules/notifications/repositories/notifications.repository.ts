@@ -126,6 +126,7 @@ export class NotificationsRepository implements INotificationsRepository {
         comments: prefs.comments,
         follows: prefs.follows,
         mentions: prefs.mentions,
+        messages: prefs.messages,
         system: prefs.system,
       };
     }
@@ -136,6 +137,7 @@ export class NotificationsRepository implements INotificationsRepository {
       comments: true,
       follows: true,
       mentions: true,
+      messages: true,
       system: true,
     };
   }
@@ -166,6 +168,7 @@ export class NotificationsRepository implements INotificationsRepository {
       comments: prefs.comments,
       follows: prefs.follows,
       mentions: prefs.mentions,
+      messages: prefs.messages,
       system: prefs.system,
     };
   }
