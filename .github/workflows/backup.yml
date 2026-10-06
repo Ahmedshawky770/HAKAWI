@@ -1,31 +1,49 @@
-name: Backup
+name: Automated Backup
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 2 * * *' # Daily at 2 AM UTC
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backup:
+    name: Database Backup
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Dump database
-        env:
-          PGHOST: ${{ secrets.PGHOST }}
-          PGPORT: ${{ secrets.PGPORT }}
-          PGUSER: ${{ secrets.PGUSER }}
-          PGDATABASE: ${{ secrets.PGDATABASE }}
-          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+      - name: Install PostgreSQL client
         run: |
-          mkdir -p backups
-          pg_dump --format=plain --no-owner --no-acl | gzip > backups/hakawi-$(date +%Y%m%d-%H%M%S).sql.gz
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create backup
+        run: |
+          mkdir -p ./backups
+          PGHOST="${{ secrets.BACKUP_DB_HOST }}"
+          PGPORT="${{ secrets.BACKUP_DB_PORT }}"
+          PGUSER="${{ secrets.BACKUP_DB_USER }}"
+          PGDATABASE="${{ secrets.BACKUP_DB_NAME }}"
+          PGPASSWORD="${{ secrets.BACKUP_DB_PASSWORD }}"
+          export PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD
+          TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+          BACKUP_FILE="./backups/hakawi-${TIMESTAMP}.sql.gz"
+          pg_dump --format=plain --no-owner --no-acl | gzip > "${BACKUP_FILE}"
+          echo "backup_file=${BACKUP_FILE}" >> $GITHUB_OUTPUT
+        id: backup
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
         with:
-          name: database-backup
-          path: backups/*.sql.gz
+          name: database-backup-${{ steps.backup.outputs.timestamp }}
+          path: ./backups/hakawi-*.sql.gz
           retention-days: 30
+          compression-level: 9
+
+      - name: Cleanup old backups
+        run: |
+          ls -1t ./backups/hakawi-*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm -f

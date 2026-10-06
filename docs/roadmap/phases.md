@@ -25,8 +25,9 @@ Status markers: ✅ shipped · 🔄 in progress · ⛔ not built.
 | 7 | Polish & Launch | 14–18 | Testing & optimisation, event schema registry, resilience, documentation, deployment, final testing | 🔄 In progress |
 
 **Total: 18 weeks (4.5 months). Phases 1–6 are complete. Phase 7 is the only open phase, and its
-open items are all infrastructure and operations — read replicas, load testing, a deployment
-artifact, backup automation, alerting, and user documentation.**
+open items are a mix of infrastructure/operations and product gaps — read replicas, load testing
+automation, staging/production deployment, backup automation, alerting deployment, user documentation,
+security penetration testing, live-sandbox payment testing, and four social UI placeholder pages.**
 
 ---
 
@@ -68,26 +69,33 @@ more than either bug: **all 11 integration specs skipped themselves while CI sta
 
 ## What is still open
 
-All of it lives in Phase 7. The full list, with evidence for each absence, is in
+All of it lives in Phase 7 except two product gaps recorded in Phase 3/5. The full list, with
+evidence for each absence, is in
 [`phases/implementation-roadmap.md`](./phases/implementation-roadmap.md#open-items--the-complete-list-of-⛔-work).
 
-- ⛔ Read replicas, read/write splitting, replication-lag monitoring
-- ⛔ Load testing and performance benchmarking
-- ⛔ A production `Dockerfile` or deployment artifact — **there is no `Dockerfile` in the repository**
-- ⛔ Staging and production deployment
-- ⛔ Backup automation (the strategy is documented; nothing runs it)
-- ⛔ Alerting rules
-- ⛔ User-facing documentation
-- ⛔ Security penetration testing
-- ⛔ Live-sandbox payment testing
+- ⛔ Read replicas, read/write splitting, replication-lag monitoring (Phase 7, Week 16)
+- ⛔ Load testing automation — `load-tests/k6.conf.js` exists but is not executed by any CI job
+      (Phase 7, Weeks 14, 18)
+- ⛔ Staging and production deployment — no manifest, IaC, or deploy script, despite a `Dockerfile`
+      existing at the repo root (Phase 7, Week 18)
+- ⛔ Backup automation — `scripts/backup.sh` exists but there is no cron job, scheduler, or PITR
+      configuration running it (Phase 7, Week 17)
+- ⛔ Alerting deployment — `monitoring/alert-rules.yml` exists but is not deployed or wired to any
+      alertmanager (M8)
+- ⛔ User-facing documentation — `docs/user/` has starter content; comprehensive help centre and
+      onboarding are missing (Phase 7, Weeks 17, 18)
+- ⛔ Security penetration testing (Phase 7, Week 18)
+- ⛔ Live-sandbox payment testing (Phase 7, Week 14)
+- ⛔ Four social UI pages are still placeholders: `/stories/[id]/comments`,
+      `/stories/[id]/reactions`, `/users/[id]/followers`, `/users/[id]/following` (Phase 3)
 
 Phases 1–6 are marked ✅, but a ✅ records that the phase's **items** shipped, not that the code was
 correct when it did. Three phases shipped defects that were only found by executing the suite and
 reading the routes: **Phase 1** could not boot the application; **Phase 2** leaked every draft to an
 anonymous caller and returned 400 for every web-client search; **Phase 3** shipped twelve frontend
-methods pointing at routes no controller declares. All are fixed. The two Phase 3-era items still ⛔ are
-listed in `implementation-roadmap.md` under Open Items: duplicated contest notifications, and social UI
-pages with no call sites.
+methods pointing at routes no controller declares. All are fixed. The one Phase 5-era item still ⛔ is
+enumerated in `implementation-roadmap.md` Open Items: none — the duplicated contest notifications
+defect has been resolved.
 
 ---
 
@@ -110,7 +118,7 @@ pages with no call sites.
 |---|---|
 | The phase summary read as six clean ✅ phases, with the dependencies section noting only that delivery order differed from plan | ⚠️ **two launch blockers were open across the whole 18 weeks and appeared in no row**: `BooksModule` ↔ `LibraryModule` had no `forwardRef()`, so the backend could not boot; and `ContestsModule` imported `NotificationsModule` without listing it, so `ContestsEventHandler` could not resolve its service. Recorded here, in Phase 1 of the canonical roadmap, and as retired risks in `risks.md` |
 | Nothing in this file recorded that the test suites were green | ⚠️ **all 11 `backend/test/*.integration-spec.ts` files were skipping themselves** because the module graph could not build — so "Phase 4 ✅" included a commerce suite that had never run a request. Fixed 2026-10-04 |
-| "What is still open" listed nine infrastructure items only | Two ⛔ items are neither infrastructure nor product and are added by reference: **duplicated contest notifications** (two handlers subscribe to `winner.selected` and `prize.distributed`) and **social UI pages with no call sites**. Both are enumerated in `implementation-roadmap.md` Open Items |
+| "What is still open" listed nine infrastructure items only | Two ⛔ items are neither infrastructure nor product and are added by reference: **duplicated contest notifications** and **social UI pages with no call sites**. Both are enumerated in `implementation-roadmap.md` Open Items. ⚠️ **Correction:** the duplicate contest notifications defect has since been **resolved** by removing the duplicate handler in `notifications.event-handler.ts` |
 | This file carried no test or coverage figures, so it could not itself go stale | Correct — and it still cannot. The numbers live in `phases/implementation-roadmap.md`, `milestones.md` and `deliverables.md`, where all of them were wrong before 2026-10-04 and are now measured |
 
 *This is a summary. See [`implementation-roadmap.md`](./phases/implementation-roadmap.md) for complete

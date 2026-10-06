@@ -65,11 +65,11 @@ Phase: [P1: Foundation ✅]
 3. **Books & Commerce** (Phase 4) — highest-risk phase (payment integration) ✅ built
 4. **Polish & Launch** (Phase 7) — 🔄 the only open path, and it is the reason M8 has not been met
 
-Everything blocking M8 is infrastructure, not product: read replicas, load testing, a
-`Dockerfile`, a deployment manifest, backup automation, and alerting. Two items are neither
-infrastructure nor product, and are ⛔ as of 2026-10-04: a contest winner currently receives **two**
-notifications for winning and two for the prize, and the social UI pages have **no call sites** to the
-routes the client now points at.
+Everything blocking M8 is infrastructure, not product: read replicas, load testing automation, a
+`Dockerfile` that exists but is not deployed, a deployment manifest, backup automation, and alerting
+deployment. Two items are neither infrastructure nor product, and are ⛔ as of 2026-10-04: four social
+UI pages have **no call sites** to the routes the client now points at, and the frontend coverage
+gate certifies roughly 68% instead of the 80% target.
 
 ---
 
@@ -79,9 +79,9 @@ routes the client now points at.
 |---|---|---|---|---|
 | Payment integration (Paymob) | 4 | High | Zod-validated client, Valkey-cached auth token, `ResilientHttpClient` with circuit breaker + retry, clean 503 failure instead of a fabricated URL | ✅ Built; ⛔ never run against a live sandbox |
 | Sanity CMS integration | 2 | Medium | `CircuitBreakerService` wrapper, PostgreSQL fallback | ✅ Built |
-| Testing coverage | All | High | TDD, **3772 tests across four suites**, 11-job CI with hard gates | ✅ Built; ⚠️ frontend **S 40.75 / L 41.25** against an 80% target, and the frontend gate is set to 38/33/33/38 — it encodes the current number, not the target. ⛔ and until 2026-10-04 the 11-file integration suite had never executed |
+| Testing coverage | All | High | TDD, **3986 tests across four suites**, 11-job CI with hard gates | ✅ Built; ⚠️ frontend **S 68.39 / L 68.17** against an 80% target, and the frontend gate is set to 38/33/33/38 — it encodes the current number, not the target. ⛔ and until 2026-10-04 the 11-file integration suite had never executed |
 | Migration data loss | All | High | sha256 content-checksum ledger, per-migration transactions, reversibility classification — **0 irreversible, 18 data-loss, 4 reversible** across the 22 down scripts | ✅ Materially reduced |
-| Performance under load | 7 | Medium | Cache-aside + tagged invalidation + hit-rate metrics | ⛔ Unmitigated — no load test or benchmark exists |
+| Performance under load | 7 | Medium | Cache-aside + tagged invalidation + hit-rate metrics | ⛔ Unmitigated — k6 config exists but is not run in CI; no benchmark harness |
 | **Backend could not boot** | 1 | **Fatal** | `forwardRef()` on both sides of the `BooksModule` ↔ `LibraryModule` cycle | ✅ **Retired 2026-10-04** |
 | **CI green on a suite that did not run** | All | High | Fix the module graph; assert the integration specs execute | ✅ **Retired 2026-10-04** |
 
@@ -96,7 +96,7 @@ routes the client now points at.
 | Phase 6 = week 13 here, "Moderation & Polish, weeks 14–16" in `deliverables.md`, and inside "M6 Production, weeks 14–16" in `milestones.md` | Unified on **week 13** as a standalone phase |
 | `milestones.md` ended at week 16 with 6 milestones | Unified on **8 milestones ending week 18** |
 | No status information at all | Added a status column to every table, and a milestone calendar |
-| "TDD from Week 1, 80% minimum coverage" as a risk mitigation | Kept. ⛔ **the numbers this row originally recorded were wrong in all eight positions**: it cited backend S 85.43 / 82.39 / 79.00 / 85.58 against floors 78/70/73/79, and frontend S 39.79 / 35.90 / 35.74 / 40.22 against floors 38/33/33/38. Measured: backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**, frontend **S 40.75 / B 35.79 / F 39.64 / L 41.25**. The floors are unchanged and correct. Corrected in the 2026-10-04 pass below |
+| "TDD from Week 1, 80% minimum coverage" as a risk mitigation | Kept. ⛔ **the numbers this row originally recorded were wrong in all eight positions**: it cited backend S 85.43 / 82.39 / 79.00 / 85.58 against floors 78/70/73/79, and frontend S 39.79 / 35.90 / 35.74 / 40.22 against floors 38/33/33/38. Measured: backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**, frontend **S 68.39 / B 68.75 / F 70.97 / L 68.17**. The floors are unchanged and correct. Corrected in the 2026-10-04 pass below |
 | "Sandbox testing from Week 10" for Paymob | ⛔ Never happened — no test has ever called the Paymob API |
 
 ---
@@ -105,9 +105,9 @@ routes the client now points at.
 
 | Previous | Reality |
 |---|---|
-| "3523 tests across three suites" | **3772 across four suites** — 3228 backend unit (151 files) + 173 backend e2e/integration (23 files) + 356 frontend (22 files) + 15 Playwright (3 files). ⚠️ every one of the old figures was wrong: 3047, 136, 340 and 9 |
+| "3523 tests across three suites" | **3986 across four suites** — 3036 backend unit (151 files) + 186 backend e2e/integration (22 files) + 749 frontend (59 files) + 15 Playwright (3 files). ⚠️ every one of the old figures was wrong: 3047, 136, 340 and 9 |
 | "10-job CI with hard gates" | **11 jobs** — `migration-roundtrip` was omitted, and it is the only job that runs the down scripts and the one that catches an irreversible migration |
-| Frontend coverage **S 39.79 / L 40.22** | **S 40.75 / L 41.25** (`frontend/coverage/coverage-summary.json`) |
+| Frontend coverage **S 39.79 / L 40.22** | **S 68.39 / L 68.17** (`frontend/coverage/coverage-summary.json`) |
 | Backend coverage **S 85.43 / 82.39 / 79.00 / 85.58** | **S 84.28 / B 80.49 / F 78.86 / L 84.45** — all four were wrong |
 | The whole timeline read as a smooth 18 weeks with no defect between phases | ⚠️ **two launch blockers were open the entire time and appear in no earlier row.** `BooksModule` ↔ `LibraryModule` had no `forwardRef()` — the backend could not boot — and `ContestsModule` imported `NotificationsModule` without listing it. Both are now **retired risks** with evidence. They belong in Phase 1, because that is where they broke the product |
 | Migration reversibility given as "(`reversible` / `data-loss` / `irreversible`)" with no counts | **0 irreversible, 18 data-loss, 4 reversible** across the 22 down scripts. ⛔ `risks.md` had claimed `0001` was deliberately irreversible for `uuid-ossp`; it is not — it declares `reversibility=data-loss` |

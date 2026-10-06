@@ -732,3 +732,64 @@ jobs:
 
       - name: Build frontend
         run: npm run build --workspace=frontend
+
+  load-test:
+    name: Load Test (k6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start datastores
+        run: docker compose up -d postgres valkey
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run migrations
+        run: npm run migration:run --workspace=backend
+
+      - name: Start backend
+        run: npm run start:dev --workspace=backend &
+        env:
+          NODE_ENV: test
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.0
+        with:
+          filename: load-tests/k6.conf.js
+          flags: --out json=k6-report.json
+
+      - name: Upload k6 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report
+          path: k6-report.json
+          retention-days: 14

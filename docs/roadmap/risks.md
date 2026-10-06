@@ -26,10 +26,10 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 | Team availability | Low | High | Cross-training, documentation | ✅ — `docs/` reconciled 2026-09-30 and re-verified 2026-10-04 |
 | **Backend cannot boot (module graph)** | Was High | **Was fatal** | `forwardRef()` on both sides of the cycle | ✅ **RETIRED 2026-10-04** — see "Risks retired" below |
 | **Integration suite silently skipping** | Was High | High | Fix the graph; assert the suite actually executes | ✅ **RETIRED 2026-10-04** — the 11 specs ran for the first time |
-| **No deployment artifact** | High | High | Build a `Dockerfile` + manifest | ⛔ **Unmitigated — the single biggest launch blocker** |
-| **No backup automation** | Medium | High | Scheduled `pg_dump` + PITR | ⛔ **Unmitigated — nothing to restore from** |
-| **No load/performance testing** | High | Medium | k6 or Artillery suite | ⛔ **Unmitigated — every p95 target is unmeasured** |
-| **No alerting** | Medium | High | Define alert rules on the metrics that exist | ⛔ **Unmitigated — Sentry is wired, nothing pages** |
+| **No deployment artifact** | High | High | Build a `Dockerfile` + manifest | ⛔ **Unmitigated — a `Dockerfile` exists but there is no CI workflow, IaC, or deploy script** |
+| **No backup automation** | Medium | High | Scheduled `pg_dump` + PITR | ⛔ **Unmitigated — `scripts/backup.sh` exists but there is no cron job or scheduler running it** |
+| **No load/performance testing** | High | Medium | k6 or Artillery suite | ⛔ **Unmitigated — `load-tests/k6.conf.js` exists but is not executed by any CI job; every p95 target is unmeasured** |
+| **No alerting** | Medium | High | Define alert rules on the metrics that exist | 🔄 **`monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager** |
 
 ---
 
@@ -334,26 +334,24 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 | 10 | Phase 4: Books & Commerce | Commerce complete? Payments tested? | ✅ Go — with the open item that no test has run against a live Paymob sandbox |
 | 12 | Phase 5: Contests | Contests complete? | ✅ Go |
 | 13 | Phase 6: Moderation | Moderation complete? | ✅ Go |
-| 18 | Phase 7: Polish & Launch | Tested, measured, deployed, backed up, alerting? | ⛔ **No-go** — load testing, benchmarking, a deployment artifact, backup automation, and alerting are all unbuilt |
+| 18 | Phase 7: Polish & Launch | Tested, measured, deployed, backed up, alerting? | ⛔ **No-go** — load testing is not automated in CI, no benchmark harness, no CI deploy workflow, backup script exists but is not automated, and alert rules exist but are not deployed |
 
 ### What blocks the Week 18 decision
-1. No `Dockerfile` or deployment artifact of any kind
-2. No load test or performance benchmark — the p95 targets have never been measured
-3. No backup automation, so there is nothing to restore from
-4. No alert rules
+1. A `Dockerfile` exists but there is no CI workflow, IaC, or deploy script
+2. No load test or performance benchmark in CI — `load-tests/k6.conf.js` exists but is not executed;
+      the p95 targets have never been measured
+3. `scripts/backup.sh` exists but there is no cron job, scheduler, or PITR configuration running it,
+      so there is nothing to restore from
+4. `monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager
 5. No WAF metrics endpoint or WAF admin operations endpoints
-6. ⛔ Frontend coverage at **40.75** statements / **41.25** lines, against an 80% target — and the CI
-   gate is set to 38/33/33/38, so a passing build certifies roughly 41%, not 80%. ⚠️ **both published
-   figures were wrong** (the document said 39.79 / 40.22); re-derive from
-   `frontend/coverage/coverage-summary.json`
-7. ⛔ **A contest winner receives two notifications for winning and two for the prize.**
-   `contests.event-handler.ts:129,151,168` and `notifications.event-handler.ts:96,113` both subscribe to
-   `winner.selected`, `contest.started` and `prize.distributed`, and both now write correctly through
-   `NotificationsService`. Recorded, not fixed: **one side must be declared canonical.** This is a
-   duplicate-write defect on a user-visible surface, and it is new in this change set
-8. ⛔ **The social UI has no call sites.** The twelve frontend client methods for follow/react/comment
-   now point at real routes and are pinned by a contract test, but the pages that would invoke them are
-   static placeholders. A green contract test certifies the paths, not the product
+6. ⛔ Frontend coverage at **68.39** statements / **68.17** lines, against an 80% target — and the CI
+      gate is set to 38/33/33/38, so a passing build certifies roughly 68%, not 80%. ⚠️ **both published
+      figures were wrong** (the document said 40.75 / 41.25); re-derive from
+      `frontend/coverage/coverage-summary.json`
+7. ⛔ **The social UI has no call sites.** The frontend client methods for follow/react/comment are now
+      correct and pinned to the backend controllers, but `/stories/[id]/comments`,
+      `/stories/[id]/reactions`, `/users/[id]/followers`, and `/users/[id]/following` are still
+      `EmptyState` placeholders. A green contract test certifies the paths, not the product
 
 ### Risks retired by the refactor
 | Retired risk | Why |
@@ -385,7 +383,7 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 | Risk 3 "Start integration early (Week 10)" | Week 10 is correct under the canonical model ✅ |
 | Risk 8 "Buffer week (Week 8)" | Week 8 is the start of Phase 4 under the canonical model ✅ |
 | Risk 7 "Use transactions where possible" | Now literal: **every** migration is transaction-wrapped, plus a checksum ledger and reversibility classification |
-| Risk 7 "Backup before migrations" | ⛔ There is no backup automation. `pg_dump` in a deployment docstring is the current practice; `docs/deployment/backup.md` describes an `nginx.conf` and `scripts/` directory that do not exist |
+| Risk 7 "Backup before migrations" | ⛔ There is no backup automation. `pg_dump` in a deployment docstring is the current practice; `docs/deployment/backup.md` describes an `nginx.conf` that does not exist and a `scripts/` directory that now contains `backup.sh` but is not scheduled |
 | No status on any risk | Added a status column to the risk summary and to the decision-point table |
 | — | Added **Risks retired by the refactor**, so the register does not keep warning about hazards that have been closed |
 | Plan A assumed a deployable artifact | Marked explicitly as not achievable in the current state; Plan C is now identified as the plan that fits |
@@ -402,16 +400,16 @@ risk is as misleading as one that never recorded a live one, and this one had do
 | **The two launch blockers were not in the register at all.** `BooksModule` ↔ `LibraryModule` had no `forwardRef()` and the backend could not boot; `ContestsModule` imported `NotificationsModule` without listing it | Added to the summary table as **retired risks** with the evidence and the fix locations, so the record of what they were is kept without the register continuing to flag them |
 | The integration suite was reported as "23 files" green while **every one of those files was skipping itself** | Recorded as its own retired risk. The 11 specs ran for the first time; 8 then failed on stale fixtures and were fixed. ⚠️ the summary table never distinguished "green" from "executed", which is how a broken application shipped a green board |
 | Risk 7's retired row claimed **`0001` is deliberately irreversible because it owns `uuid-ossp`** | ⛔ **False.** All 22 down scripts classify: **0 irreversible, 18 data-loss, 4 reversible** (`0014`, `0020`, `0021`, `0022`). `0001_create_stories_tables.down.sql` declares `reversibility=data-loss` |
-| Frontend coverage published as **39.79** statements / **40.22** lines | **40.75 / 41.25** (`frontend/coverage/coverage-summary.json`). **Both were wrong** |
-| The Week 18 decision list had no entry for duplicated contest notifications or the unwired social UI | Added as items 7 and 8 of "What blocks the Week 18 decision" — both are ⛔, both are new in this change set, and neither is infrastructure |
+| Frontend coverage published as **39.79** statements / **40.22** lines | **68.39 / 68.17** (`frontend/coverage/coverage-summary.json`). **All four were wrong** |
+| The Week 18 decision list had no entry for the unwired social UI | Added as item 7 of "What blocks the Week 18 decision" — ⛔, not infrastructure. ⚠️ **Correction:** the duplicate contest notifications defect has since been **resolved** by removing the duplicate handler in `notifications.event-handler.ts` |
 | The DLQ was nowhere in this register, though `implementation-roadmap.md` claimed it had **no drain** and never redelivered | Added to the retired table with the correction: the drain exists (`GET /events/dlq`, `POST /events/dlq/:id/replay`), `retryDLQ` is deleted, `getDLQStats` is the only spec-only method |
 | Eight documents instructed readers to run `npm run migration:status` **from the repo root**, where the script did not exist | Recorded as a retired documentation hazard; the root script now exists (`package.json:22`) |
 | Every retired-risk row cited only the "why" | Rows now carry the file and line where the fix landed, so each claim is checkable against the tree |
 
 ### Still open, and unchanged by this pass
-No deployment artifact · no backup automation · no load test or benchmark · no alert rules · no WAF
-metrics or admin endpoints · frontend coverage at ~41% · ⛔ **now also**: duplicated contest
-notifications, and social UI pages with no call sites.
+No CI deploy workflow · backup script exists but is not automated · k6 config exists but is not run in
+CI · no benchmark harness · no deployed alert rules · no WAF metrics or admin endpoints · frontend
+coverage at ~68% · ⛔ **social UI pages with no call sites** (4 placeholder pages).
 
 ---
 
