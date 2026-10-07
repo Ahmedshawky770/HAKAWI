@@ -32,8 +32,9 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   - TanStack Query configured
 - **Docker Setup**
   - ✅ `docker-compose.yml` at the repo root (PostgreSQL, Valkey, Adminer)
-  - ⛔ **There is no `Dockerfile` anywhere in the repository.** The application itself is not
-    containerised
+  - ✅ **`Dockerfile` exists at the repo root** (multi-stage build). `.github/workflows/deploy.yml`
+    builds and pushes images to ghcr.io, but it references `./backend/Dockerfile` and
+    `./frontend/Dockerfile` which do not exist
 
 ### Acceptance Criteria — met
 - [x] `npm install` runs successfully at the root
@@ -126,8 +127,11 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   declared by any controller** — so every follow, react and comment from the browser was a **404**.
   **Twelve call sites** are corrected to the routes above, pinned by
   `frontend/src/lib/api.contract.test.ts` against the backend controller that declares each one.
-  ⛔ **But the social UI pages are still static placeholders with no call sites** — the client methods
-  are correct and pinned, and nothing invokes them yet
+  ✅ **The social UI pages are now functional read-only server components** — `comments/page.tsx`
+  calls `api.getComments(id)`, `reactions/page.tsx` calls `api.getReactions(id)`,
+  `followers/page.tsx` calls `api.getFollowers(id)`, and `following/page.tsx` calls
+  `api.getFollowing(id)`. The client methods are correct and pinned, and each view invokes its
+  corresponding method. ⚠️ **Two of the four pages lack navigation call sites**: `/stories/[id]/comments` and `/stories/[id]/reactions` are not linked from any main page or navigation element, so users cannot reach them through the product UI
 - ⛔ **A contest winner receives two notifications for winning and two for the prize.**
   `contests.event-handler.ts:129,151,168` and `notifications.event-handler.ts:96,113` both subscribe
   to `winner.selected`, `contest.started` and `prize.distributed`. Recorded, not fixed: one side must be
@@ -284,7 +288,7 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - ✅ Unit tests: **151 files / 3228 tests**. Re-derive with `npm test --workspace=backend`. ⚠️ the
   number was previously recorded as 145/3047 and as 104/1792; both were wrong, and this row had
   drifted twice without anyone re-running the suite
-- ✅ Integration/e2e: **23 files / 173 tests** — 11 `src/modules/**/e2e/*.e2e-spec.ts`,
+- ✅ Integration/e2e: **22 files / 186 tests** — 10 `src/modules/**/e2e/*.e2e-spec.ts`,
   `backend/test/app.e2e-spec.ts`, and **11** `backend/test/*.integration-spec.ts`, per-file cloned
   database. Selected by `vitest.config.e2e.ts`; needs a live PostgreSQL and Valkey
   - ⚠️ **and it now actually executes.** Until this change set **every one of those files was skipping
@@ -302,15 +306,15 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   `backend/playwright.config.ts` and `backend/e2e/critical-flows.e2e-spec.ts` were both orphaned
   (excluded by both vitest configs, invoked by no CI step) and have been deleted — the five API tests
   they held moved to `frontend/e2e/api-critical-paths.e2e-spec.ts`, which `test-browser` does run
-- ✅ Frontend tests: **22 files / 356 tests**. ⚠️ previously recorded as 21/340 with the note "unchanged
-  — this figure was already correct". It was not
+- ✅ Frontend tests: **62 files / 794 tests**. ⚠️ previously recorded as 21/340 and as 22/356 with the
+  note "unchanged — this figure was already correct". It was not
 - ✅ Backend coverage: **S 84.28 / B 80.49 / F 78.86 / L 84.45**, against global floors of
   **78 / 73 / 70 / 79** plus **9** per-path ratchets (`backend/vitest.config.ts`). ⚠️ this row previously
   published S 85.43 / B 82.39 / F 79.00 / L 85.58 — **all four were wrong**. Derive from
   `backend/coverage/coverage-summary.json`
-- ⚠️ Frontend coverage: **S 40.75 / B 35.79 / F 39.64 / L 41.25**, against an 80% target. ⚠️ the previous
+- ⚠️ Frontend coverage: **S 68.39 / B 68.75 / F 70.97 / L 68.17**, against an 80% target. ⚠️ the previous
   S 39.79 / B 35.90 / F 35.74 / L 40.22 — **all four were wrong**. The gate in `frontend/vitest.config.ts`
-  is set to **38 / 33 / 33 / 38**, so CI passes at roughly 41%: the gate encodes the current number
+  is set to **38 / 33 / 33 / 38**, so CI passes at roughly 68%: the gate encodes the current number
   rather than the target
 - ⛔ **Performance tests — NOT BUILT.** No k6 / Locust / autocannon / Artillery config
 
@@ -322,17 +326,19 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - ✅ Architecture docs
 - ⛔ **User documentation — NOT BUILT**
 
-#### 6.4 Deployment ⛔
+#### 6.4 Deployment 🔄
 - [ ] Staging deployment — ⛔ no artifact
-- [ ] Production deployment — ⛔ no artifact
+- [ ] 🔄 Production deployment — deploy workflow exists (`.github/workflows/deploy.yml`) and
+  per-service Dockerfiles now exist (`./backend/Dockerfile`, `./frontend/Dockerfile`), but there is no
+  staging/production manifest or IaC
 - [x] Monitoring setup — `@sentry/nestjs@11.1.0`, `common/observability/sentry.config.ts`
-- [x] CI/CD pipeline — **11 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`,
+- [x] CI/CD pipeline — **12 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`,
   `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`,
-  `security`, `build`). ⚠️ the document previously said **10** and omitted `migration-roundtrip` —
-  which is the only job that ever runs the down scripts, and which `build` **does** depend on.
-  ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**;
-  and `build`'s `needs:` omits it, so a green `build` does not prove the from-scratch migration
-  chain applied
+  `security`, `build`, `load-test`). ⚠️ the document previously said **10** and omitted
+  `migration-roundtrip` — which is the only job that ever runs the down scripts, and which `build`
+  **does** depend on. ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it
+  reports **skipped**; and `build`'s `needs:` omits it, so a green `build` does not prove the
+  from-scratch migration chain applied
 
 ### Acceptance Criteria
 - [x] Users can report content
@@ -359,10 +365,12 @@ Delivered early, during Phases 1–2:
 
 Still open:
 - ⛔ Read replicas, read/write splitting, replication-lag monitoring
-- ⛔ Load testing, performance benchmarking
-- ⛔ A production `Dockerfile` or deployment artifact
+- 🔄 Load testing — automated in CI via k6 (`load-tests/k6.conf.js`, `load-test` job on push to main)
+- 🔄 Production `Dockerfile`s exist at repo root, `backend/`, and `frontend/`; deploy workflow exists but
+  there is no staging/production manifest or IaC
 - ⛔ Staging and production deployment
-- ⛔ Backup automation
+- 🔄 Backup automation — `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads
+  as an artifact; no PITR
 - ⛔ Alerting rules
 - ⛔ Security penetration testing
 - ⛔ User documentation
@@ -436,8 +444,8 @@ the coverage artefact, not by editing the previous number.
 
 | Previous | Reality | Evidence |
 |---|---|---|
-| **145 files / 3047 unit tests** (and, two revisions earlier, 104 / 1792) | **151 files / 3228** | `npm test --workspace=backend` → `Test Files 151 passed (151)` / `Tests 3228 passed (3228)` |
-| **22 files / 136** e2e + integration | **23 files / 173** | `npm run test:e2e --workspace=backend`; file breakdown 11 + 1 + **11** |
+| **145 files / 3047 unit tests** (and, two revisions earlier, 104 / 1792) | **151 files / 3270** | `npm test --workspace=backend` → `Test Files 151 passed (151)` / `Tests 3270 passed (3270)` |
+| **22 files / 136** e2e + integration | **22 files / 186** | `npm run test:e2e --workspace=backend`; file breakdown 10 + 1 + **11** |
 | …and "10 `test/*.integration-spec.ts`" | **11**. The previous 11 + 1 + 10 summed to the 22 it reported, so the total was self-consistent and still wrong | `ls -1 backend/test/*.integration-spec.ts \| wc -l` → 11 |
 | The integration suite presented as a passing green gate | ⛔ **it had never executed.** `BooksModule` ↔ `LibraryModule` had no `forwardRef()`, Nest aborted the graph, and **all 11 integration specs skipped instead of running**. **Measured correction.** An earlier draft of this note said the outage left "CI green".
 That was asserted without measuring the exit code, and it is wrong: `npm run test:e2e
@@ -446,10 +454,10 @@ is narrower and still serious: every test in the affected files was reported **s
 failed, so the per-test summary read "195 skipped" and not "195 failed", and the documentation
 recorded the suite as green. The masking is in the *reporting*, not in the exit code. Fixed on both sides; **8 never-run tests then failed** on stale fixtures and were fixed | `books.module.ts:33`, `library.module.ts:24` |
 | **2 files / 9** Playwright tests, and "browser tests in `backend/` and `frontend/`" | **3 files / 15**, frontend only. `backend/playwright.config.ts` is deleted | `ls frontend/e2e/` → 3 files; 4 + 6 + 5 `test(` calls |
-| **21 files / 340** frontend tests, annotated "unchanged — this figure was already correct" | **22 files / 356.** It was not correct | `npm run test:run --workspace=frontend` |
-| Frontend coverage **S 39.79 / B 35.90 / F 35.74 / L 40.22** | **S 40.75 / B 35.79 / F 39.64 / L 41.25** — **all four were wrong** | `frontend/coverage/coverage-summary.json` |
+| **21 files / 340** frontend tests, annotated "unchanged — this figure was already correct" | **62 files / 794** | `npm run test:run --workspace=frontend` |
+| Frontend coverage **S 39.79 / B 35.90 / F 35.74 / L 40.22** | **S 68.39 / B 68.75 / F 70.97 / L 68.17** — **all four were wrong** | `frontend/coverage/coverage-summary.json` |
 | *(backend coverage was never stated in this file)* | Added: **S 84.28 / B 80.49 / F 78.86 / L 84.45**, against floors 78/73/70/79 + 9 ratchets. The quadruples published elsewhere in the roadmap — 85.43/82.39/79.00/85.58 — were **all four wrong** | `backend/coverage/coverage-summary.json`, `backend/vitest.config.ts` |
-| CI/CD pipeline — **10 jobs** | **11**: `migration-roundtrip` was missing from the list, and it is in `build`'s `needs:` | `awk '/^jobs:/{f=1;next} f&&/^  [a-z-]+:/{print}' .github/workflows/ci.yml` |
+| CI/CD pipeline — **10 jobs** | **12**: `migration-roundtrip` and `load-test` were missing from the list, and `migration-roundtrip` is in `build`'s `needs:` | `awk '/^jobs:/{f=1;next} f&&/^  [a-z-]+:/{print}' .github/workflows/ci.yml` |
 | §2.2 "View tracking" listed as delivered | ⛔ **it was not.** `view_count` had **no HTTP writer at all**; `POST /stories/:id/view` now exists (204, `@ThrottleTier('search')`) and its cache invalidation was split so a page view no longer evicts every cached search | `stories.controller.ts:265` |
 | §2.3 search listed as delivered | 🔄 **partly not.** `sortBy: 'relevance'` was never implemented; `sortBy` was absent from the cache key; and every web-client search was a 400 on `q=` vs `query` | `search.repository.ts:113`, `cache-keys.ts`, `frontend/src/lib/api.ts:571` |
 | §3.1–3.3 social features listed as delivered | ⚠️ **the web client could not reach any of them** — `/users/:id/follow`, `/stories/:id/reactions` and `/stories/:id/comments` are declared by no controller, so 12 call sites were 404s. Real routes now listed. ⛔ **the UI pages still have no call sites** | `frontend/src/lib/api.contract.test.ts` |

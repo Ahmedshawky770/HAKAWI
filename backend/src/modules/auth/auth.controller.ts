@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Get,
   Req,
-  Request,
+  Request as NestRequest,
   UseGuards,
   Query,
   Param,
@@ -15,9 +15,10 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { type Response } from 'express';
+import { type Response, type Request as ExpressRequest } from 'express';
 
 import { Public } from '../../common/decorators/roles.decorator.ts';
+import { type AuthRequest } from '../../common/types/auth-request.interface.ts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
 import {
@@ -76,8 +77,9 @@ export class AuthController {
   @Post('login')
   @Public()
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res() res: Response) {
-    const result = await this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Req() req: ExpressRequest, @Res() res: Response) {
+    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    const result = await this.authService.login(dto, clientIp);
     writeAuthCookies(res, result.tokens);
     return res.json(result);
   }
@@ -117,7 +119,7 @@ export class AuthController {
   @ThrottleTier('session')
   @Get('session')
   @UseGuards(JwtAuthGuard)
-  session(@Request() req: { user: { sub: string } }) {
+  session(@Req() req: AuthRequest) {
     return this.authService.session(req.user.sub);
   }
 

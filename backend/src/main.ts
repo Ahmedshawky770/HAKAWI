@@ -20,6 +20,9 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-XSS-Protection': '1; mode=block',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+  // Content-Security-Policy: restrict resources to same origin by default
+  // Adjust as needed for external scripts, styles, fonts, etc.
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
 
 function applySecurityHeaders(req: Request, res: Response, next: NextFunction): void {
@@ -69,18 +72,16 @@ async function bootstrap() {
   const winstonLogger = app.get(WinstonLoggerService);
   const logger = new Logger('Bootstrap');
 
-  // DELIBERATELY NOT CALLED: app.set('trust proxy', …).
-  //
-  // Turning it on makes Express derive `req.ip` from `X-Forwarded-For`, a header any
-  // client can set. `WafMiddleware` and the throttle tracker both key on the caller's
-  // address — a blocklist and a rate limit — so an unverified `req.ip` would let a
-  // forged header walk straight through both. Both read the header themselves and only
-  // when the shared `THROTTLE_TRUST_PROXY` flag is set, so the trust decision lives in
-  // one place. Anyone adding `app.set('trust proxy', true)` here must make that flag
-  // true as well, or the two layers will disagree about who the caller is.
   const throttle = app.get(ConfigService).get<ThrottleConfig>('throttle');
   for (const warning of throttle?.globalOverrideWarnings ?? []) {
     winstonLogger.warn(warning, 'ThrottleConfig');
+  }
+
+  // Enable trust proxy when explicitly configured (required behind reverse proxy for correct client IP)
+  // This must match THROTTLE_TRUST_PROXY so that Express, the throttler, and the WAF all agree on the caller's IP
+  if (throttle?.trustProxy) {
+    app.set('trust proxy', true);
+    winstonLogger.info('Trust proxy enabled - req.ip will be derived from X-Forwarded-For', 'Bootstrap');
   }
 
   const port = process.env.PORT ?? 3001;

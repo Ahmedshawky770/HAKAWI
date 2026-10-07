@@ -141,7 +141,7 @@ See `docs/security-architecture/permissions/permissions-overview.md`.
 ## WAF (Web Application Firewall)
 
 ### Threat Detection — ✅ implemented
-35 typed rules in 8 layers (`backend/src/common/waf/rules.ts`), of which 34 evaluate by default
+34 typed rules in 8 layers (`backend/src/common/waf/rules.ts`), of which 33 evaluate by default
 (`header-forbidden-forwarding-headers` is opt-in behind `WAF_BLOCK_FORWARDING_HEADERS=true`), covering:
 - SQL Injection (8 rules)
 - NoSQL injection and LDAP injection (3 rules)

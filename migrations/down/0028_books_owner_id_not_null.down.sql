@@ -1,0 +1,2 @@
+-- hakawi:down reversibility=reversible data-loss=none reason=Removes the NOT NULL constraint from books.owner_id, restoring the nullable state. No data is lost — the column values remain unchanged, only the constraint is dropped. This is safe to run at any time.
+ALTER TABLE "books" ALTER COLUMN "owner_id" DROP NOT NULL;

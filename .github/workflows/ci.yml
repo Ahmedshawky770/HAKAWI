@@ -711,7 +711,7 @@ jobs:
     #   - `migration-roundtrip` is INCLUDED because it has no such gate: it runs on every pull request,
     #     costs about two seconds of migration work, and is the assertion that catches a migration
     #     which cannot be rolled back — the failure an operator meets during an incident.
-    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, security]
+    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, security, backup-verify]
     steps:
       - uses: actions/checkout@v4
 
@@ -793,3 +793,48 @@ jobs:
           name: k6-report
           path: k6-report.json
           retention-days: 14
+
+  backup-verify:
+    name: Backup Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Create test backup
+        run: |
+          mkdir -p backups
+          PGPASSWORD=postgres pg_dump -h localhost -U postgres -d hakawi --format=plain --no-owner --no-acl | gzip > backups/hakawi-test-$(date +%Y%m%d-%H%M%S).sql.gz
+
+      - name: Verify backup integrity
+        run: |
+          LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
+          gunzip -t "$LATEST"
+          echo "Backup integrity: OK"
+
+      - name: Test restore
+        run: |
+          LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
+          TEST_DB="hakawi_restore_test_$(date +%s)"
+          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+          psql -h localhost -U postgres -d postgres -c "CREATE DATABASE $TEST_DB;"
+          gunzip -c "$LATEST" | psql -h localhost -U postgres -d "$TEST_DB"
+          TABLE_COUNT=$(psql -h localhost -U postgres -d "$TEST_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+          echo "Restored $TABLE_COUNT tables"
+          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

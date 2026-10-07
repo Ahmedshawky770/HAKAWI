@@ -37,6 +37,7 @@ import { CacheMetricsController } from './observability/metrics.controller.ts';
 import { DLQController } from './events/dlq.controller.ts';
 import { WafMiddleware, WAF_CONFIG } from './middleware/waf.middleware.ts';
 import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
+import { GeoIpService } from './waf/geo-ip.service.ts';
 import { ValkeyThrottlerStorage } from './throttler/valkey-throttler.storage.ts';
 import { createThrottlerOptions } from './throttler/throttler-options.ts';
 import { ResilienceModule } from './resilience/resilience.module.ts';
@@ -113,6 +114,7 @@ const appReflector = new Reflector();
     CacheInterceptor,
     CacheMetrics,
     IpBlocklistService,
+    GeoIpService,
     WafMiddleware,
     ResilientHttpClient,
     UsersRepository,
@@ -177,6 +179,7 @@ const appReflector = new Reflector();
     CacheInterceptor,
     CacheMetrics,
     IpBlocklistService,
+    GeoIpService,
     WafMiddleware,
     ResilientHttpClient,
   ],

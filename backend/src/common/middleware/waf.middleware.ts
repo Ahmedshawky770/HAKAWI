@@ -5,6 +5,7 @@ import { DEFAULT_WAF_CONFIG, type WafConfig, type WafOptInControl } from '../../
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { DegradationTracker } from '../observability/degradation.ts';
 import { IpBlocklistService, type BlockRecord } from '../waf/ip-blocklist.service.ts';
+import { GeoIpService } from '../waf/geo-ip.service.ts';
 import {
   buildWafViolationLog,
   generateCorrelationId,
@@ -277,6 +278,7 @@ export class WafMiddleware implements NestMiddleware {
   constructor(
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(IpBlocklistService) private readonly blocklist: IpBlocklistService,
+    @Inject(GeoIpService) private readonly geoIp: GeoIpService,
     @Optional() @Inject(WAF_CONFIG) config: WafConfig | null,
   ) {
     this.config = config ?? DEFAULT_WAF_CONFIG;
@@ -286,7 +288,7 @@ export class WafMiddleware implements NestMiddleware {
   }
 
   private isRuleActive(rule: WafRule): boolean {
-    if (this.disabledRuleIds.has(rule.id)) {
+    if (this.disabledRuleIds.has(rule.id.toUpperCase())) {
       return false;
     }
     // An opt-in rule is inert until its control is on, no matter what
@@ -301,7 +303,7 @@ export class WafMiddleware implements NestMiddleware {
     const violations: WafViolation[] = [];
 
     for (const rule of WAF_RULES) {
-      if ((rule.kind !== 'allowed-methods' && rule.kind !== 'max-bytes') || !this.isRuleActive(rule)) {
+      if ((rule.kind !== 'allowed-methods' && rule.kind !== 'max-bytes' && rule.id !== 'geo-blocked-country') || !this.isRuleActive(rule)) {
         continue;
       }
 
@@ -321,6 +323,23 @@ export class WafMiddleware implements NestMiddleware {
         continue;
       }
 
+      if (rule.id === 'geo-blocked-country') {
+        // Geo-blocking is handled by GeoIpService, not by pattern matching
+        const ip = resolveClientIp(req, this.config.trustProxy).ip;
+        if (this.geoIp.isBlocked(ip)) {
+          const countryCode = this.geoIp.lookupCountryCode(ip) ?? '??';
+          violations.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            layer: rule.layer,
+            severity: rule.severity,
+            target: 'header',
+            sample: `X-Forwarded-For: ${ip} (${countryCode})`,
+          });
+        }
+        continue;
+      }
+
       const contentLength = Number.parseInt(headerAsString(req.headers['content-length']), 10);
       // A chunked request carries no Content-Length, so trusting that header alone lets
       // "Transfer-Encoding: chunked" skip the limit entirely. The body has already been
@@ -331,7 +350,9 @@ export class WafMiddleware implements NestMiddleware {
       if (observedBytes === 0) {
         continue;
       }
-      const maxBytes = rule.id === 'body-size-limit' ? this.config.maxRequestSizeBytes : rule.maxBytes;
+      const maxBytes = rule.id === 'body-size-limit'
+        ? this.config.maxRequestSizeBytes
+        : (rule as import('../waf/rules.ts').WafMaxBytesRule).maxBytes;
       if (observedBytes > maxBytes) {
         violations.push({
           ruleId: rule.id,

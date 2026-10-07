@@ -348,10 +348,13 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
       gate is set to 38/33/33/38, so a passing build certifies roughly 68%, not 80%. ⚠️ **both published
       figures were wrong** (the document said 40.75 / 41.25); re-derive from
       `frontend/coverage/coverage-summary.json`
-7. ⛔ **The social UI has no call sites.** The frontend client methods for follow/react/comment are now
-      correct and pinned to the backend controllers, but `/stories/[id]/comments`,
-      `/stories/[id]/reactions`, `/users/[id]/followers`, and `/users/[id]/following` are still
-      `EmptyState` placeholders. A green contract test certifies the paths, not the product
+7. ⛔ **Two social UI pages have no navigation call sites.** The frontend client methods for
+   follow/react/comment are now correct and pinned to the backend controllers, and all four pages are
+   functional read-only server components (`comments/page.tsx`, `reactions/page.tsx`,
+   `followers/page.tsx`, `following/page.tsx`). However, `/stories/[id]/comments` and
+   `/stories/[id]/reactions` are **not linked from any main page or navigation element**, so users
+   cannot reach them through the product UI. `/users/[id]/followers` and `/users/[id]/following` ARE
+   linked from the profile pages. A green contract test certifies the paths, not the product
 
 ### Risks retired by the refactor
 | Retired risk | Why |
@@ -409,7 +412,8 @@ risk is as misleading as one that never recorded a live one, and this one had do
 ### Still open, and unchanged by this pass
 No CI deploy workflow · backup script exists but is not automated · k6 config exists but is not run in
 CI · no benchmark harness · no deployed alert rules · no WAF metrics or admin endpoints · frontend
-coverage at ~68% · ⛔ **social UI pages with no call sites** (4 placeholder pages).
+coverage at ~68% · ⛔ **two social UI pages with no navigation call sites** (`/stories/[id]/comments`,
+`/stories/[id]/reactions`).
 
 ---
 

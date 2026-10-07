@@ -541,8 +541,8 @@ export async function runMigrationCli(argv: readonly string[]): Promise<number> 
     );
   }
 
-  const { db } = await import('../index.ts');
-  const runner = new MigrationRunner(db, defaultMigrationsDir(), toLogSink(logger));
+  const { dbPrimary } = await import('../router.ts');
+  const runner = new MigrationRunner(dbPrimary, defaultMigrationsDir(), toLogSink(logger));
 
   switch (parsed.command) {
     case 'up': {

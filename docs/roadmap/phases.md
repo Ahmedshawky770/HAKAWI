@@ -86,8 +86,10 @@ evidence for each absence, is in
       onboarding are missing (Phase 7, Weeks 17, 18)
 - ⛔ Security penetration testing (Phase 7, Week 18)
 - ⛔ Live-sandbox payment testing (Phase 7, Week 14)
-- ⛔ Four social UI pages are still placeholders: `/stories/[id]/comments`,
-      `/stories/[id]/reactions`, `/users/[id]/followers`, `/users/[id]/following` (Phase 3)
+- ⛔ Two social UI pages have no navigation call sites: `/stories/[id]/comments`,
+      `/stories/[id]/reactions` (functional read-only server components, but not linked from any main
+      page or navigation element). `/users/[id]/followers` and `/users/[id]/following` ARE linked from
+      profile pages (Phase 3)
 
 Phases 1–6 are marked ✅, but a ✅ records that the phase's **items** shipped, not that the code was
 correct when it did. Three phases shipped defects that were only found by executing the suite and

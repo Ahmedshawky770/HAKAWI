@@ -1,7 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 
-import { db } from './db/index.ts';
+import { db, checkDatabaseHealth } from './db/router.ts';
 import { ValkeyService } from './common/services/valkey.service.ts';
 import { SWAGGER_API_PATH, SWAGGER_TITLE, SWAGGER_VERSION } from './common/swagger/swagger.config.ts';
 
@@ -10,6 +10,7 @@ export type DependencyStatus = 'connected' | 'disconnected';
 export type HealthResponse = {
   status: 'healthy' | 'degraded';
   database: DependencyStatus;
+  replicas: DependencyStatus[];
   valkey: DependencyStatus;
   timestamp: string;
 };
@@ -61,24 +62,21 @@ export class AppController {
 
   @Get('health')
   async getHealth(): Promise<HealthResponse> {
-    const dbHealthy = await this.checkDatabase();
+    const dbHealth = await checkDatabaseHealth();
     const valkeyHealthy = await this.checkValkey();
 
+    // Overall healthy if primary is up and at least one replica is up (if replicas configured)
+    const replicasConfigured = dbHealth.replicas.length > 0;
+    const primaryUp = dbHealth.primary;
+    const replicasUp = replicasConfigured ? dbHealth.replicas.some((r) => r) : true;
+
     return {
-      status: dbHealthy && valkeyHealthy ? 'healthy' : 'degraded',
-      database: dbHealthy ? 'connected' : 'disconnected',
+      status: primaryUp && valkeyHealthy && replicasUp ? 'healthy' : 'degraded',
+      database: primaryUp ? 'connected' : 'disconnected',
+      replicas: dbHealth.replicas.map((r) => (r ? 'connected' : 'disconnected')),
       valkey: valkeyHealthy ? 'connected' : 'disconnected',
       timestamp: new Date().toISOString(),
     };
-  }
-
-  private async checkDatabase(): Promise<boolean> {
-    try {
-      await db.execute(sql.raw('SELECT 1'));
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   private async checkValkey(): Promise<boolean> {

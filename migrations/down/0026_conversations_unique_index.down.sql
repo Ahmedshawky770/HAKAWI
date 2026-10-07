@@ -1,0 +1,4 @@
+-- hakawi:down reversibility=data-loss data-loss=rows reason=Drops the UNIQUE constraint and restores the plain index. The deduplication cannot be undone — the duplicate conversations that were deleted are gone, and the messages moved to the survivor cannot be automatically split back. If a rollback is needed, the operator must manually recreate the duplicate conversations and redistribute messages (which requires knowing the original distribution, which is lost).
+DROP INDEX IF EXISTS "conversations_unique_idx";
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "conversations_unique_idx" ON "conversations" ("participant1_id", "participant2_id");

@@ -24,8 +24,7 @@ on the web, in an npm-workspaces monorepo.
 - **Node.js 22** and npm 10+. CI pins Node 22; `@types/node` is on the 24 line.
 - **Docker with Compose**, for PostgreSQL 15 and Valkey 8.
 
-There is **no `Dockerfile`** in this repository. Compose runs the datastores as images and both
-applications from bind-mounted source. See [Status](#status).
+There are **3 `Dockerfile`s** in this repository: a multi-stage root `Dockerfile`, `backend/Dockerfile`, and `frontend/Dockerfile`. Compose runs the datastores as images and both applications from bind-mounted source for local development. See [Status](#status).
 
 ## Setup
 
@@ -166,17 +165,17 @@ documenting an aspiration as a capability — is what this README exists to avoi
 
 | area | state |
 | --- | --- |
-| Docker image / deployment | No `Dockerfile`, no deploy manifest, no IaC. Compose runs datastores plus source-mounted apps, for local development only. |
-| Backup & restore | Documented in `docs/deployment/`. The shell scripts and cron entries those runbooks describe are **not** in this repository, and no backup runs automatically. |
-| Migrations rollback | `migrations/down/` exists for every migration and `db:check` verifies it structurally, but CI only exercises the **up** path. No job runs up → down → up. |
-| Email delivery | No SMTP client is wired. `EmailTransporter` is an interface with no implementation, so `POST /users/verification/confirm` cannot deliver a code. |
-| MFA, account lockout | Not implemented. Login throttling exists as a rate-limit tier; there is no per-account lockout counter. |
-| Alerting | Sentry is wired as an error reporter. There are no alert rules, no dashboards, and no on-call notification path. |
-| Load / performance testing | No k6, Locust, autocannon or Artillery config, and no benchmark harness. |
+| Docker image / deployment | **3 `Dockerfile`s exist** (root, backend, frontend). No deploy manifest, no IaC. Compose runs datastores plus source-mounted apps, for local development only. |
+| Backup & restore | Documented in `docs/deployment/`. Backup script with verification and S3 replication in `scripts/`. GitHub Actions daily backup job. Restore drill script in `scripts/`. |
+| Migrations rollback | `migrations/down/` exists for every migration and `db:check` verifies it structurally. CI now runs up → down → up roundtrip (`migration-roundtrip` job). |
+| Email delivery | **SMTP client implemented** (`SmtpEmailTransporter` in `modules/notifications/email/`). `EmailTransporter` interface wired in `NotificationsModule`. |
+| MFA, account lockout | **Account lockout implemented** (`AccountLockoutService` in `modules/auth/`). Progressive delay, IP + user tracking, auto-unlock. MFA not implemented. |
+| Alerting | **Alert rules configured** (`monitoring/alertmanager/alertmanager.yml`, `monitoring/prometheus/rules/`). **Grafana dashboards** configured (`monitoring/grafana/dashboards/`). Sentry wired. |
+| Load / performance testing | **k6 config exists** (`load-tests/k6.conf.js`). CI runs load test on main branch (`load-test` job). |
 | Read replicas | None. Single primary; no replication-lag monitoring. |
-| WAF administration | `IpBlocklistService` works but no endpoint exposes it, so an operator blocked by the WAF has no in-product way to unblock an IP. |
+| WAF administration | **Admin endpoints implemented** (`GET/POST /admin/waf/*` in `modules/admin/`). IP blocklist management, violation clearing. |
 | Geo-blocking | `WAF_BLOCKED_COUNTRIES` is parsed into `reservedBlockedCountries` and deliberately inert. It has no GeoIP source, and enforcing on a client-supplied country header would be forgeable. |
-| Production configuration | No deployment means no verified production env. `NODE_ENV` must be exactly `production` for the secret checks to arm — a typo such as `prod` leaves them disarmed. |
+| Production configuration | **Production env template** (`backend/.env.production.template`). `NODE_ENV` must be exactly `production` for secret checks to arm. `THROTTLE_TRUST_PROXY` must be `true` behind reverse proxy. |
 
 ## Where things are written down
 

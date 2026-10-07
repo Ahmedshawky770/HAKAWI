@@ -29,8 +29,9 @@ describe('buildWafConfig', () => {
       WAF_BLOCKED_COUNTRIES: 'US, CN',
     });
 
-    expect(config.disabledRules).toEqual(['xss-script-tag', 'sql-exec-eval']);
-    expect(config.reservedBlockedCountries).toEqual(['US', 'CN']);
+    expect(config.disabledRules).toEqual(['XSS-SCRIPT-TAG', 'SQL-EXEC-EVAL']);
+    expect(config.blockedCountries).toEqual(['US', 'CN']);
+    expect(config.enabledOptInControls).toContain('geoBlocking');
   });
 
   it('normalises the allowed method list to upper case', () => {
@@ -120,16 +121,33 @@ describe('buildWafConfig', () => {
     });
   });
 
-  describe('WAF_BLOCKED_COUNTRIES is reserved, not a control', () => {
-    it('still parses so an existing deployment setting is not silently dropped', () => {
-      expect(buildWafConfig({ WAF_BLOCKED_COUNTRIES: 'RU, CN' }).reservedBlockedCountries).toEqual(['RU', 'CN']);
+  describe('WAF_BLOCKED_COUNTRIES enables geo-blocking opt-in control', () => {
+    it('parses the CSV list and trims whitespace', () => {
+      const config = buildWafConfig({ WAF_BLOCKED_COUNTRIES: 'RU, CN' });
+
+      expect(config.blockedCountries).toEqual(['RU', 'CN']);
+      expect(config.enabledOptInControls).toContain('geoBlocking');
     });
 
-    it('is named so it cannot be read as something that is enforced', () => {
+    it('is an active opt-in control when set', () => {
       const config = buildWafConfig({ WAF_BLOCKED_COUNTRIES: 'RU' });
 
-      expect(Object.keys(config)).not.toContain('blockedCountries');
-      expect(config).not.toHaveProperty('blockCountries');
+      expect(config.blockedCountries).toEqual(['RU']);
+      expect(config.enabledOptInControls).toContain('geoBlocking');
+    });
+
+    it('accepts every documented truthy spelling for countries', () => {
+      const config = buildWafConfig({ WAF_BLOCKED_COUNTRIES: 'ru, cn, us' });
+
+      expect(config.blockedCountries).toEqual(['RU', 'CN', 'US']);
+      expect(config.enabledOptInControls).toContain('geoBlocking');
+    });
+
+    it('is OFF by default (empty list means no geo-blocking)', () => {
+      const config = buildWafConfig({});
+
+      expect(config.blockedCountries).toEqual([]);
+      expect(config.enabledOptInControls).not.toContain('geoBlocking');
     });
   });
 });

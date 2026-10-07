@@ -9,6 +9,7 @@ import { NotificationsRepository } from './repositories/notifications.repository
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
 import { NotificationsEventHandler } from './events/notifications.event-handler.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
+import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
 import { StoriesModule } from '../stories/stories.module.ts';
 import { CommentsModule } from '../comments/comments.module.ts';
 
@@ -25,8 +26,9 @@ import { CommentsModule } from '../comments/comments.module.ts';
     NotificationsRepository,
     NotificationsEventHandler,
     NotificationsEmailService,
+    SmtpEmailTransporter,
     { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository },
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, SmtpEmailTransporter],
 })
 export class NotificationsModule {}

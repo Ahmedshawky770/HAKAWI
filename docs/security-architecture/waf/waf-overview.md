@@ -119,7 +119,7 @@ database-backed suite. Leave both unset in production.
 
 ---
 
-## Threat Detection — ✅ implemented, 35 typed rules
+## Threat Detection — ✅ implemented, 34 typed rules
 
 Rule ids grouped by layer, all from `backend/src/common/waf/rules.ts`:
 

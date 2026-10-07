@@ -49,7 +49,7 @@ Establish the project foundation: authentication, database, and basic infrastruc
 - [x] PostgreSQL database configured — 33 tables
 - [x] Valkey cache configured
 - [x] Docker Compose for local development — ⚠️ services only; **no `Dockerfile` exists**
-- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **11 jobs**. ⚠️ the previous version of
+- [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **12 jobs**. ⚠️ the previous version of
       this line said **10** and omitted `migration-roundtrip`
 
 ### Acceptance Criteria
@@ -99,9 +99,9 @@ cd frontend && npm run dev
 curl http://localhost:3001/api/v1/health
 
 # 8. Run the test suites
-npm test                                        # backend unit: 151 files / 3228 tests
-npm run test:e2e --workspace=backend             # 23 files / 173 tests
-npm run test:run --workspace=frontend            # 22 files / 356 tests
+npm test                                        # backend unit: 151 files / 3270 tests
+npm run test:e2e --workspace=backend             # 22 files / 186 tests
+npm run test:run --workspace=frontend            # 62 files / 794 tests
 ```
 
 `GET /api/v1/health` returns:
@@ -324,9 +324,11 @@ Three of these were themselves broken and are corrected above:
 > ⛔ **The web client called three of these wrongly, and all of it was a 404.** `frontend/src/lib/api.ts`
 > used `/users/:id/follow`, `/stories/:id/reactions` and `/stories/:id/comments` — **none of which any
 > controller declares**. Twelve call sites are corrected to the routes above and pinned by
-> `frontend/src/lib/api.contract.test.ts` against the backend controller that declares each one. **But the
-> social UI pages are still static placeholders with no call sites**: the client methods are correct and
-> pinned, and nothing invokes them yet.
+> `frontend/src/lib/api.contract.test.ts` against the backend controller that declares each one. **The
+> social UI pages are functional read-only server components, but `/stories/[id]/comments` and
+> `/stories/[id]/reactions` are not linked from any main page or navigation element**: the client
+> methods are correct and pinned, and `/users/[id]/followers` and `/users/[id]/following` ARE linked
+> from profile pages
 
 > ✅ **Resolved — the top-level-comments defect this milestone used to carry as open is closed.** The
 > previous version of this document said: *"Known bug. `GET /api/v1/comments/story/:storyId` uses
@@ -543,9 +545,9 @@ npm test --workspace=backend -- \
 Complete testing, optimisation, and deploy to production.
 
 ### Deliverables
-- [x] Comprehensive tests — ⚠️ **every figure in this line was wrong.** **3228** backend unit
-      (**151** files), **173** backend e2e/integration (**23** files = 11 `src/**/e2e/*.e2e-spec.ts` +
-      1 `test/app.e2e-spec.ts` + **11** `test/*.integration-spec.ts`), **356** frontend (**22** files),
+- [x] Comprehensive tests — ⚠️ **every figure in this line was wrong.** **3270** backend unit
+      (**151** files), **186** backend e2e/integration (**22** files = 10 `src/**/e2e/*.e2e-spec.ts` +
+      1 `test/app.e2e-spec.ts` + **11** `test/*.integration-spec.ts`), **794** frontend (**62** files),
       **15** Playwright (**3** files, frontend only). The previous line read "3047 backend unit (145
       files), 136 backend e2e/integration (22 files), 340 frontend (21 files), 9 Playwright (2 files)"
 - [x] ⚠️ **and the e2e/integration suite only started executing in this change set.** All 11
@@ -554,14 +556,14 @@ Complete testing, optimisation, and deploy to production.
       8 previously-never-executed tests then failed on stale fixtures and were fixed
 - [x] Security audit in CI — `npm audit --omit=dev` + `npm audit`
 - [x] Monitoring setup — Sentry (`@sentry/nestjs@11.1.0`) + Winston
-- [ ] ⛔ **Production deployment — NOT BUILT.** No `Dockerfile`, no manifest, no IaC, no deploy
-      script. `docs/deployment/deployment.md` describes a containerised Railway deploy with no
-      artifact behind it
-- [ ] ⛔ **Backup automation — NOT BUILT.** The strategy is documented; nothing runs it.
-      `docs/deployment/backup-strategy.md` schedules four scripts under `/opt/hakawi/scripts/` and a
-      crontab entry, and **none of them exists** in this repository. (`backup.md` was already
-      corrected to say so; four other documents still repeat the stale claim)
-- [ ] ⛔ **Load testing — NOT BUILT.** No k6 / Locust / autocannon / Artillery config
+- [ ] 🔄 **Production deployment — deploy workflow and per-service Dockerfiles exist, but there is no
+       staging/production manifest/IaC.** `.github/workflows/deploy.yml` builds and pushes images to
+       ghcr.io on push to main from `./backend/Dockerfile` and `./frontend/Dockerfile`, which now exist.
+       A root `Dockerfile` also exists for local/production image builds
+- [ ] 🔄 **Backup automation — implemented via GitHub Actions.** `.github/workflows/backup.yml` runs
+      `pg_dump` daily at 2 AM UTC and uploads as an artifact. No PITR is configured
+- [ ] 🔄 **Load testing — automated in CI via k6.** `load-tests/k6.conf.js` is executed by the
+      `load-test` CI job on push to main via `grafana/k6-action@v0.3.0`
 - [ ] ⛔ **Performance benchmarking — NOT BUILT.** The p95 targets have never been measured
 - [ ] ⛔ **Security penetration testing — NOT BUILT**
 - [ ] ⛔ **User documentation — NOT BUILT**
@@ -569,12 +571,15 @@ Complete testing, optimisation, and deploy to production.
 - [ ] ⛔ **Duplicated contest notifications** — `contests.event-handler.ts` and
       `notifications.event-handler.ts` both subscribe to `winner.selected` and `prize.distributed`, so a
       winner gets **two** rows for each. Recorded, not fixed: one side must be declared canonical
-- [ ] ⛔ **Social UI pages have no call sites** — the twelve corrected client methods are pinned to the
-      real routes, but nothing on the web client invokes them
+- [ ] ✅ **Social UI pages are functional read-only server components** — `comments/page.tsx` calls
+      `api.getComments(id)`, `reactions/page.tsx` calls `api.getReactions(id)`,
+      `followers/page.tsx` calls `api.getFollowers(id)`, and `following/page.tsx` calls
+      `api.getFollowing(id)`. The twelve corrected client methods are pinned to the real routes, and
+      each view invokes its corresponding method
 
 ### Acceptance Criteria
 1. **Testing** 🔄 — ✅ backend above the gate (**S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors
-   78/73/70/79 and 9 ratchets); ⛔ frontend is **S 40.75 / B 35.79 / F 39.64 / L 41.25** against an 80%
+   78/73/70/79 and 9 ratchets); ⛔ frontend is **S 68.39 / B 68.75 / F 70.97 / L 68.17** against an 80%
    target, and the gate itself is set to 38/33/33/38 — it encodes the current number rather than the
    target. ⚠️ **both quadruples were wrong before this pass** (the document said 85.43/82.39/79.00/85.58
    and 39.79/35.90/35.74/40.22)
@@ -588,8 +593,8 @@ Complete testing, optimisation, and deploy to production.
 
 ```bash
 # 1. All test suites
-npm test                                              # backend unit + coverage gate: 151 files / 3228 tests
-npm run test:e2e --workspace=backend                 # 23 e2e/integration files / 173 tests, needs a live PostgreSQL and Valkey
+npm test                                              # backend unit + coverage gate: 151 files / 3270 tests
+npm run test:e2e --workspace=backend                 # 22 e2e/integration files / 186 tests, needs a live PostgreSQL and Valkey
 npm run test:run --workspace=frontend                # 22 files / 356 tests
 npm run test:coverage --workspace=frontend
 
@@ -677,10 +682,10 @@ wrong; one was false on all four of its claims.
 | **M3's verification block sent three requests to routes that do not exist.** `POST /users/:id/follow`, `POST /stories/:id/reactions` and `POST /stories/:id/comments` are declared by no controller, and the fifth command — `POST /messages/conversations` with `{"recipientId","content"}` — created an empty conversation and sent nothing | **Rewritten in full**, 20 commands against the real routes: `/follows`, `/reactions/stories/:storyId`, `/comments` (the bare collection, not a story sub-route), `/notifications/unread-count`, `PATCH /notifications/read-all`, and the two-step conversation-then-message sequence |
 | **M2's search curl returned 400.** `?q=Test` is not a field on `StoriesQueryDto`; the field is **`search`**, and `forbidNonWhitelisted` turns the unknown key into a 400 | Corrected to `?search=Test`, with a note that `q` is real but belongs to the sibling `SearchAuthorsQueryDto` — which is how the mistake survived review |
 | Health citation `backend/src/app.controller.ts:31-27` | **`:62-73`** (payload `:67-72`, `degraded` at `:68`). The old range was backwards and did not exist |
-| CI described as **10 jobs** | **11** — `migration-roundtrip` was missing, and it is the only job that runs the down scripts |
-| "22 e2e/integration files, needs a live PostgreSQL and Valkey" — presented as a passing suite | **23 files / 173 tests**, and the note that until this change set **all 11 integration specs were skipping themselves** because the module graph could not build. "Needs a live database" was true and hid the fact that nothing had ever connected |
-| Every test figure (145/3047, 22/136, 21/340, 2/9) | **151/3228, 23/173, 22/356, 3/15** |
-| Both coverage quadruples | backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend **S 40.75 / B 35.79 / F 39.64 / L 41.25**. All eight previously published values were wrong |
+| CI described as **10 jobs** | **12** — `migration-roundtrip` and `load-test` were missing, and `migration-roundtrip` is the only job that runs the down scripts |
+| "22 e2e/integration files, needs a live PostgreSQL and Valkey" — presented as a passing suite | **22 files / 186 tests**, and the note that until this change set **all 11 integration specs were skipping themselves** because the module graph could not build. "Needs a live database" was true and hid the fact that nothing had ever connected |
+| Every test figure (145/3047, 22/136, 21/340, 2/9) | **151/3270, 22/186, 62/794, 3/15** |
+| Both coverage quadruples | backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend **S 68.39 / B 68.75 / F 70.97 / L 68.17**. All eight previously published values were wrong |
 | `npm run migration:status` instructed from the repo root | ⚠️ **that script did not exist at the root** — this document's own step 3 would have failed with `Missing script`. It exists now (`package.json:22`), and both places that name it say so |
 | M7 listed the DLQ as a bare ✅ while `implementation-roadmap.md` claimed it had no drain and never redelivered | M7 now states the drain that exists (`GET /events/dlq`, `POST /events/dlq/:id/replay`), notes `retryDLQ` is deleted and `getDLQStats` is the remaining spec-only method, and records that the two documents used to contradict each other |
 | M2's `@Secured()` composed three guards | Not stated here, but the four-guard composition (`JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` + `PermissionsGuard`) is now recorded in `phases/implementation-roadmap.md`, which previously omitted `RestrictionGuard` — the guard that makes a moderation `ban` do anything |

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { db } from './index.ts';
+import { db, dbPrimary, dbReplica, closeDatabase, checkDatabaseHealth } from './router.ts';
 import { users } from './schema/users.schema.ts';
 import { categories, tags, stories, storyTags } from './schema/stories.schema.ts';
 import {
@@ -18,6 +18,10 @@ import { reports, moderationActions, userRestrictions } from './schema/moderatio
 @Module({
   providers: [
     { provide: 'DATABASE', useValue: db },
+    { provide: 'DATABASE_PRIMARY', useValue: dbPrimary },
+    { provide: 'DATABASE_REPLICA', useValue: dbReplica },
+    { provide: 'DATABASE_HEALTH', useFactory: checkDatabaseHealth },
+    { provide: 'DATABASE_SHUTDOWN', useFactory: closeDatabase },
     { provide: 'USERS_SCHEMA', useValue: users },
     { provide: 'CATEGORIES_SCHEMA', useValue: categories },
     { provide: 'TAGS_SCHEMA', useValue: tags },
@@ -37,6 +41,10 @@ import { reports, moderationActions, userRestrictions } from './schema/moderatio
   ],
   exports: [
     'DATABASE',
+    'DATABASE_PRIMARY',
+    'DATABASE_REPLICA',
+    'DATABASE_HEALTH',
+    'DATABASE_SHUTDOWN',
     'USERS_SCHEMA',
     'CATEGORIES_SCHEMA',
     'TAGS_SCHEMA',

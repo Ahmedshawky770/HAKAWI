@@ -539,24 +539,77 @@ describe("api client uploads", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  it("posts the file as multipart form data", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({
-        filename: "cover.png",
-        originalName: "cover.png",
-        mimetype: "image/png",
-        size: 12,
-        url: "https://cdn.example/cover.png",
-      }),
-    );
+  it("uploads image via presigned URL flow", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          filename: "uploads/images/123-cover.png",
+          originalName: "cover.png",
+          mimetype: "image/png",
+          size: 0,
+          url: "https://s3.example.com/presigned-url",
+          cdnUrl: "https://cdn.example.com/123-cover.png",
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          filename: "uploads/images/123-cover.png",
+          originalName: "cover.png",
+          mimetype: "image/png",
+          size: 12,
+          url: "https://cdn.example.com/123-cover.png",
+          cdnUrl: "https://cdn.example.com/123-cover.png",
+        })
+      );
 
     const file = new File(["binary-content"], "cover.png", { type: "image/png" });
     const ticket = await api.uploadFile(file);
 
-    expect(ticket.url).toBe("https://cdn.example/cover.png");
-    const { init } = lastCall();
-    expect(init?.body).toBeInstanceOf(FormData);
-    expect(new Headers(init?.headers).get("Content-Type")).toBeNull();
+    expect(ticket.url).toBe("https://cdn.example.com/123-cover.png");
+
+    const calls = fetchMock.mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[0][0]).toContain("/upload/image");
+    expect(calls[1][0]).toBe("https://s3.example.com/presigned-url");
+    expect(calls[1][1]?.method).toBe("PUT");
+    expect(calls[2][0]).toContain("/upload/confirm");
+  });
+
+  it("uploads PDF via presigned URL flow", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          filename: "uploads/pdfs/456-doc.pdf",
+          originalName: "doc.pdf",
+          mimetype: "application/pdf",
+          size: 0,
+          url: "https://s3.example.com/presigned-url-pdf",
+          cdnUrl: "https://cdn.example.com/456-doc.pdf",
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          filename: "uploads/pdfs/456-doc.pdf",
+          originalName: "doc.pdf",
+          mimetype: "application/pdf",
+          size: 1024,
+          url: "https://cdn.example.com/456-doc.pdf",
+          cdnUrl: "https://cdn.example.com/456-doc.pdf",
+        })
+      );
+
+    const file = new File(["pdf-content"], "doc.pdf", { type: "application/pdf" });
+    const ticket = await api.uploadFile(file);
+
+    expect(ticket.url).toBe("https://cdn.example.com/456-doc.pdf");
+
+    const calls = fetchMock.mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[0][0]).toContain("/upload/pdf");
+    expect(calls[1][0]).toBe("https://s3.example.com/presigned-url-pdf");
+    expect(calls[2][0]).toContain("/upload/confirm");
   });
 
   it("rejects an upload ticket without a url", async () => {

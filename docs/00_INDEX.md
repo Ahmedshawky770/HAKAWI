@@ -36,7 +36,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 19 | `security-architecture/overview/security-architecture.md` | Security architecture | ✅ 2026-09-30 |
 | 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions | ✅ 2026-09-30 (MFA marked unbuilt) |
 | 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 51 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
-| 22 | `security-architecture/waf/waf-overview.md` | 35 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
+| 22 | `security-architecture/waf/waf-overview.md` | 34 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
 | 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ⚠️ not audited |
 | 24 | `security/{authentication,authorization,compliance,data-protection,waf-rules}.md` | Flat security set | ⚠️ not audited — see the `security-architecture/` set instead |
 | 25 | `module-boundaries/overview/module-boundaries.md` | **Authoritative module inventory** — 23 registered modules | ✅ 2026-09-30 (fully rewritten) |

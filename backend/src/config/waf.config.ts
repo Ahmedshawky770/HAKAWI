@@ -13,7 +13,7 @@ const csvList = z
   .transform((value) =>
     value
       .split(',')
-      .map((entry) => entry.trim())
+      .map((entry) => entry.trim().toUpperCase())
       .filter((entry) => entry.length > 0),
   );
 
@@ -25,7 +25,7 @@ const csvList = z
  * the middleware, keeps the rule catalogue declarative and lets a new opt-in rule be
  * added without touching evaluation logic (Principle #8).
  */
-export const WAF_OPT_IN_CONTROLS = ['blockForwardingHeaders'] as const;
+export const WAF_OPT_IN_CONTROLS = ['blockForwardingHeaders', 'geoBlocking'] as const;
 
 export type WafOptInControl = (typeof WAF_OPT_IN_CONTROLS)[number];
 
@@ -47,12 +47,10 @@ const envSchema = z.object({
   WAF_VIOLATIONS_BEFORE_TEMP_BLOCK: z.coerce.number().int().positive().default(5),
   WAF_VIOLATIONS_BEFORE_PERMANENT_BLOCK: z.coerce.number().int().positive().default(25),
   /**
-   * RESERVED — PARSED, NOT ENFORCED. Geo-blocking is not implemented: there is no
-   * GeoIP source, no per-rule country matching, and no code path reads this list. The
-   * value is kept so an existing deployment setting it is not silently dropped, and it
-   * is named `reserved*` so no operator can mistake it for a control that is on.
-   * Setting it has no effect on any request. Removing it is a separate decision because
-   * `backend/.env.example` and the deployment docs document the variable.
+   * Country codes (ISO 3166-1 alpha-2) to block. Comma-separated.
+   * Examples: "CN,RU,KP,IR" blocks China, Russia, North Korea, Iran.
+   * When set, the geo-blocking opt-in control is automatically enabled.
+   * Requires GeoIP service (geoip-lite) to be available.
    */
   WAF_BLOCKED_COUNTRIES: csvList,
   /**
@@ -110,10 +108,10 @@ export interface WafConfig {
    */
   readonly enabledOptInControls: readonly WafOptInControl[];
   /**
-   * RESERVED, NOT ENFORCED — see `WAF_BLOCKED_COUNTRIES` above. Kept so a setting is
-   * never silently discarded, named so it cannot be read as an active control.
+   * Country codes (ISO 3166-1 alpha-2) to block. Uppercase.
+   * Only enforced when 'geoBlocking' opt-in control is active (i.e., list is non-empty).
    */
-  readonly reservedBlockedCountries: readonly string[];
+  readonly blockedCountries: readonly string[];
   readonly blockForwardingHeaders: boolean;
   /** Shared with the rate limiter; see `THROTTLE_TRUST_PROXY` above. */
   readonly trustProxy: boolean;
@@ -133,7 +131,7 @@ export const DEFAULT_WAF_CONFIG: WafConfig = {
   violationsBeforeTempBlock: 5,
   violationsBeforePermanentBlock: 25,
   enabledOptInControls: [],
-  reservedBlockedCountries: [],
+  blockedCountries: [],
   blockForwardingHeaders: false,
   trustProxy: false,
 };
@@ -141,6 +139,9 @@ export const DEFAULT_WAF_CONFIG: WafConfig = {
 export function buildWafConfig(source: NodeJS.ProcessEnv): WafConfig {
   const env = envSchema.parse(source);
   const blockForwardingHeaders = env.WAF_BLOCK_FORWARDING_HEADERS;
+  const blockedCountries = env.WAF_BLOCKED_COUNTRIES;
+  const geoBlockingEnabled = blockedCountries.length > 0;
+
   return {
     enabled: env.WAF_ENABLED,
     logViolations: env.WAF_LOG_VIOLATIONS,
@@ -156,8 +157,11 @@ export function buildWafConfig(source: NodeJS.ProcessEnv): WafConfig {
     violationWindowSeconds: env.WAF_VIOLATION_WINDOW_SECONDS,
     violationsBeforeTempBlock: env.WAF_VIOLATIONS_BEFORE_TEMP_BLOCK,
     violationsBeforePermanentBlock: env.WAF_VIOLATIONS_BEFORE_PERMANENT_BLOCK,
-    enabledOptInControls: blockForwardingHeaders ? ['blockForwardingHeaders'] : [],
-    reservedBlockedCountries: env.WAF_BLOCKED_COUNTRIES,
+    enabledOptInControls: [
+      ...(blockForwardingHeaders ? (['blockForwardingHeaders'] as const) : ([] as const)),
+      ...(geoBlockingEnabled ? (['geoBlocking'] as const) : ([] as const)),
+    ],
+    blockedCountries: env.WAF_BLOCKED_COUNTRIES,
     blockForwardingHeaders,
     trustProxy: env.THROTTLE_TRUST_PROXY,
   };

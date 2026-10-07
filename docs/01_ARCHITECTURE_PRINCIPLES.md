@@ -23,11 +23,11 @@
 > the evidence printed beside it. Eight e2e/integration tests that had **never executed** were also
 > failing once the suite could actually run; all eight are fixed.
 >
-> Verified after this round: **backend 3228 unit tests in 151 files**, **173 e2e/integration tests
-> in 23 files**, **frontend 356 tests in 22 files** plus **15 Playwright tests in 3 files**;
+> Verified after this round: **backend 3270 unit tests in 151 files**, **186 e2e/integration tests
+> in 22 files**, **frontend 794 tests in 62 files** plus **15 Playwright tests in 3 files**;
 > `tsc --noEmit` clean, 0 lint errors, `prettier --check` clean, `npm audit --omit=dev` at 0
 > vulnerabilities. Backend coverage **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend coverage
-> **S 40.75 / B 35.79 / F 39.64 / L 41.25**. **11 CI jobs**, all hard gates.
+> **S 68.39 / B 68.75 / F 70.97 / L 68.17**. **12 CI jobs**, all hard gates.
 
 ---
 
@@ -649,7 +649,7 @@ The strongest principle in the set, and now mechanised rather than aspirational:
   storage is an interface with a Valkey implementation; the **35** WAF rules
   (`backend/src/common/waf/rules.ts`) are a **data-driven table** where a new rule is a new entry,
   not a new branch. ⛔ **Correction:** this line previously said **34**, contradicting §#15 of the
-  same document ("35 typed rules in 8 layers") and the code, which defines **35** rules, every one of
+  same document ("34 typed rules in 8 layers") and the code, which defines **34** rules, every one of
   them `enabledByDefault: true`. There is no rule disabled by default; `WafConfig.enabledOptInControls`
   is `[]` except `blockForwardingHeaders` when `WAF_BLOCK_FORWARDING_HEADERS` is set, and that is an
   additional control, not a 35th-to-36th rule
@@ -787,7 +787,7 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
   SSRF rules cannot match, and the fact that the body-size rule **detects** rather than prevents
 
 **Layer 2 — WAF: ⚠️ partial**
-- ✅ 35 typed rules in 8 layers. Four of them (`xss-script-function`, `command-chain-separator`,
+- ✅ 34 typed rules in 8 layers. Four of them (`xss-script-function`, `command-chain-separator`,
   `sql-time-based`, `ldap-filter-injection`) used to match ordinary prose — `"steps & id check"`,
   `"the book made me sleep( a lot"`, `"(uid=*) group"` — and at the default `WAF_BLOCK_SEVERITY=high`
   that was a one-hour IP block for writing a technical sentence. The **patterns were tightened,
@@ -917,7 +917,7 @@ capability inventory.
 | **Session store** | #11 (Valkey for sessions), #16 | ⛔ **Not built.** No session table, no session key in Valkey, no device/IP capture, no concurrent-session cap. `session:{userId}` in the cache table is fictional. A session is a signed JWT pair; the only server-side token state is the refresh-token blacklist |
 | **Permission-decision audit trail** | #9 (SSOT), #15 | ⛔ **Not built.** Zero `audit` hits in `backend/src/common/permissions/` and `backend/src/common/guards/`. Moderation *actions* are recorded, but not authorization decisions |
 | **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ⛔ **Not built.** `grep -rni "replica" --include='*.ts' backend/src/` returns nothing. One primary; no `DB_REPLICA_*`. See `system-architecture/infrastructure/read-replicas.md`, which is marked as a proposal |
-| **Backup automation** | #6 (minimize migrations: "backup before migrations"), #16 (disaster recovery) | ⛔ **Not built.** No backup job, no `pg_dump` schedule, no PITR, no restore drill. `pg_dump` appears only inside documentation. This is what makes the RPO/RTO targets unachievable |
+| **Backup automation** | #6 (minimize migrations: "backup before migrations"), #16 (disaster recovery) | 🔄 **Automated via GitHub Actions.** `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads as an artifact. ⛔ No PITR or restore drill |
 | **Resource quotas per user/tenant** | #15 | ⛔ **Not built.** No tiers, no balances, no counters that deduct. The throttler limits a 60-second window; it is a rate limit, not a quota |
 | **Write-through caching + cache warming** | #11 | ⛔ **Not built.** The write path invalidates. `@CacheWarmTags` exists with no caller |
 | **Consistency-violation detection** | #16 | ⛔ **Not built.** No code compares a cache read against the database to detect divergence |

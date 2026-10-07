@@ -2,6 +2,12 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext } from '../src/test/helpers/test-context.ts';
+import type {
+  CommentResponse,
+  CommentsListResponse,
+  CommentRepliesResponse,
+  CommentDeleteResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Comments Integration', () => {
   let context: TestContext;

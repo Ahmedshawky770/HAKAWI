@@ -19,16 +19,30 @@ name: hakawi-dev
 # lock, so running it on every start is safe.
 #
 # WHY node:22. CI pins Node 22 and `docs/development/setup.md` requires 20+; this file said 20.
+#
+# READ REPLICA ARCHITECTURE (Principle #9 - Single Source of Truth):
+# - postgres-primary: accepts writes, streams WAL to replicas
+# - postgres-replica-1/2: hot standby, read-only, async replication
+# - pgbouncer-primary: connection pool for writes (transaction mode)
+# - pgbouncer-replica: connection pool for reads (transaction mode, load balanced)
+# Application routes: writes → pgbouncer-primary:6432, reads → pgbouncer-replica:6433
 
 services:
-  postgres:
+  postgres-primary:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
       POSTGRES_DB: ${DB_NAME:-hakawi}
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+      -c synchronous_commit=off
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_PRIMARY_PORT:-5432}:5432"
     volumes:
       # A NAMED volume, not a host bind mount. A bind mount puts PostgreSQL's data directory on the
       # host filesystem, and if that filesystem does not support POSIX ownership changes — a network
@@ -36,9 +50,109 @@ services:
       # on boot with `could not change permissions of directory /var/lib/postgresql/data: Operation
       # not permitted`. That is a slow, confusing failure to debug from the compose file; a named
       # volume keeps the data inside Docker's own filesystem where it always works.
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_primary_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-replica-1:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
+      POSTGRES_DB: ${DB_NAME:-hakawi}
+    command: >
+      postgres
+      -c hot_standby=on
+      -c primary_conninfo='host=postgres-primary port=5432 user=${DB_USER:-postgres} password=${DB_PASSWORD:-dev-postgres-change-in-production}'
+      -c primary_slot_name=replica_1_slot
+      -c hot_standby_feedback=on
+    volumes:
+      - postgres_replica_1_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-replica-2:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
+      POSTGRES_DB: ${DB_NAME:-hakawi}
+    command: >
+      postgres
+      -c hot_standby=on
+      -c primary_conninfo='host=postgres-primary port=5432 user=${DB_USER:-postgres} password=${DB_PASSWORD:-dev-postgres-change-in-production}'
+      -c primary_slot_name=replica_2_slot
+      -c hot_standby_feedback=on
+    volumes:
+      - postgres_replica_2_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer-primary:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASES: "hakawi=host=postgres-primary port=5432 dbname=${DB_NAME:-hakawi}"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 5
+      AUTH_TYPE: md5
+      ADMIN_USERS: "${DB_USER:-postgres}"
+      STATS_USERS: "${DB_USER:-postgres}"
+    ports:
+      - "${PGBOUNCER_PRIMARY_PORT:-6432}:6432"
+    volumes:
+      - pgbouncer_primary_etc:/etc/pgbouncer
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-p", "6432", "-U", "${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer-replica:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASES: "hakawi=host=postgres-replica-1 port=5432 dbname=${DB_NAME:-hakawi};hakawi=host=postgres-replica-2 port=5432 dbname=${DB_NAME:-hakawi}"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 40
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 10
+      RESERVE_POOL_TIMEOUT: 5
+      AUTH_TYPE: md5
+      ADMIN_USERS: "${DB_USER:-postgres}"
+      STATS_USERS: "${DB_USER:-postgres}"
+    ports:
+      - "${PGBOUNCER_REPLICA_PORT:-6433}:6432"
+    volumes:
+      - pgbouncer_replica_etc:/etc/pgbouncer
+    depends_on:
+      postgres-replica-1:
+        condition: service_healthy
+      postgres-replica-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-p", "6432", "-U", "${DB_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -68,11 +182,29 @@ services:
       - "${PORT:-3001}:3001"
     # These are the container-to-container addresses. The values under `ports:` above are what the
     # HOST uses, and they are different on purpose — inside the compose network PostgreSQL is always
-    # `postgres:5432` regardless of what `DB_PORT` is set to.
+    # `postgres-primary:5432` regardless of what `DB_PORT` is set to.
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${PORT:-3001}
-      DB_HOST: postgres
+      # Primary (writes) — direct connection for migrations, PgBouncer for app
+      DB_PRIMARY_HOST: postgres-primary
+      DB_PRIMARY_PORT: 5432
+      DB_PRIMARY_NAME: ${DB_NAME:-hakawi}
+      DB_PRIMARY_USER: ${DB_USER:-postgres}
+      DB_PRIMARY_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
+      # Replicas (reads) — PgBouncer for connection pooling
+      DB_REPLICA_HOSTS: postgres-replica-1,postgres-replica-2
+      DB_REPLICA_PORT: 5432
+      DB_REPLICA_NAME: ${DB_NAME:-hakawi}
+      DB_REPLICA_USER: ${DB_USER:-postgres}
+      DB_REPLICA_PASSWORD: ${DB_PASSWORD:-dev-postgres-change-in-production}
+      # PgBouncer endpoints (used by application router)
+      PGBOUNCER_PRIMARY_HOST: pgbouncer-primary
+      PGBOUNCER_PRIMARY_PORT: 6432
+      PGBOUNCER_REPLICA_HOST: pgbouncer-replica
+      PGBOUNCER_REPLICA_PORT: 6432
+      # Legacy compatibility (migration runner uses these)
+      DB_HOST: postgres-primary
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-hakawi}
       DB_USER: ${DB_USER:-postgres}
@@ -95,7 +227,11 @@ services:
       - /app/node_modules
       - /root/.npm
     depends_on:
-      postgres:
+      postgres-primary:
+        condition: service_healthy
+      pgbouncer-primary:
+        condition: service_healthy
+      pgbouncer-replica:
         condition: service_healthy
       valkey:
         condition: service_healthy
@@ -119,7 +255,7 @@ services:
       - /app/node_modules
       - /root/.npm
     depends_on:
-      postgres:
+      postgres-primary:
         condition: service_healthy
       valkey:
         condition: service_healthy
@@ -134,11 +270,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DEFAULT_SERVER: postgres-primary
     depends_on:
-      postgres:
+      postgres-primary:
         condition: service_healthy
 
 volumes:
-  postgres_data:
+  postgres_primary_data:
+  postgres_replica_1_data:
+  postgres_replica_2_data:
   valkey_data:
+  pgbouncer_primary_etc:
+  pgbouncer_replica_etc:

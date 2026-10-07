@@ -50,7 +50,7 @@ under Phase 1 and `docs/roadmap/risks.md`.
       `./backend` put `/app` outside the workspace graph and `npm install` there tried to fetch an
       unpublished package from the public registry. `backend` runs `migration:run` before `start:dev`,
       so the stack can never come up healthy-looking with no schema.
-- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **11 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`, `security`, `build`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**, and it is therefore **not** in `build`'s `needs:` — a green `build` does not prove the from-scratch migration chain applied. `migration-roundtrip` **is** in `needs:` (see below)
+- [x] Set up CI/CD pipeline — `.github/workflows/ci.yml`, **12 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`, `security`, `build`, `load-test`). ⚠️ `migration-verify` is gated on a push to `main`, so on a pull request it reports **skipped**, and it is therefore **not** in `build`'s `needs:` — a green `build` does not prove the from-scratch migration chain applied. `migration-roundtrip` **is** in `needs:` (see below)
 - [x] Set up testing framework — **Vitest**, plus Playwright in `frontend/`. ⚠️ the previous version
       of this line read "**not Jest/Supertest**", which was **half false**. Jest is genuinely absent —
       no `jest` dependency, no `jest.config`, no `@types/jest` in any of the three `package.json`
@@ -115,7 +115,7 @@ green suite means nothing if the suite did not run.**
 - [x] Migration runner — transaction-wrapped, sha256 ledger, rollback classification
 
 **Exit Criteria — met:**
-- ✅ All tests pass (unit + integration) — **151** unit files / **3036** tests; **21** e2e + integration
+- ✅ All tests pass (unit + integration) — **151** unit files / **3270** tests; **22** e2e + integration
       files / **186** tests.
 - ✅ Code coverage ≥ 80% — Measured: backend **S 84.28 / B 80.49 / F 78.86 / L 84.45**
       (`backend/coverage/coverage-summary.json`), against floors 78 / 73 / 70 / 79 and nine per-path
@@ -253,12 +253,14 @@ green suite means nothing if the suite did not run.**
       browser was a **404**. Corrected to the real routes — `/follows`, `/reactions/stories/:storyId`,
       `/comments` — with a new contract test that pins each client method to the **backend controller
       that declares it**, so the two cannot drift apart again silently
-- [x] ✅ **Messages and notifications pages are wired to the API.** `messages/page.tsx` calls
-      `getConversations()` and `notifications/page.tsx` calls `getNotifications()` and
-      `getUnreadNotificationCount()`. The remaining social pages — `/stories/[id]/comments`,
-      `/stories/[id]/reactions`, `/users/[id]/followers`, `/users/[id]/following` — are still
-      `EmptyState` placeholders with no call sites. The client methods are correct and pinned, but
-      those four views do not yet invoke them
+- [x] ✅ **The four social UI pages are now functional read-only server components** that call the API
+      directly: `comments/page.tsx` calls `api.getComments(id)`, `reactions/page.tsx` calls
+      `api.getReactions(id)`, `followers/page.tsx` calls `api.getFollowers(id)`, and
+      `following/page.tsx` calls `api.getFollowing(id)`. The client methods are correct and pinned, and
+      each view invokes its corresponding method. ⚠️ **Two of the four pages lack navigation call
+      sites**: `/stories/[id]/comments` and `/stories/[id]/reactions` are not linked from any main page
+      or navigation element, so users cannot reach them through the product UI. `/users/[id]/followers`
+      and `/users/[id]/following` ARE linked from the profile pages
 - [x] ⚠️ **`PATCH /messages/messages/:messageId/read` had a doubled path segment.** Under
       `@Controller('messages')`, the route string `messages/:messageId/read` produced
       `PATCH /api/v1/messages/messages/:messageId/read`, so the natural path **never matched** and
@@ -290,7 +292,10 @@ is not resolved by any of the above:** `contests.event-handler.ts:129,168` **sti
 `winner.selected`, `contest.started` and `prize.distributed`, and writes through `NotificationsService`.
 `notifications.event-handler.ts` previously subscribed to the same events, producing duplicate rows,
 but that duplicate handler set has been **removed**. The remaining defect is therefore a single
-handler — not duplicated notifications — and the exit criteria are met.
+handler — not duplicated notifications — and the exit criteria are met. ⚠️ **Two social UI pages have
+no navigation call sites:** `/stories/[id]/comments` and `/stories/[id]/reactions` are functional
+server components but are not linked from any main page or navigation element, so users cannot reach
+them through the product UI.
 
 > ⚠️ The original "6 reaction types" is not a schema constraint; `reactions.type` is a `varchar`. The
 > enumerated set is enforced by the DTO instead: `love | like | wow | sad | angry | haunted`.
@@ -527,7 +532,7 @@ global gate applies.
 ## Phase 7: Polish & Launch (Weeks 14–18) — 🔄 IN PROGRESS
 
 ### Week 14: Testing & Optimization — 🔄
-- [x] **Unit tests** — **151 files / 3036 tests**. Coverage above the gate: **S 84.28 / L 84.45**
+- [x] **Unit tests** — **151 files / 3270 tests**. Coverage above the gate: **S 84.28 / L 84.45**
       against floors 78 / 79
 - [x] **Integration + e2e tests** — **22 files / 186 tests** (10 `src/modules/**/e2e/*.e2e-spec.ts`,
       `test/app.e2e-spec.ts`, and **11** `test/*.integration-spec.ts`). Per-file cloned database.
@@ -537,10 +542,10 @@ global gate applies.
       there is no backend browser suite. `frontend/e2e/` holds **3 files / 15 tests**
       (`journeys`, `api-critical-paths`, `accessibility`) — driven by `frontend/playwright.config.ts`,
       which boots both servers itself. The frontend also runs axe-core WCAG 2.0/2.1 A+AA checks
-- [x] **Frontend tests** — **59 files / 749 tests**
+- [x] **Frontend tests** — **62 files / 794 tests**
 - [x] Security audit — CI `security` job runs `npm audit --omit=dev` and `npm audit`
-- [ ] ⛔ **Load testing — NOT AUTOMATED IN CI.** A k6 config exists at `load-tests/k6.conf.js`
-      (1000 VUs, p95 threshold), but there is no CI job executing it
+- [ ] 🔄 **Load testing — automated in CI via k6.** `load-tests/k6.conf.js` (1000 VUs, p95 threshold)
+      is executed by the `load-test` CI job on push to main via `grafana/k6-action@v0.3.0`
 - [ ] ⛔ **Payment flow testing against a live sandbox — NOT BUILT.** The Paymob client is
       unit-tested against Zod-validated fixtures; no test has ever hit Paymob's API
 - [ ] 🔄 Performance optimization — not a measured activity; there is no benchmark suite
@@ -576,25 +581,29 @@ Delivered in the Phase 1–2 window rather than Week 15.
 - [x] Deployment guides — `docs/deployment/*`
 - [ ] ⛔ **User documentation — NOT COMPLETE.** `docs/user/` contains `help-centre.md`,
       `getting-started.md`, and `faq.md`, but these are not comprehensive user-facing docs
-- [x] ✅ **Production `Dockerfile` exists** — a multi-stage build at the repo root — but there is no
-      deployment manifest, IaC, or CI workflow that builds and pushes it
+- [x] ✅ **Production Dockerfiles exist** — multi-stage builds at the repo root, `./backend/Dockerfile`,
+      and `./frontend/Dockerfile`. A deploy workflow exists in `.github/workflows/deploy.yml` that builds
+      and pushes images from `./backend/Dockerfile` and `./frontend/Dockerfile`; there is no staging or
+      production manifest/IaC
 - [x] Monitoring setup (Sentry + Winston) — `@sentry/nestjs@11.1.0`,
       `common/observability/sentry.config.ts`
-- [ ] 🔄 **Backup strategy — DOCUMENTED BUT NOT AUTOMATED.** `docs/deployment/backup-strategy.md`
-      describes the approach, and `scripts/backup.sh` exists, but there is no cron job, scheduler, or
-      PITR config running it
+- [ ] 🔄 **Backup strategy — automated via GitHub Actions.** `.github/workflows/backup.yml` runs
+      `pg_dump` daily at 2 AM UTC and uploads as an artifact. No PITR is configured
 
 ### Week 18: Final Testing & Launch — 🔄
-- [x] Full regression testing — CI runs **11 jobs** on every push and PR: `lint`, `test-unit`,
+- [x] Full regression testing — CI runs **12 jobs** on every push and PR: `lint`, `test-unit`,
       `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`,
-      `migration-verify`, `migration-roundtrip`, `security`, `build`.
+      `migration-verify`, `migration-roundtrip`, `security`, `build`, `load-test`.
 - [ ] ⛔ **Security penetration testing — NOT BUILT.** No pentest report, no external engagement
 - [ ] ⛔ **Performance benchmarking — NOT BUILT.** No benchmark harness
-- [ ] ⛔ **Load testing — NOT AUTOMATED IN CI.** `load-tests/k6.conf.js` exists but is not executed
-      by any CI job
+- [ ] 🔄 **Load testing — automated in CI via k6.** `load-tests/k6.conf.js` is executed by the
+      `load-test` CI job on push to main
 - [ ] ⛔ **Staging deployment — NOT BUILT**
-- [ ] ⛔ **Production deployment — NOT BUILT.** A `Dockerfile` exists but there is no CI workflow,
-      IaC, or deploy script
+- [ ] 🔄 **Production deployment — deploy workflow and per-service Dockerfiles exist, but there is no
+      staging or production manifest/IaC.** `.github/workflows/deploy.yml` builds and pushes
+      `ghcr.io/${{ github.repository }}-backend` and `-frontend` images on push to main from
+      `./backend/Dockerfile` and `./frontend/Dockerfile`. A root `Dockerfile` also exists for
+      local/production image builds, but it is not referenced by `deploy.yml`
 - [ ] ⛔ **Post-launch monitoring — NOT BUILT** (Sentry is wired, but there is no deployed instance
       to monitor)
 - [ ] 🔄 **User documentation — PARTIAL.** `docs/user/` has starter content; comprehensive help
@@ -604,21 +613,21 @@ Delivered in the Phase 1–2 window rather than Week 15.
 
 | Exit criterion | Status |
 |---|---|
-| All tests pass (unit, integration, E2E) | ✅ 151 unit files / 3036 tests · 21 e2e + integration files / 186 tests · 59 frontend files / 749 tests · 3 Playwright files / 15 tests |
+| All tests pass (unit, integration, E2E) | ✅ 151 unit files / 3270 tests · 22 e2e + integration files / 186 tests · 62 frontend files / 794 tests · 3 Playwright files / 15 tests |
 | Code coverage ≥ 80% | ✅ backend **S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors 78/73/70/79 + 9 ratchets; ⚠️ frontend **S 68.39 / L 68.17**, with the gate set to 38/38 rather than the target |
 | Payment E2E tests pass | ✅ against fixtures; ⛔ never run against a live sandbox |
 | Performance targets met (< 200ms p95) | ⛔ not measured — no benchmark harness |
 | Security audit passed | ✅ CI `npm audit` job; ⛔ no pentest |
-| Load testing passed (1000 concurrent users) | ⛔ k6 config exists but is not executed in CI |
+| Load testing passed (1000 concurrent users) | 🔄 k6 config executed in CI via `load-test` job on push to main |
 | Monitoring dashboards active | 🔄 Sentry wired; ⛔ no dashboards defined in the repo |
-| Backup strategy implemented | 🔄 documented and script exists; ⛔ not automated |
+| Backup strategy implemented | 🔄 automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR |
 
 **Deliverables — status:**
 
 | Deliverable | Status |
 |---|---|
-| Production-ready application | 🔄 feature-complete, not deployable (no CI deploy workflow) |
-| Full test coverage | ✅ **3036** backend unit (151 files) + **186** backend e2e/integration (22 files) + **749** frontend (59 files) + **15** Playwright (3 files) = **3986 tests** |
+| Production-ready application | 🔄 feature-complete; per-service Dockerfiles and deploy workflow exist, but no staging/production IaC |
+| Full test coverage | ✅ **3270** backend unit (151 files) + **186** backend e2e/integration (22 files) + **794** frontend (62 files) + **15** Playwright (3 files) = **4265 tests** |
 | Complete documentation | 🔄 `docs/` reconciled; user docs partial |
 | Live deployment | ⛔ none |
 | Monitoring and alerting | 🔄 Sentry + structured logs; ⛔ no alerting rules deployed |
@@ -653,9 +662,9 @@ holds today; a ⛔ means it was never satisfied.
 | **API response < 200ms (p95)** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ never measured |
 | **Security audit passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ✅ | 🔄 CI audit only |
 | **Performance tests passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛔ no harness |
-| **Load testing passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛔ k6 config exists but is not run in CI |
+| **Load testing passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | 🔄 k6 config executed in CI via `load-test` job |
 | **Monitoring configured** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 Sentry, no dashboards |
-| **Backup strategy implemented** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔄 documented, script exists, not automated |
+| **Backup strategy implemented** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔄 automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR |
 | **Circuit breakers configured** | ⛭️ | ⛭️ | ⛭️ | ✅ | ✅ | ✅ | ✅ |
 
 **Legend:** ✅ satisfied · 🔄 partial · ⛭️ was not required for this phase · ⛔ required (or claimed)
@@ -679,8 +688,8 @@ payment marked `failed` rather than a fabricated URL.
 
 ### Testing (All Phases)
 **Risk:** High
-**Outcome:** ✅ **3986 tests across four suites** — 3036 backend unit (151 files) + 186 backend
-e2e/integration (22 files) + 749 frontend (59 files) + 15 Playwright (3 files), all green, with a hard
+**Outcome:** ✅ **4265 tests across four suites** — 3270 backend unit (151 files) + 186 backend
+e2e/integration (22 files) + **794** frontend (**62** files) + 15 Playwright (3 files), all green, with a hard
 CI gate and a per-file cloned test database.
 **Residual risk:** ⛔ **the integration suite had never executed** before this change set — the
 module-graph blockers made all 11 `test/*.integration-spec.ts` files skip themselves while CI stayed
@@ -697,7 +706,7 @@ than failing on the gap.
 | **Payment gateway issues** | Low | High | Zod-validated client, cached auth token, circuit breaker, retry, clean 503 failure | 🔄 untested live |
 | **Sanity CMS integration** | Medium | High | Circuit breaker, PostgreSQL fallback | ✅ |
 | **Performance bottlenecks** | Medium | Medium | Cache-aside + tagged invalidation; read replicas and load testing never built | ⛔ unmitigated |
-| **Security vulnerabilities** | Low | High | WAF (35 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
+| **Security vulnerabilities** | Low | High | WAF (34 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
 | **Testing delays** | Medium | High | TDD, CI on every PR | ✅ — but see the retired *silent suite skip* hazard in `risks.md` |
 | **Scope creep** | High | Medium | Phase boundaries | ✅ |
 | **Migration data loss** | Low | High | **sha256 ledger, transaction wrapping, reversibility classification** — 0 irreversible, 18 data-loss, 4 reversible across the 22 down scripts | ✅ materially reduced |
@@ -724,7 +733,7 @@ than failing on the gap.
 ### Security
 - ✅ CI `npm audit` job passes
 - ⛔ No external pentest
-- ✅ WAF configured — 35 rules, 8 layers
+- ✅ WAF configured — 34 rules, 8 layers
 - ✅ Rate limiting active — 4 tiers, Valkey-backed
 - ⚠️ Encryption at rest (AES-256-GCM) and in transit (TLS, if the platform terminates it) —
       the app itself has no HTTPS redirect or `trust proxy`
@@ -735,11 +744,11 @@ than failing on the gap.
 - ⚠️ All tests pass (unit, integration, E2E) ✅; ⛔ frontend coverage is **68.39** statements /
       **68.17** lines, below the 80% target and above its own 38/38 gate
 - ✅ Payment E2E tests exist
-- ✅ Code review coverage — enforced by the **11-job** CI pipeline
+- ✅ Code review coverage — enforced by the **12-job** CI pipeline
 
 ### Reliability
 - ⛔ Uptime > 99.9% — not deployed, so not applicable
-- 🔄 Backup strategy documented and script exists; ⛔ not automated
+- 🔄 Backup strategy automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR
 - ✅ Monitoring configured (Sentry + Winston + WAF logs + cache metrics)
 - 🔄 Alerting — `monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager
 - 🔄 Disaster recovery plan documented; ⛔ no restore drill, no backup artifact
@@ -797,13 +806,14 @@ Everything the roadmap claims and the repository does not contain:
 
 1. **Read replicas** and **read/write splitting** (Phase 7, Week 16)
 2. **Replication lag monitoring** (Phase 7, Week 16)
-3. **Load testing in CI** — `load-tests/k6.conf.js` exists but is not executed by any CI job
-    (Phase 7, Weeks 14, 18)
+3. **Load testing in CI** — `load-tests/k6.conf.js` is executed by the `load-test` CI job on push to
+    main via `grafana/k6-action@v0.3.0` (Phase 7, Weeks 14, 18)
 4. **Performance benchmarking** — no harness; the p95 targets were never measured (Phase 7, Weeks 14, 18)
-5. **Staging and production deployment** — no manifest, IaC, or deploy script, despite a `Dockerfile`
-    existing at the repo root (Phase 7, Week 18)
-6. **Backup automation** — `scripts/backup.sh` exists but there is no cron job, scheduler, or PITR
-    configuration running it (Phase 7, Week 17)
+5. **Staging and production deployment** — per-service Dockerfiles exist (`./backend/Dockerfile`,
+       `./frontend/Dockerfile`) and a deploy workflow exists (`.github/workflows/deploy.yml`), but there
+       is no staging/production manifest or IaC (Phase 7, Week 18)
+6. **Backup automation** — `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads
+    as an artifact. No PITR is configured (Phase 7, Week 17)
 7. **Alerting deployment** — `monitoring/alert-rules.yml` exists but is not deployed or wired to any
     alertmanager (M8 success criteria)
 8. **User documentation** — `docs/user/` contains starter content but comprehensive help centre,
@@ -819,8 +829,10 @@ Everything the roadmap claims and the repository does not contain:
 17. **Frontend coverage** at the 80% target — ⚠️ currently **S 68.39 / B 68.75 / F 70.97 / L 68.17**,
       with the CI gate set to 38/33/33/38, so it certifies ~68% instead of holding the line at 80%
 18. **Social UI call sites for follow/react/comment** — the client methods are correct and pinned to
-      the backend controllers, but `/stories/[id]/comments`, `/stories/[id]/reactions`,
-      `/users/[id]/followers`, and `/users/[id]/following` are still `EmptyState` placeholders
+      the backend controllers, and `/stories/[id]/comments`, `/stories/[id]/reactions`,
+      `/users/[id]/followers`, and `/users/[id]/following` are now **functional read-only server
+      components** that call the API directly (`api.getComments(id)`, `api.getReactions(id)`,
+      `api.getFollowers(id)`, `api.getFollowing(id)`)
 19. **Session store** — no server-side session record; the client authenticates on a 15-minute
       httpOnly cookie
 20. **Resource quotas** — no per-account storage/posting/rate quota beyond request throttling
@@ -866,15 +878,15 @@ the second pass; the first was 2026-09-30 and it did not survive contact with a 
 
 | Was | Now | How to re-derive |
 |---|---|---|
-| 145 unit files / 3047 tests | **151 files / 3036 tests** | `npm test --workspace=backend` |
+| 145 unit files / 3047 tests | **151 files / 3270 tests** | `npm test --workspace=backend` |
 | 22 e2e files / 136 tests | **22 files / 186 tests** — 10 `src/**/e2e/*.e2e-spec.ts` + 1 `test/app.e2e-spec.ts` + **11** `test/*.integration-spec.ts` | `npm run test:e2e --workspace=backend` |
 | backend coverage S 85.43 / B 82.39 / F 79.00 / L 85.58 | **S 84.28 / B 80.49 / F 78.86 / L 84.45** — **all four were wrong** | `backend/coverage/coverage-summary.json` |
 | frontend coverage S 39.79 / B 35.90 / F 35.74 / L 40.22 | **S 68.39 / B 68.75 / F 70.97 / L 68.17** — **all four were wrong** | `frontend/coverage/coverage-summary.json` |
-| frontend tests 21 files / 340 | **59 files / 749** | `npm run test:run --workspace=frontend` |
+| frontend tests 21 files / 340 | **62 files / 794** | `npm run test:run --workspace=frontend` |
 | Playwright "real browser tests in `backend/` and `frontend/`", 2 files / 9 tests | **frontend only**, **3 files / 15 tests**. `backend/playwright.config.ts` is deleted | `ls frontend/e2e/` |
-| "10 jobs" (Week 18 exit criteria, Quality section) / "10 jobs" | **11 jobs** — `migration-roundtrip` was missing from the list | `awk '/^jobs:/{f=1;next} f&&/^  [a-z-]+:/{print}' .github/workflows/ci.yml` |
-| "3523 tests across three suites (3047 + 136 + 340), plus 9 Playwright" | **3986 across four suites** (3036 + 186 + 749 + 15) | sum of the rows above |
-| "1792 unit + 146 e2e + 340 frontend tests" | **3036 / 186 / 749** | same |
+| "10 jobs" (Week 18 exit criteria, Quality section) / "10 jobs" | **12 jobs** — `migration-roundtrip` and `load-test` were missing from the list | `awk '/^jobs:/{f=1;next} f&&/^  [a-z-]+:/{print}' .github/workflows/ci.yml` |
+| "3523 tests across three suites (3047 + 136 + 340), plus 9 Playwright" | **4265 across four suites** (3270 + 186 + 794 + 15) | sum of the rows above |
+| "1792 unit + 146 e2e + 340 frontend tests" | **3270 / 186 / 794** | same |
 | "23 database-backed integration files" (the total was right, the breakdown was not) | **22 files = 10 e2e in `src` + 1 app e2e + 11 integration** | `ls backend/test/*.integration-spec.ts` → 11 |
 | `@Secured()` composing 3 guards | **4**: `JwtAuthGuard` + `RestrictionGuard` + `RolesGuard` + `PermissionsGuard` | `secured.decorator.ts:31` |
 | "16 `@OnEvent` handler files under `backend/src/modules/*/events/`" | **17 files** contain `@OnEvent`: 16 in `*/events/` directories plus `stories/sanity/sanity-sync.event-handler.ts` | `grep -rl "@OnEvent" backend/src/modules \| wc -l` |

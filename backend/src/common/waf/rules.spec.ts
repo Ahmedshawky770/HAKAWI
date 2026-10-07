@@ -97,11 +97,13 @@ describe('WAF rule catalogue integrity', () => {
     }
   });
 
-  it('marks exactly the forwarding-header rule as opt-in', () => {
-    // That rule cannot tell a header the ingress added from one a client forged, so it
-    // has to be an operator decision rather than an unconditional 403.
-    expect(optInRules.map((rule) => rule.id)).toEqual(['header-forbidden-forwarding-headers']);
+  it('marks exactly the forwarding-header and geo-blocking rules as opt-in', () => {
+    // The forwarding-header rule cannot tell a header the ingress added from one a client forged,
+    // so it has to be an operator decision rather than an unconditional 403.
+    // The geo-blocking rule requires a GeoIP service which may not be available in all deployments.
+    expect(optInRules.map((rule) => rule.id).sort()).toEqual(['geo-blocked-country', 'header-forbidden-forwarding-headers']);
     expect(getRuleById('header-forbidden-forwarding-headers')?.optInControl).toBe('blockForwardingHeaders');
+    expect(getRuleById('geo-blocked-country')?.optInControl).toBe('geoBlocking');
   });
 
   it('explains why the forwarding-header rule is opt-in', () => {

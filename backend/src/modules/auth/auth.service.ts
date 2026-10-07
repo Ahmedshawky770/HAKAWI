@@ -17,6 +17,7 @@ import { USERS_REPOSITORY, type CreateUserInput } from '../../common/users/users
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { UserRegisteredEvent } from '../../common/events/users.events.ts';
 import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
+import { AccountLockoutService, LockoutStatus } from './account-lockout.service.ts';
 
 import {
   appleTokenResponseSchema,
@@ -94,6 +95,7 @@ export function parseDurationToMs(duration: string): number | null {
 @Injectable()
 export class AuthService {
   private readonly REFRESH_TOKEN_BLACKLIST_PREFIX = 'refresh_token:blacklist:';
+  private readonly REFRESH_TOKEN_USER_BLACKLIST_PREFIX = 'refresh_token:blacklist:user:';
   private readonly OAUTH_STATE_PREFIX = 'oauth:state:';
   private readonly OAUTH_STATE_TTL_SECONDS = 600;
 
@@ -109,6 +111,7 @@ export class AuthService {
     @Inject(EncryptionService) private readonly encryptionService: EncryptionService,
     @Inject(AppleJwksService) private readonly appleJwks: AppleJwksService,
     @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(AccountLockoutService) private readonly accountLockout: AccountLockoutService,
   ) {}
 
   async getAuthorizationUrl(provider: string, state?: string): Promise<string> {
@@ -578,19 +581,49 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto): Promise<AuthResponseDto> {
+  async login(dto: LoginDto, clientIp: string): Promise<AuthResponseDto> {
     this.winstonLoggerService.info('Login attempt for a user', 'AuthService');
+
+    // Check if account is locked before attempting login
+    const lockoutStatus = await this.accountLockout.checkStatus(null, clientIp);
+    if (lockoutStatus.isLocked) {
+      this.winstonLoggerService.warn(
+        `Login blocked: IP ${clientIp} is locked out`,
+        'AuthService',
+      );
+      throw new UnauthorizedException(
+        `Too many failed attempts. Please try again after ${Math.ceil(
+          (lockoutStatus.lockoutExpiresAt! - Date.now()) / 60000,
+        )} minutes.`,
+      );
+    }
 
     const user = await this.usersRepository.findByEmail(dto.email);
 
     if (!user || !user.passwordHash) {
       this.winstonLoggerService.warn('Login failed: invalid credentials', 'AuthService');
+      await this.accountLockout.recordFailedAttempt(null, clientIp);
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // Check user-specific lockout
+    const userLockoutStatus = await this.accountLockout.checkStatus(user.id, clientIp);
+    if (userLockoutStatus.isLocked) {
+      this.winstonLoggerService.warn(
+        `Login blocked: user ${user.id} is locked out`,
+        'AuthService',
+      );
+      throw new UnauthorizedException(
+        `Account temporarily locked due to too many failed attempts. Please try again after ${Math.ceil(
+          (userLockoutStatus.lockoutExpiresAt! - Date.now()) / 60000,
+        )} minutes.`,
+      );
     }
 
     const isPasswordValid = await this.passwordHasher.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       this.winstonLoggerService.warn('Login failed: invalid password', 'AuthService');
+      await this.accountLockout.recordFailedAttempt(user.id, clientIp);
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -598,6 +631,9 @@ export class AuthService {
       this.winstonLoggerService.warn('Login failed: account disabled', 'AuthService');
       throw new UnauthorizedException('Account has been disabled');
     }
+
+    // Clear lockout on successful login
+    await this.accountLockout.clearOnSuccess(user.id, clientIp);
 
     const tokens = await this.generateTokens(user);
 
@@ -647,6 +683,15 @@ export class AuthService {
         'AuthService',
       );
       throw new UnauthorizedException('Refresh token has been revoked');
+    }
+
+    // Check user-level blacklist (set on password reset, account disable, etc.)
+    if (await this.valkeyService.exists(this.REFRESH_TOKEN_USER_BLACKLIST_PREFIX + payload.sub)) {
+      this.winstonLoggerService.warn(
+        `Refresh refused: all tokens for user ${payload.sub} have been revoked (password reset or admin action)`,
+        'AuthService',
+      );
+      throw new UnauthorizedException('Session has been revoked. Please log in again.');
     }
 
     const user = await this.usersRepository.findById(payload.sub);
@@ -853,6 +898,17 @@ export class AuthService {
     const passwordHash = await this.passwordHasher.hash(newPassword);
     await this.usersRepository.update(userId, { passwordHash, passwordResetToken: null });
     await this.valkeyService.del(`password:reset:${token}`);
+
+    // Invalidate all refresh tokens for this user (password reset = session revocation)
+    const userBlacklistKey = this.REFRESH_TOKEN_USER_BLACKLIST_PREFIX + userId;
+    const refreshTokenTtlSeconds = this.refreshBlacklistTtlSeconds();
+    await this.valkeyService.set(userBlacklistKey, 'revoked', refreshTokenTtlSeconds);
+
+    this.winstonLoggerService.info(
+      `All refresh tokens revoked for user ${userId} due to password reset`,
+      'AuthService',
+    );
+
     await this.eventBus.emit('password.reset.completed', { userId });
   }
 }

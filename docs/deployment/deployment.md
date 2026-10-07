@@ -5,14 +5,51 @@
 This guide explains how to deploy the Hakawi platform to production. The platform consists of:
 - Backend: NestJS API
 - Frontend: Next.js application
-- Database: PostgreSQL 15
+- Database: PostgreSQL 15 (Primary + Read Replicas)
 - Cache: Valkey 8
+- Connection Pooling: PgBouncer (Primary + Replica)
 - Storage: S3-compatible (R2 recommended)
+
+## Architecture (Principle #9 — Single Source of Truth)
+
+```
+                    ┌─────────────────────────────────────────────────────────────────┐
+                                    APPLICATION (NestJS)
+                    └─────────────────────────────────────────────────────────────────┘
+                                                │
+                        ┌───────────────────────┴───────────────────────┐
+                        ▼                                               ▼
+                ┌───────────────┐                               ┌───────────────┐
+                │  PgBouncer    │                               │  PgBouncer    │
+                │  (Primary)    │                               │  (Replica)    │
+                │  :6432        │                               │  :6433        │
+                └───────┬───────┘                               └───────┬───────┘
+                        │                                               │
+                        ▼                                               ▼
+                ┌───────────────┐                               ┌───────────────┐
+                │ PostgreSQL    │──► ASYNC REPLICATION ────────►│ PostgreSQL    │
+                │ PRIMARY       │   (wal_level=replica)          │ REPLICA 1     │
+                │ :5432         │                               │ :5432         │
+                └───────────────┘                               └───────────────┘
+                                                                        │
+                                                                        ▼
+                                                                ┌───────────────┐
+                                                                │ PostgreSQL    │
+                                                                │ REPLICA 2     │
+                                                                │ :5432         │
+                                                                └───────────────┘
+```
+
+**Routing Logic (Application Layer):**
+- **Writes** (INSERT/UPDATE/DELETE) → Primary via PgBouncer Primary (6432)
+- **Reads** (SELECT) → Round-robin across Replicas via PgBouncer Replica (6433)
+- **Transactions** → Always Primary (never route write transactions to replicas)
+- **Post-write reads** → Primary (read-your-writes consistency)
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- PostgreSQL 15+ database
+- PostgreSQL 15+ (Primary + 1-2 Replicas)
 - Valkey 8+ instance
 - S3-compatible storage bucket
 - Domain name with SSL certificate
@@ -32,8 +69,38 @@ Edit `.env` with your production values:
 
 ```env
 NODE_ENV=production
-DATABASE_URL=postgres://postgres:YOUR_PASSWORD@db:5432/hakawi
-VALKEY_URL=valkey://valkey:6379
+
+# Primary (writes) — REQUIRED
+DB_PRIMARY_HOST=your-postgres-primary-host
+DB_PRIMARY_PORT=5432
+DB_PRIMARY_NAME=hakawi
+DB_PRIMARY_USER=hakawi_user
+DB_PRIMARY_PASSWORD=your-strong-db-password
+
+# Replicas (reads) — OPTIONAL, comma-separated hosts
+DB_REPLICA_HOSTS=your-replica1-host,your-replica2-host
+DB_REPLICA_PORT=5432
+DB_REPLICA_NAME=hakawi
+DB_REPLICA_USER=hakawi_user
+DB_REPLICA_PASSWORD=your-strong-db-password
+
+# PgBouncer endpoints — OPTIONAL (for connection pooling)
+PGBOUNCER_PRIMARY_HOST=your-pgbouncer-primary-host
+PGBOUNCER_PRIMARY_PORT=6432
+PGBOUNCER_REPLICA_HOST=your-pgbouncer-replica-host
+PGBOUNCER_REPLICA_PORT=6432
+
+# Legacy compatibility (used by migration runner)
+DB_HOST=your-postgres-primary-host
+DB_PORT=5432
+DB_NAME=hakawi
+DB_USER=hakawi_user
+DB_PASSWORD=your-strong-db-password
+
+VALKEY_HOST=your-valkey-host
+VALKEY_PORT=6379
+VALKEY_PASSWORD=your-valkey-password
+
 JWT_SECRET=your-production-jwt-secret
 ENCRYPTION_KEY=your-production-encryption-key
 PAYMOB_API_KEY=your-paymob-api-key
@@ -48,7 +115,7 @@ S3_SECRET_KEY=your-secret-key
 ### Step 2: Build and Start
 
 ```bash
-docker compose up -d postgres valkey
+docker compose up -d postgres-primary postgres-replica-1 postgres-replica-2 pgbouncer-primary pgbouncer-replica valkey
 docker compose up -d --build backend frontend
 ```
 
@@ -58,10 +125,21 @@ docker compose up -d --build backend frontend
 docker compose exec backend npm run migration:run --workspace=backend
 ```
 
+> **Note:** Migrations run against the PRIMARY only (DDL never hits replicas). The migration runner uses `DB_PRIMARY_HOST` explicitly.
+
 ### Step 4: Verify
 
 ```bash
 curl https://your-domain.com/health
+
+# Expected response with replicas:
+{
+  "status": "healthy",
+  "database": "connected",
+  "replicas": ["connected", "connected"],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
 ```
 
 ## Option 2: GitHub Actions Deployment (Recommended for Production)
@@ -118,11 +196,11 @@ ssh deploy@your-server.com
 # Pull the latest images
 docker compose pull
 
-# Start services
-docker compose up -d postgres valkey
+# Start services (primary + replicas + pgbouncers + valkey)
+docker compose up -d postgres-primary postgres-replica-1 postgres-replica-2 pgbouncer-primary pgbouncer-replica valkey
 docker compose up -d --build backend frontend
 
-# Run migrations
+# Run migrations (against PRIMARY only)
 docker compose exec backend npm run migration:run --workspace=backend
 
 # Verify
@@ -137,10 +215,14 @@ curl http://localhost:3000/health
 kubectl create namespace hakawi
 ```
 
-### Step 2: Deploy Database
+### Step 2: Deploy Database (with Replicas)
 
 ```bash
-kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/postgres-primary.yaml
+kubectl apply -f k8s/postgres-replica-1.yaml
+kubectl apply -f k8s/postgres-replica-2.yaml
+kubectl apply -f k8s/pgbouncer-primary.yaml
+kubectl apply -f k8s/pgbouncer-replica.yaml
 kubectl apply -f k8s/valkey.yaml
 ```
 
@@ -165,8 +247,28 @@ kubectl exec -it deployment/backend -- npm run migration:run --workspace=backend
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `NODE_ENV` | Yes | `production` for production |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `VALKEY_URL` | Yes | Valkey/Redis connection string |
+| `DB_PRIMARY_HOST` | Yes | Primary PostgreSQL host |
+| `DB_PRIMARY_PORT` | Yes | Primary PostgreSQL port (5432) |
+| `DB_PRIMARY_NAME` | Yes | Database name |
+| `DB_PRIMARY_USER` | Yes | Database user |
+| `DB_PRIMARY_PASSWORD` | Yes | Database password |
+| `DB_REPLICA_HOSTS` | No | Comma-separated replica hosts (enables read replicas) |
+| `DB_REPLICA_PORT` | No | Replica port (default 5432) |
+| `DB_REPLICA_NAME` | No | Replica database name |
+| `DB_REPLICA_USER` | No | Replica user |
+| `DB_REPLICA_PASSWORD` | No | Replica password |
+| `PGBOUNCER_PRIMARY_HOST` | No | PgBouncer primary host |
+| `PGBOUNCER_PRIMARY_PORT` | No | PgBouncer primary port (6432) |
+| `PGBOUNCER_REPLICA_HOST` | No | PgBouncer replica host |
+| `PGBOUNCER_REPLICA_PORT` | No | PgBouncer replica port (6432) |
+| `DB_HOST` | Yes* | Legacy: Primary host (migration runner) |
+| `DB_PORT` | Yes* | Legacy: Primary port (migration runner) |
+| `DB_NAME` | Yes* | Legacy: Database name (migration runner) |
+| `DB_USER` | Yes* | Legacy: Database user (migration runner) |
+| `DB_PASSWORD` | Yes* | Legacy: Database password (migration runner) |
+| `VALKEY_HOST` | Yes | Valkey host |
+| `VALKEY_PORT` | Yes | Valkey port |
+| `VALKEY_PASSWORD` | Yes | Valkey password |
 | `JWT_SECRET` | Yes | JWT signing secret (min 32 chars) |
 | `ENCRYPTION_KEY` | Yes | Encryption key (32 bytes, hex) |
 | `PAYMOB_API_KEY` | Yes | Paymob API key |
@@ -178,6 +280,8 @@ kubectl exec -it deployment/backend -- npm run migration:run --workspace=backend
 | `S3_SECRET_KEY` | Yes | S3 secret key |
 | `SENTRY_DSN` | No | Sentry DSN for error tracking |
 | `EMAIL_FROM` | No | From address for emails |
+
+*Legacy variables used by migration runner only.
 
 ### Frontend
 
@@ -194,11 +298,31 @@ kubectl exec -it deployment/backend -- npm run migration:run --workspace=backend
 # Health check
 curl https://your-domain.com/health
 
-# Expected response
+# Expected response (with replicas):
 {
   "status": "healthy",
   "database": "connected",
-  "valkey": "connected"
+  "replicas": ["connected", "connected"],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
+
+# Response without replicas:
+{
+  "status": "healthy",
+  "database": "connected",
+  "replicas": [],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
+
+# Degraded (primary down):
+{
+  "status": "degraded",
+  "database": "disconnected",
+  "replicas": ["connected", "connected"],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
 }
 
 # Metrics
@@ -219,6 +343,21 @@ curl https://your-domain.com/api/health
 The application exposes metrics at:
 - Backend: `GET /metrics/cache` (cache hit rate)
 - Backend: `GET /metrics/degradation` (circuit breaker status)
+
+### Replication Lag Monitoring
+
+Add to Prometheus alerting rules:
+
+```yaml
+- alert: PostgreSQLReplicationLag
+  expr: pg_replication_lag_seconds > 30
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "PostgreSQL replication lag high"
+    description: "Replication lag exceeds 30 seconds"
+```
 
 ### Logs
 
@@ -243,7 +382,7 @@ Alert rules are defined in `monitoring/alert-rules.yml`. To deploy:
 
 Backups run daily at 2 AM UTC via GitHub Actions (`.github/workflows/backup.yml`):
 
-1. Creates timestamped PostgreSQL dump
+1. Creates timestamped PostgreSQL dump (from PRIMARY)
 2. Compresses with gzip
 3. Uploads as GitHub Actions artifact (30-day retention)
 4. Rotates old backups
@@ -251,7 +390,7 @@ Backups run daily at 2 AM UTC via GitHub Actions (`.github/workflows/backup.yml`
 ### Manual Backups
 
 ```bash
-# Create a manual backup
+# Create a manual backup (from PRIMARY)
 ./scripts/backup.sh ./backups
 
 # Restore from backup
@@ -288,6 +427,8 @@ kubectl rollout status deployment/backend
 - [ ] All secrets stored in GitHub Secrets or environment variables
 - [ ] HTTPS enabled with valid SSL certificate
 - [ ] Database not exposed to public internet
+- [ ] Replicas not exposed to public internet
+- [ ] PgBouncer not exposed to public internet
 - [ ] Valkey password protected
 - [ ] S3 bucket not public
 - [ ] Firewall rules configured
@@ -318,14 +459,30 @@ docker compose logs backend
 # - Migration failed
 ```
 
+### Replica connection issues
+
+```bash
+# Check replica status
+docker compose exec postgres-replica-1 psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
+
+# Check replication lag
+docker compose exec postgres-primary psql -U postgres -c "SELECT * FROM pg_stat_replication;"
+
+# Check PgBouncer stats
+docker compose exec pgbouncer-replica pgbouncer -c "SHOW STATS;"
+```
+
 ### Database connection issues
 
 ```bash
 # Test connection
 docker compose exec backend npm run migration:status --workspace=backend
 
-# Check PostgreSQL
-docker compose exec postgres pg_isready -U postgres
+# Check PostgreSQL primary
+docker compose exec postgres-primary pg_isready -U postgres
+
+# Check replicas
+docker compose exec postgres-replica-1 pg_isready -U postgres
 ```
 
 ### Frontend build fails
@@ -344,13 +501,25 @@ npm run build --workspace=frontend
 |---------|-----|--------|---------|
 | Backend | 2 cores | 4 GB | 20 GB |
 | Frontend | 1 core | 2 GB | 10 GB |
-| PostgreSQL | 2 cores | 4 GB | 50 GB |
+| PostgreSQL Primary | 4 cores | 8 GB | 100 GB |
+| PostgreSQL Replica (x2) | 2 cores | 4 GB | 100 GB |
+| PgBouncer Primary | 1 core | 1 GB | - |
+| PgBouncer Replica | 1 core | 2 GB | - |
 | Valkey | 1 core | 2 GB | 10 GB |
 
 ### Optimization
 
 - Enable CDN for static assets
-- Configure database connection pooling
+- Configure database connection pooling (PgBouncer in transaction mode)
 - Enable Valkey persistence (AOF + RDB)
-- Use read replicas for read-heavy workloads
+- Use read replicas for read-heavy workloads (SELECT → replicas)
 - Enable gzip compression
+- Monitor replication lag (alert if > 30s)
+
+### Read Replica Best Practices
+
+1. **Read-your-writes consistency**: After a write, read from primary for immediate consistency
+2. **Stale reads acceptable**: Analytics, listings, search can tolerate replica lag
+3. **Post-write redirect**: After `POST /stories`, next `GET /stories` hits primary
+4. **Auth checks**: Always hit primary for auth/authorization queries
+5. **Financial queries**: Payments, rentals always use primary

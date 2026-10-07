@@ -1,0 +1,192 @@
+{
+  "dashboard": {
+    "title": "Hakawi Platform Overview",
+    "tags": ["hakawi", "overview"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "API Request Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_seconds_count{job=\"hakawi-backend\"}[5m])) by (status)",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "reqps"}, {"format": "short"}]
+      },
+      {
+        "id": 2,
+        "title": "API Latency (p50, p95, p99)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
+            "legendFormat": "p99"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "s"}, {"format": "short"}]
+      },
+      {
+        "id": 3,
+        "title": "Error Rate by Endpoint",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_seconds_count{job=\"hakawi-backend\",status=~\"5..\"}[5m])) by (handler)",
+            "legendFormat": "{{handler}}"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "reqps"}, {"format": "short"}]
+      },
+      {
+        "id": 4,
+        "title": "Active Users (Last 5 min)",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(increase(auth_success_total[5m]))",
+            "legendFormat": "Active Users"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "WAF Blocked IPs",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "waf_blocked_ips",
+            "legendFormat": "Blocked IPs"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Rate Limit Exceeded",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(rate_limit_exceeded_total[5m])) by (tier)",
+            "legendFormat": "{{tier}}"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "reqps"}, {"format": "short"}]
+      },
+      {
+        "id": 7,
+        "title": "PostgreSQL Connections",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "pg_settings_max_connections",
+            "legendFormat": "Max Connections"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "short"}, {"format": "short"}]
+      },
+      {
+        "id": 8,
+        "title": "Valkey Memory Usage",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes / 1024 / 1024",
+            "legendFormat": "Used (MB)"
+          },
+          {
+            "expr": "redis_memory_max_bytes / 1024 / 1024",
+            "legendFormat": "Max (MB)"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "MB"}, {"format": "short"}]
+      },
+      {
+        "id": 9,
+        "title": "Valkey Hit Rate",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100",
+            "legendFormat": "Hit Rate %"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "percentunit", "max": 100}, {"format": "short"}]
+      },
+      {
+        "id": 10,
+        "title": "Payment Success/Failure Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(payments_success_total[5m]))",
+            "legendFormat": "Success"
+          },
+          {
+            "expr": "sum(rate(payments_failed_total[5m]))",
+            "legendFormat": "Failed"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "reqps"}, {"format": "short"}]
+      },
+      {
+        "id": 11,
+        "title": "Cache Metrics",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "cache_hits_total",
+            "legendFormat": "Hits"
+          },
+          {
+            "expr": "cache_misses_total",
+            "legendFormat": "Misses"
+          },
+          {
+            "expr": "cache_hit_rate * 100",
+            "legendFormat": "Hit Rate %"
+          }
+        ],
+        "xaxis": {"mode": "time"},
+        "yaxes": [{"format": "short"}, {"format": "percentunit", "max": 100}]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

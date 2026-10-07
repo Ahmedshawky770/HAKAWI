@@ -8,6 +8,7 @@ import { WAF_RESPONSE_HEADERS } from '../waf/headers.ts';
 import { WAF_RULES, WAF_SEVERITY_RANK, type WafPatternRule } from '../waf/rules.ts';
 
 import { WafMiddleware, clientIpOf, resolveClientIp } from './waf.middleware.ts';
+import { GeoIpService } from '../waf/geo-ip.service.ts';
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -91,18 +92,33 @@ describe('WafMiddleware', () => {
   let middleware: WafMiddleware;
 
   function build(): WafMiddleware {
+    const mockGeoIp = {
+      isBlocked: vi.fn().mockReturnValue(false),
+      lookupCountryCode: vi.fn().mockReturnValue(null),
+      getBlockedCountries: vi.fn().mockReturnValue([]),
+      enabled: false,
+    };
     return new WafMiddleware(
       logger as unknown as WinstonLoggerService,
       blocklist as unknown as IpBlocklistService,
+      mockGeoIp as unknown as GeoIpService,
       config,
     );
   }
 
   function buildWithConfig(overrides: Partial<WafConfig>): WafMiddleware {
-    return new WafMiddleware(logger as unknown as WinstonLoggerService, blocklist as unknown as IpBlocklistService, {
-      ...config,
-      ...overrides,
-    });
+    const mockGeoIp = {
+      isBlocked: vi.fn().mockReturnValue(false),
+      lookupCountryCode: vi.fn().mockReturnValue(null),
+      getBlockedCountries: vi.fn().mockReturnValue([]),
+      enabled: false,
+    };
+    return new WafMiddleware(
+      logger as unknown as WinstonLoggerService,
+      blocklist as unknown as IpBlocklistService,
+      mockGeoIp as unknown as GeoIpService,
+      { ...config, ...overrides },
+    );
   }
 
   beforeEach(() => {
@@ -218,37 +234,33 @@ describe('WafMiddleware', () => {
       // Asserted through the full inspection path (decode + evaluate) rather than
       // `pattern.test(sample)`, because some samples are percent-encoded and only match
       // after `decodeForInspection`.
-      const optedIn = new WafMiddleware(
-        logger as unknown as WinstonLoggerService,
-        blocklist as unknown as IpBlocklistService,
-        { ...config, blockForwardingHeaders: true, enabledOptInControls: ['blockForwardingHeaders'] },
-      );
+      // The geo-blocking rule requires a GeoIP service, so we only test the forwarding-header rule here.
+      const optedIn = buildWithConfig({
+        blockForwardingHeaders: true,
+        enabledOptInControls: ['blockForwardingHeaders'],
+      });
 
-      for (const rule of WAF_RULES.filter((candidate) => candidate.optInControl !== undefined)) {
-        const request = makeRequest({
-          headers: rule.sampleTarget === 'header' ? { [rule.sample]: 'x' } : {},
-          query: rule.sampleTarget === 'query' ? { probe: rule.sample } : {},
-          url: rule.sampleTarget === 'url' ? rule.sample : '/api/v1/stories',
-          originalUrl: rule.sampleTarget === 'url' ? rule.sample : '/api/v1/stories',
-          body: rule.sampleTarget === 'body' ? { probe: rule.sample } : {},
-        });
-        expect(optedIn.evaluate(request as unknown as Request).map((violation) => violation.ruleId)).toContain(rule.id);
-      }
+      const forwardingRule = WAF_RULES.find((r) => r.id === 'header-forbidden-forwarding-headers')!;
+      const request = makeRequest({
+        headers: forwardingRule.sampleTarget === 'header' ? { [forwardingRule.sample]: 'x' } : {},
+        query: forwardingRule.sampleTarget === 'query' ? { probe: forwardingRule.sample } : {},
+        url: forwardingRule.sampleTarget === 'url' ? forwardingRule.sample : '/api/v1/stories',
+        originalUrl: forwardingRule.sampleTarget === 'url' ? forwardingRule.sample : '/api/v1/stories',
+        body: forwardingRule.sampleTarget === 'body' ? { probe: forwardingRule.sample } : {},
+      });
+      expect(optedIn.evaluate(request as unknown as Request).map((violation) => violation.ruleId)).toContain(
+        forwardingRule.id,
+      );
     });
 
     it('an opt-in rule only fires when its control is enabled', () => {
       // The forwarding-header rule is deliberately excluded from the loop above: with
       // the default config it MUST NOT fire, or the sample test would pass only because
       // the deployment happens to look like a direct-to-internet one.
-      const optedIn = new WafMiddleware(
-        logger as unknown as WinstonLoggerService,
-        blocklist as unknown as IpBlocklistService,
-        {
-          ...config,
-          blockForwardingHeaders: true,
-          enabledOptInControls: ['blockForwardingHeaders'],
-        },
-      );
+      const optedIn = buildWithConfig({
+        blockForwardingHeaders: true,
+        enabledOptInControls: ['blockForwardingHeaders'],
+      });
       const request = makeRequest({ headers: { 'x-original-url': 'x-original-url' } });
 
       expect(middleware.evaluate(request as unknown as Request)).toEqual([]);
@@ -482,7 +494,7 @@ describe('WafMiddleware', () => {
       const contradictory = buildWithConfig({
         blockForwardingHeaders: true,
         enabledOptInControls: ['blockForwardingHeaders'],
-        disabledRules: ['header-forbidden-forwarding-headers'],
+        disabledRules: ['HEADER-FORBIDDEN-FORWARDING-HEADERS'],
       });
       const decision = await contradictory.decide(
         makeRequest({ headers: { 'X-Original-URL': '/admin' } }) as unknown as Request,
@@ -634,11 +646,11 @@ describe('WafMiddleware', () => {
       config = {
         ...config,
         disabledRules: [
-          'sql-tautology',
-          'xss-script-tag',
-          'xss-script-function',
-          'traversal-relative-segment',
-          'traversal-sensitive-file',
+          'SQL-TAUTOLOGY',
+          'XSS-SCRIPT-TAG',
+          'XSS-SCRIPT-FUNCTION',
+          'TRAVERSAL-RELATIVE-SEGMENT',
+          'TRAVERSAL-SENSITIVE-FILE',
         ],
       };
       middleware = build();
@@ -678,7 +690,7 @@ describe('WafMiddleware', () => {
       expect(built.maxRequestSizeBytes).toBe(2048);
       expect(built.allowedMethods).toEqual(['GET', 'POST']);
       expect(built.tempBlockSeconds).toBe(60);
-      expect(built.disabledRules).toEqual(['xss-script-tag', 'sql-tautology']);
+      expect(built.disabledRules).toEqual(['XSS-SCRIPT-TAG', 'SQL-TAUTOLOGY']);
       expect(built.failMode).toBe('closed');
     });
 

@@ -707,10 +707,47 @@ export const api = {
       }),
     ),
 
-  uploadFile: (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    return apiUpload(uploadTicketSchema, "/upload", formData);
+  uploadFile: async (file: File, options?: { storyId?: string; folder?: 'images' | 'pdfs' }) => {
+    const isPdf = file.type === 'application/pdf';
+    const folder = options?.folder || (isPdf ? 'pdfs' : 'images');
+    const endpoint = isPdf ? '/upload/pdf' : '/upload/image';
+
+    const generateUploadUrlSchema = z.object({
+      filename: z.string(),
+      originalName: z.string(),
+      mimetype: z.string(),
+      size: z.number(),
+      url: z.string(),
+      cdnUrl: z.string().optional(),
+    });
+
+    const presignedResponse = await apiRequest(generateUploadUrlSchema, endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
+
+    const uploadResponse = await fetch(presignedResponse.url, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type,
+      },
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload to storage failed: ${uploadResponse.statusText}`);
+    }
+
+    return apiRequest(uploadTicketSchema, '/upload/confirm', {
+      method: 'POST',
+      body: JSON.stringify({
+        filename: presignedResponse.filename,
+        originalName: file.name,
+        mimetype: file.type,
+        size: file.size,
+        storyId: options?.storyId,
+      }),
+    });
   },
 
   createRental: (bookId: string, durationDays?: number) =>

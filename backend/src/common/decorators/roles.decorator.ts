@@ -13,11 +13,15 @@ export const REQUIRED_ADMIN_ROLE_KEY = 'requiredAdminRole' as const;
 
 export const PERMISSIONS_KEY = 'permissions' as const;
 
+export const MFA_REQUIRED_KEY = 'mfaRequired' as const;
+
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 export const RequireRoles = (...accountTypes: AccountType[]) => SetMetadata(REQUIRED_ROLES_KEY, accountTypes);
 
 export const RequireAdminRole = (role: AdminRole) => SetMetadata(REQUIRED_ADMIN_ROLE_KEY, role);
+
+export const RequireMfa = () => SetMetadata(MFA_REQUIRED_KEY, true);
 
 /**
  * The one place a requirement value is built, so the mode is attached atomically to the list.

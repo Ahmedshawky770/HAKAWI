@@ -7,10 +7,10 @@ import request from 'supertest';
 
 import { AppController } from './app.controller.ts';
 import { ValkeyService } from './common/services/valkey.service.ts';
-import { db } from './db/index.ts';
+import { checkDatabaseHealth } from './db/router.ts';
 
-vi.mock('./db/index.ts', () => ({
-  db: { execute: vi.fn() },
+vi.mock('./db/router.ts', () => ({
+  checkDatabaseHealth: vi.fn(),
 }));
 
 type MockValkeyService = { ping: ReturnType<typeof vi.fn> };
@@ -38,7 +38,10 @@ describe('AppController', () => {
 
     appController = moduleRef.get<AppController>(AppController);
     mockValkeyService.ping.mockResolvedValue('PONG');
-    vi.mocked(db.execute).mockResolvedValue([] as never);
+    vi.mocked(checkDatabaseHealth).mockResolvedValue({
+      primary: true,
+      replicas: [true, true],
+    });
 
     app = moduleRef.createNestApplication();
     await app.init();
@@ -77,7 +80,10 @@ describe('AppController', () => {
     it('should report degraded inline while still answering 200', async () => {
       // Deliberate: an index that 500s when the database is unreachable is useless to the probe that
       // most needs it. The degradation is in the body, not the status code.
-      vi.mocked(db.execute).mockRejectedValue(new Error('connection refused'));
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({
+        primary: false,
+        replicas: [false, false],
+      });
 
       const res = await request(httpServer).get('/').expect(200);
 
@@ -102,14 +108,15 @@ describe('AppController', () => {
       expect(res.body).toEqual({
         status: 'healthy',
         database: 'connected',
+        replicas: ['connected', 'connected'],
         valkey: 'connected',
         timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
       });
     });
 
-    it('should probe the database with a trivial statement', async () => {
+    it('should probe the database via checkDatabaseHealth', async () => {
       await appController.getHealth();
-      expect(db.execute).toHaveBeenCalledTimes(1);
+      expect(checkDatabaseHealth).toHaveBeenCalledTimes(1);
     });
 
     it('should probe valkey with a ping', async () => {
@@ -117,14 +124,18 @@ describe('AppController', () => {
       expect(mockValkeyService.ping).toHaveBeenCalledTimes(1);
     });
 
-    it('should degrade when the database is unreachable', async () => {
-      vi.mocked(db.execute).mockRejectedValue(new Error('connection refused'));
+    it('should degrade when the database primary is unreachable', async () => {
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({
+        primary: false,
+        replicas: [true, true],
+      });
 
       const res = await request(httpServer).get('/health').expect(200);
 
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
+        replicas: ['connected', 'connected'],
         valkey: 'connected',
       });
     });
@@ -137,12 +148,16 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'connected',
+        replicas: ['connected', 'connected'],
         valkey: 'disconnected',
       });
     });
 
     it('should degrade when both dependencies are unreachable', async () => {
-      vi.mocked(db.execute).mockRejectedValue(new Error('connection refused'));
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({
+        primary: false,
+        replicas: [false, false],
+      });
       mockValkeyService.ping.mockRejectedValue(new Error('connection reset'));
 
       const res = await request(httpServer).get('/health').expect(200);
@@ -150,12 +165,16 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
+        replicas: ['disconnected', 'disconnected'],
         valkey: 'disconnected',
       });
     });
 
     it('should still return an ISO timestamp when degraded', async () => {
-      vi.mocked(db.execute).mockRejectedValue(new Error('connection refused'));
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({
+        primary: false,
+        replicas: [false, false],
+      });
 
       const res = await request(httpServer).get('/health').expect(200);
 

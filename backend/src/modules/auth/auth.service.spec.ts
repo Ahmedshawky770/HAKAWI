@@ -19,6 +19,7 @@ import type {
 import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
 
 import { AuthService } from './auth.service.ts';
+import { AccountLockoutService } from './account-lockout.service.ts';
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
@@ -112,6 +113,12 @@ type MockEmailVerificationService = {
   generateToken: ReturnType<typeof vi.fn>;
 };
 
+type MockAccountLockoutService = {
+  checkStatus: ReturnType<typeof vi.fn>;
+  recordFailedAttempt: ReturnType<typeof vi.fn>;
+  clearOnSuccess: ReturnType<typeof vi.fn>;
+};
+
 type MockEncryptionService = {
   encrypt: ReturnType<typeof vi.fn>;
   decrypt: ReturnType<typeof vi.fn>;
@@ -134,6 +141,7 @@ describe('AuthService', () => {
   let circuitBreaker: MockCircuitBreakerService;
   let appleJwks: { resolveKey: ReturnType<typeof vi.fn>; keys: ReturnType<typeof vi.fn> };
   let configService: { get: ReturnType<typeof vi.fn> };
+  let accountLockoutService: MockAccountLockoutService;
 
   beforeEach(() => {
     usersRepository = {
@@ -187,6 +195,24 @@ describe('AuthService', () => {
       generateToken: vi.fn().mockResolvedValue('12345678'),
     };
 
+    accountLockoutService = {
+      checkStatus: vi.fn().mockResolvedValue({
+        isLocked: false,
+        failedAttempts: 0,
+        remainingAttempts: 5,
+        lockoutExpiresAt: null,
+        nextAttemptDelayMs: 0,
+      }),
+      recordFailedAttempt: vi.fn().mockResolvedValue({
+        isLocked: false,
+        failedAttempts: 1,
+        remainingAttempts: 4,
+        lockoutExpiresAt: null,
+        nextAttemptDelayMs: 1000,
+      }),
+      clearOnSuccess: vi.fn().mockResolvedValue(undefined),
+    };
+
     encryptionService = {
       encrypt: vi.fn().mockImplementation((token: string) => `encrypted_${token}`),
       decrypt: vi.fn().mockImplementation((token: string) => token.replace('encrypted_', '')),
@@ -224,6 +250,7 @@ describe('AuthService', () => {
       encryptionService as unknown as EncryptionService,
       appleJwks as unknown as AppleJwksService,
       configService as unknown as ConfigService,
+      accountLockoutService as unknown as AccountLockoutService,
     );
   });
 

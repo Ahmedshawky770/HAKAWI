@@ -23,6 +23,7 @@ import { ContestsModule } from './modules/contests/contests.module.ts';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module.ts';
 import { SharedCacheModule } from './modules/shared/cache/shared-cache.module.ts';
 import { BadgesModule } from './modules/badges/badges.module.ts';
+import { AdminModule } from './modules/admin/admin.module.ts';
 
 import { AppController } from './app.controller.ts';
 
@@ -53,6 +54,7 @@ import { AppController } from './app.controller.ts';
     ContestsModule,
     ReadingProgressModule,
     BadgesModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

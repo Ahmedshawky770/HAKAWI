@@ -9,6 +9,7 @@ export const WAF_LAYERS = [
   'traversal',
   'ssrf',
   'bot',
+  'geo',
 ] as const;
 
 export type WafLayer = (typeof WAF_LAYERS)[number];
@@ -628,6 +629,25 @@ export const WAF_RULES: readonly WafRule[] = [
     sampleTarget: 'header',
     description:
       'Listed in the documentation but deliberately only "low": these clients are also used by the frontend, the mobile app, health checks and the Playwright suite. It is reported and logged, never blocked at the default severity threshold.',
+  },
+  {
+    id: 'geo-blocked-country',
+    name: 'Request from a blocked country',
+    kind: 'pattern',
+    layer: 'geo',
+    severity: 'high',
+    targets: ['header'],
+    // This rule is handled specially in the middleware via GeoIpService.
+    // The pattern here is a placeholder; the actual matching happens in evaluateNonPatternRules.
+    pattern: /^/,
+    optInControl: 'geoBlocking',
+    enabledByDefault: true,
+    sample: 'X-Forwarded-For: 1.2.3.4 (CN)',
+    sampleTarget: 'header',
+    description:
+      'Blocks requests from countries listed in WAF_BLOCKED_COUNTRIES (ISO 3166-1 alpha-2 codes). '
+      + 'Requires GeoIP service (geoip-lite). Only active when WAF_BLOCKED_COUNTRIES is set. '
+      + 'Private/internal IPs are never blocked. Fail-open: if GeoIP lookup fails, the request passes.',
   },
 ];
 

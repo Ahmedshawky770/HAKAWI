@@ -31,6 +31,9 @@ export type UpdateUserInput = Partial<{
   emailVerified: boolean;
   emailVerificationToken: string | null;
   passwordResetToken: string | null;
+  totpSecretEncrypted: string | null;
+  mfaEnabled: boolean;
+  mfaEnforcedAt: Date | null;
 }>;
 
 export type User = {
@@ -57,6 +60,9 @@ export type User = {
   emailVerified: boolean | null;
   emailVerificationToken: string | null;
   passwordResetToken: string | null;
+  totpSecretEncrypted: string | null;
+  mfaEnabled: boolean;
+  mfaEnforcedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
