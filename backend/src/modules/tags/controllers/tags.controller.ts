@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards, Inject, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Inject, HttpCode, HttpStatus } from '@nestjs/common';
 
 import { Public, RequireAdminRole, RequirePermissions } from '../../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../../common/decorators/secured.decorator.ts';

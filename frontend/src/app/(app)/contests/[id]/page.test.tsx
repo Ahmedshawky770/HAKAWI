@@ -5,6 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
+vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
+vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
+vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
+vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
+vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
+vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
+
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { createDeferred, jsonResponse } from "@/test-utils/support";

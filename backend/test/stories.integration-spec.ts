@@ -3,20 +3,11 @@ import request from 'supertest';
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
 import { AdminRole } from '../src/common/constants/roles.ts';
-
-interface StoryListItem {
-  id: string;
-  status: string;
-}
-
-interface StoryDetail {
-  id: string;
-  title: string;
-  slug: string;
-  status: string;
-  author: { id: string };
-  views: number;
-}
+import type {
+  StoryListItemResponse,
+  StoryDetail,
+  MyStoriesListResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Stories Integration', () => {
   let context: TestContext;
@@ -100,15 +91,17 @@ describe('Stories Integration', () => {
     it('should get a paginated list of stories', async () => {
       const res = await request(context.httpServer).get('/stories?page=1&limit=20').expect(200);
 
-      expect(res.body).toHaveProperty('stories');
-      expect(Array.isArray(res.body.stories)).toBe(true);
-      expect(res.body.page).toBe(1);
-      expect(res.body.limit).toBe(20);
-      expect(res.body.total).toBeGreaterThanOrEqual(1);
+      const body = res.body as MyStoriesListResponse;
+
+      expect(body).toHaveProperty('stories');
+      expect(Array.isArray(body.stories)).toBe(true);
+      expect(body.page).toBe(1);
+      expect(body.limit).toBe(20);
+      expect(body.total).toBeGreaterThanOrEqual(1);
 
       // The list is an index of published content, so the story the author actually published has to
       // be in it — `total >= 1` on its own would also be satisfied by a row of somebody else's.
-      const stories = res.body.stories as StoryListItem[];
+      const stories = body.stories as StoryListItemResponse[];
       expect(stories.map((story) => story.id)).toContain(publishedStoryId);
     });
 
@@ -125,7 +118,9 @@ describe('Stories Integration', () => {
     it('should not return drafts to an anonymous caller even when the query asks for them', async () => {
       const res = await request(context.httpServer).get('/stories?status=draft&page=1&limit=100').expect(200);
 
-      const stories = res.body.stories as StoryListItem[];
+      const body = res.body as MyStoriesListResponse;
+
+      const stories = body.stories as StoryListItemResponse[];
       expect(stories.map((story) => story.id)).not.toContain(storyId);
       expect(stories.every((story) => story.status === 'published')).toBe(true);
     });
@@ -150,8 +145,10 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('stories');
-      const stories = res.body.stories as StoryListItem[];
+      const body = res.body as MyStoriesListResponse;
+
+      expect(body).toHaveProperty('stories');
+      const stories = body.stories as StoryListItemResponse[];
       expect(stories.map((story) => story.id)).toContain(storyId);
       // Nothing on this route is reachable through `GET /stories`, so a published row here would mean
       // the status filter had stopped being one.
@@ -167,7 +164,9 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const stories = res.body.stories as StoryListItem[];
+      const body = res.body as MyStoriesListResponse;
+
+      const stories = body.stories as StoryListItemResponse[];
       expect(stories.map((story) => story.id)).not.toContain(strangerDraft.id);
       expect(JSON.stringify(res.body)).not.toContain('Stranger Draft');
     });
@@ -189,7 +188,8 @@ describe('Stories Integration', () => {
         .get('/stories/mine')
         .set('Authorization', `Bearer ${stranger.accessToken}`)
         .expect(200);
-      expect((strangerView.body.stories as StoryListItem[]).map((story) => story.id)).toContain(strangerDraft.id);
+      const strangerViewBody = strangerView.body as MyStoriesListResponse;
+      expect((strangerViewBody.stories as StoryListItemResponse[]).map((story) => story.id)).toContain(strangerDraft.id);
     });
 
     it('should refuse an anonymous caller', async () => {
@@ -209,7 +209,9 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const stories = narrowed.body.stories as StoryListItem[];
+      const narrowedBody = narrowed.body as MyStoriesListResponse;
+
+      const stories = narrowedBody.stories as StoryListItemResponse[];
       expect(stories.every((story) => story.status === 'archived')).toBe(true);
       expect(stories.map((story) => story.id)).toContain(archived.id);
       // The draft is still there, it is simply not an archived story.
@@ -236,7 +238,9 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      expect((res.body.stories as StoryListItem[]).map((story) => story.id)).toContain(archived.id);
+      const body = res.body as MyStoriesListResponse;
+
+      expect((body.stories as StoryListItemResponse[]).map((story) => story.id)).toContain(archived.id);
     });
 
     /**
@@ -250,8 +254,10 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body.stories)).toBe(true);
-      expect((res.body.stories as StoryListItem[]).map((story) => story.id)).toContain(storyId);
+      const body = res.body as MyStoriesListResponse;
+
+      expect(Array.isArray(body.stories)).toBe(true);
+      expect((body.stories as StoryListItemResponse[]).map((story) => story.id)).toContain(storyId);
     });
   });
 

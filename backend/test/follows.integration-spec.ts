@@ -2,6 +2,13 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type {
+  FollowResponse,
+  FollowersListResponse,
+  FollowingListResponse,
+  FollowStatsResponse,
+  FollowStatusResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 interface FollowPair {
   follower: TestUser;
@@ -37,9 +44,11 @@ describe('Follows Integration', () => {
 
       const res = await follow(follower, followee.id).expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.followerId).toBe(follower.id);
-      expect(res.body.followingId).toBe(followee.id);
+      const body = res.body as FollowResponse;
+
+      expect(body).toHaveProperty('id');
+      expect(body.followerId).toBe(follower.id);
+      expect(body.followingId).toBe(followee.id);
     });
 
     it('should return 409 when already following', async () => {
@@ -66,7 +75,8 @@ describe('Follows Integration', () => {
         .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('message');
+      const body = res.body as { message: string };
+      expect(body).toHaveProperty('message');
     });
 
     it('should return 404 when not following', async () => {
@@ -86,10 +96,12 @@ describe('Follows Integration', () => {
 
       const res = await request(context.httpServer).get(`/follows/user/${followee.id}/followers`).expect(200);
 
-      expect(res.body).toHaveProperty('followers');
-      expect(Array.isArray(res.body.followers)).toBe(true);
-      expect(res.body.total).toBe(1);
-      expect(res.body.followers[0].followerId).toBe(follower.id);
+      const body = res.body as FollowersListResponse;
+
+      expect(body).toHaveProperty('followers');
+      expect(Array.isArray(body.followers)).toBe(true);
+      expect(body.total).toBe(1);
+      expect(body.followers[0].followerId).toBe(follower.id);
     });
   });
 
@@ -100,10 +112,12 @@ describe('Follows Integration', () => {
 
       const res = await request(context.httpServer).get(`/follows/user/${follower.id}/following`).expect(200);
 
-      expect(res.body).toHaveProperty('following');
-      expect(Array.isArray(res.body.following)).toBe(true);
-      expect(res.body.total).toBe(1);
-      expect(res.body.following[0].followingId).toBe(followee.id);
+      const body = res.body as FollowingListResponse;
+
+      expect(body).toHaveProperty('following');
+      expect(Array.isArray(body.following)).toBe(true);
+      expect(body.total).toBe(1);
+      expect(body.following[0].followingId).toBe(followee.id);
     });
   });
 
@@ -117,10 +131,12 @@ describe('Follows Integration', () => {
         .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('followersCount');
-      expect(res.body).toHaveProperty('followingCount');
-      expect(res.body).toHaveProperty('isFollowing');
-      expect(res.body.followersCount).toBe(1);
+      const body = res.body as FollowStatsResponse;
+
+      expect(body).toHaveProperty('followersCount');
+      expect(body).toHaveProperty('followingCount');
+      expect(body).toHaveProperty('isFollowing');
+      expect(body.followersCount).toBe(1);
     });
   });
 
@@ -134,7 +150,9 @@ describe('Follows Integration', () => {
         .set('Authorization', `Bearer ${follower.accessToken}`)
         .expect(200);
 
-      expect(res.body.isFollowing).toBe(true);
+      const body = res.body as FollowStatusResponse;
+
+      expect(body.isFollowing).toBe(true);
     });
 
     it('should report isFollowing false when the user is not followed', async () => {
@@ -145,7 +163,9 @@ describe('Follows Integration', () => {
         .set('Authorization', `Bearer ${followee.accessToken}`)
         .expect(200);
 
-      expect(res.body.isFollowing).toBe(false);
+      const body = res.body as FollowStatusResponse;
+
+      expect(body.isFollowing).toBe(false);
     });
   });
 });

@@ -295,6 +295,8 @@ export interface StoryDetailResponse extends StoryListItemResponse {
   content: string;
 }
 
+export type StoryDetail = StoryDetailResponse;
+
 export interface StoriesListResponse {
   stories: StoryListItemResponse[];
   total: number;

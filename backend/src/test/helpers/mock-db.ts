@@ -119,10 +119,12 @@ export function installMockDb(db: MockDb): MockDbControl {
   const queue: Array<() => unknown> = [];
   const built: MockChain[] = [];
 
-  for (const name of ENTRY_POINTS) {
+for (const name of ENTRY_POINTS) {
     db[name].mockReset();
     db[name].mockImplementation(() => {
-      const chain = makeChain(queue.length > 0 ? queue.shift()!() : []);
+      const chain = makeChain(
+        queue.length > 0 ? (queue.shift() as () => unknown)() : [],
+      );
       built.push(chain);
       return chain;
     });

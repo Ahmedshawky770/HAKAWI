@@ -2,6 +2,12 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext } from '../src/test/helpers/test-context.ts';
+import type {
+  ReactionResponse,
+  ReactionsListResponse,
+  ReactionStatsResponse,
+  UserReactionResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Reactions Integration', () => {
   let context: TestContext;
@@ -35,10 +41,12 @@ describe('Reactions Integration', () => {
     it('should add a reaction to a story', async () => {
       const res = await react('like').expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.userId).toBeDefined();
-      expect(res.body.storyId).toBe(storyId);
-      expect(res.body.type).toBe('like');
+      const body = res.body as ReactionResponse;
+
+      expect(body).toHaveProperty('id');
+      expect(body.userId).toBeDefined();
+      expect(body.storyId).toBe(storyId);
+      expect(body.type).toBe('like');
     });
 
     it('should update an existing reaction instead of duplicating it', async () => {
@@ -46,9 +54,12 @@ describe('Reactions Integration', () => {
 
       const res = await react('love').expect(201);
 
-      expect(res.body.type).toBe('love');
+      const body = res.body as ReactionResponse;
+
+      expect(body.type).toBe('love');
       const list = await request(context.httpServer).get(`/reactions/stories/${storyId}`).expect(200);
-      expect(list.body.total).toBe(1);
+      const listBody = list.body as ReactionsListResponse;
+      expect(listBody.total).toBe(1);
     });
   });
 
@@ -61,7 +72,8 @@ describe('Reactions Integration', () => {
         .set('Authorization', `Bearer ${authorToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('message');
+      const body = res.body as { message: string };
+      expect(body).toHaveProperty('message');
     });
   });
 
@@ -71,10 +83,12 @@ describe('Reactions Integration', () => {
 
       const res = await request(context.httpServer).get(`/reactions/stories/${storyId}`).expect(200);
 
-      expect(res.body).toHaveProperty('reactions');
-      expect(res.body).toHaveProperty('total');
-      expect(Array.isArray(res.body.reactions)).toBe(true);
-      expect(res.body.total).toBe(1);
+      const body = res.body as ReactionsListResponse;
+
+      expect(body).toHaveProperty('reactions');
+      expect(body).toHaveProperty('total');
+      expect(Array.isArray(body.reactions)).toBe(true);
+      expect(body.total).toBe(1);
     });
   });
 
@@ -84,8 +98,10 @@ describe('Reactions Integration', () => {
 
       const res = await request(context.httpServer).get(`/reactions/stories/${storyId}/counts`).expect(200);
 
-      expect(res.body).toHaveProperty('like');
-      expect(res.body.like).toBe(1);
+      const body = res.body as ReactionStatsResponse;
+
+      expect(body).toHaveProperty('like');
+      expect(body.like).toBe(1);
     });
   });
 
@@ -98,8 +114,10 @@ describe('Reactions Integration', () => {
         .set('Authorization', `Bearer ${authorToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('type');
-      expect(res.body.type).toBe('like');
+      const body = res.body as UserReactionResponse;
+
+      expect(body).toHaveProperty('type');
+      expect(body.type).toBe('like');
     });
 
     it('should return 200 with an empty payload when the user has no reaction', async () => {

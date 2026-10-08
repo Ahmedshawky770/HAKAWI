@@ -10,11 +10,6 @@ const sampleFollow: Follow = {
   followerId: "follower-1",
   followingId: "following-1",
   createdAt: "2026-01-01T00:00:00Z",
-  follower: {
-    id: "follower-1",
-    name: "متابع تجريبي",
-    email: "follower@example.com",
-  },
 };
 
 describe("FollowListRow", () => {

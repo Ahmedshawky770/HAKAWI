@@ -38,12 +38,14 @@ describe('Comments Integration', () => {
         .send({ storyId, content: 'Great story!' })
         .expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.authorId).toBe(authorId);
-      expect(res.body.storyId).toBe(storyId);
-      expect(res.body.content).toBe('Great story!');
+      const body = res.body as CommentResponse;
 
-      commentId = res.body.id;
+      expect(body).toHaveProperty('id');
+      expect(body.authorId).toBe(authorId);
+      expect(body.storyId).toBe(storyId);
+      expect(body.content).toBe('Great story!');
+
+      commentId = body.id;
     });
   });
 
@@ -51,10 +53,12 @@ describe('Comments Integration', () => {
     it('should list the top-level comments of a story', async () => {
       const res = await request(context.httpServer).get(`/comments/story/${storyId}`).expect(200);
 
-      expect(res.body).toHaveProperty('comments');
-      expect(Array.isArray(res.body.comments)).toBe(true);
-      expect(res.body.total).toBe(1);
-      expect(res.body.comments[0].id).toBe(commentId);
+      const body = res.body as CommentsListResponse;
+
+      expect(body).toHaveProperty('comments');
+      expect(Array.isArray(body.comments)).toBe(true);
+      expect(body.total).toBe(1);
+      expect(body.comments[0].id).toBe(commentId);
     });
 
     it('should return an empty list for a story without comments', async () => {
@@ -62,8 +66,10 @@ describe('Comments Integration', () => {
 
       const res = await request(context.httpServer).get(`/comments/story/${other.id}`).expect(200);
 
-      expect(res.body.comments).toEqual([]);
-      expect(res.body.total).toBe(0);
+      const body = res.body as CommentsListResponse;
+
+      expect(body.comments).toEqual([]);
+      expect(body.total).toBe(0);
     });
   });
 
@@ -83,21 +89,24 @@ describe('Comments Integration', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ storyId: threadedStoryId, content: 'Root comment' })
         .expect(201);
-      rootCommentId = root.body.id;
+      const rootBody = root.body as CommentResponse;
+      rootCommentId = rootBody.id;
 
       const reply = await request(context.httpServer)
         .post('/comments')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ storyId: threadedStoryId, content: 'A reply', parentId: rootCommentId })
         .expect(201);
-      replyCommentId = reply.body.id;
+      const replyBody = reply.body as CommentResponse;
+      replyCommentId = replyBody.id;
 
       const doomed = await request(context.httpServer)
         .post('/comments')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ storyId: threadedStoryId, content: 'About to be deleted' })
         .expect(201);
-      deletedCommentId = doomed.body.id;
+      const doomedBody = doomed.body as CommentResponse;
+      deletedCommentId = doomedBody.id;
 
       await request(context.httpServer)
         .delete(`/comments/${deletedCommentId}`)
@@ -108,19 +117,23 @@ describe('Comments Integration', () => {
     it('should list the root comment while excluding replies and soft-deleted comments', async () => {
       const res = await request(context.httpServer).get(`/comments/story/${threadedStoryId}`).expect(200);
 
-      expect(res.body.total).toBe(1);
-      expect(res.body.comments).toHaveLength(1);
-      expect(res.body.comments[0].id).toBe(rootCommentId);
-      expect(res.body.comments.map((c: { id: string }) => c.id)).not.toContain(replyCommentId);
-      expect(res.body.comments.map((c: { id: string }) => c.id)).not.toContain(deletedCommentId);
+      const body = res.body as CommentsListResponse;
+
+      expect(body.total).toBe(1);
+      expect(body.comments).toHaveLength(1);
+      expect(body.comments[0].id).toBe(rootCommentId);
+      expect(body.comments.map((c) => c.id)).not.toContain(replyCommentId);
+      expect(body.comments.map((c) => c.id)).not.toContain(deletedCommentId);
     });
 
     it('should list replies under their parent', async () => {
       const res = await request(context.httpServer).get(`/comments/${rootCommentId}/replies`).expect(200);
 
-      expect(res.body.total).toBe(1);
-      expect(res.body.replies).toHaveLength(1);
-      expect(res.body.replies[0].id).toBe(replyCommentId);
+      const body = res.body as CommentRepliesResponse;
+
+      expect(body.total).toBe(1);
+      expect(body.replies).toHaveLength(1);
+      expect(body.replies[0].id).toBe(replyCommentId);
     });
 
     it('should hide a soft-deleted reply from its parent thread', async () => {
@@ -131,8 +144,10 @@ describe('Comments Integration', () => {
 
       const res = await request(context.httpServer).get(`/comments/${rootCommentId}/replies`).expect(200);
 
-      expect(res.body.total).toBe(0);
-      expect(res.body.replies).toEqual([]);
+      const body = res.body as CommentRepliesResponse;
+
+      expect(body.total).toBe(0);
+      expect(body.replies).toEqual([]);
     });
   });
 
@@ -144,7 +159,9 @@ describe('Comments Integration', () => {
         .send({ content: 'Updated comment' })
         .expect(200);
 
-      expect(res.body.content).toBe('Updated comment');
+      const body = res.body as CommentResponse;
+
+      expect(body.content).toBe('Updated comment');
     });
 
     it('should reject an update from a different author', async () => {
@@ -165,10 +182,14 @@ describe('Comments Integration', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('message');
+      const body = res.body as CommentDeleteResponse;
+
+      expect(body).toHaveProperty('message');
 
       const list = await request(context.httpServer).get(`/comments/story/${storyId}`).expect(200);
-      expect(list.body.total).toBe(0);
+
+      const listBody = list.body as CommentsListResponse;
+      expect(listBody.total).toBe(0);
     });
   });
 });

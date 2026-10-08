@@ -13,10 +13,9 @@ vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { contestsListResponseSchema, contestSchema } from "@/lib/schemas";
-import { z } from "zod";
+import { storyRecordResponseSchema } from "@/lib/schemas";
 
-import ContestsPage from "@/app/(app)/contests/page";
+import StoryCreatePage from "@/app/(app)/stories/create/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -35,59 +34,58 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
-    listContests: vi.fn(),
-    getContest: vi.fn(),
+    createStory: vi.fn(),
+    listStories: vi.fn(),
   },
 }));
 
 const mockedApi = vi.mocked(api);
 
-const contestDefaults = {
-  id: "contest-1",
-  title: "مسابقة القصص القصيرة",
-  description: "أفضل قصة في الشهر",
-  startDate: new Date().toISOString(),
-  endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-  submissionDeadline: new Date().toISOString(),
+const mockStory = {
+  id: "story-1",
+  title: "قصة جديدة",
+  author: { id: "user-1", name: "أحمد محمد" },
+  category: "fiction",
+  authorId: "user-1",
+  authorName: "أحمد محمد",
+  slug: "story-1",
+  excerpt: "مقتطف من القصة",
+  content: "محتوى القصة",
+  coverImage: null,
+  status: "draft",
   categoryId: "cat-1",
-  status: "active",
-  createdBy: "user-1",
-  winnerId: null,
-  prize: "1000 ج.م",
-  rules: "قواعد المسابقة",
+  viewCount: 0,
+  likeCount: 0,
+  commentCount: 0,
+  readingTime: 5,
+  deletedAt: null,
+  tags: [],
+  views: 0,
+  reactions: 0,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  publishedAt: null,
 };
 
-describe("Contests list page", () => {
+describe("Story create page", () => {
   beforeEach(() => {
-    mockedApi.listContests.mockResolvedValue({
-      contests: [contestDefaults],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    mockedApi.createStory.mockResolvedValue(mockStory);
   });
 
-  it("renders the page title", () => {
-    render(<ContestsPage />);
-    expect(screen.getByRole("heading", { name: "المنافسات" })).toBeInTheDocument();
+  it("renders the story create heading", () => {
+    render(<StoryCreatePage />);
+    expect(screen.getByRole("heading", { name: "إنشاء قصة جديدة" })).toBeInTheDocument();
   });
 
-  it("calls listContests on mount", async () => {
-    render(<ContestsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.listContests).toHaveBeenCalled();
-  });
-
-  it("handles loading state", () => {
-    render(<ContestsPage />);
+  it("shows loading state", () => {
+    render(<StoryCreatePage />);
     expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
   });
 
-  it("displays contests when available", async () => {
-    render(<ContestsPage />);
+  it("handles form submission", async () => {
+    mockedApi.createStory.mockResolvedValue(mockStory);
+    render(<StoryCreatePage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("مسابقة القصص القصيرة")).toBeInTheDocument();
+    expect(mockedApi.createStory).toHaveBeenCalled();
   });
 });

@@ -1,11 +1,11 @@
 import type { Server } from 'http';
 import { createHash } from 'crypto';
 
+import type { INestApplication, ArgumentMetadata } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
-import type { ArgumentMetadata, INestApplication } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
@@ -19,6 +19,7 @@ import { SanityService } from '../../modules/stories/sanity/sanity.service.ts';
 import { USERS_REPOSITORY } from '../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersRepository } from '../../modules/users/repositories/users.repository.ts';
 import { db } from '../../db/index.ts';
+
 import { currentTestDatabase } from './test-database-scope.ts';
 import { cleanValkey } from './test-isolation.util.ts';
 
@@ -149,7 +150,6 @@ function expectStatus(response: { status: number; body: unknown }, operation: st
   }
 }
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
 export async function createTestContext(overrides: TestContextOverrides = {}): Promise<TestContext> {
   const namespace = createHash('sha1').update(currentTestDatabase.databaseName).digest('hex').slice(0, 8);
   let sequence = 0;
@@ -188,10 +188,10 @@ export async function createTestContext(overrides: TestContextOverrides = {}): P
     })
     .compile();
 
-  const app = moduleRef.createNestApplication();
+  const app: INestApplication = moduleRef.createNestApplication();
   app.useGlobalPipes(createTestValidationPipe());
   await app.init();
-  const httpServer = app.getHttpServer() as Server;
+  const httpServer = app.getHttpServer();
 
   const nextToken = (): string => {
     sequence += 1;

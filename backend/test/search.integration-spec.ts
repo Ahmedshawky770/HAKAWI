@@ -2,6 +2,12 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type {
+  SearchResponse,
+  SearchResultStory,
+  SearchAuthorsResponse,
+  SearchResultUser,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Search Integration', () => {
   let context: TestContext;
@@ -35,10 +41,12 @@ describe('Search Integration', () => {
         .get(`/search?query=${encodeURIComponent(context.namespace)}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('results');
-      expect(res.body).toHaveProperty('total');
-      expect(res.body.total).toBeGreaterThanOrEqual(1);
-      expect(res.body.results.some((result: { title: string }) => result.title.includes(context.namespace))).toBe(true);
+      const body = res.body as SearchResponse;
+
+      expect(body).toHaveProperty('results');
+      expect(body).toHaveProperty('total');
+      expect(body.total).toBeGreaterThanOrEqual(1);
+      expect(body.results.some((result: SearchResultStory) => result.title.includes(context.namespace))).toBe(true);
     });
 
     it('should return an empty result set for an unknown query', async () => {
@@ -46,8 +54,10 @@ describe('Search Integration', () => {
         .get(`/search?query=${encodeURIComponent(`no-such-term-${context.namespace}`)}`)
         .expect(200);
 
-      expect(res.body.total).toBe(0);
-      expect(res.body.results).toEqual([]);
+      const body = res.body as SearchResponse;
+
+      expect(body.total).toBe(0);
+      expect(body.results).toEqual([]);
     });
 
     it('should coerce the pagination query because SearchFiltersDto is a validated class', async () => {
@@ -55,8 +65,10 @@ describe('Search Integration', () => {
         .get(`/search?query=${encodeURIComponent(context.namespace)}&status=published&page=1&limit=10`)
         .expect(200);
 
-      expect(res.body.page).toBe(1);
-      expect(res.body.limit).toBe(10);
+      const body = res.body as SearchResponse;
+
+      expect(body.page).toBe(1);
+      expect(body.limit).toBe(10);
     });
   });
 
@@ -70,9 +82,11 @@ describe('Search Integration', () => {
         .get(`/search/authors?q=${encodeURIComponent('searcher')}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('authors');
-      expect(res.body).toHaveProperty('total');
-      expect(Array.isArray(res.body.authors)).toBe(true);
+      const body = res.body as SearchAuthorsResponse;
+
+      expect(body).toHaveProperty('authors');
+      expect(body).toHaveProperty('total');
+      expect(Array.isArray(body.authors)).toBe(true);
     });
   });
 

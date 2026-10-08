@@ -26,9 +26,9 @@ export function CommentRow({ comment }: CommentRowProps) {
             </span>
           </div>
           <p className="mt-1 text-sm text-ink">{comment.content}</p>
-          {comment.repliesCount > 0 && (
+          {comment.replyCount > 0 && (
             <p className="mt-1 text-xs text-ink-muted">
-              <span className="hk-numeric">{comment.repliesCount}</span> رد
+              <span className="hk-numeric">{comment.replyCount}</span> رد
             </p>
           )}
         </div>

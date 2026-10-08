@@ -11,11 +11,6 @@ const sampleReaction: Reaction = {
   userId: "user-1",
   type: "like",
   createdAt: "2026-01-01T00:00:00Z",
-  user: {
-    id: "user-1",
-    name: "مستخدم تجريبي",
-    email: "user@example.com",
-  },
 };
 
 describe("ReactionRow", () => {

@@ -13,9 +13,9 @@ vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { paymentsListResponseSchema } from "@/lib/schemas";
+import { followersResponseSchema } from "@/lib/schemas";
 
-import PaymentsPage from "@/app/(app)/payments/page";
+import UsersFollowingPage from "@/app/(app)/users/[id]/following/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -34,61 +34,44 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
-    getPayment: vi.fn(),
-    getPaymentHistory: vi.fn(),
+    getFollowing: vi.fn(),
   },
 }));
 
 const mockedApi = vi.mocked(api);
 
-const mockPayments = [
-  {
-    id: "pay-1",
-    amount: 1000,
-    status: "completed",
-    createdAt: new Date().toISOString(),
-    userId: "user-1",
-    currency: "EGP",
-    paymentMethod: "credit_card",
-    paymobOrderId: "order-1",
-    paymobPaymentId: "paymob-1",
-    paymobTransactionId: "trans-1",
-    description: "Book purchase",
-    isRefunded: false,
-    refundedAt: null,
-    updatedAt: new Date().toISOString(),
-  },
-];
+const mockFollowing = {
+  following: [
+    { id: "user-3", name: "محمد علي", username: "mohammed", avatar: null, followerId: "user-1", followingId: "user-3", createdAt: new Date().toISOString() },
+  ],
+  total: 1,
+  page: 1,
+  limit: 20,
+};
 
-describe("Payments page", () => {
+describe("Users following page", () => {
   beforeEach(() => {
-    mockedApi.getPaymentHistory.mockResolvedValue({
-      payments: mockPayments,
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    mockedApi.getFollowing.mockResolvedValue(mockFollowing);
   });
 
   it("renders the page title", () => {
-    render(<PaymentsPage />);
-    expect(screen.getByRole("heading", { name: "المدفوعات" })).toBeInTheDocument();
+    render(<UsersFollowingPage params={Promise.resolve({ id: "user-1" })} />);
+    expect(screen.getByRole("heading", { name: "المتابَعون" })).toBeInTheDocument();
   });
 
-  it("calls getPaymentHistory on mount", async () => {
-    render(<PaymentsPage />);
+  it("loads following on mount", async () => {
+    render(<UsersFollowingPage params={Promise.resolve({ id: "user-1" })} />);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.getPaymentHistory).toHaveBeenCalled();
+    expect(mockedApi.getFollowing).toHaveBeenCalledWith("user-1");
   });
 
-  it("handles loading state", () => {
-    render(<PaymentsPage />);
+  it("shows loading state", () => {
+    render(<UsersFollowingPage params={Promise.resolve({ id: "user-1" })} />);
     expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
   });
 
-  it("displays payments when available", async () => {
-    render(<PaymentsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("1,000")).toBeInTheDocument();
+  it("displays following list", () => {
+    render(<UsersFollowingPage params={Promise.resolve({ id: "user-1" })} />);
+    expect(screen.getByText("محمد علي")).toBeInTheDocument();
   });
 });

@@ -1,3 +1,17 @@
+// Mock useViewerId for story detail pages
+declare global {
+  var useViewerId: () => string;
+  var useSyncExternalStore: <T>(store: { subscribe: (callback: () => void) => () => void; getSnapshot: () => T; getServerSnapshot?: () => T }) => T;
+  var useToast: () => { notify: () => void };
+  var useLocale: () => { intl: { formatDate: () => string; formatNumber: () => string } };
+}
+
+globalThis.useViewerId = () => 'user-1';
+// Mock external store and simple globals for page components
+globalThis.useSyncExternalStore = ((store: { subscribe: (callback: () => void) => () => void; getSnapshot: () => unknown; getServerSnapshot?: () => unknown }) => store.getSnapshot()) as <T>(store: { subscribe: (callback: () => void) => () => void; getSnapshot: () => T; getServerSnapshot?: () => T }) => T;
+globalThis.useToast = () => ({ notify: () => {} });
+globalThis.useLocale = () => ({ intl: { formatDate: () => "", formatNumber: () => "" } });
+
 import "@testing-library/jest-dom";
 
 import { cleanup } from "@testing-library/react";
@@ -66,6 +80,12 @@ installMatchMedia();
 installIntersectionObserver();
 
 /**
+
+ * jsdom implements neither `matchMedia` nor `IntersectionObserver`, and the
+ * product depends on both: the theme resolves the reader's system preference
+ * before first paint, and the infinite feed watches a sentinel to know when to
+ * load the next page.
+ * 
  * The theme and the locale live on `<html>`, so a test that flips one leaks it
  * into every test that follows in the same file — a header test that switches to
  * English would silently change the labels the next test asserts on. Reset them

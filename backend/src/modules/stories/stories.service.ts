@@ -45,6 +45,7 @@ import type {
   StoryDeletedEvent,
   StorySnapshot,
 } from '../../common/events/stories.events.ts';
+import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
 
 import type {
   IStoriesRepository,
@@ -56,7 +57,6 @@ import { STORIES_REPOSITORY, isUniqueViolation } from './interfaces/stories-repo
 import { deriveStorySlug, storySlugCandidates, MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
 import { assertStoryIsReadableBy } from './story-visibility.ts';
 import type { StoryViewer } from './story-visibility.ts';
-import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput, StoriesListResponse, StoryRecord } from './types.ts';
 import {
   toStoryResponse,

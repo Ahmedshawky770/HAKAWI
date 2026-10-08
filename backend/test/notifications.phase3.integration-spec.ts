@@ -2,6 +2,7 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type { NotificationsListResponse, CreatedResource } from '../src/test/helpers/test-response-types.ts';
 
 /**
  * THE PHASE-3 NOTIFICATION WRITE PATH, END TO END, OVER HTTP.
@@ -62,7 +63,7 @@ interface Participants {
 }
 
 /** `notifications.type` is a plain `string`; the shape below is what the read route returns. */
-type CreatedResource = { id: string };
+type CreatedResourceType = { id: string };
 
 const POLL_ATTEMPTS = 60;
 const POLL_INTERVAL_MS = 100;
@@ -109,51 +110,55 @@ const CASES: readonly Phase3Case[] = [
         .expect(201);
     },
   },
-  {
-    // The C3 case, over HTTP: this row used to be written as `story_reaction`, which resolved to the
-    // `storyReactions` preference — so muting comments did not silence it and muting story reactions
-    // did not either. Both halves are asserted below.
-    label: 'reacting to a comment',
-    expectedType: 'comment_reaction',
-    preference: 'comments',
-    async act({ context, recipient, actor }) {
-      const story = await context.createStory(recipient.accessToken, { title: 'Comment-reacted story' });
-      const comment = await request(context.httpServer)
-        .post('/comments')
-        .set('Authorization', `Bearer ${recipient.accessToken}`)
-        .send({ storyId: story.id, content: 'A comment of my own' })
-        .expect(201);
+{
+      // The C3 case, over HTTP: this row used to be written as `story_reaction`, which resolved to the
+      // `storyReactions` preference — so muting comments did not silence it and muting story reactions
+      // did not either. Both halves are asserted below.
+      label: 'reacting to a comment',
+      expectedType: 'comment_reaction',
+      preference: 'comments',
+      async act({ context, recipient, actor }) {
+        const story = await context.createStory(recipient.accessToken, { title: 'Comment-reacted story' });
+        const comment = await request(context.httpServer)
+          .post('/comments')
+          .set('Authorization', `Bearer ${recipient.accessToken}`)
+          .send({ storyId: story.id, content: 'A comment of my own' })
+          .expect(201);
 
-      await request(context.httpServer)
-        .post(`/comments/${(comment.body as CreatedResource).id}/reactions`)
-        .set('Authorization', `Bearer ${actor.accessToken}`)
-        .send({ type: 'like' })
-        .expect(201);
-    },
-  },
-  {
-    label: 'sending a direct message',
-    expectedType: 'message',
-    // Migration 0023 added the `messages` column and `PREFERENCE_FOR_TYPE` maps `message` onto it, so
-    // the negative half of this pair now exists. It could not before: with no entry in the map and no
-    // column behind it, a recipient had no switch at all for a direct message — the one notification in
-    // the product that could not be silenced. The `describe` below pins that the switch is offered.
-    preference: 'messages',
-    async act({ context, recipient, actor }) {
-      const conversation = await request(context.httpServer)
-        .post('/messages/conversations')
-        .set('Authorization', `Bearer ${actor.accessToken}`)
-        .send({ recipientId: recipient.id })
-        .expect(201);
+        const commentBody = comment.body as CreatedResourceType;
 
-      await request(context.httpServer)
-        .post(`/messages/conversations/${(conversation.body as CreatedResource).id}/messages`)
-        .set('Authorization', `Bearer ${actor.accessToken}`)
-        .send({ content: 'A direct message' })
-        .expect(201);
+        await request(context.httpServer)
+          .post(`/comments/${commentBody.id}/reactions`)
+          .set('Authorization', `Bearer ${actor.accessToken}`)
+          .send({ type: 'like' })
+          .expect(201);
+      },
     },
-  },
-];
+    {
+      label: 'sending a direct message',
+      expectedType: 'message',
+      // Migration 0023 added the `messages` column and `PREFERENCE_FOR_TYPE` maps `message` onto it, so
+      // the negative half of this pair now exists. It could not before: with no entry in the map and no
+      // column behind it, a recipient had no switch at all for a direct message — the one notification in
+      // the product that could not be silenced. The `describe` below pins that the switch is offered.
+      preference: 'messages',
+      async act({ context, recipient, actor }) {
+        const conversation = await request(context.httpServer)
+          .post('/messages/conversations')
+          .set('Authorization', `Bearer ${actor.accessToken}`)
+          .send({ recipientId: recipient.id })
+          .expect(201);
+
+        const conversationBody = conversation.body as CreatedResourceType;
+
+        await request(context.httpServer)
+          .post(`/messages/conversations/${conversationBody.id}/messages`)
+          .set('Authorization', `Bearer ${actor.accessToken}`)
+          .send({ content: 'A direct message' })
+          .expect(201);
+      },
+    },
+  ];
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -173,7 +178,8 @@ describe('Phase 3 Notification Write Path', () => {
       .get('/notifications')
       .set('Authorization', `Bearer ${user.accessToken}`)
       .expect(200);
-    return (response.body as { notifications: NotificationRow[] }).notifications;
+    const body = response.body as NotificationsListResponse;
+    return body.notifications as NotificationRow[];
   };
 
   const awaitNotification = async (user: TestUser, type: string): Promise<NotificationRow> => {
@@ -258,8 +264,10 @@ describe('Phase 3 Notification Write Path', () => {
         .send({ storyId: story.id, content: 'Reacted despite a muted story preference' })
         .expect(201);
 
+      const commentBody = comment.body as CreatedResourceType;
+
       await request(context.httpServer)
-        .post(`/comments/${(comment.body as CreatedResource).id}/reactions`)
+        .post(`/comments/${commentBody.id}/reactions`)
         .set('Authorization', `Bearer ${actor.accessToken}`)
         .send({ type: 'wow' })
         .expect(201);

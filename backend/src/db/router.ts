@@ -17,7 +17,7 @@ type DrizzleDb = NodePgDatabase<typeof schema> & {
   $client: Pool;
 };
 
-type Transaction = NodePgTransaction<typeof schema>;
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 let primaryDb: DrizzleDb | null = null;
 let primaryPool: Pool | null = null;

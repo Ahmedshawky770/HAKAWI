@@ -4,11 +4,11 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { UsersService } from '../users.service.ts';
 import { UserVerificationService } from '../services/user-verification.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
@@ -242,7 +242,7 @@ describe('UsersController', () => {
 
       // `res.body` is `any` from supertest, so it is narrowed here rather than reaching into it
       // directly; the assertion is about the value on the wire, not the mock.
-      const body: { accountType?: unknown } = res.body;
+      const body: { accountType?: string } = res.body as { accountType?: string };
 
       expect(ACCOUNT_TYPES).toContain(body.accountType);
     });

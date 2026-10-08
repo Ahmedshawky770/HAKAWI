@@ -12,15 +12,13 @@ interface FollowListRowProps {
 }
 
 export function FollowListRow({ follow }: FollowListRowProps) {
-  const user = follow.follower ?? follow.following;
-
   return (
     <Card className="p-4">
       <div className="flex items-center gap-3">
-        <Avatar name={user?.name ?? "مستخدم"} size="sm" />
+        <Avatar name="مستخدم" size="sm" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">
-            {user?.name ?? "مستخدم"}
+            متابع
           </p>
           <p className="text-xs text-ink-muted">
             {new Date(follow.createdAt).toLocaleDateString("ar-EG")}

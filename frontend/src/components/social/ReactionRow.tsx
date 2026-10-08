@@ -27,16 +27,16 @@ export function ReactionRow({ reaction }: ReactionRowProps) {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-3">
-        <Avatar name={reaction.user.name ?? "مستخدم"} size="sm" />
+        <Avatar name="مستخدم" size="sm" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">
-            {reaction.user.name ?? "مستخدم"}
+            مستخدم
           </p>
           <p className="text-xs text-ink-muted">
             {new Date(reaction.createdAt).toLocaleDateString("ar-EG")}
           </p>
         </div>
-        <Badge tone="secondary" className="shrink-0">
+        <Badge tone="neutral" className="shrink-0">
           <span aria-hidden>{presentation.glyph}</span>
           <span className="sr-only">{presentation.label}</span>
         </Badge>

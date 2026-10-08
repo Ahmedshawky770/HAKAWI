@@ -2,6 +2,12 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type {
+  ConversationResponse,
+  ConversationsListResponse,
+  MessageResponse,
+  MessagesListResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Messages Integration', () => {
   let context: TestContext;
@@ -26,8 +32,10 @@ describe('Messages Integration', () => {
         .send({ participantIds: [recipient.id] })
         .expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      expect([res.body.participant1Id, res.body.participant2Id]).toEqual(
+      const body = res.body as ConversationResponse;
+
+      expect(body).toHaveProperty('id');
+      expect([body.participant1.id, body.participant2.id]).toEqual(
         expect.arrayContaining([sender.id, recipient.id]),
       );
     });
@@ -46,9 +54,11 @@ describe('Messages Integration', () => {
         .set('Authorization', `Bearer ${sender.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('conversations');
-      expect(Array.isArray(res.body.conversations)).toBe(true);
-      expect(res.body.conversations.length).toBeGreaterThanOrEqual(1);
+      const body = res.body as ConversationsListResponse;
+
+      expect(body).toHaveProperty('conversations');
+      expect(Array.isArray(body.conversations)).toBe(true);
+      expect(body.conversations.length).toBeGreaterThanOrEqual(1);
     });
 
     it('should not leak conversations the user is not part of', async () => {
@@ -59,7 +69,9 @@ describe('Messages Integration', () => {
         .set('Authorization', `Bearer ${outsider.accessToken}`)
         .expect(200);
 
-      expect(res.body.conversations).toEqual([]);
+      const body = res.body as ConversationsListResponse;
+
+      expect(body.conversations).toEqual([]);
     });
   });
 
@@ -78,7 +90,9 @@ describe('Messages Integration', () => {
         .set('Authorization', `Bearer ${sender.accessToken}`)
         .expect(200);
 
-      expect(empty.body.messages).toEqual([]);
+      const emptyBody = empty.body as MessagesListResponse;
+
+      expect(emptyBody.messages).toEqual([]);
 
       await request(context.httpServer)
         .post(`/messages/conversations/${conversationId}/messages`)
@@ -91,9 +105,11 @@ describe('Messages Integration', () => {
         .set('Authorization', `Bearer ${sender.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('messages');
-      expect(res.body.messages.length).toBe(1);
-      expect(res.body.messages[0].content).toBe('Hello from the integration suite');
+      const body = res.body as MessagesListResponse;
+
+      expect(body).toHaveProperty('messages');
+      expect(body.messages.length).toBe(1);
+      expect(body.messages[0].content).toBe('Hello from the integration suite');
     });
   });
 });

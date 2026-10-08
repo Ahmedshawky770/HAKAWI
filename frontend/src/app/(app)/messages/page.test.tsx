@@ -13,9 +13,9 @@ vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { paymentsListResponseSchema } from "@/lib/schemas";
+import { messagesListResponseSchema } from "@/lib/schemas";
 
-import PaymentsPage from "@/app/(app)/payments/page";
+import MessagesPage from "@/app/(app)/messages/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -34,61 +34,45 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
-    getPayment: vi.fn(),
-    getPaymentHistory: vi.fn(),
+    listStories: vi.fn(),
+    getUnreadNotificationCount: vi.fn(),
   },
 }));
 
 const mockedApi = vi.mocked(api);
 
-const mockPayments = [
-  {
-    id: "pay-1",
-    amount: 1000,
-    status: "completed",
-    createdAt: new Date().toISOString(),
-    userId: "user-1",
-    currency: "EGP",
-    paymentMethod: "credit_card",
-    paymobOrderId: "order-1",
-    paymobPaymentId: "paymob-1",
-    paymobTransactionId: "trans-1",
-    description: "Book purchase",
-    isRefunded: false,
-    refundedAt: null,
-    updatedAt: new Date().toISOString(),
-  },
-];
+describe("Messages page", () => {
+  const mockMessages = [
+    {
+      id: "msg-1",
+      conversationId: "conv-1",
+      lastMessage: "مرحبا",
+      lastMessageTime: new Date().toISOString(),
+      unreadCount: 2,
+    },
+  ];
 
-describe("Payments page", () => {
   beforeEach(() => {
-    mockedApi.getPaymentHistory.mockResolvedValue({
-      payments: mockPayments,
-      total: 1,
+    mockedApi.listStories.mockResolvedValue({
+      stories: [],
+      total: 0,
       page: 1,
       limit: 20,
     });
   });
 
   it("renders the page title", () => {
-    render(<PaymentsPage />);
-    expect(screen.getByRole("heading", { name: "المدفوعات" })).toBeInTheDocument();
+    render(<MessagesPage />);
+    expect(screen.getByRole("heading", { name: "الرسائل" })).toBeInTheDocument();
   });
 
-  it("calls getPaymentHistory on mount", async () => {
-    render(<PaymentsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.getPaymentHistory).toHaveBeenCalled();
-  });
-
-  it("handles loading state", () => {
-    render(<PaymentsPage />);
+  it("shows loading state on mount", () => {
+    render(<MessagesPage />);
     expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
   });
 
-  it("displays payments when available", async () => {
-    render(<PaymentsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("1,000")).toBeInTheDocument();
+  it("handles empty state", () => {
+    render(<MessagesPage />);
+    expect(screen.getByText("لا توجد رسائل بعد")).toBeInTheDocument();
   });
 });

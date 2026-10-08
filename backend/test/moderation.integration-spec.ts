@@ -3,6 +3,12 @@ import request from 'supertest';
 import { AdminRole } from '../src/common/constants/roles.ts';
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext } from '../src/test/helpers/test-context.ts';
+import type {
+  ReportResponse,
+  ReportsListResponse,
+  ModerationStatsResponse,
+  RestrictionsListResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 describe('Moderation Integration', () => {
   let context: TestContext;
@@ -35,8 +41,10 @@ describe('Moderation Integration', () => {
         .send({ targetId: readerUserId, targetType: 'user', reason: 'spam' })
         .expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      reportId = res.body.id;
+      const body = res.body as ReportResponse;
+
+      expect(body).toHaveProperty('id');
+      reportId = body.id;
     });
   });
 
@@ -47,10 +55,12 @@ describe('Moderation Integration', () => {
         .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('totalReports');
-      expect(res.body).toHaveProperty('openReports');
-      expect(res.body).toHaveProperty('totalActions');
-      expect(res.body.totalReports).toBeGreaterThanOrEqual(1);
+      const body = res.body as ModerationStatsResponse;
+
+      expect(body).toHaveProperty('totalReports');
+      expect(body).toHaveProperty('openReports');
+      expect(body).toHaveProperty('totalActions');
+      expect(body.totalReports).toBeGreaterThanOrEqual(1);
     });
 
     it('should return 403 for a reader', async () => {
@@ -84,8 +94,10 @@ describe('Moderation Integration', () => {
         .set('Authorization', `Bearer ${readerToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('restrictions');
-      expect(Array.isArray(res.body.restrictions)).toBe(true);
+      const body = res.body as RestrictionsListResponse;
+
+      expect(body).toHaveProperty('restrictions');
+      expect(Array.isArray(body.restrictions)).toBe(true);
     });
 
     it('should return restrictions for another user', async () => {
@@ -94,8 +106,10 @@ describe('Moderation Integration', () => {
         .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('restrictions');
-      expect(Array.isArray(res.body.restrictions)).toBe(true);
+      const body = res.body as RestrictionsListResponse;
+
+      expect(body).toHaveProperty('restrictions');
+      expect(Array.isArray(body.restrictions)).toBe(true);
     });
   });
 
@@ -128,7 +142,9 @@ describe('Moderation Integration', () => {
         .set('Authorization', `Bearer ${moderatorToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('reports');
+      const body = res.body as ReportsListResponse;
+
+      expect(body).toHaveProperty('reports');
     });
 
     it('should return 403 for a reader', async () => {

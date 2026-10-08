@@ -3,6 +3,12 @@ import request from 'supertest';
 import { AdminRole } from '../src/common/constants/roles.ts';
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type {
+  NotificationResponse,
+  NotificationsListResponse,
+  NotificationCountResponse,
+  NotificationActionResponse,
+} from '../src/test/helpers/test-response-types.ts';
 
 /** `notifications.type` is a plain `string`; this is the shape the read route actually returns. */
 interface NotificationRow {
@@ -86,7 +92,8 @@ describe('Notifications Integration', () => {
       .get('/notifications')
       .set('Authorization', `Bearer ${user.accessToken}`)
       .expect(200);
-    return res.body.notifications as NotificationRow[];
+    const body = res.body as NotificationsListResponse;
+    return body.notifications as NotificationRow[];
   };
 
   /**
@@ -166,8 +173,10 @@ describe('Notifications Integration', () => {
         .set('Authorization', `Bearer ${user.accessToken}`)
         .expect(200);
 
-      expect(typeof res.body.count).toBe('number');
-      expect(res.body.count).toBeGreaterThanOrEqual(1);
+      const body = res.body as NotificationCountResponse;
+
+      expect(typeof body.count).toBe('number');
+      expect(body.count).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -182,7 +191,9 @@ describe('Notifications Integration', () => {
         .set('Authorization', `Bearer ${user.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('message');
+      const body = res.body as NotificationActionResponse;
+
+      expect(body).toHaveProperty('message');
 
       const after = await listNotifications();
       const updated = after.find((notification) => notification.id === unread?.id);
@@ -197,14 +208,18 @@ describe('Notifications Integration', () => {
         .set('Authorization', `Bearer ${user.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('message');
+      const body = res.body as NotificationActionResponse;
+
+      expect(body).toHaveProperty('message');
 
       const count = await request(context.httpServer)
         .get('/notifications/unread-count')
         .set('Authorization', `Bearer ${user.accessToken}`)
         .expect(200);
 
-      expect(count.body.count).toBe(0);
+      const countBody = count.body as NotificationCountResponse;
+
+      expect(countBody.count).toBe(0);
     });
   });
 });

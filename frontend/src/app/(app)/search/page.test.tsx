@@ -13,9 +13,9 @@ vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { paymentsListResponseSchema } from "@/lib/schemas";
+import { searchResponseSchema } from "@/lib/schemas";
 
-import PaymentsPage from "@/app/(app)/payments/page";
+import SearchPage from "@/app/(app)/search/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -34,61 +34,67 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
-    getPayment: vi.fn(),
-    getPaymentHistory: vi.fn(),
+    search: vi.fn(),
   },
 }));
 
 const mockedApi = vi.mocked(api);
 
-const mockPayments = [
-  {
-    id: "pay-1",
-    amount: 1000,
-    status: "completed",
-    createdAt: new Date().toISOString(),
-    userId: "user-1",
-    currency: "EGP",
-    paymentMethod: "credit_card",
-    paymobOrderId: "order-1",
-    paymobPaymentId: "paymob-1",
-    paymobTransactionId: "trans-1",
-    description: "Book purchase",
-    isRefunded: false,
-    refundedAt: null,
-    updatedAt: new Date().toISOString(),
-  },
-];
+const mockSearchResults = {
+  results: [
+    {
+      id: "story-1",
+      title: "قصة البحث",
+      author: { id: "user-1", name: "أحمد محمد" },
+      category: "fiction",
+      slug: "story-1",
+      excerpt: "مقتطف من القصة",
+      status: "published",
+      tags: [],
+      coverImage: "https://example.com/cover.jpg",
+      views: 0,
+      reactions: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+  total: 1,
+  query: "اختبار",
+  took: 42,
+  page: 1,
+  limit: 20,
+};
 
-describe("Payments page", () => {
+describe("Search page", () => {
   beforeEach(() => {
-    mockedApi.getPaymentHistory.mockResolvedValue({
-      payments: mockPayments,
-      total: 1,
+    mockedApi.search.mockResolvedValue(mockSearchResults);
+  });
+
+  it("renders the page title", () => {
+    render(<SearchPage />);
+    expect(screen.getByRole("heading", { name: "البحث" })).toBeInTheDocument();
+  });
+
+  it("calls search on mount with default query", async () => {
+    render(<SearchPage />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockedApi.search).toHaveBeenCalledWith({
+      query: expect.any(String),
+      category: undefined,
+      tag: undefined,
       page: 1,
       limit: 20,
     });
   });
 
-  it("renders the page title", () => {
-    render(<PaymentsPage />);
-    expect(screen.getByRole("heading", { name: "المدفوعات" })).toBeInTheDocument();
-  });
-
-  it("calls getPaymentHistory on mount", async () => {
-    render(<PaymentsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.getPaymentHistory).toHaveBeenCalled();
-  });
-
   it("handles loading state", () => {
-    render(<PaymentsPage />);
+    render(<SearchPage />);
     expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
   });
 
-  it("displays payments when available", async () => {
-    render(<PaymentsPage />);
+  it("displays search results", async () => {
+    render(<SearchPage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("1,000")).toBeInTheDocument();
+    expect(screen.getByText("قصة البحث")).toBeInTheDocument();
   });
 });
