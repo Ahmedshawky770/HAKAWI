@@ -7,43 +7,83 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
 
 jobs:
   backup:
     name: Database Backup
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name hakawi-production-eks --alias production
 
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Create backup
+      - name: Create DB snapshot
+        id: snapshot
         run: |
-          mkdir -p ./backups
-          PGHOST="${{ secrets.BACKUP_DB_HOST }}"
-          PGPORT="${{ secrets.BACKUP_DB_PORT }}"
-          PGUSER="${{ secrets.BACKUP_DB_USER }}"
-          PGDATABASE="${{ secrets.BACKUP_DB_NAME }}"
-          PGPASSWORD="${{ secrets.BACKUP_DB_PASSWORD }}"
-          export PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD
           TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-          BACKUP_FILE="./backups/hakawi-${TIMESTAMP}.sql.gz"
-          pg_dump --format=plain --no-owner --no-acl | gzip > "${BACKUP_FILE}"
-          echo "backup_file=${BACKUP_FILE}" >> $GITHUB_OUTPUT
-        id: backup
+          SNAPSHOT_ID="hakawi-prod-backup-${TIMESTAMP}"
+          aws rds create-db-snapshot \
+            --db-snapshot-identifier "${SNAPSHOT_ID}" \
+            --db-instance-identifier hakawi-production-db
+          echo "snapshot_id=${SNAPSHOT_ID}" >> $GITHUB_OUTPUT
 
-      - name: Upload backup artifact
+      - name: Wait for snapshot completion
+        run: |
+          aws rds wait db-snapshot-available --db-snapshot-identifier ${{ steps.snapshot.outputs.snapshot_id }}
+          echo "Snapshot completed successfully"
+
+      - name: Export snapshot to S3
+        run: |
+          aws rds export-snapshot-to-s3 \
+            --export-task-identifier "hakawi-export-${{ steps.snapshot.outputs.snapshot_id }}" \
+            --source-arn "arn:aws:rds:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:snapshot:${{ steps.snapshot.outputs.snapshot_id }}" \
+            --s3-bucket hakawi-production-backups \
+            --s3-prefix rds-exports
+
+      - name: Verify export
+        run: |
+          sleep 60
+          aws s3 ls s3://hakawi-production-backups/rds-exports/ | head -5
+
+      - name: Cleanup old snapshots (keep 30 days)
+        run: |
+          RETENTION_DAYS=30
+          CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%Y-%m-%d)
+          aws rds describe-db-snapshots \
+            --db-instance-identifier hakawi-production-db \
+            --query "reverse(sort_by(DBSnapshots,&SnapshotCreateTime))[?contains(SnapshotType, 'manual') & contains(SnapshotIdentifier, 'hakawi-prod-backup')]" \
+            --output text | while read line; do
+              snap_time=$(echo "$line" | grep -oP 'hakawi-prod-backup-\d{8}' | cut -d'-' -f3-5)
+              snap_date=$(echo "$snap_time" | cut -d'-' -f1-3)
+              if [[ "$snap_date" < "$CUTOFF_DATE" ]]; then
+                snap_id=$(echo "$line" | grep -oP 'hakawi-prod-backup-\d{8}-\d+')
+                aws rds delete-db-snapshot --db-snapshot-identifier "$snap_id"
+                echo "Deleted old snapshot: $snap_id"
+              fi
+            done || true
+
+      - name: Upload backup report
         uses: actions/upload-artifact@v4
         with:
-          name: database-backup-${{ steps.backup.outputs.timestamp }}
-          path: ./backups/hakawi-*.sql.gz
-          retention-days: 30
-          compression-level: 9
-
-      - name: Cleanup old backups
-        run: |
-          ls -1t ./backups/hakawi-*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm -f
+          name: backup-report-${{ steps.snapshot.outputs.snapshot_id }}
+          path: /dev/null
+          if-no-files-found: ignore
+          retention-days: 7

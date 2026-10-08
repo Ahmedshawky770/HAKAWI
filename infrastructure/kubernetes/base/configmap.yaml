@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hakawi-config
+  namespace: hakawi
+data:
+  NODE_ENV: "production"
+  DB_PRIMARY_PORT: "5432"
+  DB_PRIMARY_NAME: "hakawi"
+  DB_REPLICA_PORT: "5432"
+  DB_REPLICA_NAME: "hakawi"
+  PGBOUNCER_PRIMARY_PORT: "6432"
+  PGBOUNCER_REPLICA_PORT: "6432"
+  VALKEY_PORT: "6379"
+  PAYMOB_ENVIRONMENT: "live"
+  ENABLE_SWAGGER: "false"
+  THROTTLE_TRUST_PROXY: "true"
+  LOG_LEVEL: "info"

@@ -50,11 +50,12 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 32 | `development/setup.md` | Development setup guide | ✅ 2026-09-30 |
 | 33 | `development/code-standards.md` | Code standards | ✅ 2026-09-30 |
 | 34 | `testing/testing-strategy.md` | Suites, coverage, isolation, CI | ✅ 2026-09-30 (fully rewritten) |
-| 35 | `deployment/deployment.md` | Deployment guide | ✅ 2026-09-30 (no artifact behind it) |
-| 36 | `deployment/environment.md` | 67 backend env vars, audited | ✅ 2026-09-30 (fully rewritten) |
+| 35 | `deployment/deployment.md` | Deployment guide | ✅ 2026-10-08 (updated with Kubernetes/Terraform deployment) |
+| 36 | `deployment/environment.md` | 58 backend env vars, audited | ✅ 2026-09-30 (fully rewritten) |
 | 37 | `deployment/backup.md` | Backup and recovery procedures | ✅ 2026-09-30 (nginx.conf / scripts/ removed) |
 | 38 | `deployment/backup-strategy.md` | Backup strategy | ✅ 2026-09-30 (still ⛔ unautomated) |
 | 39 | `deployment/runbooks.md` | Operational runbooks | ✅ 2026-09-30 |
+| 40 | `deployment/infrastructure-as-code.md` | Terraform + Kubernetes + Helm IaC documentation | ✅ 2026-10-08 (new) |
 | 40 | `roadmap/phases/implementation-roadmap.md` | **Canonical** 18-week roadmap, 8 milestones | ✅ 2026-09-30 (fully rewritten) |
 | 41 | `roadmap/phases.md` | Phase summary | ✅ 2026-09-30 |
 | 42 | `roadmap/timeline.md` | Timeline and milestone calendar | ✅ 2026-09-30 |
@@ -112,6 +113,7 @@ Four things a reader should know before trusting this documentation set:
 - Start with: `deployment/deployment.md` — **read the "Missing artifact" section first**
 - Then: `deployment/environment.md` (follows `backend/.env.example`)
 - Then: `deployment/backup.md`
+- Then: `deployment/infrastructure-as-code.md` (Terraform, Helm, Kubernetes)
 
 ### For QA
 - Start with: `testing/testing-strategy.md`
@@ -241,7 +243,8 @@ docs/
 │   ├── environment.md
 │   ├── backup.md
 │   ├── backup-strategy.md
-│   └── runbooks.md
+│   ├── runbooks.md
+│   └── infrastructure-as-code.md    # New: Terraform, EKS, Helm charts
 └── roadmap/                         # Implementation roadmap
     ├── phases.md
     ├── phases/implementation-roadmap.md   # CANONICAL

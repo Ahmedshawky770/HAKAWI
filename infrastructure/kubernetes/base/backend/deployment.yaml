@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: hakawi
+  labels:
+    app: backend
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: backend
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3001"
+        prometheus.io/path: "/api/v1/metrics"
+    spec:
+      serviceAccountName: backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: REPLACE_BACKEND_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3001"
+            - name: DB_PRIMARY_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-primary-host
+            - name: DB_PRIMARY_PORT
+              value: "5432"
+            - name: DB_PRIMARY_NAME
+              value: "hakawi"
+            - name: DB_PRIMARY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-primary-user
+            - name: DB_PRIMARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-primary-password
+            - name: DB_REPLICA_HOSTS
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-replica-hosts
+            - name: DB_REPLICA_PORT
+              value: "5432"
+            - name: DB_REPLICA_NAME
+              value: "hakawi"
+            - name: DB_REPLICA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-replica-user
+            - name: DB_REPLICA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: db-replica-password
+            - name: PGBOUNCER_PRIMARY_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: pgbouncer-primary-host
+            - name: PGBOUNCER_PRIMARY_PORT
+              value: "6432"
+            - name: PGBOUNCER_REPLICA_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: pgbouncer-replica-host
+            - name: PGBOUNCER_REPLICA_PORT
+              value: "6432"
+            - name: VALKEY_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: valkey-host
+            - name: VALKEY_PORT
+              value: "6379"
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: valkey-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: jwt-secret
+            - name: REFRESH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: refresh-token-secret
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: encryption-key
+            - name: PAYMOB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: paymob-api-key
+            - name: PAYMOB_MERCHANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: paymob-merchant-id
+            - name: PAYMOB_INTEGRATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: paymob-integration-id
+            - name: PAYMOB_ENVIRONMENT
+              value: "live"
+            - name: PAYMOB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: paymob-webhook-secret
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: s3-bucket
+            - name: S3_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: s3-region
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: s3-secret-key
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: sentry-dsn
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: email-from
+            - name: CORS_ORIGIN
+              valueFrom:
+                secretKeyRef:
+                  name: hakawi-secrets
+                  key: cors-origin
+            - name: ENABLE_SWAGGER
+              value: "false"
+            - name: THROTTLE_TRUST_PROXY
+              value: "true"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - backend
+                topologyKey: kubernetes.io/hostname

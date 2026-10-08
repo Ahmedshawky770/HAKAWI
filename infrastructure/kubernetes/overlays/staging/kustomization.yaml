@@ -1,0 +1,119 @@
+# NOTE: Staging deployment uses Helm charts (see infrastructure/helm/) with values files
+# in infrastructure/kubernetes/overlays/staging/{backend,frontend}-values.yaml
+# This Kustomize overlay is a fallback for manual kubectl-based deployments.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - externalsecrets.yaml
+  - secretstore.yaml
+  - poddisruptionbudgets.yaml
+
+namespace: hakawi
+
+namePrefix: staging-
+
+commonLabels:
+  environment: staging
+  managed-by: terraform
+
+images:
+  - name: backend
+    newTag: staging-latest
+  - name: frontend
+    newTag: staging-latest
+
+patches:
+  - patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: backend
+  - patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: frontend
+  - patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+    target:
+      kind: Deployment
+      name: backend
+  - patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "50m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "512Mi"
+    target:
+      kind: Deployment
+      name: frontend
+  - patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CORS_ORIGIN
+          value: "https://staging.hakawi.com"
+    target:
+      kind: Deployment
+      name: backend
+  - patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging.hakawi.io
+    target:
+      kind: Ingress
+      name: backend
+  - patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging.hakawi.io
+    target:
+      kind: Ingress
+      name: frontend
+
+configMapGenerator:
+  - name: hakawi-staging-config
+    namespace: hakawi
+    literals:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=https://staging.hakawi.io
+      - DB_PORT=5432
+      - DB_NAME=hakawi_staging
+      - VALKEY_HOST=hakawi-staging-valkey.xxxxxx.cache.amazonaws.com
+      - VALKEY_PORT=6379
+      - VALKEY_TLS=true
+      - VALKEY_DB=0
+      - THROTTLE_TTL=60000
+      - THROTTLE_LIMIT=100
+      - S3_BUCKET=hakawi-staging-media
+      - AWS_REGION=us-east-1
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - SWAGGER_ENABLED=false
+      - HEALTH_CHECK_PATH=/health
+      - READINESS_CHECK_PATH=/health

@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hakawi-staging-backend-pdb
+  namespace: hakawi
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: hakawi
+    environment: staging
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/instance: hakawi
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hakawi-staging-frontend-pdb
+  namespace: hakawi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/instance: hakawi
+    environment: staging
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+      app.kubernetes.io/instance: hakawi
