@@ -1,27 +1,24 @@
-# Production values for hakawi-frontend
+# Staging values for hakawi-backend
 
-replicaCount: 5
-
-fullnameOverride: hakawi-frontend
-nameOverride: frontend
+replicaCount: 2
 
 namespace: hakawi
 
 image:
-  repository: ghcr.io/hakawi-io/hakawi-frontend
+  repository: ghcr.io/hakawi-io/hakawi-backend
   pullPolicy: Always
   tag: "latest"
 
 podAnnotations:
   prometheus.io/scrape: "true"
-  prometheus.io/port: "3000"
-  prometheus.io/path: "/api/health"
+  prometheus.io/port: "3001"
+  prometheus.io/path: "/api/v1/health"
 
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
-  fsGroup: 10001
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -33,70 +30,87 @@ securityContext:
     type: RuntimeDefault
 
 service:
-  name: frontend
+  name: backend
   type: ClusterIP
   port: 80
-  targetPort: 3000
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  targetPort: 3001
 
 ingress:
   enabled: true
   className: nginx
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt-staging
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
   hosts:
-    - host: app.hakawi.com
+    - host: staging-api.hakawi.io
       paths:
-        - path: /
-          pathType: Prefix
-    - host: hakawi.com
-      paths:
-        - path: /
+        - path: /api
           pathType: Prefix
   tls:
-    - secretName: frontend-tls
+    - secretName: backend-tls
       hosts:
-        - app.hakawi.com
-        - hakawi.com
+        - staging-api.hakawi.io
 
 resources:
   limits:
-    cpu: 2000m
-    memory: 2Gi
+    cpu: 1000m
+    memory: 1Gi
   requests:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 250m
+    memory: 256Mi
 
 autoscaling:
   enabled: true
-  minReplicas: 5
-  maxReplicas: 20
-  targetCPUUtilizationPercentage: 75
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 80
 
 serviceAccount:
-  create: false
-  name: hakawi-frontend
+  create: true
+  name: hakawi-backend
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/hakawi-staging-hakawi-backend-irsa
 
 env:
-  nodeEnv: production
-  port: 3000
-  host: "https://app.hakawi.com"
+  nodeEnv: staging
+  port: 3001
+  host: "https://staging-api.hakawi.io"
   db:
     host: ""
-  apiUrl: "https://api.hakawi.com/api/v1"
+    port: "5432"
+    name: hakawi
+    primaryHost: ""
+    replicaHosts: ""
+  valkey:
+    host: ""
+    port: "6379"
+    password: ""
+    tls: "true"
+    db: "0"
+  throttle:
+    ttl: "60000"
+    limit: "100"
+  s3:
+    bucket: hakawi-staging-media
+  aws:
+    region: us-east-1
   logLevel: info
   logFormat: json
-  healthPath: /api/health
-  readinessPath: /api/health
-  nextTelemetryDisabled: "1"
-  nextTracingDisabled: "1"
+  swagger:
+    enabled: true
+  healthPath: /api/v1/health
+  readinessPath: /api/v1/health
+  corsOrigin: "https://staging.hakawi.io"
+  paymob:
+    environment: test
+  sentry:
+    dsn: ""
+  emailFrom: "noreply@staging.hakawi.io"
+  trustProxy: "true"
 
 nodeSelector:
   kubernetes.io/arch: amd64
@@ -121,7 +135,7 @@ affinity:
               - key: app.kubernetes.io/name
                 operator: In
                 values:
-                  - frontend
+                  - backend
           topologyKey: kubernetes.io/hostname
 
 tolerations:
@@ -134,14 +148,11 @@ tolerations:
 topologySpread:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: DoNotSchedule
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: DoNotSchedule
+    whenUnsatisfiable: ScheduleAnyway
 
 podDisruptionBudget:
   enabled: true
-  minAvailable: 3
+  minAvailable: 1
 
 deploymentStrategy:
   type: RollingUpdate
@@ -151,28 +162,9 @@ deploymentStrategy:
 
 externalSecrets:
   enabled: true
-  refreshInterval: 30m
-  secretPrefix: "hakawi/production"
+  refreshInterval: 1h
+  secretPrefix: "hakawi/staging"
   secretStore:
     name: "aws-secrets-manager"
+    managedBy: "helm"
     region: "us-east-1"
-
-livenessProbe:
-  httpGet:
-    path: /api/health
-    port: 3000
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
-  successThreshold: 1
-
-readinessProbe:
-  httpGet:
-    path: /api/health
-    port: 3000
-  initialDelaySeconds: 10
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 12
-  successThreshold: 1

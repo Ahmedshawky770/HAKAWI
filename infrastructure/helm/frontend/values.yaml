@@ -150,3 +150,11 @@ deploymentStrategy:
   rollingUpdate:
     maxSurge: 1
     maxUnavailable: 0
+
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secretPrefix: "hakawi"
+  secretStore:
+    name: "aws-secrets-manager"
+    region: "us-east-1"

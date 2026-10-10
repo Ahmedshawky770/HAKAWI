@@ -101,6 +101,7 @@ jobs:
           helm upgrade --install hakawi-staging-backend ./infrastructure/helm/backend \
             --namespace hakawi \
             --values infrastructure/helm/backend/values.yaml \
+            --values infrastructure/helm/backend/values-staging.yaml \
             --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/backend \
             --set image.tag=${{ github.sha }} \
             --set image.pullPolicy=Always \
@@ -117,6 +118,7 @@ jobs:
           helm upgrade --install hakawi-staging-frontend ./infrastructure/helm/frontend \
             --namespace hakawi \
             --values infrastructure/helm/frontend/values.yaml \
+            --values infrastructure/helm/frontend/values-staging.yaml \
             --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/frontend \
             --set image.tag=${{ github.sha }} \
             --set image.pullPolicy=Always \
