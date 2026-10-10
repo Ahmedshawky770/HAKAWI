@@ -1,56 +1,97 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Loading } from "@/components/ui/Loading";
-import { ErrorMessage } from "@/components/ui/ErrorMessage";
-import { Book } from "@/types/api";
+import React, { useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
+import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { BookCard, BookGridSkeleton } from "@/components/books/BookCard";
+import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import type { Book } from "@/types/api";
+
+/**
+ * The book catalogue.
+ *
+ * Four states, in the order a reader meets them: a skeleton grid whose cells are
+ * the height of the cards that replace them, the cards, an empty catalogue that
+ * points at the feed (a catalogue nobody has stocked yet is not a dead end, the
+ * stories are), and a failure with a retry that re-runs the same request.
+ *
+ * The page header stays mounted in every state, so the column never reflows around
+ * a title that appears after the data does.
+ */
 export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let active = true;
+
     async function load() {
       try {
         const data = await api.listBooks();
-        setBooks(data);
+        if (active) setBooks(data.books);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "فشل تحميل الكتب");
+        if (active) setError(err instanceof Error ? err.message : "فشل تحميل الكتب");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    load();
-  }, []);
 
-  if (loading) return <Loading />;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
+    load();
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  /** Re-arms the same request; the reset lives here so the effect only awaits. */
+  function retry() {
+    setLoading(true);
+    setError("");
+    setAttempt((n) => n + 1);
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">الكتب</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {books.map((book) => (
-          <Card key={book.id}>
-            <CardBody>
-              <Link href={`/books/${book.id}`} className="block">
-                <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                  {book.title}
-                </h3>
-                <p className="text-sm text-gray-600 mt-1">بواسطة {book.author}</p>
-                {book.price && (
-                  <p className="text-lg font-bold text-gray-900 mt-2">${book.price.toFixed(2)}</p>
-                )}
-              </Link>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+    <div>
+      <PageHeader title="الكتب" description="كل ما نشرته حكاوي، للشراء أو الإيجار." />
+
+      {loading && (
+        <div>
+          <span className="sr-only" role="status">
+            جارٍ تحميل الكتب
+          </span>
+          <BookGridSkeleton count={6} />
+        </div>
+      )}
+
+      {!loading && error && <ErrorMessage error={error} onRetry={retry} />}
+
+      {!loading && !error && books.length === 0 && (
+        <EmptyState
+          icon="library"
+          title="لا توجد كتب بعد"
+          description="لم يُنشر أي كتاب حتى الآن. القصص متاحة الآن، وسنضيف الكتب تباعاً."
+          action={
+            <ButtonLink href={AUTHENTICATED_HOME_ROUTE} variant="primary">
+              تصفح القصص
+            </ButtonLink>
+          }
+        />
+      )}
+
+      {!loading && !error && books.length > 0 && (
+        <ul className="grid gap-5 sm:grid-cols-2">
+          {books.map((book) => (
+            <li key={book.id}>
+              <BookCard book={book} />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -1,0 +1,170 @@
+# Staging values for hakawi-backend
+
+replicaCount: 2
+
+namespace: hakawi
+
+image:
+  repository: ghcr.io/hakawi-io/hakawi-backend
+  pullPolicy: Always
+  tag: "latest"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3001"
+  prometheus.io/path: "/api/v1/health"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  name: backend
+  type: ClusterIP
+  port: 80
+  targetPort: 3001
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+  hosts:
+    - host: staging-api.hakawi.io
+      paths:
+        - path: /api
+          pathType: Prefix
+  tls:
+    - secretName: backend-tls
+      hosts:
+        - staging-api.hakawi.io
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+serviceAccount:
+  create: true
+  name: hakawi-backend
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/hakawi-staging-hakawi-backend-irsa
+
+env:
+  nodeEnv: staging
+  port: 3001
+  host: "https://staging-api.hakawi.io"
+  db:
+    host: ""
+    port: "5432"
+    name: hakawi
+    primaryHost: ""
+    replicaHosts: ""
+  valkey:
+    host: ""
+    port: "6379"
+    password: ""
+    tls: "true"
+    db: "0"
+  throttle:
+    ttl: "60000"
+    limit: "100"
+  s3:
+    bucket: hakawi-staging-media
+  aws:
+    region: us-east-1
+  logLevel: info
+  logFormat: json
+  swagger:
+    enabled: true
+  healthPath: /api/v1/health
+  readinessPath: /api/v1/health
+  corsOrigin: "https://staging.hakawi.io"
+  paymob:
+    environment: test
+  sentry:
+    dsn: ""
+  emailFrom: "noreply@staging.hakawi.io"
+  trustProxy: "true"
+
+nodeSelector:
+  kubernetes.io/arch: amd64
+  kubernetes.io/os: linux
+  eks.amazonaws.com/capacityType: ON_DEMAND
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: eks.amazonaws.com/capacityType
+              operator: In
+              values:
+                - ON_DEMAND
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - backend
+          topologyKey: kubernetes.io/hostname
+
+tolerations:
+  - key: "node.kubernetes.io/unreachable"
+    operator: "Equal"
+    value: "true"
+    effect: "NoExecute"
+    tolerationSeconds: 30
+
+topologySpread:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secretPrefix: "hakawi/staging"
+  secretStore:
+    name: "aws-secrets-manager"
+    managedBy: "helm"
+    region: "us-east-1"

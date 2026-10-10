@@ -165,23 +165,28 @@ npm run seed:test
 
 ### Demo Seeds
 ```bash
-npm run seed:demo
+npm run seed:dev
 ```
 - Loads all reference data
 - Loads demo data
-- Creates realistic sample content
 - Prepares for demo/presentation
+
+> `npm run seed:demo` **does not exist.** The only two seed scripts are `npm run seed:dev`
+> (`backend/seeds/dev.seed.ts`) and `npm run seed:test` (`backend/seeds/test.seed.ts`), each with a
+> `db:seed:dev` / `db:seed:test` alias. A separate demo seeder was never written.
 
 ---
 
 ## Seed Management
 
 ### Adding New Seeds
-1. Create seed file in `backend/src/seeds/`
+1. Create the seed file in `backend/seeds/` — ⚠️ **not** `backend/src/seeds/`, which does not exist.
+   The two current entry points are `backend/seeds/dev.seed.ts` (`npm run seed:dev`) and
+   `backend/seeds/test.seed.ts` (`npm run seed:test`)
 2. Follow naming convention: `{category}.seed.ts`
-3. Export async `run()` function
-4. Register in seed index
-5. Document seed purpose
+3. Export an async entry function
+4. Register it in the relevant entry point
+5. Document the seed's purpose
 
 ### Updating Seeds
 1. Never modify existing seed files

@@ -15,23 +15,54 @@ export const UserDeletedSchema = z.object({
   userId: z.string(),
 });
 
+/**
+ * The story row carried on `story.created` / `story.updated` / `story.published` / `story.archived`.
+ *
+ * `SanitySyncEventHandler` builds a Sanity document from this and returned early on a missing
+ * `story`, which is what made the whole Sanity integration dead code: the client, the GROQ, the
+ * Zod validation and the circuit breaker were all real, and none of it ever ran.
+ *
+ * Optional, and the reason is the dead-letter queue rather than convenience: `dlq.service.ts`
+ * persists payloads, so a replayed event from before this field existed must still validate. A
+ * required field would make every historical DLQ entry permanently unreplayable.
+ *
+ * `publishedAt` is `z.coerce.date()` rather than `z.date()` for the same reason — a payload that
+ * round-tripped through Valkey comes back with a string date, and the handler calls
+ * `.toISOString()` on it.
+ */
+const StorySnapshotSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  excerpt: z.string().nullable().optional(),
+  content: z.string().nullable().optional(),
+  coverImage: z.string().nullable().optional(),
+  status: z.string(),
+  publishedAt: z.coerce.date().nullable().optional(),
+});
+
 export const StoryCreatedSchema = z.object({
   storyId: z.string(),
   authorId: z.string(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryUpdatedSchema = z.object({
   storyId: z.string(),
   updatedFields: z.record(z.string(), z.unknown()),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryPublishedSchema = z.object({
   storyId: z.string(),
   publishedAt: z.coerce.date(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryArchivedSchema = z.object({
   storyId: z.string(),
+  story: StorySnapshotSchema.optional(),
 });
 
 export const StoryDeletedSchema = z.object({
@@ -108,6 +139,12 @@ export const MessageSentSchema = z.object({
   messageId: z.string(),
   conversationId: z.string(),
   senderId: z.string(),
+  /**
+   * The other participant. Optional for the dead-letter queue's sake: an entry persisted before this
+   * field existed must still validate, and a consumer with no recipient has nothing to notify rather
+   * than an error to raise.
+   */
+  recipientId: z.string().optional(),
 });
 
 export const MessageReadSchema = z.object({
@@ -230,6 +267,7 @@ export const PaymentCompletedSchema = z.object({
 
 export const PaymentFailedSchema = z.object({
   paymentId: z.string(),
+  failureStage: z.string().optional(),
 });
 
 export const PaymentRefundedSchema = z.object({
@@ -238,6 +276,16 @@ export const PaymentRefundedSchema = z.object({
 });
 
 export const RefundCompletedSchema = z.object({
+  refundId: z.string(),
+});
+
+/**
+ * A refund that died. Same shape as `PaymentRefundedSchema` on purpose: both describe an
+ * attempt against one refund, and a consumer that reads `paymentId` + `refundId` handles the
+ * success and the failure without a second shape to learn.
+ */
+export const RefundFailedSchema = z.object({
+  paymentId: z.string(),
   refundId: z.string(),
 });
 
@@ -277,10 +325,11 @@ export const LibraryItemRemovedSchema = z.object({
 
 export const ModerationReportCreatedSchema = z.object({
   reportId: z.string(),
-  reporterId: z.string(),
+  reporterId: z.string().nullable(),
   targetId: z.string(),
   targetType: z.string(),
   reason: z.string(),
+  source: z.enum(['user', 'auto']).optional(),
 });
 
 export const ModerationActionTakenSchema = z.object({
@@ -292,12 +341,12 @@ export const ModerationActionTakenSchema = z.object({
   reason: z.string(),
 });
 
-export const UserRestrictedSchema = z.object({
+export const MfaEnabledSchema = z.object({
   userId: z.string(),
-  type: z.string(),
-  reason: z.string(),
-  restrictedBy: z.string(),
-  expiresAt: z.coerce.date().nullable(),
+});
+
+export const MfaDisabledSchema = z.object({
+  userId: z.string(),
 });
 
 export const ModerationEscalatedSchema = z.object({
@@ -307,27 +356,51 @@ export const ModerationEscalatedSchema = z.object({
   previousUpdatedAt: z.coerce.date(),
 });
 
+/**
+ * Registered names that are correct but have no producer in the codebase yet.
+ *
+ * A registration with no producer is a promise nothing keeps: `EventValidatorService` never
+ * looks it up, and the only thing it documents is an intention. Each entry below still has a
+ * live `@OnEvent` subscriber whose module is owned by another stream, so the name is kept to
+ * keep the subscriber's contract honest while its producer is written. Deleting the entry and
+ * the subscriber together is the other valid move; leaving the name unregistered with a
+ * subscriber attached is not, because that is the `moderation.escalated` defect again.
+ *
+ * `event-schemas.spec.ts` fails if one of these is forgotten here once its producer lands.
+ */
+export const REGISTERED_WITHOUT_PRODUCER: readonly string[] = [
+  // Producer belongs to modules/users/users.service.ts; subscriber is users/events/users.event-handler.ts.
+  'user.updated',
+  // Producer belongs to modules/payments/payments.service.ts; subscriber is payments/events/payments.event-handler.ts.
+  'refund.completed',
+];
+
+/**
+ * The event contract. `EventSchemaRegistry` rejects any name absent from this map, so a
+ * producer that emits an unregistered name is dead-lettered instead of delivered.
+ *
+ * Every name below must be emitted by `EventValidatorService.emit` somewhere in the
+ * codebase. `event-schemas.spec.ts` enumerates the producers and fails on any gap, because
+ * the failure this guards against is silent: an unregistered name costs a DLQ row and a
+ * handler that never runs, with nothing in the request path to show for it.
+ *
+ * Names use the producer's `<domain>.<entity>.<verb>` shape. Where two spellings of the
+ * same fact were registered (`follow.created` beside `user.followed`, `reaction.created`
+ * beside `story.reacted`, `comment_reaction.created` beside `comment.reacted`, and
+ * `moderation.escalated` beside `moderation.report.escalated`), only the spelling the
+ * producers actually emit survives.
+ */
 export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: string }> = {
   'user.registered': { schema: UserRegisteredSchema, version: 'v1' },
-  'user.updated': { schema: UserUpdatedSchema, version: 'v1' },
-  'user.deleted': { schema: UserDeletedSchema, version: 'v1' },
   'story.created': { schema: StoryCreatedSchema, version: 'v1' },
   'story.updated': { schema: StoryUpdatedSchema, version: 'v1' },
   'story.published': { schema: StoryPublishedSchema, version: 'v1' },
   'story.archived': { schema: StoryArchivedSchema, version: 'v1' },
   'story.deleted': { schema: StoryDeletedSchema, version: 'v1' },
-  'follow.created': { schema: FollowCreatedSchema, version: 'v1' },
-  'follow.deleted': { schema: FollowDeletedSchema, version: 'v1' },
-  'reaction.created': { schema: ReactionCreatedSchema, version: 'v1' },
-  'reaction.deleted': { schema: ReactionDeletedSchema, version: 'v1' },
   'comment.created': { schema: CommentCreatedSchema, version: 'v1' },
   'comment.updated': { schema: CommentUpdatedSchema, version: 'v1' },
   'comment.deleted': { schema: CommentDeletedSchema, version: 'v1' },
-  'comment_reaction.created': { schema: CommentReactionCreatedSchema, version: 'v1' },
-  'comment_reaction.deleted': { schema: CommentReactionDeletedSchema, version: 'v1' },
   'notification.created': { schema: NotificationCreatedSchema, version: 'v1' },
-  'notification.read': { schema: NotificationReadSchema, version: 'v1' },
-  'notification.deleted': { schema: NotificationDeletedSchema, version: 'v1' },
   'message.sent': { schema: MessageSentSchema, version: 'v1' },
   'message.read': { schema: MessageReadSchema, version: 'v1' },
   'email.verified': { schema: EmailVerifiedSchema, version: 'v1' },
@@ -350,6 +423,7 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'book.published': { schema: BookPublishedSchema, version: 'v1' },
   'book.archived': { schema: BookArchivedSchema, version: 'v1' },
   'book.deleted': { schema: BookDeletedSchema, version: 'v1' },
+  'payment.created': { schema: PaymentInitiatedSchema, version: 'v1' },
   'payment.completed': { schema: PaymentCompletedSchema, version: 'v1' },
   'payment.failed': { schema: PaymentFailedSchema, version: 'v1' },
   'rental.created': { schema: RentalCreatedSchema, version: 'v1' },
@@ -360,16 +434,20 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'library.item.accessed': { schema: LibraryItemAccessedSchema, version: 'v1' },
   'library.item.removed': { schema: LibraryItemRemovedSchema, version: 'v1' },
   'moderation.report.created': { schema: ModerationReportCreatedSchema, version: 'v1' },
+  'moderation.report.escalated': { schema: ModerationEscalatedSchema, version: 'v1' },
   'moderation.action.taken': { schema: ModerationActionTakenSchema, version: 'v1' },
-  'user.restricted': { schema: UserRestrictedSchema, version: 'v1' },
-  'moderation.escalated': { schema: ModerationEscalatedSchema, version: 'v1' },
   'refund.created': { schema: PaymentRefundedSchema, version: 'v1' },
-  'refund.completed': { schema: RefundCompletedSchema, version: 'v1' },
+  'refund.failed': { schema: RefundFailedSchema, version: 'v1' },
   'user.followed': { schema: FollowCreatedSchema, version: 'v1' },
   'user.unfollowed': { schema: FollowDeletedSchema, version: 'v1' },
   'story.reacted': { schema: ReactionCreatedSchema, version: 'v1' },
   'story.reaction.removed': { schema: ReactionDeletedSchema, version: 'v1' },
   'comment.reacted': { schema: CommentReactionCreatedSchema, version: 'v1' },
   'comment.reaction.removed': { schema: CommentReactionDeletedSchema, version: 'v1' },
-  'payment.created': { schema: PaymentInitiatedSchema, version: 'v1' },
+  'mfa.enabled': { schema: MfaEnabledSchema, version: 'v1' },
+  'mfa.disabled': { schema: MfaDisabledSchema, version: 'v1' },
+
+  // Registered without a producer yet; see REGISTERED_WITHOUT_PRODUCER above.
+  'user.updated': { schema: UserUpdatedSchema, version: 'v1' },
+  'refund.completed': { schema: RefundCompletedSchema, version: 'v1' },
 };

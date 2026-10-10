@@ -1,0 +1,40 @@
+apiVersion: v2
+name: frontend
+description: A Helm chart for the Hakawi frontend (Next.js) application
+
+type: application
+version: 0.1.0
+
+appVersion: "latest"
+
+keywords:
+  - hakawi
+  - frontend
+  - nextjs
+  - web
+
+home: https://github.com/hakawi-io/hakawi
+
+sources:
+  - https://github.com/hakawi-io/hakawi
+
+maintainers:
+  - name: DevOps Team
+    email: devops@hakawi.io
+
+dependencies: []
+
+annotations:
+  artifacthub.io/readme: https://github.com/hakawi-io/hakawi/tree/main/infrastructure/helm/frontend/README.md
+  artifacthub.io/category: web
+  artifacthub.io/license: MIT
+  artifacthub.io/timestamp: "2024-01-01T00:00:00Z"
+
+kubeVersion: ">=1.24-0"
+
+icon: https://github.com/hakawi-io/hakawi/raw/main/frontend/public/logo.png
+
+condition: frontend.enabled
+tags:
+  - hakawi
+  - frontend

@@ -1,3 +1,5 @@
+import type { AuthorSummary } from '@hakawi/shared-types';
+
 export type Conversation = {
   id: string;
   participant1Id: string;
@@ -41,10 +43,7 @@ export type ConversationResponse = {
   id: string;
   participant1Id: string;
   participant2Id: string;
-  participant: {
-    id: string;
-    name: string;
-  };
+  participant: AuthorSummary;
   lastMessage?: {
     content: string;
     createdAt: string;

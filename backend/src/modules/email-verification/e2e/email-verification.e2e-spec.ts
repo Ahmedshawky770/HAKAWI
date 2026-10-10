@@ -52,14 +52,12 @@ describe('Email Verification E2E', () => {
 
   describe('POST /auth/resend-verification', () => {
     it('should resend verification email', async () => {
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: 'e2e-verify@example.com',
-          password: 'SecurePass123!',
-          name: 'E2E Verify User',
-          username: 'e2everify',
-        });
+      await request(httpServer).post('/auth/register').send({
+        email: 'e2e-verify@example.com',
+        password: 'SecurePass123!',
+        name: 'E2E Verify User',
+        username: 'e2everify',
+      });
 
       const res = await request(httpServer)
         .post('/auth/resend-verification')

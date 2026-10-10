@@ -151,41 +151,49 @@ class HakawiAPI {
     });
   }
 
+  // ⛔ CORRECTED (paths and types): the block below previously called
+  // `/stories/:id/comments`, `/stories/:id/reactions` and `/users/:id/follow` — none of which
+  // exists — and typed reactions as `'love' | 'like' | 'clap'`, two of which are not valid types.
+  // Real bases: `@Controller('comments')`, `@Controller('reactions')`, `@Controller('follows')`.
+  // Real types: `backend/src/modules/reactions/types.ts:27`.
+
   // Comments
   async getComments(storyId: string, page = 1, limit = 20) {
-    return this.request(`/stories/${storyId}/comments?page=${page}&limit=${limit}`);
+    return this.request(`/comments/story/${storyId}?page=${page}&limit=${limit}`);
   }
 
   async createComment(storyId: string, content: string, parentId?: string) {
-    return this.request(`/stories/${storyId}/comments`, {
+    // storyId travels in the BODY — the path carries no story segment.
+    return this.request('/comments', {
       method: 'POST',
-      body: JSON.stringify({ content, parentId })
+      body: JSON.stringify({ storyId, content, parentId })
     });
   }
 
   // Reactions
-  async addReaction(storyId: string, type: 'love' | 'like' | 'clap') {
-    return this.request(`/stories/${storyId}/reactions`, {
+  async addReaction(storyId: string, type: 'like' | 'love' | 'wow' | 'sad' | 'angry' | 'haunted') {
+    return this.request(`/reactions/stories/${storyId}`, {
       method: 'POST',
       body: JSON.stringify({ type })
     });
   }
 
   async removeReaction(storyId: string) {
-    return this.request(`/stories/${storyId}/reactions`, {
+    return this.request(`/reactions/stories/${storyId}`, {
       method: 'DELETE'
     });
   }
 
   // Follows
   async follow(userId: string) {
-    return this.request(`/users/${userId}/follow`, {
-      method: 'POST'
+    return this.request('/follows', {
+      method: 'POST',
+      body: JSON.stringify({ followingId: userId })
     });
   }
 
   async unfollow(userId: string) {
-    return this.request(`/users/${userId}/follow`, {
+    return this.request(`/follows/${userId}`, {
       method: 'DELETE'
     });
   }
@@ -265,7 +273,7 @@ function useAddReaction(storyId: string) {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (type: 'love' | 'like' | 'clap') =>
+    mutationFn: (type: 'like' | 'love' | 'wow' | 'sad' | 'angry' | 'haunted') =>
       api.addReaction(storyId, type),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stories', storyId] });

@@ -1,0 +1,34 @@
+-- A direct message that cannot be silenced.
+--
+-- WHY. `notification_preferences` carried one boolean per notification family — `story_reactions`,
+-- `comments`, `follows`, `mentions`, `system` — and nothing at all for direct messages.
+-- `PREFERENCE_FOR_TYPE` (backend/src/modules/notifications/preference-family.ts) therefore had no entry
+-- that could resolve the `message` type, so `NotificationsService.create` had no preference to consult
+-- and `PATCH /notifications/preferences` had no field to accept: a user could not stop a direct-message
+-- notification by any means at all — not in the app, not by email (the same resolver gates the email, and
+-- had no family to name), and not in the database. A message was the one notification a recipient had no
+-- way to refuse.
+--
+-- WHY THE COLUMN IS CALLED `messages`. Plural, like `story_reactions`, `follows` and `mentions`: those
+-- columns name the FAMILY rather than one instance of it, and `messages` is the family a `message` type
+-- notification belongs to. It is deliberately not the type string, which is what the map keys on.
+--
+-- WHY NOT A `message` BOOLEAN, AND WHY NOT A REUSE OF `system`. `system` was the only column that could
+-- have governed a message without a migration, and it is the wrong family in both directions: a user who
+-- turned `system` off does not mean "tell me about nothing", and reusing it would make muting contest
+-- announcements and prize payments the price of a quiet inbox — while a user who leaves `system` on and
+-- wants no DMs still gets them. Principle #6 asks for the smallest additive change that carries the
+-- truth, and a shared column carries a lie.
+--
+-- WHY `DEFAULT true NOT NULL`, AND WHY THAT IS NOT A BACKFILL IN DISGUISE. Every pre-existing row reads
+-- `true`, which is exactly the behaviour it had before this migration: nobody had ever been able to mute
+-- messages, so nobody stored a preference about them. A default of `false` would have muted direct
+-- messages for every user in the database the instant the deploy ran, which is a product change smuggled
+-- in as a schema fix. In Postgres 11+ a constant default fills the column without rewriting the table, so
+-- the backfill happens inside this one statement and there is no window in which a row has no value.
+--
+-- WHY NOT FOLDED INTO 0007. 0007 created this table. This is an additive change to a live table, which is
+-- the kind Principle #6 asks to keep separate and name.
+
+ALTER TABLE notification_preferences
+  ADD COLUMN IF NOT EXISTS messages boolean DEFAULT true NOT NULL;

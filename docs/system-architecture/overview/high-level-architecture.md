@@ -117,7 +117,8 @@ graph TB
 
 ### Presentation Layer
 - **Responsibility:** User interface and user experience
-- **Technology:** Next.js, Shadcn UI, Tailwind CSS
+- **Technology:** **Next.js 16.3.5**, Tailwind CSS 4, and 5 hand-written components in
+  `components/ui/`. ⚠️ **Shadcn UI and Radix are NOT installed.**
 - **Concerns:** Routing, state management, UI components
 
 ### Application Layer
@@ -187,10 +188,15 @@ graph TB
 ## Technology Stack
 
 ### Frontend
-- **Framework:** Next.js 16 (App Router)
-- **UI Library:** Shadcn UI
-- **Styling:** Tailwind CSS
+- **Framework:** **Next.js 16.3.5** (App Router)
+- **UI Library:** ⚠️ none installed — `components/ui/` holds 5 hand-written components
+  (`Button`, `Card`, `ErrorMessage`, `Input`, `Loading`) plus `components/story/StoryMeta.tsx`.
+  Shadcn and Radix are not dependencies
+- **Styling:** Tailwind CSS 4
 - **State Management:** TanStack Query
+- **Response validation:** ~50 Zod schemas in `lib/schemas.ts`; `lib/api.ts` has no blind `as` casts
+- **Shared types:** the **compiled** `@hakawi/shared-types` package (the previous `paths` alias
+  made Turbopack bundle NodeNext `.js` specifiers it cannot resolve)
 - **Language:** TypeScript
 
 ### Backend

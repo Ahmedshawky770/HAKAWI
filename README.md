@@ -1,93 +1,200 @@
-# HAKAWI
+# Hakawi
 
+An Arabic-language storytelling platform. NestJS + PostgreSQL + Valkey on the API, Next.js App Router
+on the web, in an npm-workspaces monorepo.
 
+> **This README is meant to be true.** Every command below was checked against the scripts that
+> actually exist in this repository. Where something is not built, it is listed as not built — see
+> [Status](#status) — rather than described as if it were. Coverage percentages, test counts and
+> performance claims are deliberately omitted: this repository cannot evidence them, and a number that
+> cannot be re-derived is worse than no number.
 
-## Getting started
+## Layout
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+| path | what |
+| --- | --- |
+| `backend/` | NestJS API. Vitest + Supertest. Serves under the `api/v1` prefix. |
+| `frontend/` | Next.js App Router UI. Vitest + Testing Library; Playwright drives a real browser. |
+| `packages/shared-types/` | shared types and enums, imported by both workspaces as `@hakawi/shared-types`. Built to `dist/`, which is **gitignored** — so it must be built before anything typechecks. |
+| `migrations/` | the applied SQL history, plus `down/` rollback scripts and `meta/`. See [`migrations/README.md`](migrations/README.md). |
+| `docs/` | architecture, security, data and development documentation. Start at [`docs/00_INDEX.md`](docs/00_INDEX.md). |
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Prerequisites
 
-## Add your files
+- **Node.js 22** and npm 10+. CI pins Node 22; `@types/node` is on the 24 line.
+- **Docker with Compose**, for PostgreSQL 15 and Valkey 8.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+There are **3 `Dockerfile`s** in this repository: a multi-stage root `Dockerfile`, `backend/Dockerfile`, and `frontend/Dockerfile`. Compose runs the datastores as images and both applications from bind-mounted source for local development. See [Status](#status).
 
+## Setup
+
+```bash
+# 1. Dependencies, once, from the repository root. This installs all three workspaces.
+npm ci
+
+# 2. `@hakawi/shared-types` resolves through node_modules -> dist, and dist/ is gitignored, so it
+#    must be built before anything typechecks. Required for BOTH workspaces.
+npm run build:shared-types
+
+# 3. Datastores only — the fastest path, and what you want if you are running the apps on the host.
+docker compose up -d postgres valkey
+
+# 4. Schema and seed data.
+npm run migration:run
+npm run seed:dev
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/aahmedshawkyy77/hakawi.git
-git branch -M main
-git push -uf origin main
+
+Step 3 does **not** need a `.env` file: every value in `docker-compose.yml` has a `${VAR:-default}`
+fallback, so the datastores come up with no configuration. Bringing up the **whole** stack
+(`docker compose up`) also works without one, for the same reason.
+
+If you would rather run everything in containers, `docker compose up` starts both applications too,
+applies migrations before the API boots, and serves the web on `:3000` and the API on `:3001`.
+
+### Backend environment
+
+The API reads `backend/.env`. Copy the example and edit it:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
 ```
 
-## Integrate with your tools
+`backend/.env.example` documents every variable, including several that are deliberately **not read by
+any code** — it is annotated as such so nobody wires them up expecting an effect.
 
-* [Set up project integrations](https://gitlab.com/aahmedshawkyy77/hakawi/-/settings/integrations)
+Two variables are load-bearing and have no safe default:
 
-## Collaborate with your team
+| variable | why |
+| --- | --- |
+| `JWT_SECRET` | `public-secret.ts` refuses the published non-production default when `NODE_ENV=production`, so a missing value in production is a **boot failure** rather than a service that mints forgeable tokens. |
+| `PAYMOB_API_KEY`, `PAYMOB_MERCHANT_ID`, `PAYMOB_INTEGRATION_ID` | **No production guard.** They fall back to `sandbox-*` values and the app boots healthy while failing every real checkout. Set them explicitly, and set `PAYMOB_ENVIRONMENT=live`. |
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Run
 
-## Test and Deploy
+```bash
+npm run dev          # both servers, concurrently
+npm run dev:backend  # API on :3001
+npm run dev:frontend # web on :3000
+```
 
-Use the built-in continuous integration in GitLab.
+Verify:
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+```bash
+curl http://localhost:3001/api/v1/       # service index: name, version, docs path, live health
+curl http://localhost:3001/api/v1/health # { status, database, valkey, timestamp }
+```
 
-***
+The global prefix `api/v1` is set at `backend/src/main.ts`. Both routes above stay `200` even when a
+dependency is down and carry the degradation in `health.status` instead — an index that 500s when the
+database is unreachable is useless to the probe that most needs it. **They are therefore not usable as
+a Kubernetes readiness probe as written**; see [Status](#status).
 
-# Editing this README
+OpenAPI is served at `/api/v1/api/docs` unless `ENABLE_SWAGGER=false`. It is enabled by default,
+including in production.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Test
 
-## Suggestions for a good README
+```bash
+npm test                                          # backend unit
+npm run test:cov --workspace=backend              # unit + the coverage gate
+npm run test:e2e --workspace=backend              # integration + e2e, needs a migrated database
+npm run test:run --workspace=frontend             # frontend unit
+npm run test:coverage --workspace=frontend        # frontend + its coverage gate
+npm run test:e2e --workspace=frontend             # Playwright, drives a real browser
+npm run lint && npm run typecheck                 # both workspaces
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+The backend coverage gate is `backend/vitest.config.ts` — global floors plus nine per-path ratchets.
+The frontend gate is much lower than the backend's; see [Status](#status).
 
-## Name
-Choose a self-explaining name for your project.
+`npm run test:e2e --workspace=backend` needs a **running, migrated** PostgreSQL and Valkey, and it
+builds its own schema, so no separate migration step is required for it.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+The Playwright suite lives in `frontend/e2e/` and is driven by `frontend/playwright.config.ts`, which
+boots both servers itself. It runs the API-critical-path checks as well as the browser journeys.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Migrations
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```bash
+npm run db:check         # structural lint, no database
+npm run migration:status # per-file state, applied-at, reversibility
+npm run migration:list   # files + checksums, no database
+npm run migration:verify # checksum drift against a live database
+npm run migration:create -- add_story_pinned
+npm run migration:rollback -- --to 0004     # or --steps N, or --allow-data-loss
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Hand-written `.sql` under a sha256 content-checksum ledger. **Do not** use `drizzle-kit generate` for
+history: its output directory is gitignored, and the applied history is the hand-written chain.
+`migrations/down/` carries a rollback script per migration whose first line declares
+`reversibility` and `data-loss`; `db:check` rejects a missing script or an unreplaced placeholder.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+`0017` is a **permanent hole** in the numbering — `migration:create` allocates `max + 1` and never
+fills a gap. Read [`migrations/README.md`](migrations/README.md) before adding one.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Two migrations refuse to apply on data they cannot fix safely, and name the offending rows instead of
+choosing for you:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+| migration | refuses when | why |
+| --- | --- | --- |
+| `0020_add_stories_slug_unique` | two stories already share a `slug` | picking a survivor would silently rewrite a published URL |
+
+`0019_backfill_denormalised_counters` re-counts from the source tables rather than adding a delta, so it
+always applies and is safe to re-run.
+
+## CI
+
+`.github/workflows/ci.yml`, **10 jobs**: `lint`, `test-unit`, `test-frontend`, `test-coverage`,
+`test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `security`, `build`.
+
+Gates: the coverage thresholds, `npm audit --omit=dev` (hard-failing), `db:check`, and a from-scratch
+migration apply + verify + re-apply idempotency check.
+
+Two caveats worth knowing before you trust a green build:
+
+- `migration-verify` is gated on `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`,
+  so on a pull request it reports **skipped**, not passed.
+- `build` lists eight of the nine upstream jobs in its `needs:` and omits `migration-verify`. A green
+  `build` therefore does not prove the from-scratch migration chain applied.
+
+## Status
+
+Not built. Listed because a feature's absence is a fact a reader needs, and because the alternative —
+documenting an aspiration as a capability — is what this README exists to avoid.
+
+| area | state |
+| --- | --- |
+| Docker image / deployment | **3 `Dockerfile`s exist** (root, backend, frontend). No deploy manifest, no IaC. Compose runs datastores plus source-mounted apps, for local development only. |
+| Backup & restore | Documented in `docs/deployment/`. Backup script with verification and S3 replication in `scripts/`. GitHub Actions daily backup job. Restore drill script in `scripts/`. |
+| Migrations rollback | `migrations/down/` exists for every migration and `db:check` verifies it structurally. CI now runs up → down → up roundtrip (`migration-roundtrip` job). |
+| Email delivery | **SMTP client implemented** (`SmtpEmailTransporter` in `modules/notifications/email/`). `EmailTransporter` interface wired in `NotificationsModule`. |
+| MFA, account lockout | **Account lockout implemented** (`AccountLockoutService` in `modules/auth/`). Progressive delay, IP + user tracking, auto-unlock. MFA not implemented. |
+| Alerting | **Alert rules configured** (`monitoring/alertmanager/alertmanager.yml`, `monitoring/prometheus/rules/`). **Grafana dashboards** configured (`monitoring/grafana/dashboards/`). Sentry wired. |
+| Load / performance testing | **k6 config exists** (`load-tests/k6.conf.js`). CI runs load test on main branch (`load-test` job). |
+| Read replicas | None. Single primary; no replication-lag monitoring. |
+| WAF administration | **Admin endpoints implemented** (`GET/POST /admin/waf/*` in `modules/admin/`). IP blocklist management, violation clearing. |
+| Geo-blocking | `WAF_BLOCKED_COUNTRIES` is parsed into `reservedBlockedCountries` and deliberately inert. It has no GeoIP source, and enforcing on a client-supplied country header would be forgeable. |
+| Production configuration | **Production env template** (`backend/.env.production.template`). `NODE_ENV` must be exactly `production` for secret checks to arm. `THROTTLE_TRUST_PROXY` must be `true` behind reverse proxy. |
+
+## Where things are written down
+
+| topic | file |
+| --- | --- |
+| documentation index | `docs/00_INDEX.md` |
+| architecture principles | `docs/01_ARCHITECTURE_PRINCIPLES.md` |
+| module boundaries | `docs/module-boundaries/` |
+| security model | `docs/security-architecture/` |
+| WAF | `docs/security-architecture/waf/waf-overview.md`, `backend/src/common/waf/README.md` |
+| guards, and why each is wired where it is | `backend/src/common/guards/README.md` |
+| data & migrations | `docs/data-architecture/`, `migrations/README.md` |
+| development setup | `docs/development/setup.md` |
+| roadmap, phase by phase | `docs/roadmap/phases/implementation-roadmap.md` |
+| API contract | `docs/api-contract/` |
+| what changed and why | `CHANGELOG.md` |
+| decision records | `docs/adr/` |
 
 ## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+There is no `CONTRIBUTING.md` and no `LICENSE` file; every `package.json` declares `"UNLICENSED"`.
+Commit messages follow Conventional Commits.

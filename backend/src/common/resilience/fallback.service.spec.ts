@@ -46,7 +46,11 @@ describe('FallbackService', () => {
       const fn = vi.fn().mockRejectedValue(new Error('failure'));
       vi.mocked(valkeyService.get!).mockResolvedValueOnce(JSON.stringify({ data: 'cached' }));
 
-      const result = await fallbackService.executeWithFallback(fn, { strategy: () => 'default', context: null }, 'cache-key');
+      const result = await fallbackService.executeWithFallback(
+        fn,
+        { strategy: () => 'default', context: null },
+        'cache-key',
+      );
 
       expect(result).toEqual({ data: 'cached' });
     });

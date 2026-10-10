@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, or, gt, isNull, desc, count, lt } from 'drizzle-orm';
+import { eq, and, or, gt, isNull, isNotNull, desc, count, lt, sql } from 'drizzle-orm';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -37,6 +37,7 @@ export class AdminDashboardService {
       totalActionsRow,
       totalRestrictionsRow,
       activeRestrictionsRow,
+      avgResolutionRow,
     ] = await Promise.all([
       db.select({ count: count() }).from(reports),
       db.select({ count: count() }).from(reports).where(eq(reports.status, 'open')),
@@ -46,7 +47,11 @@ export class AdminDashboardService {
       db.select({ count: count() }).from(reports).where(eq(reports.status, 'dismissed')),
       db.select({ count: count() }).from(moderationActions),
       db.select({ count: count() }).from(userRestrictions),
-      db.select({ count: count() }).from(userRestrictions).where(or(isNull(userRestrictions.expiresAt), gt(userRestrictions.expiresAt, new Date()))),
+      db
+        .select({ count: count() })
+        .from(userRestrictions)
+        .where(or(isNull(userRestrictions.expiresAt), gt(userRestrictions.expiresAt, new Date()))),
+      this.averageResolutionQuery(),
     ]);
 
     return {
@@ -59,8 +64,30 @@ export class AdminDashboardService {
       totalActions: Number(totalActionsRow[0]?.count || 0),
       totalRestrictions: Number(totalRestrictionsRow[0]?.count || 0),
       activeRestrictions: Number(activeRestrictionsRow[0]?.count || 0),
-      avgResolutionMinutes: this.calculateAvgResolutionTime(),
+      avgResolutionMinutes: this.calculateAvgResolutionTime(avgResolutionRow[0]?.avgMinutes ?? null),
     };
+  }
+
+  private averageResolutionQuery() {
+    return db
+      .select({
+        avgMinutes: sql<
+          number | string | null
+        >`avg(extract(epoch from (${reports.resolvedAt} - ${reports.createdAt})) / 60)`,
+      })
+      .from(reports)
+      .where(isNotNull(reports.resolvedAt));
+  }
+
+  private calculateAvgResolutionTime(avgMinutes: number | string | null | undefined): number | null {
+    if (avgMinutes === null || avgMinutes === undefined) {
+      return null;
+    }
+    const parsed = Number(avgMinutes);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return Number(parsed.toFixed(2));
   }
 
   async getReportTrends(days: number): Promise<Record<string, TrendRecord>> {
@@ -104,7 +131,7 @@ export class AdminDashboardService {
       }
     }
 
-    const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0] as ReturnType<typeof eq>;
+    const whereClause = conditions.length > 1 ? and(...conditions) : (conditions[0] as ReturnType<typeof eq>);
 
     const userRests = await db
       .select()
@@ -117,7 +144,12 @@ export class AdminDashboardService {
     };
   }
 
-  async getModerationActions(query: { page: number; limit: number; adminId?: string; action?: string }): Promise<unknown> {
+  async getModerationActions(query: {
+    page: number;
+    limit: number;
+    adminId?: string;
+    action?: string;
+  }): Promise<unknown> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const offset = (page - 1) * limit;
@@ -135,7 +167,13 @@ export class AdminDashboardService {
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [actionsResult, [{ total }]] = await Promise.all([
-      db.select().from(moderationActions).where(whereClause).orderBy(desc(moderationActions.createdAt)).limit(limit).offset(offset),
+      db
+        .select()
+        .from(moderationActions)
+        .where(whereClause)
+        .orderBy(desc(moderationActions.createdAt))
+        .limit(limit)
+        .offset(offset),
       db.select({ total: count() }).from(moderationActions).where(whereClause),
     ]);
 
@@ -145,10 +183,6 @@ export class AdminDashboardService {
       page,
       limit,
     };
-  }
-
-  private calculateAvgResolutionTime(): number | null {
-    return null;
   }
 
   async autoEscalateReports(): Promise<number> {
@@ -162,6 +196,10 @@ export class AdminDashboardService {
     let escalatedCount = 0;
 
     for (const report of openReports) {
+      // The read above and this write are two statements, so an admin resolving the report
+      // between them would be overwritten by a sweep that saw a stale 'open'. Re-asserting
+      // the status inside the UPDATE makes the escalation a compare-and-set: the row is
+      // escalated only if it is still open, and `.returning()` reports the truth either way.
       const [updated] = await db
         .update(reports)
         .set({
@@ -169,7 +207,7 @@ export class AdminDashboardService {
           escalatedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(reports.id, report.id))
+        .where(and(eq(reports.id, report.id), eq(reports.status, 'open')))
         .returning();
 
       if (updated) {

@@ -17,7 +17,10 @@ export class MessagesEventHandler {
 
   @OnEvent('message.sent')
   async handleMessageSent(event: MessageSentEvent): Promise<void> {
-    this.logger.info(`Message ${event.messageId} sent in conversation ${event.conversationId} by user ${event.senderId}`, 'MessagesEventHandler');
+    this.logger.info(
+      `Message ${event.messageId} sent in conversation ${event.conversationId} by user ${event.senderId}`,
+      'MessagesEventHandler',
+    );
 
     const message = await this.messagesRepository.findById(event.messageId);
     if (message) {
@@ -35,7 +38,10 @@ export class MessagesEventHandler {
 
   @OnEvent('message.read')
   async handleMessageRead(event: MessageReadEvent): Promise<void> {
-    this.logger.info(`Message ${event.messageId} marked as read in conversation ${event.conversationId} by user ${event.readBy}`, 'MessagesEventHandler');
+    this.logger.info(
+      `Message ${event.messageId} marked as read in conversation ${event.conversationId} by user ${event.readBy}`,
+      'MessagesEventHandler',
+    );
 
     const message = await this.messagesRepository.findById(event.messageId);
     if (message) {

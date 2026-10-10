@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength, MaxLength, Matches } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Invalid email format' })
@@ -33,8 +33,14 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
+  // WHY optional: the browser holds the refresh token in an httpOnly cookie that JavaScript
+  // cannot read, so the body is only the non-browser path. Making the field required would
+  // turn every cookie-only refresh into a 400 from the global ValidationPipe before the
+  // controller ever gets a chance to read the cookie (Principle #8: additive, not breaking).
+  // AuthService still refuses a request that arrives with neither source.
+  @IsOptional()
   @IsString()
-  refreshToken: string;
+  refreshToken?: string;
 }
 
 export class AuthResponseDto {

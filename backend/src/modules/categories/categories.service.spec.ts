@@ -4,7 +4,12 @@ import { NotFoundException, ConflictException } from '@nestjs/common';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 import { CategoriesService } from './categories.service.ts';
-import type { ICategoriesRepository, Category, CreateCategoryInput, UpdateCategoryInput } from './interfaces/categories-repository.interface.ts';
+import type {
+  ICategoriesRepository,
+  Category,
+  CreateCategoryInput,
+  UpdateCategoryInput,
+} from './interfaces/categories-repository.interface.ts';
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
@@ -63,10 +68,7 @@ describe('CategoriesService', () => {
       verbose: vi.fn(),
     };
 
-    categoriesService = new CategoriesService(
-      categoriesRepository,
-      logger as unknown as WinstonLoggerService,
-    );
+    categoriesService = new CategoriesService(categoriesRepository, logger as unknown as WinstonLoggerService);
   });
 
   describe('findById', () => {
@@ -141,14 +143,18 @@ describe('CategoriesService', () => {
     it('should throw ConflictException when slug already exists', async () => {
       vi.mocked(categoriesRepository.findBySlug).mockResolvedValue(mockCategory);
 
-      await expect(categoriesService.create({
-        name: 'Test Category',
-        slug: 'test-category',
-      })).rejects.toThrow('Category slug already exists');
-      await expect(categoriesService.create({
-        name: 'Test Category',
-        slug: 'test-category',
-      })).rejects.toThrow(ConflictException);
+      await expect(
+        categoriesService.create({
+          name: 'Test Category',
+          slug: 'test-category',
+        }),
+      ).rejects.toThrow('Category slug already exists');
+      await expect(
+        categoriesService.create({
+          name: 'Test Category',
+          slug: 'test-category',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -181,8 +187,12 @@ describe('CategoriesService', () => {
         id: 'other-category',
       });
 
-      await expect(categoriesService.update('category-123', { slug: 'existing-slug' })).rejects.toThrow('Category slug already exists');
-      await expect(categoriesService.update('category-123', { slug: 'existing-slug' })).rejects.toThrow(ConflictException);
+      await expect(categoriesService.update('category-123', { slug: 'existing-slug' })).rejects.toThrow(
+        'Category slug already exists',
+      );
+      await expect(categoriesService.update('category-123', { slug: 'existing-slug' })).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('should allow updating to the same slug', async () => {
@@ -192,10 +202,16 @@ describe('CategoriesService', () => {
         name: 'Updated Category',
       });
 
-      const result = await categoriesService.update('category-123', { name: 'Updated Category', slug: 'test-category' });
+      const result = await categoriesService.update('category-123', {
+        name: 'Updated Category',
+        slug: 'test-category',
+      });
 
       expect(result.name).toBe('Updated Category');
-      expect(categoriesRepository.update).toHaveBeenCalledWith('category-123', { name: 'Updated Category', slug: 'test-category' });
+      expect(categoriesRepository.update).toHaveBeenCalledWith('category-123', {
+        name: 'Updated Category',
+        slug: 'test-category',
+      });
     });
   });
 

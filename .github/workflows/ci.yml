@@ -6,34 +6,79 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
 jobs:
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Lint Backend
-        run: |
-          cd backend
-          npm ci
-          npm run lint
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Type Check Backend
-        run: |
-          cd backend
-          npx tsc --noEmit
+      # The backend imports @hakawi/shared-types through node_modules, and that package's
+      # "types" entry is ./dist/index.d.ts. dist/ is gitignored, so it must be compiled
+      # before tsc can typecheck either workspace. The frontend no longer maps the package
+      # to source via tsconfig "paths" — it resolves through node_modules and dist too, so
+      # this step is load-bearing for the frontend typecheck as well.
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
 
-  test-backend:
-    name: Backend Tests
+      - name: Lint backend (checker, no --fix)
+        run: npm run lint --workspace=backend
+
+      - name: Lint frontend
+        run: npm run lint --workspace=frontend
+
+      - name: Type check backend
+        run: npm run typecheck --workspace=backend
+
+      - name: Type check e2e harness
+        run: npx tsc -p tsconfig.e2e.json --noEmit
+        working-directory: backend
+
+      # The frontend uses Next 16's route-aware global types (LayoutProps, PageProps). Next
+      # writes those into .next/types/ during a build, and .next/ is gitignored, so a clean
+      # runner has no such directory and `tsc --noEmit` fails with "Cannot find name
+      # 'LayoutProps'" in every layout and page.
+      #
+      # The types are therefore GENERATED as part of the check rather than assumed to exist
+      # because a developer ran `next dev` locally. Next 16 no longer runs eslint as part of
+      # `next build`, so this does not duplicate the Lint frontend step above.
+      - name: Generate Next route types
+        run: npx next build
+        working-directory: frontend
+
+      - name: Type check frontend
+        run: npm run typecheck --workspace=frontend
+
+      - name: Type check shared-types
+        run: npm run typecheck --workspace=packages/shared-types
+
+      - name: Check formatting
+        run: npm run format --workspace=backend
+
+  test-unit:
+    name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:15-alpine
@@ -61,90 +106,735 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
-        run: |
-          cd backend
-          npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Unit Tests
-        run: |
-          cd backend
-          npm run test
-
-      - name: Run Tests with Coverage
-        run: |
-          cd backend
-          npm run test:cov
+      - name: Run unit tests
+        run: npm run test --workspace=backend
 
   test-frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Lint Frontend
-        run: |
-          cd frontend
-          npm run lint
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
 
-      - name: Build Frontend
+      - name: Run frontend tests
+        run: npm run test:run --workspace=frontend
+
+      - name: Run frontend tests with coverage gate
+        run: npm run test:coverage --workspace=frontend
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage
+          if-no-files-found: warn
+          retention-days: 14
+
+  test-coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The gate is the vitest coverage.thresholds block in backend/vitest.config.ts
+      # (global 79/70/73/78 plus nine per-path ratchets). It is a measured floor with
+      # roughly two points of headroom, not an aspiration. The report below is only a
+      # human-readable echo of the same thresholds; it never passes where vitest fails.
+      - name: Run tests with coverage gate
+        run: npm run test:cov --workspace=backend
+
+      - name: Print coverage summary
+        if: always()
+        run: node backend/scripts/print-coverage-summary.mjs
+
+      - name: Upload coverage summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: backend/coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            backend/coverage/lcov.info
+            backend/coverage/index.html
+          if-no-files-found: warn
+          retention-days: 14
+
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same reason as the lint job: @hakawi/shared-types resolves through node_modules, and its
+      # "types" entry is ./dist/index.d.ts. dist/ is gitignored, so it must exist on a clean
+      # checkout. vitest.config.e2e.ts also aliases the package to source, but building it here
+      # keeps every workspace on the same artefact and keeps the job self-explanatory.
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      # A graph that cannot be built fails in `DependenciesScanner`, BEFORE any test body runs, so Vitest
+      # tallies every test in the affected file as SKIPPED rather than failed. Measured with that
+      # state reproduced: `test:e2e` exits 1 (so the job is red), but the report reads
+      # `numFailedTests: 4, numPendingTests: 195` — the 195 being every real test, collected and then
+      # not run. The exit code says "something broke"; the counts say what. Asserting them turns a
+      # vague red into a named failure, and stops "collected but never executed" from reading like a
+      # suite with nothing left to do.
+      #
+      # The regression this guards is in docs/adr/006-the-backend-could-not-boot.md: a books<->
+      # library cycle with no forwardRef(), plus a module importing NotificationsModule without
+      # listing it, meant the backend could not boot at all.
+      #
+      # The reporter is JSON because the default output does not expose collected/skipped counts in
+      # a form a shell can assert on.
+      # `npm run … --workspace=backend` runs with cwd = `backend/`, so the relative
+      # `--outputFile=e2e-results.json` lands at `backend/e2e-results.json`. The assert step below
+      # runs from the repository root, so it must name that path explicitly. Getting this wrong makes
+      # the guard exit 2 ("unreadable report") on every push, which is a broken pipeline rather than
+      # a caught regression.
+      - name: Run e2e tests
+        run: npm run test:e2e --workspace=backend -- --reporter=json --outputFile=e2e-results.json
+
+      - name: Assert the e2e suite actually ran
+        run: node backend/scripts/assert-suite-ran.mjs backend/e2e-results.json --min-tests 150 --max-skipped 0 --label e2e
+
+      - name: Upload e2e results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: backend/e2e-results.json
+          if-no-files-found: error
+
+  # Browser tests. These drive the real Next.js dev server against the real API through
+  # Chromium, so they need both, a migrated database, and the browser binaries. They were
+  # previously configured and never invoked: the job below uploaded a Playwright report that
+  # no step produced, behind `if-no-files-found: ignore`.
+  test-browser:
+    name: Browser Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_NAME: hakawi_e2e
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      VALKEY_HOST: localhost
+      VALKEY_PORT: '6379'
+      # Non-production secrets. The API config validates a 32-character minimum, so these
+      # are sized to pass validation and are worthless outside this throwaway database.
+      JWT_SECRET: ci-browser-jwt-secret-value-not-used-anywhere-else
+      REFRESH_TOKEN_SECRET: ci-browser-refresh-secret-value-not-used-anywhere
+      ENCRYPTION_KEY: ci-browser-encryption-key-value-not-used-anywhere
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The browser specs create their own accounts and stories through the API, but they
+      # need the schema to exist first. This runs the real migration runner against a
+      # throwaway database, so a broken migration fails the browser job too rather than
+      # being papered over by a schema push.
+      - name: Apply migrations
+        run: npm run migration:run --workspace=backend
+
+      # --with-deps installs the browser plus its shared libraries. Without it the runner
+      # image has no WebKit/Firefox system packages and Chromium fails to launch.
+      - name: Install Chromium and its system dependencies
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      - name: Run browser tests
+        run: npm run test:e2e --workspace=frontend
+        working-directory: frontend
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/coverage/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Traces and screenshots are the only way to diagnose a browser failure after the fact.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: frontend/coverage/playwright-test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  migration-premerge:
+    name: Migration Lint (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Structural gate over migrations/*.sql and migrations/down/*.sql only: naming,
+      # sequence gaps, missing or placeholder down scripts, declared reversibility that
+      # does not match the statements the script actually contains. No database needed.
+      - name: Check migration files
+        run: npm run db:check --workspace=backend
+
+  # From-scratch apply of the whole chain against an empty database. This is a real gate, not a
+  # checksum check: it proves every migration is self-contained, runs in order on a virgin schema,
+  # and is re-runnable. It deliberately does NOT claim to validate any deployed environment — it
+  # has no access to one. Detecting drift between a deployed ledger and these files requires
+  # running `npm run migration:verify` against that environment; see docs/data-architecture/
+  # migrations/migration-runbook.md.
+  migration-verify:
+    name: Migration Smoke Test (from scratch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [migration-premerge]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # Verifies the ledger this run just wrote: every file present, checksums intact, no orphans.
+      # Together with the re-run below this is the assertion that matters — a chain that only
+      # works once has a migration that is not idempotent.
+      - name: Verify migration ledger
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Re-apply migrations (idempotency)
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Verify ledger after re-apply
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+  # The `migration-verify` job above proves the UP path: apply, verify, apply again, verify. It never
+  # touched a down script, so the twenty-two rollback scripts in `migrations/down/` had never been
+  # executed by anything automated. That is a real gap and it is the one that bites during an incident:
+  # a migration that cannot be rolled back is discovered at the moment somebody needs it.
+  #
+  # WHY THIS RUNS ON EVERY PULL REQUEST AND NOT ONLY ON `main`. `migration-verify` is gated on a push to
+  # main because it costs a full Postgres. This one costs about two seconds of migration work — the
+  # expensive part of the job is `npm ci`, which every job pays anyway. Gating the cheapest, most
+  # protective job to the branch that gets five pulls a day would be the wrong trade.
+  migration-roundtrip:
+    name: Migration Round Trip (down and back)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [migration-premerge]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hakawi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply every migration
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # The count is written to the step summary rather than compared to a hard-coded number. A fixed
+      # number would have to be edited on every migration, and the edit is the moment someone stops
+      # reading the job.
+      - name: Record the applied table count
+        id: applied
         run: |
-          cd frontend
-          npm run build
+          count=$(psql "$DATABASE_URL" -tAc "select count(*) from information_schema.tables where table_schema = 'public';")
+          echo "tables_after_apply=$count" >> "$GITHUB_OUTPUT"
+          echo "Applied $count public tables." >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
+
+      - name: Roll every migration back
+        # `--to 0000_create_users_table` leaves 0000 applied and drops everything after it, so the
+        # assertion below is about what REMAINS rather than about an empty database. `--to 0000`
+        # would be a bare number and the runner resolves that as a filename, which fails the naming
+        # convention — the id has to be spelled out.
+        #
+        # `--allow-data-loss` is not optional here and never will be: every down script in this chain is
+        # classified `data-loss` because rolling a schema back necessarily destroys the rows written
+        # since. The flag is the runner's way of making that explicit, and this is a throwaway CI
+        # database, so the loss is the point rather than an accident.
+        run: npm run migration:rollback --workspace=backend -- --to 0000_create_users_table --allow-data-loss
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # The assertion that gives this job its teeth. `migration:status` exiting zero is not enough —
+      # it reports what the LEDGER believes, and the ledger is the thing a broken down script would have
+      # already marked as rolled back. Asking Postgres what tables actually exist is the independent
+      # check: a down script that recorded the rollback without dropping its objects leaves the ledger
+      # clean and the schema wrong, and only this sees it.
+      - name: Assert the down scripts actually dropped their objects
+        run: |
+          set -euo pipefail
+          remaining=$(psql "$DATABASE_URL" -tAc "select table_name from information_schema.tables where table_schema = 'public' order by 1;")
+          echo "Tables remaining after rollback:$remaining"
+          echo "Tables remaining after rollback:$remaining" >> "$GITHUB_STEP_SUMMARY"
+
+          # `users` is 0000's own table and stays because the rollback target is 0000.
+          # `drizzle_migrations` is the ledger, which the runner owns and never drops.
+          expected=$'drizzle_migrations\nusers'
+          if [ "$remaining" != "$expected" ]; then
+            echo "::error::A down script recorded the rollback without dropping its objects."
+            echo "Expected exactly 'users' and 'drizzle_migrations' to remain; got: $remaining"
+            exit 1
+          fi
+
+      - name: Assert the ledger agrees
+        run: |
+          set -euo pipefail
+          # Queried rather than parsed out of `migration:status`. The runner's log output carries ANSI
+          # colour and its column spacing is a presentation choice, so `grep` over it is an assertion
+          # about formatting. This asks the ledger itself, and `rolled_back_at is null` is exactly the
+          # question: which migrations does this database currently believe are live?
+          active=$(psql "$DATABASE_URL" -tAc "select count(*) from drizzle_migrations where rolled_back_at is null;")
+          echo "Migrations the ledger considers applied: $active"
+          echo "Migrations the ledger considers applied after rollback: $active" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$active" -ne 1 ]; then
+            echo "::error::Expected exactly one live migration after rolling back to 0000, found $active."
+            psql "$DATABASE_URL" -tAc "select migration_id from drizzle_migrations where rolled_back_at is null;"
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
+
+      - name: Re-apply every migration
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Verify the ledger after re-apply
+        run: npm run migration:verify --workspace=backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: hakawi
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      # Same table count as the first apply, compared against the value captured then rather than a
+      # literal. A forward script that is not re-runnable over a rolled-back schema shows up here as a
+      # missing table, which is the failure mode the re-apply in `migration-verify` cannot see because
+      # that job never removed anything.
+      - name: Assert the re-applied schema matches the first apply
+        run: |
+          set -euo pipefail
+          count=$(psql "$DATABASE_URL" -tAc "select count(*) from information_schema.tables where table_schema = 'public';")
+          echo "Tables after re-apply: $count (was ${{ steps.applied.outputs.tables_after_apply }})"
+          echo "Tables after re-apply: $count" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" != "${{ steps.applied.outputs.tables_after_apply }}" ]; then
+            echo "::error::The re-applied schema does not match the first apply."
+            echo "A forward script is not re-runnable over a rolled-back schema."
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/hakawi
 
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Run npm Audit
-        run: |
-          cd backend
-          npm audit --audit-level=high
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      # The dev tree is audited separately, and it is allowed to fail, because the remaining
+      # highs are not fixable from here and are not reachable from the application.
+      #
+      # The whole of `undici`'s advisory set arrives through ONE dependency: @nestjs/mau, the
+      # `nest deploy` tool, which pins `undici: 6.20.1` as an exact version. An npm override
+      # cannot move an exact pin, and no release of mau lifts it. The package is a devDependency,
+      # is imported by nothing under backend/src, and never runs in a deployed process — it
+      # only issues HTTP while a developer is deploying. The advisories are WebSocket
+      # decompression DoS, Set-Cookie parsing and CRLF injection, none of which has a reachable
+      # path in a tool that talks to a deploy endpoint and exits.
+      #
+      # `continue-on-error` with a printed audit summary rather than `|| true`, so a NEW
+      # high-severity finding still appears in the log and can be acted on, and so a future
+      # upgrade that clears this also clears the red X on the job. The production audit above
+      # remains hard-failing and is at 0.
+      - name: Audit all dependencies (dev tree, advisory only)
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 25
+    # `migration-roundtrip` is in this list and `migration-verify` is not, deliberately and in
+    # opposite directions from how they used to look:
+    #
+    #   - `migration-verify` is EXCLUDED because it only runs on a push to `main` (its `if:` gate).
+    #     Listing a skipped job in `needs:` would make `build` permanently unsatisfiable on every pull
+    #     request, so it is left out and the gap is stated in `docs/roadmap/phases/implementation-roadmap.md`.
+    #   - `migration-roundtrip` is INCLUDED because it has no such gate: it runs on every pull request,
+    #     costs about two seconds of migration work, and is the assertion that catches a migration
+    #     which cannot be rolled back — the failure an operator meets during an incident.
+    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, security, backup-verify]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Build Backend
-        run: |
-          cd backend
-          npm ci
-          npm run build
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Frontend
+      - name: Build shared-types
+        run: npm run build --workspace=packages/shared-types
+
+      - name: Build backend
+        run: npm run build --workspace=backend
+
+      - name: Build frontend
+        run: npm run build --workspace=frontend
+
+  load-test:
+    name: Load Test (k6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start datastores
+        run: docker compose up -d postgres valkey
+
+      - name: Wait for PostgreSQL
         run: |
-          cd frontend
-          npm ci
-          npm run build
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run migrations
+        run: npm run migration:run --workspace=backend
+
+      - name: Start backend
+        run: npm run start:dev --workspace=backend &
+        env:
+          NODE_ENV: test
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.0
+        with:
+          filename: load-tests/k6.conf.js
+          flags: --out json=k6-report.json
+
+      - name: Upload k6 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report
+          path: k6-report.json
+          retention-days: 14
+
+  backup-verify:
+    name: Backup Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Create test backup
+        run: |
+          mkdir -p backups
+          PGPASSWORD=postgres pg_dump -h localhost -U postgres -d hakawi --format=plain --no-owner --no-acl | gzip > backups/hakawi-test-$(date +%Y%m%d-%H%M%S).sql.gz
+
+      - name: Verify backup integrity
+        run: |
+          LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
+          gunzip -t "$LATEST"
+          echo "Backup integrity: OK"
+
+      - name: Test restore
+        run: |
+          LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
+          TEST_DB="hakawi_restore_test_$(date +%s)"
+          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+          psql -h localhost -U postgres -d postgres -c "CREATE DATABASE $TEST_DB;"
+          gunzip -c "$LATEST" | psql -h localhost -U postgres -d "$TEST_DB"
+          TABLE_COUNT=$(psql -h localhost -U postgres -d "$TEST_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+          echo "Restored $TABLE_COUNT tables"
+          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

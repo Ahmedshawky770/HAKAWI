@@ -1,22 +1,68 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { INotificationsRepository, Notification, CreateNotificationInput } from '../interfaces/notifications-repository.interface.ts';
+import type {
+  INotificationsRepository,
+  Notification,
+  CreateNotificationInput,
+} from '../interfaces/notifications-repository.interface.ts';
 import type { IUsersRepository, User, CreateUserInput } from '../../../common/users/users-repository.interface.ts';
 
 import { NotificationsEmailService } from './notifications-email.service.ts';
 
 type MockNotificationsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Notification | null>>>;
-  findByUser: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>>;
+  findByUser: ReturnType<
+    typeof vi.fn<
+      (userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>
+    >
+  >;
   findUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<Notification[]>>>;
   create: ReturnType<typeof vi.fn<(data: CreateNotificationInput) => Promise<Notification>>>;
   markAsRead: ReturnType<typeof vi.fn<(id: string) => Promise<Notification>>>;
   markAllAsRead: ReturnType<typeof vi.fn<(userId: string) => Promise<void>>>;
   delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   countUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
-  findPreferences: ReturnType<typeof vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
-  upsertPreferences: ReturnType<typeof vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>>;
+  findPreferences: ReturnType<
+    typeof vi.fn<
+      (userId: string) => Promise<{
+        emailEnabled: boolean;
+        pushEnabled: boolean;
+        storyReactions: boolean;
+        comments: boolean;
+        follows: boolean;
+        mentions: boolean;
+        messages: boolean;
+        system: boolean;
+      }>
+    >
+  >;
+  upsertPreferences: ReturnType<
+    typeof vi.fn<
+      (
+        userId: string,
+        data: {
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          messages: boolean;
+          system: boolean;
+        },
+      ) => Promise<{
+        emailEnabled: boolean;
+        pushEnabled: boolean;
+        storyReactions: boolean;
+        comments: boolean;
+        follows: boolean;
+        mentions: boolean;
+        messages: boolean;
+        system: boolean;
+      }>
+    >
+  >;
 };
 
 type MockUsersRepository = {
@@ -44,7 +90,16 @@ type MockWinstonLoggerService = {
 };
 
 type MockEmailTransporter = {
-  sendMail: ReturnType<typeof vi.fn<(options: { from: string; to: string; subject: string; text: string; html?: string }) => Promise<{ accepted: string[]; rejected: string[]; pending: string[]; envelope: { from: string; to: string[] } }>>>;
+  sendMail: ReturnType<
+    typeof vi.fn<
+      (options: { from: string; to: string; subject: string; text: string; html?: string }) => Promise<{
+        accepted: string[];
+        rejected: string[];
+        pending: string[];
+        envelope: { from: string; to: string[] };
+      }>
+    >
+  >;
 };
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
@@ -61,15 +116,52 @@ describe('NotificationsEmailService', () => {
   beforeEach(() => {
     notificationsRepository = {
       findById: vi.fn<(id: string) => Promise<Notification | null>>(),
-      findByUser: vi.fn<(userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>>(),
+      findByUser:
+        vi.fn<
+          (userId: string, page: number, limit: number) => Promise<{ notifications: Notification[]; total: number }>
+        >(),
       findUnread: vi.fn<(userId: string) => Promise<Notification[]>>(),
       create: vi.fn<(data: CreateNotificationInput) => Promise<Notification>>(),
       markAsRead: vi.fn<(id: string) => Promise<Notification>>(),
       markAllAsRead: vi.fn<(userId: string) => Promise<void>>(),
       delete: vi.fn<(id: string) => Promise<void>>(),
       countUnread: vi.fn<(userId: string) => Promise<number>>(),
-      findPreferences: vi.fn<(userId: string) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
-      upsertPreferences: vi.fn<(userId: string, data: { emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }) => Promise<{ emailEnabled: boolean; pushEnabled: boolean; storyReactions: boolean; comments: boolean; follows: boolean; mentions: boolean; system: boolean }>>(),
+      findPreferences: vi.fn<
+        (userId: string) => Promise<{
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          messages: boolean;
+          system: boolean;
+        }>
+      >(),
+      upsertPreferences: vi.fn<
+        (
+          userId: string,
+          data: {
+            emailEnabled: boolean;
+            pushEnabled: boolean;
+            storyReactions: boolean;
+            comments: boolean;
+            follows: boolean;
+            mentions: boolean;
+            messages: boolean;
+            system: boolean;
+          },
+        ) => Promise<{
+          emailEnabled: boolean;
+          pushEnabled: boolean;
+          storyReactions: boolean;
+          comments: boolean;
+          follows: boolean;
+          mentions: boolean;
+          messages: boolean;
+          system: boolean;
+        }>
+      >(),
     };
 
     usersRepository = {
@@ -97,7 +189,12 @@ describe('NotificationsEmailService', () => {
     };
 
     transporter = {
-      sendMail: vi.fn().mockResolvedValue({ accepted: ['user-1@example.com'], rejected: [], pending: [], envelope: { from: 'noreply@hakawi.com', to: ['user-1@example.com'] } }),
+      sendMail: vi.fn().mockResolvedValue({
+        accepted: ['user-1@example.com'],
+        rejected: [],
+        pending: [],
+        envelope: { from: 'noreply@hakawi.com', to: ['user-1@example.com'] },
+      }),
     };
 
     service = new NotificationsEmailService(
@@ -117,6 +214,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -145,6 +243,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -162,6 +261,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -169,6 +269,31 @@ describe('NotificationsEmailService', () => {
 
       expect(result).toBe(false);
       expect(transporter.sendMail).not.toHaveBeenCalled();
+    });
+
+    // The email path gates on the SAME resolver the row write does, so a muted direct message must be
+    // absent from both. This used to be unreachable: `message` resolved to no family at all, so the
+    // email for a direct message could not be turned off even by a user who had managed to mute the
+    // in-app row — and before migration 0023 they could not manage that either.
+    it('should not send a direct-message email when messages is false', async () => {
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({
+        emailEnabled: true,
+        pushEnabled: true,
+        storyReactions: true,
+        comments: true,
+        follows: true,
+        mentions: true,
+        messages: false,
+        system: true,
+      });
+
+      const result = await service.sendNotificationEmail('user-1', 'message', 'New message', 'You have a DM.');
+
+      expect(result).toBe(false);
+      expect(transporter.sendMail).not.toHaveBeenCalled();
+      // The row is gone, so the mail must never be sent for a notification that was suppressed — this
+      // path is reached from `create` only after the row write, but it is also a public method.
+      expect(usersRepository.findById).not.toHaveBeenCalled();
     });
 
     it('should not send email when user not found', async () => {
@@ -179,6 +304,7 @@ describe('NotificationsEmailService', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 

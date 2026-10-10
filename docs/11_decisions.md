@@ -71,13 +71,38 @@
 
 ---
 
-### ADR-008: Valkey for Caching and Sessions
+### ADR-008: Valkey for Caching, Rate Limiting, and WAF State
 **Status:** Accepted  
 **Date:** 2026-09-20  
-**Context:** Need caching layer and session storage.  
-**Decision:** Use Valkey (Redis-compatible) for caching, sessions, rate limiting, and WAF state.  
-**Rationale:** Redis-compatible, open source, excellent performance, supports all required patterns.  
-**Consequences:** Single cache layer for multiple concerns, Valkey must be highly available.
+**Context:** Need a cache layer, a shared rate-limit counter store, and WAF block state.  
+**Decision:** Use Valkey (Redis-compatible) as the single backing store for caching, rate limiting,
+and WAF IP blocks, and for the refresh-token blacklist.  
+**Rationale:** Redis-compatible, open source, fast, supports TTLs, sets, tags and atomic counters.  
+
+**Consequences:**
+- One cache layer serves several concerns, so Valkey availability is a hard dependency of the API.
+  Per-IP throttling and IP blocking both key off it; the throttler **fails open** when it is
+  unreachable, so a Valkey outage degrades protection rather than availability.
+- Counters are **shared across instances**, so a per-tier limit is the real limit behind a load
+  balancer. This was previously untrue: the in-memory-per-instance `ThrottlerStorage` made the
+  effective limit `limit × instance_count`.
+- ⛔ **Sessions are NOT stored in Valkey.** The original decision said "caching and sessions"; there
+  is no session store anywhere. A session is a signed JWT pair, and the only server-side token state
+  is the refresh-token blacklist key `refresh_token:blacklist:<token>` with a 7-day TTL.
+
+**Status of the original claim:** the caching, rate-limiting and WAF-state parts of this ADR are
+**actual**. The "sessions" part is **not built** — see
+`docs/security-architecture/auth/auth-overview.md` → *Session Security*.
+
+---
+
+## Changelog — reconciliation (2026-09-30)
+
+| Change | Note |
+|---|---|
+| ADR-008 "rate limiting … claimed" → **actual** | `ValkeyThrottlerStorage` (`backend/src/common/throttler/valkey-throttler.storage.ts`) now backs all four throttler tiers, with real 429 tests. This resolves the contradiction previously recorded at this line |
+| ADR-008 "sessions" | Marked ⛔ not built. No session table, no session key in Valkey, no concurrent-session cap |
+| ADR-008 title | "Caching and Sessions" → "Caching, Rate Limiting, and WAF State" to match what the code does |
 
 ---
 

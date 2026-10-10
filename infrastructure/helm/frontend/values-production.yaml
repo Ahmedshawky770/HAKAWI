@@ -1,0 +1,178 @@
+# Production values for hakawi-frontend
+
+replicaCount: 5
+
+fullnameOverride: hakawi-frontend
+nameOverride: frontend
+
+namespace: hakawi
+
+image:
+  repository: ghcr.io/hakawi-io/hakawi-frontend
+  pullPolicy: Always
+  tag: "latest"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3000"
+  prometheus.io/path: "/api/health"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  name: frontend
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+  hosts:
+    - host: app.hakawi.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: hakawi.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: frontend-tls
+      hosts:
+        - app.hakawi.com
+        - hakawi.com
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+serviceAccount:
+  create: false
+  name: hakawi-frontend
+
+env:
+  nodeEnv: production
+  port: 3000
+  host: "https://app.hakawi.com"
+  db:
+    host: ""
+  apiUrl: "https://api.hakawi.com/api/v1"
+  logLevel: info
+  logFormat: json
+  healthPath: /api/health
+  readinessPath: /api/health
+  nextTelemetryDisabled: "1"
+  nextTracingDisabled: "1"
+
+nodeSelector:
+  kubernetes.io/arch: amd64
+  kubernetes.io/os: linux
+  eks.amazonaws.com/capacityType: ON_DEMAND
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: eks.amazonaws.com/capacityType
+              operator: In
+              values:
+                - ON_DEMAND
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - frontend
+          topologyKey: kubernetes.io/hostname
+
+tolerations:
+  - key: "node.kubernetes.io/unreachable"
+    operator: "Equal"
+    value: "true"
+    effect: "NoExecute"
+    tolerationSeconds: 30
+
+topologySpread:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 3
+
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+externalSecrets:
+  enabled: true
+  refreshInterval: 30m
+  secretPrefix: "hakawi/production"
+  secretStore:
+    name: "aws-secrets-manager"
+    region: "us-east-1"
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 12
+  successThreshold: 1

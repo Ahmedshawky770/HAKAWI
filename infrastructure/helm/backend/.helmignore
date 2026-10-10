@@ -1,0 +1,11 @@
+.git
+.gitignore
+README.md
+LICENSE
+*.tgz
+*.bak
+*.tmp
+*.bak
+.DS_Store
+*.swp
+*~

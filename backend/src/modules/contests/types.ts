@@ -1,3 +1,5 @@
+import { reviveRequiredDate } from '../shared/cache/date-revival.ts';
+
 export type Contest = {
   id: string;
   title: string;
@@ -32,16 +34,18 @@ export type ContestVote = {
   createdAt: Date;
 };
 
-export type ContestPrize = {
-  id: string;
-  contestId: string;
-  submissionId: string;
-  winnerId: string;
-  prizeType: string;
-  prizeDescription: string | null;
-  distributedAt: Date | null;
-  createdAt: Date;
-};
+/**
+ * A DUPLICATE OF THE SCHEMA'S OWN TYPE — see the note above.
+ *
+ * It lived here as a hand-written copy of `contestPrizes`' inferred type, which is exactly the drift
+ * `ownerId` had in the books module: migration 0022 added `amount` and `currency` to the table, and
+ * this copy did not have them, so `toPrizeResponse` could not read them and the type checker could
+ * not have told anyone the field was missing from a second declaration.
+ *
+ * `Contest` and `ContestSubmission` above are still local copies. This one is re-exported because the
+ * prize table is the one whose columns the money depends on.
+ */
+export type { ContestPrize } from '../../db/schema/contests.schema.ts';
 
 export type CreateContestInput = {
   title: string;
@@ -91,6 +95,10 @@ export type DistributePrizeInput = {
   winnerId: string;
   prizeType: string;
   prizeDescription?: string | null;
+  /** PIASTRES (1 EGP = 100). Paired with `currency` by a CHECK on the table. */
+  amount?: number | null;
+  /** ISO 4217, three characters. */
+  currency?: string | null;
 };
 
 export type ContestStatus = 'draft' | 'active' | 'voting' | 'completed' | 'cancelled';
@@ -101,6 +109,13 @@ export type ContestResponse = {
   title: string;
   description: string | null;
   categoryId: string | null;
+  /**
+   * The resolved category name, or `null` when the contest has no category or the category row is
+   * gone. The client used to have to render the raw `categoryId` UUID, which is useless to a
+   * reader; `stories` already resolves its category the same way (`relationsFor` in
+   * `stories.service.ts`) and this field is what makes the two read alike.
+   */
+  category: string | null;
   startDate: string;
   endDate: string;
   submissionDeadline: string;
@@ -109,6 +124,12 @@ export type ContestResponse = {
   winnerId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Minimal projection needed to turn a `categoryId` into a displayable category name. */
+export type ContestCategorySummary = {
+  id: string;
+  name: string;
 };
 
 export type ContestSubmissionResponse = {
@@ -122,11 +143,18 @@ export type ContestSubmissionResponse = {
   reviewedBy: string | null;
 };
 
+/**
+ * NO `userId`, and its absence is deliberate.
+ *
+ * This is the `@Public()` route's shape, so it names no voter: an anonymous caller could otherwise
+ * enumerate which accounts voted for which submission in any contest. The count is public product
+ * behaviour; the identities behind it are not, and nothing read them. An organizer who needs them has
+ * the authenticated publisher dashboard.
+ */
 export type ContestVoteResponse = {
   id: string;
   contestId: string;
   submissionId: string;
-  userId: string;
   createdAt: string;
 };
 
@@ -137,6 +165,10 @@ export type ContestPrizeResponse = {
   winnerId: string;
   prizeType: string;
   prizeDescription: string | null;
+  /** PIASTRES (1 EGP = 100). Null for a non-cash prize, or for a row written before 0022. */
+  amount: number | null;
+  /** ISO 4217. Null exactly when `amount` is null. */
+  currency: string | null;
   distributedAt: string | null;
   createdAt: string;
 };
@@ -181,3 +213,34 @@ export type PublisherVoteOverview = {
   submissionTitle?: string;
   userName?: string;
 };
+
+/**
+ * Restores the `Date` fields of a contest that came back from the cache.
+ *
+ * `toContestResponse` calls `.toISOString()` on `startDate`, `endDate`, `submissionDeadline`,
+ * `createdAt` and `updatedAt`. `JSON.stringify` turns each of them into a string and `JSON.parse`
+ * cannot tell it used to be a `Date`, so without this a cache *hit* hands the mapper strings and
+ * the request dies with `TypeError: ...toISOString is not a function` — while the first, cold
+ * request of every key succeeds, which is what makes this class of bug so hard to catch.
+ *
+ * Every one of these columns is `notNull` in `db/schema/contests.schema.ts`
+ * (`startDate`, `endDate`, `submissionDeadline`, `createdAt`, `updatedAt`), so all of them are
+ * revived as *required*: a null where the schema says the column is populated means the cached
+ * payload is not the object that was cached, and guessing would turn a stale entry into wrong data.
+ * A value that cannot be revived raises `CacheEntryCorruptError`, which `TaggedCacheService.get`
+ * turns into a dropped key and a miss, so the entry heals instead of becoming a 500.
+ *
+ * The primitives are shared with every other cached entity
+ * (`shared/cache/date-revival.ts`); the field list is contest knowledge and stays here
+ * (Principle #10).
+ */
+export function reviveContestDates(contest: Contest): Contest {
+  return {
+    ...contest,
+    startDate: reviveRequiredDate(contest.startDate, 'startDate'),
+    endDate: reviveRequiredDate(contest.endDate, 'endDate'),
+    submissionDeadline: reviveRequiredDate(contest.submissionDeadline, 'submissionDeadline'),
+    createdAt: reviveRequiredDate(contest.createdAt, 'createdAt'),
+    updatedAt: reviveRequiredDate(contest.updatedAt, 'updatedAt'),
+  };
+}

@@ -1,5 +1,37 @@
 # Backup Strategy
 
+> ## ⛔ None of this is implemented. Read it as a target design.
+>
+> This document previously read as an account of configured infrastructure. It is not. Verified
+> against the repository on 2026-10-04:
+>
+> - ⛔ **There is no backup job of any kind.** No `pg_dump` cron, no systemd timer, no scheduled job.
+>   The shell scripts printed below are **proposals** with `Location: /opt/hakawi/scripts/...`
+>   annotations; that directory is an operator host path and **does not exist in this repository**.
+>   (`backend/scripts/` does exist, and holds `generate-migration.ts`, `check-migrations.ts` and
+>   `print-coverage-summary.mjs` — none of them backup scripts.)
+> - ⛔ **There is no WAL archiving and no PITR.** No `postgresql.conf` in the repo sets `wal_level`,
+>   `archive_mode` or `archive_command`, and no `docker-compose.yml` service configures archiving.
+> - ⛔ **No restore drill has ever been run**, because there is nothing to restore from.
+> - ⛔ **No Kubernetes, Terraform, or Ansible configuration exists.** There is no `infra/`,
+>   `terraform/`, `k8s/` or `ansible/` directory and no `kubectl` manifest. The DR tiers in §6.2 —
+>   "تبديل تلقائي عبر Kubernetes / systemd", "إعادة بناء البنية التحتية عبر Terraform / Ansible" —
+>   describe tooling this project does not have.
+> - ⛔ **No `Dockerfile` exists** anywhere in the repository, and no backup procedure here has ever
+>   been executed against a deployed artifact.
+> - ⛔ **The RTO/RPO targets in §6.1 are unreachable as written**, because the 5-minute RPO depends
+>   entirely on the PITR that does not exist.
+>
+> The *only* recovery story the repository actually supports today is: restore from a dump an
+> operator took by hand, following §5. That is a manual procedure with no schedule and no
+> verification.
+>
+> `docs/01_ARCHITECTURE_PRINCIPLES.md` records the same gap under Principle #6 — "Backup before
+> migrations has no automation behind it" — and in *Unbuilt Features* as **Backup automation ⛔ Not
+> built**. This file is the design that would close it; it is not evidence that it is closed.
+> `docs/deployment/backup.md` is the companion document and is where the *actual* current state is
+> recorded.
+
 ## Overview
 
 This document defines the backup and disaster recovery strategy for Hakawi. It covers database backups, Valkey persistence, file storage backups, backup schedules, restore procedures, and disaster recovery planning.
@@ -209,8 +241,9 @@ pg_restore -d hakawi_production /path/to/hakawi_20250924_020000.dump
 # Or from S3
 aws s3 cp s3://hakawi-backups/postgresql/hakawi_20250924_020000.dump - | pg_restore -d hakawi_production
 
-# Run migrations if needed
-npm run db:migrate
+# Apply any migrations the restored dump predates
+npm run migration:run
+npm run migration:verify
 
 # Start application
 systemctl start hakawi-backend

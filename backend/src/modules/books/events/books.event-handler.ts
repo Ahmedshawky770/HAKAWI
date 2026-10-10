@@ -2,7 +2,13 @@ import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { BookCreatedEvent, BookUpdatedEvent, BookPublishedEvent, BookArchivedEvent, BookDeletedEvent } from '../../../common/events/books.events.ts';
+import type {
+  BookCreatedEvent,
+  BookUpdatedEvent,
+  BookPublishedEvent,
+  BookArchivedEvent,
+  BookDeletedEvent,
+} from '../../../common/events/books.events.ts';
 import type { IBooksRepository } from '../interfaces/books-repository.interface.ts';
 import { BOOKS_REPOSITORY } from '../interfaces/books-repository.interface.ts';
 

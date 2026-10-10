@@ -17,13 +17,3 @@ export class ModerationReportEscalatedEvent {
     public readonly previousUpdatedAt: Date,
   ) {}
 }
-
-export class UserRestrictedEvent {
-  constructor(
-    public readonly userId: string,
-    public readonly type: string,
-    public readonly reason: string,
-    public readonly restrictedBy: string,
-    public readonly expiresAt: Date | null,
-  ) {}
-}

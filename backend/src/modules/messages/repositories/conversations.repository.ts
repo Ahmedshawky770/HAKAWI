@@ -1,10 +1,16 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, or } from 'drizzle-orm';
+import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { IConversationsRepository, Conversation, CreateConversationInput } from '../interfaces/messages-repository.interface.ts';
+import type {
+  IConversationsRepository,
+  Conversation,
+  CreateConversationInput,
+  ParticipantSummary,
+} from '../interfaces/messages-repository.interface.ts';
 import { conversations } from '../../../db/schema/social.schema.ts';
+import { users } from '../../../db/schema/users.schema.ts';
 import { db } from '../../../db/index.ts';
 
 @Injectable()
@@ -30,17 +36,16 @@ export class ConversationsRepository implements IConversationsRepository {
     const [conversation] = await db
       .select()
       .from(conversations)
-      .where(
-        and(
-          eq(conversations.participant1Id, participant1Id),
-          eq(conversations.participant2Id, participant2Id)
-        )
-      )
+      .where(and(eq(conversations.participant1Id, participant1Id), eq(conversations.participant2Id, participant2Id)))
       .limit(1);
     return conversation ?? null;
   }
 
-  async findByUser(userId: string, page: number, limit: number): Promise<{ conversations: Conversation[]; total: number }> {
+  async findByUser(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ conversations: Conversation[]; total: number }> {
     this.logger.debug(`Finding conversations for user: ${userId}`);
     const offset = (page - 1) * limit;
 
@@ -70,5 +75,13 @@ export class ConversationsRepository implements IConversationsRepository {
   async updateLastMessage(id: string): Promise<void> {
     this.logger.debug(`Updating last message timestamp for conversation: ${id}`);
     await db.update(conversations).set({ lastMessageAt: new Date() }).where(eq(conversations.id, id));
+  }
+
+  async findParticipantsByIds(ids: string[]): Promise<ParticipantSummary[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding ${ids.length} conversation participants`);
+    return db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids));
   }
 }

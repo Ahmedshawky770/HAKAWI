@@ -1,10 +1,11 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc, like, count, sql } from 'drizzle-orm';
+import { eq, and, desc, like, count, sql, inArray } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
   IContestsRepository,
   Contest,
+  ContestCategorySummary,
   CreateContestInput,
   UpdateContestInput,
   ContestSubmission,
@@ -14,12 +15,8 @@ import type {
   CastVoteInput,
   DistributePrizeInput,
 } from '../interfaces/contests-repository.interface.ts';
-import {
-  contests,
-  contestSubmissions,
-  contestVotes,
-  contestPrizes,
-} from '../../../db/schema/contests.schema.ts';
+import { contests, contestSubmissions, contestVotes, contestPrizes } from '../../../db/schema/contests.schema.ts';
+import { categories } from '../../../db/schema/stories.schema.ts';
 import { db } from '../../../db/index.ts';
 
 @Injectable()
@@ -82,8 +79,32 @@ export class ContestsRepository implements IContestsRepository {
 
   async updateContest(id: string, data: UpdateContestInput): Promise<Contest> {
     this.logger.debug(`Updating contest: ${id}`);
-    const [contest] = await db.update(contests).set({ ...data, updatedAt: new Date() }).where(eq(contests.id, id)).returning();
+    const [contest] = await db
+      .update(contests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contests.id, id))
+      .returning();
     return contest;
+  }
+
+  /**
+   * Resolves contest category ids to their display names, in one query.
+   *
+   * A contest stores only `categoryId`, and a UUID is not something a reader can be shown. The
+   * client used to fall back to rendering the raw id for that reason. This is deliberately a batch
+   * lookup with an early return for the empty case: `IN ()` is invalid SQL, and a list endpoint
+   * must not issue a query at all when the page has no categories to resolve (same shape as
+   * `StoriesRepository.findCategoriesByIds`).
+   */
+  async findCategoriesByIds(categoryIds: string[]): Promise<ContestCategorySummary[]> {
+    if (categoryIds.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding ${categoryIds.length} contest categories`);
+    return db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(inArray(categories.id, categoryIds));
   }
 
   async findSubmissionById(id: string): Promise<ContestSubmission | null> {
@@ -100,13 +121,26 @@ export class ContestsRepository implements IContestsRepository {
     }
   }
 
-  async findSubmissionsByContest(contestId: string, page: number, limit: number): Promise<{ submissions: ContestSubmission[]; total: number }> {
+  async findSubmissionsByContest(
+    contestId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ submissions: ContestSubmission[]; total: number }> {
     this.logger.debug(`Finding submissions for contest: ${contestId}`);
     const offset = (page - 1) * limit;
 
     const [submissionsList, [{ total }]] = await Promise.all([
-      db.select().from(contestSubmissions).where(eq(contestSubmissions.contestId, contestId)).orderBy(desc(contestSubmissions.submittedAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(contestSubmissions).where(eq(contestSubmissions.contestId, contestId)),
+      db
+        .select()
+        .from(contestSubmissions)
+        .where(eq(contestSubmissions.contestId, contestId))
+        .orderBy(desc(contestSubmissions.submittedAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(contestSubmissions)
+        .where(eq(contestSubmissions.contestId, contestId)),
     ]);
 
     return { submissions: submissionsList, total: Number(total) };
@@ -152,31 +186,51 @@ export class ContestsRepository implements IContestsRepository {
     }
   }
 
-  async findVoteByUserContestSubmission(contestId: string, submissionId: string, userId: string): Promise<ContestVote | null> {
+  async findVoteByUserContestSubmission(
+    contestId: string,
+    submissionId: string,
+    userId: string,
+  ): Promise<ContestVote | null> {
     this.logger.debug(`Finding vote by user ${userId} for submission ${submissionId} in contest ${contestId}`);
     const [vote] = await db
       .select()
       .from(contestVotes)
-      .where(and(eq(contestVotes.contestId, contestId), eq(contestVotes.submissionId, submissionId), eq(contestVotes.userId, userId)))
+      .where(
+        and(
+          eq(contestVotes.contestId, contestId),
+          eq(contestVotes.submissionId, submissionId),
+          eq(contestVotes.userId, userId),
+        ),
+      )
       .limit(1);
     return vote ?? null;
   }
 
   async countVotesBySubmission(submissionId: string): Promise<number> {
     this.logger.debug(`Counting votes for submission: ${submissionId}`);
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(contestVotes).where(eq(contestVotes.submissionId, submissionId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(contestVotes)
+      .where(eq(contestVotes.submissionId, submissionId));
     return Number(total);
   }
 
   async countVotesByContest(contestId: string): Promise<{ total: string }> {
     this.logger.debug(`Counting votes for contest: ${contestId}`);
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(contestVotes).where(eq(contestVotes.contestId, contestId));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(contestVotes)
+      .where(eq(contestVotes.contestId, contestId));
     return { total: String(total) };
   }
 
   async findVotesBySubmission(submissionId: string): Promise<ContestVote[]> {
     this.logger.debug(`Finding votes for submission: ${submissionId}`);
-    return db.select().from(contestVotes).where(eq(contestVotes.submissionId, submissionId)).orderBy(desc(contestVotes.createdAt));
+    return db
+      .select()
+      .from(contestVotes)
+      .where(eq(contestVotes.submissionId, submissionId))
+      .orderBy(desc(contestVotes.createdAt));
   }
 
   async findVotesByContest(contestId: string, limit: number, offset: number): Promise<ContestVote[]> {
@@ -191,7 +245,9 @@ export class ContestsRepository implements IContestsRepository {
   }
 
   async castVote(data: CastVoteInput): Promise<ContestVote> {
-    this.logger.info(`Casting vote for submission ${data.submissionId} in contest ${data.contestId} by user ${data.userId}`);
+    this.logger.info(
+      `Casting vote for submission ${data.submissionId} in contest ${data.contestId} by user ${data.userId}`,
+    );
     const [vote] = await db.insert(contestVotes).values(data).returning();
     return vote;
   }
@@ -218,7 +274,11 @@ export class ContestsRepository implements IContestsRepository {
 
   async findPrizesByContest(contestId: string): Promise<ContestPrize[]> {
     this.logger.debug(`Finding prizes for contest: ${contestId}`);
-    const prizes = await db.select().from(contestPrizes).where(eq(contestPrizes.contestId, contestId)).orderBy(desc(contestPrizes.createdAt));
+    const prizes = await db
+      .select()
+      .from(contestPrizes)
+      .where(eq(contestPrizes.contestId, contestId))
+      .orderBy(desc(contestPrizes.createdAt));
     return prizes;
   }
 

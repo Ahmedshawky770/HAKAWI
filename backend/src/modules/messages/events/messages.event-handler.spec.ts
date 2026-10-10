@@ -85,7 +85,10 @@ describe('MessagesEventHandler', () => {
 
       await messagesEventHandler.handleMessageSent(new MessageSentEvent('msg-123', 'conv-123', 'user-1'));
 
-      expect(logger.info).toHaveBeenCalledWith('Message msg-123 sent in conversation conv-123 by user user-1', 'MessagesEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Message msg-123 sent in conversation conv-123 by user user-1',
+        'MessagesEventHandler',
+      );
       expect(messagesGateway.emitMessageReceived).toHaveBeenCalledWith(message);
     });
 
@@ -116,7 +119,10 @@ describe('MessagesEventHandler', () => {
 
       await messagesEventHandler.handleMessageRead(new MessageReadEvent('msg-123', 'conv-123', 'user-2'));
 
-      expect(logger.info).toHaveBeenCalledWith('Message msg-123 marked as read in conversation conv-123 by user user-2', 'MessagesEventHandler');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Message msg-123 marked as read in conversation conv-123 by user user-2',
+        'MessagesEventHandler',
+      );
       expect(messagesGateway.emitMessageRead).toHaveBeenCalledWith({
         messageId: 'msg-123',
         conversationId: 'conv-123',

@@ -106,33 +106,6 @@ export class UserProfileResponseDto {
   accessBlocked: boolean;
   createdAt: Date;
   updatedAt: Date;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  location?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  country?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  website?: string;
-
-  socialLinks?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  phoneNumber?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  age?: number;
 }
 
 export class VerifyResponseDto {
@@ -141,4 +114,12 @@ export class VerifyResponseDto {
     id: string;
     isVerified: boolean;
   };
+}
+
+export class VerifyUserDto {
+  @IsString()
+  @MinLength(16, { message: 'Token must be at least 16 characters' })
+  @MaxLength(128, { message: 'Token must not exceed 128 characters' })
+  @Matches(/^[a-f0-9]+$/, { message: 'Token must be lowercase hexadecimal' })
+  token: string;
 }

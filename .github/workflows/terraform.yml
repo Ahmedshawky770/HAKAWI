@@ -1,0 +1,85 @@
+name: Terraform CI
+
+on:
+  push:
+    paths:
+      - 'infrastructure/terraform/**'
+    branches: [main, develop]
+  pull_request:
+    paths:
+      - 'infrastructure/terraform/**'
+
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TERRAFORM_VERSION: "1.9"
+
+jobs:
+  terraform:
+    name: Terraform Lint & Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform-version: ${{ env.TERRAFORM_VERSION }}
+          cli-config-url: https://raw.githubusercontent.com/hashicorp/core/main/.terraformrc
+
+      - name: Setup tflint
+        run: |
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python (for tfsec)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tfsec
+        run: pip install tfsec
+
+      - name: Terraform fmt
+        run: terraform fmt -recursive -check
+
+      - name: Terraform init (dev)
+        run: |
+          cd infrastructure/terraform
+          terraform init -backend=false
+
+      - name: Terraform validate
+        run: |
+          cd infrastructure/terraform
+          terraform validate
+
+      - name: tflint
+        run: tflint --recursive --force
+
+      - name: tfsec
+        run: tfsec infrastructure/terraform --soft-fail
+
+      - name: Terraform plan (dev)
+        run: |
+          cd infrastructure/terraform
+          terraform init -backend=false
+          terraform plan -var-file="environments/dev/terraform.tfvars" -no-color
+
+      - name: Terraform plan (staging)
+        run: |
+          cd infrastructure/terraform
+          terraform plan -var-file="environments/staging/terraform.tfvars" -no-color
+
+      - name: Terraform plan (production)
+        run: |
+          cd infrastructure/terraform
+          terraform plan -var-file="environments/production/terraform.tfvars" -no-color

@@ -159,9 +159,16 @@ Authorization: Bearer <token>
 ### Follow User
 
 ```
-POST /users/:id/follow
+POST /follows
 Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "followingId": "uuid" }
 ```
+
+> ⛔ **Corrected.** This was `POST /users/:id/follow`. No such route exists: `follows.controller.ts`
+> is `@Controller('follows')` with `@Post()` at line 25, so the target is named in the **body**, not the
+> path. `POST /users/:id/follow` is a 404.
 
 **Response (200 OK):**
 ```json
@@ -178,17 +185,24 @@ Authorization: Bearer <token>
 ### Unfollow User
 
 ```
-DELETE /users/:id/follow
+DELETE /follows/:followingId
 Authorization: Bearer <token>
 ```
+
+> ⛔ **Corrected.** This was `DELETE /users/:id/follow`; the real path is
+> `DELETE /follows/:followingId` (`follows.controller.ts:31`).
 
 **Response (204 No Content)**
 
 ### Get Followers
 
 ```
-GET /users/:id/followers?page=1&limit=20
+GET /follows/user/:userId/followers?page=1&limit=20
 ```
+
+> ⛔ **Corrected.** This was `GET /users/:id/followers`; the real path is
+> `GET /follows/user/:userId/followers` (`follows.controller.ts:38`). The response envelope is also
+> flat — `{ followers, total, page, limit }` — not the nested `pagination` object shown below.
 
 **Response (200 OK):**
 ```json
@@ -213,8 +227,11 @@ GET /users/:id/followers?page=1&limit=20
 ### Get Following
 
 ```
-GET /users/:id/following?page=1&limit=20
+GET /follows/user/:userId/following?page=1&limit=20
 ```
+
+> ⛔ **Corrected.** This was `GET /users/:id/following`; the real path is
+> `GET /follows/user/:userId/following` (`follows.controller.ts:47`).
 
 **Response (200 OK):**
 ```json
@@ -298,9 +315,9 @@ GET /stories/:id
     "stats": {
       "views": 1000,
       "reactions": {
-        "love": 10,
         "like": 20,
-        "clap": 12
+        "love": 10,
+        "wow": 12
       },
       "comments": 10,
       "shares": 5
@@ -409,10 +426,19 @@ Authorization: Bearer <token>
 
 ## Comments API
 
+> ⛔ **Paths corrected.** Every comment route in this section was previously documented under
+> `/stories/:id/comments` (`GET`/`POST`/`PUT`/`DELETE`). **None of those existed.** The controller is
+> `@Controller('comments')`, so the real routes are: `GET /comments/story/:storyId`,
+> `GET /comments/:id/replies`, `POST /comments`, **`PATCH`** `/comments/:id` (not `PUT`),
+> `DELETE /comments/:id`, and `POST`/`DELETE`/`GET` `/comments/:commentId/reactions` — the last three
+> declared by a second controller that is itself under `@Controller('comments')`.
+> `POST /comments` takes `storyId` **in the body** alongside `content` and the optional `parentId`;
+> the body below is missing it.
+
 ### Get Comments
 
 ```
-GET /stories/:id/comments?page=1&limit=20
+GET /comments/story/:storyId?page=1&limit=20
 ```
 
 **Response (200 OK):**
@@ -448,17 +474,22 @@ GET /stories/:id/comments?page=1&limit=20
 ### Create Comment
 
 ```
-POST /stories/:id/comments
+POST /comments
 Authorization: Bearer <token>
 ```
 
 **Request Body:**
 ```json
 {
+  "storyId": "uuid",
   "content": "Great story!",
   "parentId": "uuid" // optional, for replies
 }
 ```
+
+> ⛔ `storyId` was missing from this body. With `forbidNonWhitelisted` and a `whitelist` pipe on the
+> global `ValidationPipe`, a body without it cannot resolve the story — and the comment is addressed
+> at `/comments`, not at a story-scoped path, so there is nowhere else for the story to come from.
 
 **Response (201 Created):**
 ```json
@@ -477,9 +508,11 @@ Authorization: Bearer <token>
 ### Update Comment
 
 ```
-PUT /comments/:id
+PATCH /comments/:id
 Authorization: Bearer <token>
 ```
+
+> ⛔ **Corrected:** the verb is `PATCH` (`comments.controller.ts:58`), not `PUT`. A `PUT` is a 404.
 
 **Request Body:**
 ```json
@@ -512,10 +545,16 @@ Authorization: Bearer <token>
 
 ## Reactions API
 
+> ⛔ **Paths corrected.** Every reaction route in this section was previously documented under
+> `/stories/:id/reactions`. **None of those existed.** The controller is `@Controller('reactions')` and
+> the story is a path parameter of its own segment: `POST`/`DELETE`/`GET`
+> `/reactions/stories/:storyId`, plus `GET /reactions/stories/:storyId/counts` and
+> `GET /reactions/stories/:storyId/me`.
+
 ### Add Reaction
 
 ```
-POST /stories/:id/reactions
+POST /reactions/stories/:storyId
 Authorization: Bearer <token>
 ```
 
@@ -526,7 +565,15 @@ Authorization: Bearer <token>
 }
 ```
 
-**Reaction Types:** `love`, `like`, `clap`, `insightful`, `funny`, `sad`
+**Reaction Types:** `like`, `love`, `wow`, `sad`, `angry`, `haunted`
+
+> ⛔ **Corrected.** This list previously read `love`, `like`, `clap`, `insightful`, `funny`, `sad`.
+> Three of those six (`clap`, `insightful`, `funny`) **do not exist** and three real ones (`wow`,
+> `angry`, `haunted`) were missing. The real set is
+> `VALID_REACTION_TYPES` in `backend/src/modules/reactions/types.ts:27`, asserted against
+> `@hakawi/shared-types` with a compile-time `Exact<BackendReactionType, ReactionType>` drift check —
+> so a wrong value here is a 400 at the DTO, not a cosmetic error. Note `reactions.type` is a
+> `varchar`, not a database enum, so the six values are enforced in TypeScript only.
 
 **Response (200 OK):**
 ```json
@@ -544,7 +591,7 @@ Authorization: Bearer <token>
 ### Remove Reaction
 
 ```
-DELETE /stories/:id/reactions
+DELETE /reactions/stories/:storyId
 Authorization: Bearer <token>
 ```
 
@@ -553,7 +600,7 @@ Authorization: Bearer <token>
 ### Get Reactions
 
 ```
-GET /stories/:id/reactions
+GET /reactions/stories/:storyId
 ```
 
 **Response (200 OK):**
@@ -572,12 +619,12 @@ GET /stories/:id/reactions
     }
   ],
   "counts": {
-    "love": 10,
     "like": 20,
-    "clap": 12,
-    "insightful": 5,
-    "funny": 3,
-    "sad": 2
+    "love": 10,
+    "wow": 12,
+    "sad": 2,
+    "angry": 5,
+    "haunted": 3
   }
 }
 ```
@@ -645,9 +692,13 @@ Authorization: Bearer <token>
 ### Mark All as Read
 
 ```
-POST /notifications/read-all
+PATCH /notifications/read-all
 Authorization: Bearer <token>
 ```
+
+> ⛔ **Corrected.** This section previously specified `POST /notifications/read-all`. The verb has
+> **never** existed on that route: `notifications.controller.ts:71` is `@Patch('read-all')` and there
+> is no `@Post` handler in that controller at all. A `POST` to this path is a 404, not a synonym.
 
 **Response (200 OK):**
 ```json

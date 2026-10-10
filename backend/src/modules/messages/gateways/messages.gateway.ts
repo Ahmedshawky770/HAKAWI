@@ -41,7 +41,8 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   async handleConnection(client: AuthenticatedSocket): Promise<void> {
     try {
-      const token = client.handshake.auth.token || (client.handshake.headers.authorization as string | undefined)?.split(' ')[1];
+      const token =
+        client.handshake.auth.token || (client.handshake.headers.authorization as string | undefined)?.split(' ')[1];
       if (!token) {
         this.logger.warn('WebSocket connection rejected: missing token', 'MessagesGateway');
         client.disconnect();

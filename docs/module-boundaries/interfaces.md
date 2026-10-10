@@ -390,7 +390,6 @@ export interface EventMetadata {
   imports: [
     DatabaseModule,
     CacheModule,
-    EventBusModule,
     EmailModule,
     StorageModule
   ],
@@ -416,7 +415,6 @@ export class UsersModule {}
 @Module({
   imports: [
     UsersModule,
-    EventBusModule
   ],
   providers: [
     StoriesService,

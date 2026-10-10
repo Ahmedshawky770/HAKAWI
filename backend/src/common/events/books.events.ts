@@ -1,13 +1,22 @@
 export class BookCreatedEvent {
-  constructor(public readonly bookId: string, public readonly userId: string) {}
+  constructor(
+    public readonly bookId: string,
+    public readonly userId: string,
+  ) {}
 }
 
 export class BookUpdatedEvent {
-  constructor(public readonly bookId: string, public readonly updatedFields: Record<string, unknown>) {}
+  constructor(
+    public readonly bookId: string,
+    public readonly updatedFields: Record<string, unknown>,
+  ) {}
 }
 
 export class BookPublishedEvent {
-  constructor(public readonly bookId: string, public readonly publishedAt: Date) {}
+  constructor(
+    public readonly bookId: string,
+    public readonly publishedAt: Date,
+  ) {}
 }
 
 export class BookArchivedEvent {
@@ -15,5 +24,8 @@ export class BookArchivedEvent {
 }
 
 export class BookDeletedEvent {
-  constructor(public readonly bookId: string, public readonly userId: string) {}
+  constructor(
+    public readonly bookId: string,
+    public readonly userId: string,
+  ) {}
 }

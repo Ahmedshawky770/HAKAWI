@@ -1,5 +1,18 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiOkResponse, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiBadRequestResponse, ApiConflictResponse, ApiInternalServerErrorResponse, ApiTooManyRequestsResponse, ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiInternalServerErrorResponse,
+  ApiTooManyRequestsResponse,
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+} from '@nestjs/swagger';
 
 export const ApiCommonResponses = applyDecorators(
   ApiOkResponse({ description: 'Successful response' }),

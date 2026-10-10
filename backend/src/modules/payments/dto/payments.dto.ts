@@ -1,16 +1,22 @@
-import { IsString, IsOptional, IsUUID, MaxLength, IsInt, Min, Max, IsNumber, Min as MinNumber, IsIn } from 'class-validator';
+import { IsString, IsOptional, MaxLength, MinLength, IsInt, Min, Max, Matches, IsIn } from 'class-validator';
 
 export class CreatePaymentDto {
-  @IsUUID('4', { message: 'User ID must be a valid UUID' })
-  userId: string;
+  // WHY there is no `userId`: the owner of a payment is the authenticated caller, taken from the JWT
+  // subject by the controller. The field used to be required here and then ignored, which meant every
+  // caller had to invent a UUID to satisfy validation while the value played no part — and, with the
+  // global `forbidNonWhitelisted` pipe, a caller who sent somebody else's id would be rejected rather
+  // than confused. Deriving ownership from the token is the only rule that cannot be spoofed.
 
-  @IsNumber()
-  @MinNumber(1, { message: 'Amount must be greater than 0' })
+  @IsInt({ message: 'Amount must be an integer number of minor units (piastres/cents)' })
+  @Min(1, { message: 'Amount must be greater than 0' })
+  @Max(9_999_999_999, { message: 'Amount exceeds the maximum single charge' })
   amount: number;
 
   @IsOptional()
   @IsString()
-  @MaxLength(3, { message: 'Currency code must not exceed 3 characters' })
+  @MinLength(3, { message: 'Currency code must be exactly 3 characters' })
+  @MaxLength(3, { message: 'Currency code must be exactly 3 characters' })
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Currency must be a three letter ISO 4217 code' })
   currency?: string;
 
   @IsString()
@@ -31,8 +37,9 @@ export class UpdatePaymentStatusDto {
 }
 
 export class CreateRefundDto {
-  @IsNumber()
-  @MinNumber(1, { message: 'Refund amount must be greater than 0' })
+  @IsInt({ message: 'Refund amount must be an integer number of minor units (piastres/cents)' })
+  @Min(1, { message: 'Refund amount must be greater than 0' })
+  @Max(9_999_999_999, { message: 'Refund amount exceeds the maximum single charge' })
   amount: number;
 
   @IsOptional()

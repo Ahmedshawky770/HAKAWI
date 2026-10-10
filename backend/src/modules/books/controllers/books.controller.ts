@@ -1,10 +1,25 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Inject, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Inject,
+  HttpCode,
+  HttpStatus,
+  Request,
+} from '@nestjs/common';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { BooksService } from '../books.service.ts';
 import { CreateBookDto, UpdateBookDto, BooksQueryDto, PurchaseBookDto, RentBookDto } from '../dto/books.dto.ts';
 import type { CreateBookInput } from '../types.ts';
+import { toBookResponse } from '../types.ts';
 
 @Controller('books')
 export class BooksController {
@@ -17,15 +32,15 @@ export class BooksController {
   }
 
   @Public()
-  @Get(':id')
-  async findById(@Param('id') id: string) {
-    return this.booksService.findById(id);
+  @Get('isbn/:isbn')
+  async findByIsbn(@Param('isbn') isbn: string) {
+    return toBookResponse(await this.booksService.findByIsbn(isbn));
   }
 
   @Public()
-  @Get('isbn/:isbn')
-  async findByIsbn(@Param('isbn') isbn: string) {
-    return this.booksService.findByIsbn(isbn);
+  @Get(':id')
+  async findById(@Param('id') id: string) {
+    return toBookResponse(await this.booksService.findById(id));
   }
 
   @UseGuards(JwtAuthGuard)
@@ -37,7 +52,11 @@ export class BooksController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateBookDto, @Request() req: Request & { user: { sub: string } }) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBookDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
     return this.booksService.update(id, dto, req.user.sub);
   }
 
@@ -66,7 +85,11 @@ export class BooksController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/purchase')
   @HttpCode(HttpStatus.CREATED)
-  async purchase(@Param('id') id: string, @Body() dto: PurchaseBookDto, @Request() req: Request & { user: { sub: string } }) {
+  async purchase(
+    @Param('id') id: string,
+    @Body() dto: PurchaseBookDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
     return this.booksService.purchase(req.user.sub, id, dto.paymentMethodId);
   }
 

@@ -123,12 +123,17 @@ npm run dev
 ### 7. Verify Setup
 
 ```bash
-# Backend health check
-curl http://localhost:3001/health
+# Backend health check — the API is on 3001 and the global prefix is api/v1
+curl http://localhost:3001/api/v1/health
 
 # Frontend
 open http://localhost:3000
 ```
+
+> **Corrected path.** `http://localhost:3001/health` was wrong: the global prefix `api/v1` is set at
+> `backend/src/main.ts:65`, so the real path is **`/api/v1/health`**. The endpoint returns
+> `{ status: "healthy" | "degraded", database, valkey, timestamp }` and checks PostgreSQL and
+> Valkey only — there is no Sanity check.
 
 ---
 
@@ -224,24 +229,34 @@ cd backend
 # Development
 npm run start:dev          # Start dev server with hot reload
 npm run start:debug        # Start with debugger on port 9229
+npm run start:prod         # node dist/main
 
 # Database
-npm run migration:run      # Run pending migrations
-npm run migration:revert   # Revert last migration
-npm run migration:generate # Generate new migration
+npm run migration:run      # Apply all pending migrations
+npm run migration:status   # Table of every migration: state, applied-at, reversibility
+npm run migration:list     # Files + checksums, no database needed
+npm run migration:verify   # Checksum-drift / orphan-ledger audit
+npm run migration:rollback # Roll back (--steps N | --to <id> | --allow-data-loss)
+npm run migration:create   # Scaffold the next numbered .sql + its .down.sql
+npm run db:check           # Static chain lint, no database needed
 npm run seed:dev           # Seed development data
 npm run seed:test          # Seed test data
 
 # Testing
-npm run test               # Run unit tests
-npm run test:e2e           # Run E2E tests
-npm run test:cov           # Run tests with coverage
+npm run test               # Unit tests (151 files / 3228 tests)
+npm run test:cov           # Unit tests with the coverage gate
+npm run test:e2e           # Integration/e2e (23 files / 173 tests) — needs live PostgreSQL + Valkey
 
 # Linting
-npm run lint               # Run ESLint
+npm run lint               # Run ESLint (checker, no --fix)
 npm run lint:fix           # Fix ESLint errors
-npm run format             # Run Prettier
+npm run format             # prettier --check
 ```
+
+**Corrections:** `npm run migration:revert` and `npm run migration:generate` **do not exist** — use
+`npm run migration:rollback` and `npm run migration:create` (or `db:generate`, an alias).
+`npm run test:e2e` runs **Vitest** against a real database, not Supertest-against-one-DB; the
+Playwright browser suite is `npm run test:e2e` **in `frontend/`**.
 
 ### Frontend
 
@@ -254,12 +269,16 @@ npm run build              # Build for production
 npm run start              # Start production server
 npm run lint               # Run ESLint
 npm run lint:fix           # Fix ESLint errors
-npm run format             # Run Prettier
+npm run typecheck          # tsc --noEmit
 
 # Testing
-npm run test               # Run unit tests
-npm run test:e2e           # Run Playwright E2E tests
+npm run test               # Watch mode
+npm run test:run           # 22 files / 356 tests
+npm run test:coverage      # With the coverage gate
+npm run test:e2e           # Playwright: journeys + axe-core accessibility
 ```
+
+**Correction:** the frontend has **no `format` script** — Prettier is not configured there.
 
 ---
 

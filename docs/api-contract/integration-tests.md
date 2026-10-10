@@ -447,13 +447,16 @@ describe('UsersController (e2e)', () => {
     });
   });
 
-  describe('/users/:id/follow (POST)', () => {
+  // ⛔ CORRECTED: this was `POST /users/:id/follow`, which does not exist. The target is named in the
+  // body; the path is just `/follows` (follows.controller.ts:25).
+  describe('/follows (POST)', () => {
     it('should follow a user', () => {
       const userId = 'target-user-id';
-      
+
       return request(app.getHttpServer())
-        .post(`/users/${userId}/follow`)
+        .post('/follows')
         .set('Authorization', `Bearer ${authToken}`)
+        .send({ followingId: userId })
         .expect(200)
         .expect((res) => {
           expect(res.body.follow).toBeDefined();
@@ -608,12 +611,16 @@ describe('CommentsController (e2e)', () => {
     await app.close();
   });
 
-  describe('/stories/:id/comments (POST)', () => {
+  // ⛔ CORRECTED: both describes were addressed at `/stories/:id/comments`, which does not exist, and
+  // the create body omitted `storyId`, which the `POST /comments` route requires because there is no
+  // story in the path to carry it. Real path: comments.controller.ts, `@Controller('comments')`.
+  describe('/comments (POST)', () => {
     it('should create a comment', () => {
       return request(app.getHttpServer())
-        .post(`/stories/${storyId}/comments`)
+        .post('/comments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
+          storyId: storyId,
           content: 'Great story!'
         })
         .expect(201)
@@ -624,18 +631,18 @@ describe('CommentsController (e2e)', () => {
     });
   });
 
-  describe('/stories/:id/comments (GET)', () => {
+  describe('/comments/story/:storyId (GET)', () => {
     beforeEach(async () => {
       // Create a comment
       await request(app.getHttpServer())
-        .post(`/stories/${storyId}/comments`)
+        .post('/comments')
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ content: 'Great story!' });
+        .send({ storyId: storyId, content: 'Great story!' });
     });
 
     it('should return comments for story', () => {
       return request(app.getHttpServer())
-        .get(`/stories/${storyId}/comments`)
+        .get(`/comments/story/${storyId}`)
         .expect(200)
         .expect((res) => {
           expect(res.body.comments).toBeDefined();

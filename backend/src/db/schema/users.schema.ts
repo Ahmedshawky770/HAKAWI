@@ -1,18 +1,11 @@
-import {
-  pgTable,
-  uuid,
-  varchar,
-  text,
-  timestamp,
-  boolean,
-  index,
-  unique,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, index, unique } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     googleId: varchar('google_id', { length: 255 }),
     facebookId: varchar('facebook_id', { length: 255 }),
     twitterId: varchar('twitter_id', { length: 255 }),
@@ -35,6 +28,9 @@ export const users = pgTable(
     emailVerified: boolean('email_verified').default(false),
     emailVerificationToken: varchar('email_verification_token', { length: 255 }),
     passwordResetToken: varchar('password_reset_token', { length: 255 }),
+    totpSecretEncrypted: text('totp_secret_encrypted'),
+    mfaEnabled: boolean('mfa_enabled').default(false).notNull(),
+    mfaEnforcedAt: timestamp('mfa_enforced_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

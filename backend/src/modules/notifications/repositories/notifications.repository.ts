@@ -3,7 +3,13 @@ import { eq, and, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { INotificationsRepository, Notification, CreateNotificationInput, NotificationPreferencesResponseDto, UpsertNotificationPreferencesInput } from '../interfaces/notifications-repository.interface.ts';
+import type {
+  INotificationsRepository,
+  Notification,
+  CreateNotificationInput,
+  NotificationPreferencesResponseDto,
+  UpsertNotificationPreferencesInput,
+} from '../interfaces/notifications-repository.interface.ts';
 import { notifications, notificationPreferences } from '../../../db/schema/social.schema.ts';
 import { db } from '../../../db/index.ts';
 
@@ -25,21 +31,47 @@ export class NotificationsRepository implements INotificationsRepository {
     }
   }
 
-  async findByUser(userId: string, page: number, limit: number): Promise<{ notifications: Notification[]; total: number }> {
+  async findByUser(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ notifications: Notification[]; total: number }> {
     this.logger.debug(`Finding notifications for user: ${userId}`);
     const offset = (page - 1) * limit;
 
     const [notificationsList, [{ total }]] = await Promise.all([
-      db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(limit).offset(offset),
-      db.select({ total: sql<number>`count(*)` }).from(notifications).where(eq(notifications.userId, userId)),
+      db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: sql<number>`count(*)` })
+        .from(notifications)
+        .where(eq(notifications.userId, userId)),
     ]);
 
     return { notifications: notificationsList, total: Number(total) };
   }
 
-  async findUnread(userId: string): Promise<Notification[]> {
+  /**
+   * Capped, and the cap is part of the contract.
+   *
+   * This had no `LIMIT` at all, so a user with thousands of unread rows downloaded all of them on
+   * every poll — and `GET /notifications/unread` took no query parameters to bound it even if it had.
+   * The badge COUNT comes from `countUnread`, which is unaffected; the two numbers are deliberately
+   * different things, so capping the list does not change the count.
+   */
+  async findUnread(userId: string, limit: number): Promise<Notification[]> {
     this.logger.debug(`Finding unread notifications for user: ${userId}`);
-    return db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.isRead, false))).orderBy(desc(notifications.createdAt));
+    return db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
   }
 
   async create(data: CreateNotificationInput): Promise<Notification> {
@@ -50,13 +82,20 @@ export class NotificationsRepository implements INotificationsRepository {
 
   async markAsRead(id: string): Promise<Notification> {
     this.logger.debug(`Marking notification as read: ${id}`);
-    const [notification] = await db.update(notifications).set({ isRead: true, readAt: new Date() }).where(eq(notifications.id, id)).returning();
+    const [notification] = await db
+      .update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(eq(notifications.id, id))
+      .returning();
     return notification;
   }
 
   async markAllAsRead(userId: string): Promise<void> {
     this.logger.info(`Marking all notifications as read for user: ${userId}`);
-    await db.update(notifications).set({ isRead: true, readAt: new Date() }).where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    await db
+      .update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
   }
 
   async delete(id: string): Promise<void> {
@@ -65,13 +104,20 @@ export class NotificationsRepository implements INotificationsRepository {
   }
 
   async countUnread(userId: string): Promise<number> {
-    const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
     return Number(total);
   }
 
   async findPreferences(userId: string): Promise<NotificationPreferencesResponseDto> {
     this.logger.debug(`Finding notification preferences for user: ${userId}`);
-    const [prefs] = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1);
+    const [prefs] = await db
+      .select()
+      .from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, userId))
+      .limit(1);
     if (prefs) {
       return {
         emailEnabled: prefs.emailEnabled,
@@ -80,6 +126,7 @@ export class NotificationsRepository implements INotificationsRepository {
         comments: prefs.comments,
         follows: prefs.follows,
         mentions: prefs.mentions,
+        messages: prefs.messages,
         system: prefs.system,
       };
     }
@@ -90,13 +137,18 @@ export class NotificationsRepository implements INotificationsRepository {
       comments: true,
       follows: true,
       mentions: true,
+      messages: true,
       system: true,
     };
   }
 
-  async upsertPreferences(userId: string, data: UpsertNotificationPreferencesInput): Promise<NotificationPreferencesResponseDto> {
+  async upsertPreferences(
+    userId: string,
+    data: UpsertNotificationPreferencesInput,
+  ): Promise<NotificationPreferencesResponseDto> {
     this.logger.debug(`Upserting notification preferences for user: ${userId}`);
-    const [prefs] = await db.insert(notificationPreferences)
+    const [prefs] = await db
+      .insert(notificationPreferences)
       .values({
         userId,
         ...data,
@@ -116,6 +168,7 @@ export class NotificationsRepository implements INotificationsRepository {
       comments: prefs.comments,
       follows: prefs.follows,
       mentions: prefs.mentions,
+      messages: prefs.messages,
       system: prefs.system,
     };
   }

@@ -56,10 +56,7 @@ describe('TagsService', () => {
       verbose: vi.fn(),
     };
 
-    tagsService = new TagsService(
-      tagsRepository,
-      logger as unknown as WinstonLoggerService,
-    );
+    tagsService = new TagsService(tagsRepository, logger as unknown as WinstonLoggerService);
   });
 
   describe('findById', () => {
@@ -130,14 +127,18 @@ describe('TagsService', () => {
     it('should throw ConflictException when slug already exists', async () => {
       vi.mocked(tagsRepository.findBySlug).mockResolvedValue(mockTag);
 
-      await expect(tagsService.create({
-        name: 'Test Tag',
-        slug: 'test-tag',
-      })).rejects.toThrow('Tag slug already exists');
-      await expect(tagsService.create({
-        name: 'Test Tag',
-        slug: 'test-tag',
-      })).rejects.toThrow(ConflictException);
+      await expect(
+        tagsService.create({
+          name: 'Test Tag',
+          slug: 'test-tag',
+        }),
+      ).rejects.toThrow('Tag slug already exists');
+      await expect(
+        tagsService.create({
+          name: 'Test Tag',
+          slug: 'test-tag',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

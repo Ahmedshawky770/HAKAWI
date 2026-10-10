@@ -5,7 +5,9 @@ import { users, stories } from './index.ts';
 export const uploads = pgTable(
   'uploads',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     filename: varchar('filename', { length: 255 }).notNull(),
     originalName: varchar('original_name', { length: 255 }).notNull(),
     mimetype: varchar('mimetype', { length: 100 }).notNull(),
@@ -22,7 +24,7 @@ export const uploads = pgTable(
     filenameIdx: index('uploads_filename_idx').on(table.filename),
     uploadedByIdx: index('uploads_uploaded_by_id_idx').on(table.uploadedById),
     storyIdx: index('uploads_story_id_idx').on(table.storyId),
-  })
+  }),
 );
 
 export type Upload = typeof uploads.$inferSelect;

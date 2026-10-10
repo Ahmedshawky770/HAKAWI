@@ -1,0 +1,4 @@
+-- hakawi:down reversibility=data-loss data-loss=columns reason=Resets books.owner_id to NULL for all rows that were backfilled by this migration. The original migration 0021 left pre-existing books with NULL owner_id; this migration's UPDATE only touched rows where owner_id IS NULL and the author name matched exactly one user. Rolling back restores the NULL state, which is the correct pre-migration state. Any admin claims made AFTER this migration would also be nulled — they should be re-applied manually.
+UPDATE "books" SET "owner_id" = NULL WHERE "owner_id" IS NOT NULL;
+--> statement-breakpoint
+DROP TABLE IF EXISTS "_books_owner_backfill_audit";

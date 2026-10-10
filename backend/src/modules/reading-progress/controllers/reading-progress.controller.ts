@@ -1,8 +1,26 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Inject, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Inject,
+  HttpCode,
+  HttpStatus,
+  Request,
+} from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { ReadingProgressService } from '../reading-progress.service.ts';
-import { CreateReadingProgressDto, UpdateReadingProgressDto, ReadingProgressQueryDto } from '../dto/reading-progress.dto.ts';
+import {
+  CreateReadingProgressDto,
+  UpdateReadingProgressDto,
+  ReadingProgressQueryDto,
+} from '../dto/reading-progress.dto.ts';
 
 @Controller('reading-progress')
 export class ReadingProgressController {
@@ -29,7 +47,11 @@ export class ReadingProgressController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateReadingProgressDto, @Request() req: Request & { user: { sub: string } }) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateReadingProgressDto,
+    @Request() req: Request & { user: { sub: string } },
+  ) {
     return this.readingProgressService.update(id, req.user.sub, dto);
   }
 

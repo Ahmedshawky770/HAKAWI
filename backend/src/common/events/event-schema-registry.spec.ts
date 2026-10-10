@@ -33,7 +33,11 @@ describe('EventSchemaRegistry', () => {
 
   describe('validateEvent', () => {
     it('should validate a valid event', () => {
-      const result = registry.validateEvent('user.registered', { userId: '1', email: 'test@example.com', name: 'Test' });
+      const result = registry.validateEvent('user.registered', {
+        userId: '1',
+        email: 'test@example.com',
+        name: 'Test',
+      });
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
     });
@@ -51,14 +55,22 @@ describe('EventSchemaRegistry', () => {
     });
 
     it('should validate with explicit version', () => {
-      const result = registry.validateEvent('custom.event', { userId: '1', email: 'test@example.com', name: 'Test' }, 'v1');
+      const result = registry.validateEvent(
+        'custom.event',
+        { userId: '1', email: 'test@example.com', name: 'Test' },
+        'v1',
+      );
       expect(result.success).toBe(true);
     });
   });
 
   describe('registerSchema', () => {
     it('should register a new schema', () => {
-      const result = registry.validateEvent('custom.event', { userId: '1', email: 'test@example.com', name: 'Test' }, 'v1');
+      const result = registry.validateEvent(
+        'custom.event',
+        { userId: '1', email: 'test@example.com', name: 'Test' },
+        'v1',
+      );
       expect(result.success).toBe(true);
     });
 
@@ -79,44 +91,6 @@ describe('EventSchemaRegistry', () => {
           retryCount: 0,
         }),
       );
-    });
-  });
-
-  describe('retryDLQ', () => {
-    it('should retry and delete from DLQ if valid', async () => {
-      vi.mocked(dlqService.get!).mockResolvedValue({
-        id: 'dlq-1',
-        eventName: 'user.registered',
-        payload: { userId: '1', email: 'test@example.com', name: 'Test' },
-        error: 'validation error',
-        timestamp: new Date(),
-        retryCount: 0,
-      });
-
-      const result = await registry.retryDLQ('dlq-1');
-      expect(result).toBe(true);
-      expect(dlqService.delete).toHaveBeenCalledWith('dlq-1');
-    });
-
-    it('should increment retry count if invalid', async () => {
-      vi.mocked(dlqService.get!).mockResolvedValue({
-        id: 'dlq-1',
-        eventName: 'user.registered',
-        payload: { invalid: true },
-        error: 'validation error',
-        timestamp: new Date(),
-        retryCount: 0,
-      });
-
-      const result = await registry.retryDLQ('dlq-1');
-      expect(result).toBe(false);
-      expect(dlqService.retry).toHaveBeenCalledWith('dlq-1');
-    });
-
-    it('should return false if DLQ event not found', async () => {
-      vi.mocked(dlqService.get!).mockResolvedValue(null);
-      const result = await registry.retryDLQ('dlq-1');
-      expect(result).toBe(false);
     });
   });
 

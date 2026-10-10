@@ -39,6 +39,7 @@ export type NotificationPreferences = {
   comments: boolean;
   follows: boolean;
   mentions: boolean;
+  messages: boolean;
   system: boolean;
   createdAt: Date;
   updatedAt: Date;

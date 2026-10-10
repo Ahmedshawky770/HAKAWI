@@ -1,6 +1,34 @@
 # Architecture Principles
 ## حكاوي (Hakawi) - Core Principles
 
+> **Latest change-set review.** This review has been re-verified against the current tree
+> (2026-10-04), and the earlier round — a 488-file uncommitted change set recorded in
+> [`docs/adr/005-security-and-correctness-hardening.md`](adr/005-security-and-correctness-hardening.md)
+> — is preserved as *Round 2* below.
+>
+> **The most important finding of this round is not a verdict, it is a lesson.** The backend
+> **could not boot at all**, and the entire DB-backed suite — 23 e2e/integration files — **skipped
+> silently while CI stayed green**. Two independent causes, both now fixed:
+>
+> 1. `books.module.ts` ↔ `library.module.ts` formed a genuine circular module dependency with no
+>    `forwardRef()`. Nest aborted the graph with *"The module at index [3] of the LibraryModule
+>    `imports` array is undefined"* — before any test body ran.
+> 2. `contests.module.ts` imported `NotificationsModule` but never listed it in `imports`, so
+>    `ContestsEventHandler` could not resolve `NotificationsService`: *"Nest can't resolve
+>    dependencies of the ContestsEventHandler (Symbol(CONTESTS_REPOSITORY), ?, WinstonLoggerService)"*.
+>
+> Both failures happen inside `DependenciesScanner.scanForModules` — **before** `beforeAll`, so each
+> spec reported as skipped rather than failed, and a skipped suite exits 0. That is precisely why
+> Principle #4 exists and why no verdict in this document should be read as more trustworthy than
+> the evidence printed beside it. Eight e2e/integration tests that had **never executed** were also
+> failing once the suite could actually run; all eight are fixed.
+>
+> Verified after this round: **backend 3270 unit tests in 151 files**, **186 e2e/integration tests
+> in 22 files**, **frontend 794 tests in 62 files** plus **15 Playwright tests in 3 files**;
+> `tsc --noEmit` clean, 0 lint errors, `prettier --check` clean, `npm audit --omit=dev` at 0
+> vulnerabilities. Backend coverage **S 84.28 / B 80.49 / F 78.86 / L 84.45**; frontend coverage
+> **S 68.39 / B 68.75 / F 70.97 / L 68.17**. **12 CI jobs**, all hard gates.
+
 ---
 
 ## Principle #1: Zero `any` / `as any` Policy
@@ -225,10 +253,11 @@ Every piece of data in my system has exactly one authoritative source. No duplic
 - No direct cross-module data access
 
 **Examples:**
-- User data: PostgreSQL only
-- Story content: Sanity only
-- User preferences: PostgreSQL only
-- Analytics: Derived from primary sources
+- User data: PostgreSQL only — the authoritative store
+- Story content: **PostgreSQL is authoritative**; Sanity is a downstream mirror synced by
+  `sanity-sync.event-handler.ts`. (This line previously said "Sanity only", which was backwards.)
+- User preferences: PostgreSQL only (`notification_preferences`)
+- Analytics: Derived from primary sources, computed at read time
 
 ---
 
@@ -310,7 +339,8 @@ I minimize the number of synchronized data sources in my systems. Every addition
 
 **Examples:**
 - Users: PostgreSQL only (no sync to Sanity)
-- Stories: Sanity only (read-only mirror in PostgreSQL)
+- Stories: **PostgreSQL authoritative, Sanity a read-only mirror.** (This line previously said
+  "Sanity only (read-only mirror in PostgreSQL)", which had the direction of the mirror backwards.)
 - Notifications: PostgreSQL only
 - Analytics: Derived from primary sources
 
@@ -447,25 +477,466 @@ Running an automated lint-fix script across more than 100 files is not a fix —
 
 ## 📋 Principles Summary
 
-| # | Principle | Category | Enforcement |
-|---|-----------|----------|-------------|
-| 1 | Zero `any` / `as any` | Code Quality | ESLint + CI |
-| 2 | Logger over console | Code Quality | ESLint + CI |
-| 3 | IDs as Strings | Code Quality | TypeScript + CI |
-| 4 | Document Problems | Documentation | Process |
-| 5 | Architecture Before Code | Architecture | Process |
-| 6 | Minimize Migrations | Architecture | Process |
-| 7 | Loose Coupling | Architecture | Code Review |
-| 8 | Open/Closed Principle | Architecture | Code Review |
-| 9 | Single Source of Truth | Architecture | Architecture |
-| 10 | Unified Typing Files | Code Quality | Process |
-| 11 | Valkey as Cache | Infrastructure | Docker + Config |
-| 12 | Reduce Synchronization | Architecture | Architecture |
-| 13 | Automate Modifications | Process | Process |
-| 14 | AP as Default | Distributed Systems | Architecture |
-| 15 | Proactive Defense | Security | WAF + Rate Limiting |
-| 16 | Smart Hybrid Consistency | Distributed Systems | Architecture |
-| 17 | Warning Against Massive Linting | Process | Process |
+| # | Principle | Category | Enforcement | Verdict |
+|---|-----------|----------|-------------|---------|
+| 1 | Zero `any` / `as any` | Code Quality | ESLint + CI | ✅ **ENFORCED** |
+| 2 | Logger over console | Code Quality | ESLint + CI | ⚠️ **PARTIAL** |
+| 3 | IDs as Strings | Code Quality | TypeScript + CI | ✅ **ENFORCED** |
+| 4 | Document Problems | Documentation | Process | 🔄 **IN PROGRESS** |
+| 5 | Architecture Before Code | Architecture | Process | 🔄 **IN PROGRESS** |
+| 6 | Minimize Migrations | Architecture | Process | ✅ **ENFORCED** |
+| 7 | Loose Coupling | Architecture | Code Review | ⚠️ **PARTIAL** |
+| 8 | Open/Closed Principle | Architecture | Code Review | ⚠️ **PARTIAL** |
+| 9 | Single Source of Truth | Architecture | Architecture | ✅ **ENFORCED** |
+| 10 | Unified Typing Files | Code Quality | Process | ✅ **ENFORCED** |
+| 11 | Valkey as Cache | Infrastructure | Docker + Config | ⚠️ **PARTIAL** |
+| 12 | Reduce Synchronization | Architecture | Architecture | 🔄 **PARTIAL** |
+| 13 | Automate Modifications | Process | Process | 🔄 **PROCESS ONLY** |
+| 14 | AP as Default | Distributed Systems | Architecture | ⚠️ **PARTIAL** |
+| 15 | Proactive Defense | Security | WAF + Rate Limiting | ⚠️ **PARTIAL** |
+| 16 | Smart Hybrid Consistency | Distributed Systems | Architecture | ⚠️ **PARTIAL** |
+| 17 | Warning Against Massive Linting | Process | Process | ✅ **OBSERVED** |
+
+**Legend:** ✅ ENFORCED — the mechanism exists and CI fails without it · ⚠️ PARTIAL — some clauses
+hold, others do not · 🔄 IN PROGRESS — a stated goal with partial delivery · ✅ OBSERVED — the
+practice was followed, no automated gate.
+
+---
+
+## 🔍 Per-Principle Verdict Detail
+
+Each verdict below was checked against the code on 2026-09-30.
+
+### #1 Zero `any` — ✅ ENFORCED
+`@typescript-eslint/no-explicit-any: 'error'` in `backend/.eslintrc.cjs`, and `npx eslint src/ test/
+e2e/` reports **0 errors**. The repo is 100% `no-unsafe-assignment`/… *warn*-level, not error, so
+unsafe assignments are visible but do not fail CI. `tsc --noEmit` is clean across backend, frontend,
+shared-types and the e2e harness as four separate CI steps.
+
+### #2 Logger over `console` — ⚠️ PARTIAL
+- ✅ `no-console: 'error'` in `backend/.eslintrc.cjs`, tightened to `'error'` for `src/**`
+- ✅ Winston is the only logger in `src/`; correlation IDs flow from the WAF middleware into every
+  error body and log line
+- ⚠️ `winston.createLogger` is called **with no `level`**, so winston defaults to `'info'` and the
+  service's `debug()` and `verbose()` methods are **permanently discarded** — the two methods it
+  exposes can never emit
+- ✅ The 500 response body is now a generic `Internal server error`. `all-exceptions.filter.ts` used
+  to return `exception.message` for any non-`HttpException`, so a Drizzle or `pg` error reached the
+  caller verbatim with SQL fragments, table and column names, and internal paths. Winston and Sentry
+  still receive the real message and stack
+- ⚠️ The frontend ESLint config is stock `eslint-config-next` with **no `no-console` rule**
+
+### #3 IDs as Strings — ✅ ENFORCED
+Every `pgTable` in `backend/src/db/schema/*.ts` uses `uuid()` primary keys. `@hakawi/shared-types`
+declares every ID as `string`. `docs/03_ids_as_strings.md` matches the code.
+
+### #4 Document Problems — 🔄 IN PROGRESS
+- ⛔ **Correction to the previous version of this document.** It claimed "**24** ADRs / decision
+  records" and "⛔ **No CHANGELOG**, despite Principle #4 listing one as a documentation type". Both
+  were wrong on measurement. `docs/adr/` holds **5** ADRs (`001`–`005`), not 24; adding
+  `docs/11_decisions.md` and `docs/architecture-principles-deviations.md` gives **7** decision
+  records. And a **`CHANGELOG.md` exists at the repository root** — added in commit `febf264` as
+  "the CHANGELOG that Principle #4 requires and the repository lacked". The ⛔ in *Unbuilt Features*
+  below is retracted for the same reason.
+- ✅ 7 decision records (5 ADRs + `11_decisions.md` + `architecture-principles-deviations.md`),
+  17 per-principle documents, 2 indexes, and a full deployment/testing/roadmap set
+- ✅ **This round is itself the evidence.** The backend could not boot, and the whole DB-backed
+  suite skipped green (see the header). Two causes, both fixed: `books.module.ts` ↔
+  `library.module.ts` circular dependency with no `forwardRef()`; `contests.module.ts` importing
+  `NotificationsModule` without listing it in `imports`, leaving `ContestsEventHandler` unable to
+  resolve `NotificationsService`. Both abort the module graph in `DependenciesScanner.scanForModules`,
+  **before `beforeAll`**, so every affected spec reported *skipped* rather than *failed* — and a
+  skipped suite exits 0. **This is the strongest argument the principle has for existing:** the
+  verdicts below are only as good as the evidence printed beside them, and for several defects
+  documented here as settled — books ownership, the notification route spellings, the doubled
+  `messages/messages` path — the evidence was an assertion rather than a test result. 8
+  e2e/integration tests that had never executed were also failing once the suite could run; all
+  eight are fixed
+- ✅ `docs/` reconciled against the code on 2026-09-30, and this set re-reconciled on 2026-10-04 —
+  which is how the fabricated `parent_id = NULL` "known bug" (documented in four places as open,
+  and twice as pinned by an `it.fails` that does not exist anywhere in this repository) was found
+  and retracted. A stale-doc audit found it; re-reading had not
+- ⚠️ `docs/module-boundaries/**` contains four near-duplicate files
+  (`contracts.md` + `contracts/module-contracts.md`, `dependency-rules.md` +
+  `dependencies/dependency-rules.md`, `interfaces.md` + `interfaces/shared-interfaces.md`) with no
+  statement of which is canonical
+- ⛔ No user-facing documentation
+- ⛔ `.env.example` still carries a stale comment claiming `redis-io.adapter.ts` reads `REDIS_*` only
+  (`backend/.env.example:24-30`). The code reads `valkey.*`; the comment is wrong and is outside the
+  documentation set — reported, not edited
+
+### #5 Architecture Before Code — 🔄 IN PROGRESS
+- ✅ C4 model (`c4-model/`), system architecture, data architecture, module boundaries, and API
+  contract documents all exist and were reconciled
+- ⚠️ Several documents previously described systems that did not exist. The C4 container diagram is
+  now accurate; the module-boundaries set still needs the same audit
+- ⚠️ "No feature implementation without architecture review" and "architecture review checklist" are
+  process claims with no artifact behind them
+
+### #6 Minimize Migrations — ✅ ENFORCED
+The strongest principle in the set, and now mechanised rather than aspirational:
+- ✅ 22 numbered `.sql` files at repo-root `migrations/` are the single source of truth
+- ✅ `drizzle-kit up:pg` (a schema push that discarded history) is **gone**
+- ✅ Every migration is **transaction-wrapped** (`migration-runner.ts:218,247`)
+- ✅ A **sha256 content-checksum ledger** makes editing an applied file a hard error
+  (`backend/src/db/migrations/migration-runner.ts:296`)
+- ✅ Rollback is driven by sidecars with **machine-read reversibility headers**, classified
+  `reversible` / `data-loss` (needs `--allow-data-loss`) / `irreversible` (never runs)
+- ⛔ **Correction to the previous version of this document.** It claimed `0001_create_stories_tables`
+  is "deliberately **irreversible** because it owns the shared `uuid-ossp` extension — dropping it
+  would cascade into every `uuid_generate_v4()` default". **That was a misclassification.**
+  `migrations/down/0001_create_stories_tables.down.sql:1` now carries
+  `reversibility=data-loss data-loss=rows` and states in its own reason that **the script never drops
+  the extension** — so the hazard the old text described is already avoided by omission. The script
+  destroys rows, which is exactly `data-loss`. Measured distribution across all 22 down scripts:
+  **0 `irreversible`, 18 `data-loss`, 4 `reversible`**. The practical consequence: a rollback chain
+  reaching `0001` no longer fails outright with no override — it asks for confirmation and runs. See
+  `migrations/README.md` and `docs/data-architecture/migrations/migration-strategy.md`
+- ✅ `npm run db:check` lints the chain statically with no database, and runs as a **hard CI gate**
+- ✅ An **advisory lock** (`pg_advisory_lock`) serialises `up` and `down` across processes. Two pods
+  running `migration:run` concurrently — a blue/green deploy, or two CI jobs against one database —
+  previously both read the same pending set and both executed it
+- ✅ `SET LOCAL lock_timeout` / `statement_timeout` per migration, so a migration blocked behind a
+  long transaction fails with a diagnostic instead of hanging a deploy step for ever
+- ✅ The applied migrations must form a **prefix** of the file order. The old check missed the
+  sandwiched case (0000 applied, 0001 pending, 0002 applied → 0001 ran *after* 0002), and the
+  repository has a live sequence gap at 0017, so it was reachable
+- ⚠️ "All migrations reviewed by 2+ developers" is a process claim with no tooling behind it
+- ⛔ "Backup before migrations" has no automation behind it — no backup job exists
+- ✅ `backend/push-schema.ts` — a third, divergent hand-rolled bootstrap creating a table that does
+  not exist in the Drizzle schema — was **deleted**. `drizzle-kit` and `dotenv` were imported by
+  `drizzle.config.ts` and declared nowhere, so `db:studio` had never worked; both are now declared
+
+### #7 Loose Coupling — ⚠️ PARTIAL
+- ✅ **Event-driven communication is real:** EventEmitter2 with a registry of **55 event schemas**
+  across **10** `*.events.ts` schema modules, **72 `@OnEvent` handler methods** in **16**
+  event-handler files spanning **14** modules, a validator, and a **dead letter queue** that has a
+  drain (`GET /api/v1/events/dlq`, `POST /api/v1/events/dlq/:id/replay`, `DLQController`,
+  `SUPER_ADMIN`). ⛔ **Correction to the previous version of this row:** it said "16 event modules,
+  19 per-module handlers". 16 is the number of *event-handler files*, not modules, and **19
+  handlers is wrong by a factor of nearly four** — there are 72
+- ✅ The circuit breaker / retry / timeout / fallback primitives are **wired**, not dead code:
+  `CircuitBreakerService` is injected into `auth.service.ts` and `sanity.service.ts`;
+  `ResilientHttpClient` fronts `PaymobClient`
+- ✅ Dependency injection throughout; the guards are injectable or explicit factories
+- ⚠️ **"No direct database access across modules" is not enforced.** Services import
+  `src/db/index.ts` directly, and `messages.service.ts`, `stories.service.ts` and others hold their
+  own Drizzle queries rather than going through a module-owned repository
+- ⚠️ The `Repository` pattern is applied inconsistently: 17 repository files exist under
+  `src/modules/**/repositories/`, but several services bypass them
+- ✅ `OwnershipGuard` is now wired on `PATCH`/`DELETE /comments/:id` and on `PATCH`, `/publish`,
+  `/archive`, `DELETE /stories/:id`, through a per-module resolver that goes through that module's
+  repository interface
+- ⛔ **Correction to the previous version of this document.** It claimed `PATCH`/`DELETE /books/:id`
+  are "**still unprotected**, because the `books` table has no owner column — `books.author` is a
+  `varchar` display name compared against a UUID". **Both halves of that are out of date.** Migration
+  **`0021_add_books_owner_id.sql`** added `books.owner_id uuid REFERENCES users(id)` (index
+  `books_owner_id_idx`; `backend/src/db/schema/books.schema.ts:49`), and `BooksService` reads it
+  through a private `assertOwnership` helper (`books.service.ts:445`) called on **update** (`:173`),
+  **publish** (`:196`), **archive** (`:227`) and **delete** (`:385`) — each throwing
+  `ForbiddenException`, with a distinct message for the unowned case (`ownerId === null`, i.e. a
+  book predating 0021) so an operator files "these need claiming" rather than "my books are locked".
+  Both routes also carry `@UseGuards(JwtAuthGuard)` (`books.controller.ts:53,103`), so an
+  unauthenticated caller gets 401 before ownership is even considered.
+- ⚠️ **How books differ from comments and stories, stated precisely rather than as a gap:** books
+  enforces ownership in the **service**, not through `OwnershipGuard`. The guard is therefore still
+  not wired on the books routes, and `books` has no ownership resolver like
+  `comment-ownership.resolver.ts`. The enforcement is real and returns 403; it simply sits one layer
+  down, so it is not visible to anything that audits `@UseGuards` alone.
+
+### #8 Open/Closed — ⚠️ PARTIAL
+- ✅ Extension points exist: the `PaymobClient` sits behind `ResilientHttpClient`; the throttler
+  storage is an interface with a Valkey implementation; the **35** WAF rules
+  (`backend/src/common/waf/rules.ts`) are a **data-driven table** where a new rule is a new entry,
+  not a new branch. ⛔ **Correction:** this line previously said **34**, contradicting §#15 of the
+  same document ("34 typed rules in 8 layers") and the code, which defines **34** rules, every one of
+  them `enabledByDefault: true`. There is no rule disabled by default; `WafConfig.enabledOptInControls`
+  is `[]` except `blockForwardingHeaders` when `WAF_BLOCK_FORWARDING_HEADERS` is set, and that is an
+  additional control, not a 35th-to-36th rule
+- ✅ The `Secured` decorator composes guards without editing them; the `@Cacheable` /
+  `@CacheInvalidateTags` decorators add caching without touching service code
+- ⚠️ "Plugin architecture for optional features" does not exist. The email delivery path is
+  configured but has no pluggable transport, and no optional feature is loaded dynamically
+
+### #9 Single Source of Truth — ✅ ENFORCED
+- ✅ **Roles:** `ACCOUNT_TYPES` / `ADMIN_ROLES` in `@hakawi/shared-types`, re-exported by
+  `backend/src/common/constants/roles.ts`. There is no second list.
+- ✅ **Permissions:** `backend/src/common/permissions/permissions.ts` — 51 permissions,
+  `PERMISSIONS_BY_ACCOUNT_TYPE` and `PERMISSIONS_BY_ROLE`
+- ✅ **Types:** `@hakawi/shared-types` is compiled and consumed by both backend and frontend, with
+  `Exact<A,B>` compile-time drift assertions
+- ✅ **Schema:** the SQL files are the source; Drizzle is a query/type layer
+- ✅ **Cache invalidation:** tagged invalidation on every write; `CacheMetrics` at
+  `GET /api/v1/metrics/cache`
+- ⚠️ "Story content: Sanity only" is **not** how it works. PostgreSQL is authoritative and Sanity
+  syncs from it. The claim in this document was backwards.
+- ✅ **Valkey connection:** `config/valkey.config.ts` exports `buildValkeyConnection`, resolving
+  `VALKEY_*` then `REDIS_*`. The cache and the Socket.IO adapter previously read *different*
+  variable names, so a Docker Compose deployment pointed websocket fan-out at `localhost:6379`
+  while the cache connected correctly — invisible on one instance, silent fan-out loss on several.
+- ✅ **"a value published in this repo is not a secret":** `config/public-secret.ts` holds the rule
+  once; `jwt.config.ts` and `encryption.config.ts` both consume it. `ENCRYPTION_KEY` previously
+  accepted the `.env.example` placeholder in production, which meant a known password-reset key.
+
+### #10 Unified Typing Files — ✅ ENFORCED
+- ✅ `packages/shared-types/src/` holds 12 domain files with `as const` enum arrays,
+  `Paginated<T>` / `NamedPage<Key,T>` envelopes, and `Exact<A,B>` drift assertions
+- ✅ The backend imports the package; the frontend consumes the **compiled** output
+- ✅ `frontend/src/lib/schemas.ts` holds ~50 runtime Zod schemas, and `lib/api.ts` has **no blind
+  `as` casts**
+- ✅ `AuthorSummary.name` is `string | null`; `StoryRecord.authorName` is required and nullable
+- ⛔ `UnpagedNamedList` was **deleted**; any doc still referencing it is wrong
+- ✅ `common/types/permission-requirement.types.ts` holds the permission-requirement mode, so the
+  AND/OR choice travels with the permission list as data and cannot be set apart from it
+
+### #11 Valkey as Cache Layer — ⚠️ PARTIAL
+
+**The four clauses the principle originally named are now all satisfied** — this is the principle
+that improved the most. But the enforcement list also contains two bullets that are not built, so
+the honest verdict is PARTIAL, not COMPLIANT.
+
+| Clause | Status | Evidence |
+|---|---|---|
+| **Valkey running in Docker Compose** | ✅ | `docker-compose.yml`; `backend/src/config/valkey.config.ts` |
+| **TTL policies for all cached data** | ✅ | `STORY_CACHE_TTL_SECONDS = 600`, `BOOK_CACHE_TTL_SECONDS = 600`, `PAYMENT_CACHE_TTL_SECONDS = 300`, `DEFAULT_CACHE_TTL_SECONDS = 3600` |
+| **Tag-based invalidation** | ✅ | `@CacheInvalidateTags` with tag sets `stories`, `books`, `payments`; fired on every write |
+| **Cache hit rate monitoring** | ✅ | `CacheMetrics` at `GET /api/v1/metrics/cache` → `{ hits, misses, hitRate }` |
+| **Cache-aside** | ✅ | `cache.interceptor.ts` |
+| **Write-through for critical data** | ⛔ | Not implemented. The write path **invalidates** rather than writing through |
+| **Cache warming** | ⛔ | `@CacheWarmTags` exists as a decorator but **has no caller** |
+
+- ✅ Cache-aside is the implemented pattern (`cache.interceptor.ts`)
+- ⚠️ **"Write-through for critical data" is not implemented**; the write path invalidates rather
+  than writes through
+- ⚠️ **"Cache warming" has a `@CacheWarmTags` decorator but no caller**
+- ⚠️ TTLs are **compile-time constants, not configuration.** The `CACHE_TTL_*` environment
+  variables in `backend/.env.example` are read by nothing
+- ✅ Fail-open when Valkey is unreachable, which keeps availability but means an outage silently
+  removes protection
+
+### #12 Reduce Synchronization / Prevent Cascade Failures — 🔄 PARTIAL
+
+**The resilience primitives are no longer dead code** — that was the previous verdict. They are now
+wired into the two places that call external services:
+
+| Primitive | Status | Wired into |
+|---|---|---|
+| **Circuit breaker** | ✅ | `backend/src/modules/auth/auth.service.ts:59`, `stories/sanity/sanity.service.ts` |
+| **Retry with backoff** | ✅ | `ResilientHttpClient` → `PaymobClient` |
+| **Timeout** | ✅ | `TimeoutService`, `DEFAULT_OPERATION_TIMEOUT_MS` |
+| **Fallback** | ✅ | `FallbackService` |
+
+- ✅ Paymob fails cleanly: 503 with the local payment marked `failed`, instead of fabricating a
+  checkout URL
+- ✅ "One authoritative source per entity" holds — the SSOT inventory in #9
+- ✅ "Event-driven updates for derived data" — the DLQ means a failed handler no longer loses the event
+- ⚠️ **Circuit breaker is not applied to Sanity's write path or to S3**, only to the two services
+  above
+- ⛔ **No circuit breaker is applied to PostgreSQL or Valkey**, so the two hard dependencies still
+  fail open rather than degrading
+- ⛔ The two-line example "Users: PostgreSQL only (no sync to Sanity)" is **wrong for Stories**, and
+  "Stories: Sanity only (read-only mirror in PostgreSQL)" is **backwards** — PostgreSQL is
+  authoritative and Sanity is the downstream mirror
+
+### #13 Automate Massive Modifications — 🔄 PROCESS ONLY
+- ✅ `backend/scripts/generate-migration.ts` scaffolds a migration plus its down sidecar
+- ✅ `backend/scripts/check-migrations.ts` statically lints the whole chain
+- ✅ `backend/scripts/print-coverage-summary.mjs` renders the coverage gate for CI
+- ✅ `vitest.swc-plugin.ts` centralises the SWC transform that would otherwise need repeating
+- ⛔ `jscodeshift` is not a dependency; the "Tools" list is aspirational
+- ⛔ "Review all changes after automation" and "refactor to prevent future repetition" are process
+  claims with no tooling
+
+### #14 AP as Default — ⚠️ PARTIAL
+The consistency **matrix** in this document is stated correctly and
+`docs/consistency-matrix.md` has been reconciled against the schema. What is missing is the
+enforcement the "Enforcement" section promises.
+
+- ✅ The classification exists and is documented per data type
+- ✅ Notifications, story → Sanity sync, and analytics reads are genuinely eventual
+- ⛔ **"Strong consistency for payments, auth, inventory" is not implemented as a mechanism.** There
+  is no `SELECT … FOR UPDATE`, no version column, and no optimistic-locking check anywhere in
+  `backend/src`. The only concurrency control on the money path is a `uniqueIndex` on
+  `payments.paymob_transaction_id` — which prevents duplicate *rows*, not duplicate *charges*
+- ⛔ **Inventory does not exist** as an entity. There is no stock count to be consistent about
+- ⚠️ Availability-over-consistency is a real consequence: the throttler storage **fails open** and
+  the cache fails open, so an overload or an outage degrades protection rather than refusing
+  service. That is the AP choice, made deliberately
+
+### #15 Proactive Defense First — ⚠️ PARTIAL
+Rate limiting is now genuinely the first line, and the WAF's own layers are still incomplete.
+
+**Layer 1 — Rate limiting: ✅ now real, was previously claimed only**
+- ✅ Five tiers in `backend/src/config/throttle.config.ts`: `default` 30/min per user,
+  `auth` 10/min per IP, `session` 120/min per IP, `upload` 5/min per user, `search` 50/min per user
+- ✅ The `session` tier exists because refresh is **machine** traffic. It shared the `auth` budget
+  of 10/min per IP, so ten automatic refreshes across one office NAT or mobile CGNAT blocked the
+  whole egress address for a minute and logged out every user behind it
+- ✅ `default` is 30/min, not 100. It is the fallback for every undecorated route, and its
+  `tracker: 'user'` silently degrades to per-IP because `JwtAuthGuard` is not an `APP_GUARD` and
+  `request.user` is unset when `ThrottlerGuard` runs. A per-IP ceiling has to survive a scraper
+- ✅ Applied per route via `@ThrottleTier(...)`
+- ✅ Backed by a **real `ValkeyThrottlerStorage`** — previously in-memory per instance, which made
+  the effective limit `limit × instance_count` behind a load balancer and contradicted
+  `docs/11_decisions.md`
+- ✅ Real 429 tests exist
+- ⚠️ `THROTTLE_TRUST_PROXY` defaults to `false`. Behind a reverse proxy without it, per-IP
+  throttling and IP blocking key on the **proxy's** address
+- ⛔ The WAF's own known limits are now written down in `backend/src/common/waf/README.md` under
+  *Known limits, recorded rather than hidden* — including the two mixed-form IPv6 encodings the
+  SSRF rules cannot match, and the fact that the body-size rule **detects** rather than prevents
+
+**Layer 2 — WAF: ⚠️ partial**
+- ✅ 34 typed rules in 8 layers. Four of them (`xss-script-function`, `command-chain-separator`,
+  `sql-time-based`, `ldap-filter-injection`) used to match ordinary prose — `"steps & id check"`,
+  `"the book made me sleep( a lot"`, `"(uid=*) group"` — and at the default `WAF_BLOCK_SEVERITY=high`
+  that was a one-hour IP block for writing a technical sentence. The **patterns were tightened,
+  not the severities lowered**, because downgrading would have traded a false positive for a silent
+  loss of detection. Verified: 0 prose false positives, 0 missed attacks
+- ✅ `ssrf-encoded-host` was added for host shapes a dotted-decimal pattern cannot see
+  (`http://2130706433/`, `http://0x7f000001/`, `http://127.1/`)
+- ✅ Valkey-backed IP blocklist with temp/permanent blocks and TTL auto-unblock
+- ✅ `X-RateLimit-*` and `X-Waf-*` response headers
+- ✅ The catastrophic rule that 403'd ordinary Arabic and English prose is **gone**
+- ⛔ **Admin operations endpoints do not exist.** `GET /admin/waf/blocked-ips`,
+  `POST /admin/waf/unblock-ip`, `POST /admin/waf/clear-counters` and `POST /admin/waf/clear-blocks`
+  are all absent. An operator blocked by the WAF has no supported way out except direct Valkey
+  manipulation
+- ⛔ **No WAF metrics endpoint.** No counters, no dashboards, no alerting
+- ⛔ **No XML injection (XXE) rule**
+- ⛔ **No `Content-Security-Policy`** is emitted
+
+**Layer 3 — Input validation: ⚠️ partial**
+- ✅ A global `ValidationPipe` with `whitelist` and `forbidNonWhitelisted`
+- ✅ Zod on **every** Paymob response
+- ⚠️ Several `dto/` files were Zod schemas the pipe silently skipped; fixed for moderation, search
+  and upload by service-boundary `parseOrThrow()` and by converting the rest into real classes.
+  A Zod schema in a `dto/` file is still invisible to the pipe
+
+**Layer 4 — Circuit breakers: ✅** see Principle #12
+
+**Resource quotas per user/tenant:** ⛔ **NOT IMPLEMENTED.** Throttling is per-user for three
+tiers, which is not a quota — nothing deducts from a balance, and there is no storage cap per user
+or tenant.
+
+### #16 Smart Hybrid Consistency — ⚠️ PARTIAL
+- ✅ The three-way classification is documented and `docs/consistency-matrix.md` has been
+  reconciled against all 33 tables
+- ✅ Causal ordering is real in the schema: `comments.parent_id` is a self-referencing FK, and
+  messages are timestamp-ordered
+- ✅ Eventual is real for notifications, story → Sanity sync, and derived analytics
+- ⛔ **"Monitoring for consistency violations" is not implemented.** No code compares a cache read
+  against the database to detect divergence
+- ⛔ **"Compensation mechanisms for inconsistencies" is not implemented.** There is no saga, no
+  compensating action, and no reconciliation job
+- ⚠️ Causal consistency is a **schema property, not an enforcement mechanism** — nothing rejects a
+  write that violates the ordering
+- ✅ The causal-consistency bug recorded in the previous audit is **fixed**:
+  `comments.repository.ts` used `eq(comments.parentId, null as unknown as string)`, which emits
+  `parent_id = NULL` and is never true, so `GET /api/v1/comments/story/:storyId` always returned
+  zero top-level comments. It now uses `isNull(...)`, and the row query and the count query share
+  one `visibleTopLevel` predicate so page and count cannot drift
+
+### #17 Warning Against Massive Linting — ✅ OBSERVED
+- ✅ No `lint --fix --max-warnings 0` sweep over the repository exists
+- ✅ CI runs `eslint` **as a checker, with no `--fix`**, and separately runs `prettier --check`
+- ✅ The 0-error / ~895-warning state was reached by fixing files individually
+- ⚠️ `npm run format:fix` exists in `backend/package.json` and would rewrite `src/**/*.ts`,
+  `test/**/*.ts`, `e2e/**/*.ts`, and `scripts/**/*.ts` in one pass. ⚠️ The repository is written at
+  ~120 columns; the earlier default of 80 made `prettier --check` fail on 210+ files. **Running
+  `format:fix` today is exactly the mass rewrite this principle forbids** — it is a real
+  footgun, not a hypothetical
+
+---
+
+## 📋 Full Verdict Summary
+
+**✅ ENFORCED (5):** #1 zero `any` · #3 IDs as strings · #6 minimize migrations · #9 SSOT ·
+#10 unified typing files
+
+**⚠️ PARTIAL (8):** #2 logger · #7 loose coupling · #8 open/closed · #11 Valkey cache ·
+#14 AP as default · #15 proactive defense · #16 hybrid consistency · #17 warning against mass
+linting *(observed, no automated gate)*
+
+**🔄 IN PROGRESS (4):** #4 document problems · #5 architecture before code · #12 reduce
+synchronization · #13 automate modifications
+
+**No principle is COMPLIANT. Nothing in this codebase satisfies every enforcement bullet of any
+principle**, and the two that come closest (#1 and #6) are close only because their bullets are all
+mechanically checkable.
+
+### Changed since the previous audit
+
+#### Round 2 — the 488-file change set (see ADR 005)
+
+| Principle | Before | After | Why |
+|---|---|---|---|
+| #6 Minimize migrations | ✅ | ✅ | Advisory lock, per-migration lock/statement timeouts, and a prefix check that closes the sandwiched out-of-order case. `push-schema.ts` deleted; `drizzle-kit` declared |
+| #7 Loose coupling | ⚠️ | ⚠️ | `OwnershipGuard` wired on comments and stories via per-module repository resolvers. ⛔ **Retracted by Round 3:** the same row said "Books write routes still unprotected — the table has no owner column"; migration `0021` added `books.owner_id` and `assertOwnership` now enforces it |
+| #9 SSOT | ✅ | ✅ | Valkey connection resolved once for the cache *and* the Socket.IO adapter; the published-secret rule shared by the JWT and encryption configs |
+| #14 AP as default | ⚠️ | ⚠️ | Unchanged verdict, but `default` rate limit corrected from an accidental 10× loosening to 30/min, and the `user` tracker's per-IP degradation is documented where it is configured |
+| #15 Proactive defense | ⚠️ | ⚠️ | WAF prose false-positives eliminated by tightening four patterns; SSRF host-shape rule added; body-size bypass closed; a `session` tier separates machine refresh from human login. Still ⚠️ — no admin endpoints, no metrics, no CSP, no XXE, no quotas |
+| #16 Hybrid consistency | ⚠️ | ⚠️ | The `parent_id = NULL` bug that made top-level comments always empty is fixed. Still ⚠️ — no violation detection, no compensation mechanism |
+
+#### Round 3 — the change set that found the application would not boot (2026-10-04)
+
+| Principle | Before | After | Why |
+|---|---|---|---|
+| #4 Document problems | 🔄 | 🔄 | Verdict unchanged, and the evidence for it got worse before it got better. ⛔ **The backend could not boot**: a `books.module.ts` ↔ `library.module.ts` circular dependency with no `forwardRef()`, plus `contests.module.ts` importing `NotificationsModule` without listing it in `imports`. Both abort the module graph before `beforeAll`, so the whole 23-file DB-backed suite **skipped** and CI stayed green. Also retracted here: "24 ADRs" (**5** exist) and "No CHANGELOG" (**`CHANGELOG.md` exists**, commit `febf264`). 8 e2e/integration tests that had never executed were also failing; all fixed |
+| #5 Architecture before code | 🔄 | 🔄 | Verdict unchanged, but a C4/module-boundaries audit of the Phase-3 routes found that the shipped `frontend/src/lib/api.ts` called `POST /users/:id/follow`, `POST /stories/:id/reactions` and `GET/POST /stories/:id/comments` — **none of which the backend serves**. The architecture was drawn, and the implementation contradicted it, and the client's unit test mocked the same wrong URL so it stayed green. Correct paths recorded in `docs/module-boundaries/overview/module-boundaries.md`; the client is fixed |
+| #6 Minimize migrations | ✅ | ✅ | Verdict unchanged. ⛔ **One claim corrected:** `0001_create_stories_tables` is **not** irreversible. Measured across all 22 down scripts: **0 `irreversible`, 18 `data-loss`, 4 `reversible`** — `0001` is `data-loss`, and its down script never drops `uuid-ossp`, which was the entire stated reason. A rollback chain reaching `0001` now asks and runs instead of failing outright |
+| #7 Loose coupling | ⚠️ | ⚠️ | Verdict unchanged, but the concrete gap closed: `PATCH`/`DELETE /books/:id` are **protected** — `@UseGuards(JwtAuthGuard)` plus `assertOwnership` (`books.service.ts:445`) on update/publish/archive/delete, backed by `books.owner_id` from migration `0021`. Still ⚠️ because ownership for books sits in the service rather than in `OwnershipGuard`, and 26 files across 18 modules still import `src/db/index.ts` directly |
+| #16 Hybrid consistency | ⚠️ | ⚠️ | Verdict unchanged, and the `parent_id` record in §#16 was **already correct**. What changed is the three other documents: `consistency-matrix.md`, `c4-model/code/domain-concepts.md` and `data-architecture/erd/entity-relationship.md` all still presented the fixed bug as open, and two of them claimed the pin was an `it.fails` — **no `it.fails` exists anywhere in this repository** (`grep -rn "it.fails" backend` → 0). All three now agree with this section: the bug was real, it is fixed at `comments.repository.ts:48` with `isNull`, and the fixed behaviour is pinned by `comments.repository.spec.ts:111` and `backend/test/comments.integration-spec.ts`. **No principle verdict was upgraded in this round** |
+
+#### Round 1
+
+| Principle | Before | After | Why |
+|---|---|---|---|
+| #11 Valkey cache | ⚠️ PARTIAL — TTL ✅, cache-aside ✅, tag invalidation ✅, **hit-rate monitoring ❌** | ⚠️ PARTIAL — **hit-rate monitoring ✅**, but write-through ⛔ and cache-warming ⛔ | `GET /api/v1/metrics/cache` now serves live `hits` / `misses` / `hitRate`. Still not COMPLIANT: `@CacheWarmTags` has no caller and no write-through path exists |
+| #12 Reduce synchronization | ⚠️ PARTIAL — resilience primitives were **dead code** | 🔄 IN PROGRESS | `CircuitBreakerService` injected into `auth.service.ts` and `sanity.service.ts`; `ResilientHttpClient` fronts `PaymobClient`; DLQ catches failed handlers. PostgreSQL and Valkey still have no breaker |
+| #15 Proactive defense | ⚠️ PARTIAL — rate limiting *claimed* against an in-memory store that contradicted `11_decisions.md`; WAF layers partial | ⚠️ PARTIAL — **rate limiting is now real**; WAF still partial | **5** tiers over `ValkeyThrottlerStorage` with 429 tests; WAF admin endpoints, metrics, CSP and XXE coverage all still missing. ⛔ This row previously said "4 tiers" |
+| #1 Zero `any` | ✅ | ✅ | `eslint src/ test/ e2e/` → 0 errors |
+| #6 Minimize migrations | ✅ | ✅ | transaction wrapping, sha256 ledger, reversibility classification, `db:check` CI gate |
+| #9 SSOT | ✅ | ✅ | `AuthorSummary.name` is now `string \| null`; `Exact<A,B>` drift assertions |
+| #10 Unified typing files | ✅ | ✅ | frontend consumes the compiled package; no blind `as` casts in `api.ts` |
+| #16 Hybrid consistency | ⚠️ | ⚠️ | Unchanged verdict, but the `parent_id = NULL` bug is now recorded |
+| #14 AP as default | ⚠️ | ⚠️ | Unchanged — still no row locking or version columns on the money path |
+
+---
+
+## ⛔ Unbuilt Features These Principles Assume
+
+The principles above describe rules the code does not yet satisfy. Each of these is a **retained
+requirement**, not a description. They are consolidated here so the principles are not mistaken for a
+capability inventory.
+
+| Feature | Which principle assumes it | Reality |
+|---|---|---|
+| **MFA / TOTP + recovery codes** | #15 (proactive defense), #9 (SSOT for auth state) | ⛔ **Not built.** `grep -rn "mfa\|totp\|two.factor\|2fa"` across `backend/src`, `frontend/src`, `packages/` returns **zero** matches. No `POST /auth/mfa`. An admin account is protected by authorization only |
+| **Account lockout after failed logins** | #15 | ⛔ **Not built.** `auth.service.ts` keeps no attempt counter. The only brake is the `auth` rate-limit tier: 10/min per IP — a brake on the *IP*, not the account |
+| **Session store** | #11 (Valkey for sessions), #16 | ⛔ **Not built.** No session table, no session key in Valkey, no device/IP capture, no concurrent-session cap. `session:{userId}` in the cache table is fictional. A session is a signed JWT pair; the only server-side token state is the refresh-token blacklist |
+| **Permission-decision audit trail** | #9 (SSOT), #15 | ⛔ **Not built.** Zero `audit` hits in `backend/src/common/permissions/` and `backend/src/common/guards/`. Moderation *actions* are recorded, but not authorization decisions |
+| **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ⛔ **Not built.** `grep -rni "replica" --include='*.ts' backend/src/` returns nothing. One primary; no `DB_REPLICA_*`. See `system-architecture/infrastructure/read-replicas.md`, which is marked as a proposal |
+| **Backup automation** | #6 (minimize migrations: "backup before migrations"), #16 (disaster recovery) | 🔄 **Automated via GitHub Actions.** `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads as an artifact. ⛔ No PITR or restore drill |
+| **Resource quotas per user/tenant** | #15 | ⛔ **Not built.** No tiers, no balances, no counters that deduct. The throttler limits a 60-second window; it is a rate limit, not a quota |
+| **Write-through caching + cache warming** | #11 | ⛔ **Not built.** The write path invalidates. `@CacheWarmTags` exists with no caller |
+| **Consistency-violation detection** | #16 | ⛔ **Not built.** No code compares a cache read against the database to detect divergence |
+| **Compensation mechanisms** | #16 | ⛔ **Not built.** No saga, no compensating action, no reconciliation job |
+| **Plugin architecture for optional features** | #8 (open/closed) | ⛔ **Not built.** The email path is configured but has no pluggable transport — in fact no SMTP client exists at all |
+| **Monitoring dashboards + alerting** | #4, #15 | ⛔ **Not built.** Sentry receives errors and `GET /api/v1/metrics/cache` reports hit rate, but there is no dashboard definition and **no alert rule anywhere in the repository** |
+| **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⛔ **Not built.** No `SELECT … FOR UPDATE`, no version column. The only money-path concurrency control is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges* |
+| **User documentation** | #4, #5 | ⛔ **Not built.** No user-facing docs exist outside `docs/` |
+| ~~**CHANGELOG**~~ | #4 (explicitly listed as a documentation type) | ✅ **Built — this entry is retracted.** `CHANGELOG.md` exists at the repository root (commit `febf264`), following Keep a Changelog 1.1.0 with an `[Unreleased]` section. The previous version of this table said "⛔ Not built. No CHANGELOG file in the repository", which was false |
+| **Email delivery** | #15, #9 | ⛔ **Not built.** No SMTP client. Only `EMAIL_FROM` is read, by `notifications-email.service.ts` |
+
+**15 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true.
+All are tracked in `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
+
+And one defect is materially worse than anything in that table:
+
+| Feature | Which principle assumes it | Reality |
+|---|---|---|
+| **The application can be started at all** | #5 (architecture before code), #7 (loose coupling), #4 (document problems) | ⛔ **It could not, until this change set.** `books.module.ts` ↔ `library.module.ts` formed a circular module dependency with no `forwardRef()`, and `contests.module.ts` imported `NotificationsModule` without listing it in `imports`. Both abort the Nest module graph in `DependenciesScanner.scanForModules` — before any test body runs. Every DB-backed spec therefore *skipped* rather than *failed*, CI stayed green, and no architecture document in this repository noticed. Both are fixed. It is recorded here because Principle #4 is the control that would have caught it: the defect was invisible to every gate that existed |
 
 ---
 
@@ -474,8 +945,9 @@ Running an automated lint-fix script across more than 100 files is not a fix —
 1. **Read** all principles before starting any work
 2. **Reference** them during design and code review
 3. **Enforce** them via CI/CD and code review
-4. **Update** them as the system evolves
+4. **Update** them as the system evolves — the verdict column above is the mechanism
 
 ---
 
-*These principles are the foundation of the Hakawi architecture. They are not suggestions — they are rules.*
+*These principles are the foundation of the Hakawi architecture. They are not suggestions — they
+are rules. The verdicts are honest, including where the code does not yet meet them.*

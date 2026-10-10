@@ -1,0 +1,2 @@
+-- hakawi:down reversibility=reversible data-loss=none reason=Drops the unique index on stories.slug. No row is modified, so nothing is lost; the application falls back to its check-then-insert slug guard in StoriesService.insertWithResolvedSlug, which is race-prone but was the state before this migration. The plain index idx_stories_slug is left in place, so slug lookups keep using an index.
+DROP INDEX IF EXISTS "stories_slug_unique";

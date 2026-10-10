@@ -1,3 +1,5 @@
+import type { SearchSortField } from './dto/search.dto.ts';
+
 export type SearchResult = {
   id: string;
   title: string;
@@ -34,7 +36,7 @@ export type SearchFilters = {
   status?: string;
   page?: number;
   limit?: number;
-  sortBy?: 'relevance' | 'date' | 'views' | 'reactions';
+  sortBy?: SearchSortField;
 };
 
 export type AuthorSearchResult = {

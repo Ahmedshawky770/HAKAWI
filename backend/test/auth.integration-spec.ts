@@ -1,232 +1,168 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
 import { sql } from 'drizzle-orm';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module.ts';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
-import { ValkeyService } from '../src/common/services/valkey.service.ts';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EncryptionService } from '../src/common/utils/encryption.util.ts';
-import { UsersEventHandler } from '../src/modules/users/events/users.event-handler.ts';
-import { SanityService } from '../src/modules/stories/sanity/sanity.service.ts';
 import { db } from '../src/db/index.ts';
-import { users } from '../src/db/schema/users.schema.ts';
+import { createTestContext } from '../src/test/helpers/test-context.ts';
+import type { TestContext } from '../src/test/helpers/test-context.ts';
+
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 describe('Auth Integration', () => {
-  let app: INestApplication;
-  let httpServer: ReturnType<INestApplication['getHttpServer']>;
-  let registeredEmail: string;
-  let registeredUsername: string;
+  let context: TestContext;
 
   beforeAll(async () => {
-    const timestamp = Date.now();
-    registeredEmail = `auth-int-${timestamp}@example.com`;
-    registeredUsername = `authint-${timestamp}`;
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: 'REFLECTOR',
-          useValue: new Reflector(),
-        },
-        WinstonLoggerService,
-        ValkeyService,
-        EventEmitter2,
-        {
-          provide: SanityService,
-          useValue: {
-            isEnabled: () => false,
-            syncStoryToSanity: () => ({ success: true }),
-            deleteStoryFromSanity: () => ({ success: true }),
-            syncAllStories: () => [],
-          },
-        },
-      ],
-    })
-    .overrideProvider(UsersEventHandler).useValue({
-      handleUserRegistered: () => Promise.resolve(),
-      handleUserUpdated: () => Promise.resolve(),
-    })
-    .overrideProvider(EncryptionService).useValue({
-      encrypt: (plaintext: string) => plaintext,
-      decrypt: (ciphertext: string) => ciphertext,
-    })
-    .compile();
-
-    app = moduleRef.createNestApplication();
-    await app.init();
-    httpServer = app.getHttpServer();
+    context = await createTestContext();
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await context.close();
   });
+
+  const registerRaw = (email: string, username: string) =>
+    request(context.httpServer)
+      .post('/auth/register')
+      .send({ email, username, name: 'Auth Integration User', password: 'SecurePass123!' });
 
   describe('POST /auth/register', () => {
     it('should register a new user', async () => {
-      const res = await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email: registeredEmail,
-          password: 'SecurePass123!',
-          name: 'Auth Integration User',
-          username: registeredUsername,
-        })
-        .expect(201);
+      const email = context.uniqueEmail('auth');
+      const username = context.uniqueUsername('auth');
+
+      const res = await registerRaw(email, username).expect(201);
 
       expect(res.body).toHaveProperty('user');
-      expect(res.body.user.email).toBe(registeredEmail);
+      expect(res.body.user.email).toBe(email);
+      expect(res.body).toHaveProperty('tokens');
     });
 
     it('should return 409 when email is already registered', async () => {
-      const timestamp = Date.now();
-      const email = `auth-int-dup-${timestamp}@example.com`;
-      const username = `authint-dup-${timestamp}`;
+      const email = context.uniqueEmail('auth');
+      const username = context.uniqueUsername('auth');
 
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Integration User',
-          username,
-        })
-        .expect(201);
-
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Integration User',
-          username,
-        })
-        .expect(409);
+      await registerRaw(email, username).expect(201);
+      await registerRaw(email, context.uniqueUsername('auth')).expect(409);
     });
 
     it('should return 409 when username is already taken', async () => {
-      const timestamp = Date.now();
-      const email = `auth-int-dup2-${timestamp}@example.com`;
-      const username = `authint-dup2-${timestamp}`;
+      const username = context.uniqueUsername('auth');
 
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Integration User',
-          username,
-        })
-        .expect(201);
+      await registerRaw(context.uniqueEmail('auth'), username).expect(201);
+      await registerRaw(context.uniqueEmail('auth'), username).expect(409);
+    });
 
-      await request(httpServer)
+    it('should never mint a privileged account from a body-supplied accountType', async () => {
+      const email = context.uniqueEmail('auth');
+      const username = context.uniqueUsername('auth');
+
+      const res = await request(context.httpServer)
         .post('/auth/register')
-        .send({
-          email: `auth-int-dup2b-${timestamp}@example.com`,
-          password: 'SecurePass123!',
-          name: 'Auth Integration User 2',
-          username,
-        })
-        .expect(409);
+        .send({ email, username, name: 'Escalation Attempt', password: 'SecurePass123!', accountType: 'admin' })
+        .expect(400);
+
+      expect(JSON.stringify(res.body)).toContain('accountType');
+    });
+
+    it('should create a reader account and deny it moderation access', async () => {
+      const created = await context.registerAndLogin({ prefix: 'readeronly' });
+
+      expect(created.accountType).toBe('reader');
+
+      const me = await request(context.httpServer)
+        .get('/users/me')
+        .set('Authorization', `Bearer ${created.accessToken}`)
+        .expect(200);
+
+      expect(me.body.accountType).toBe('reader');
+
+      await request(context.httpServer)
+        .get('/moderation/stats')
+        .set('Authorization', `Bearer ${created.accessToken}`)
+        .expect(403);
     });
   });
 
   describe('POST /auth/login', () => {
     it('should login with valid credentials', async () => {
-      const timestamp = Date.now();
-      const email = `auth-int-login-${timestamp}@example.com`;
+      const user = await context.registerUser({ prefix: 'authlogin' });
 
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Login User',
-          username: `authint-login-${timestamp}`,
-        })
-        .expect(201);
-
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .post('/auth/login')
-        .send({
-          email,
-          password: 'SecurePass123!',
-        })
+        .send({ email: user.email, password: 'SecurePass123!' })
         .expect(200);
 
       expect(res.body).toHaveProperty('user');
-      expect(res.body.user.email).toBe(email);
+      expect(res.body.user.email).toBe(user.email);
     });
 
     it('should return 401 with invalid email', async () => {
-      await request(httpServer)
+      await request(context.httpServer)
         .post('/auth/login')
-        .send({
-          email: 'wrong@example.com',
-          password: 'SecurePass123!',
-        })
+        .send({ email: 'nonexistent@example.com', password: 'SecurePass123!' })
         .expect(401);
     });
 
     it('should return 401 with invalid password', async () => {
-      await request(httpServer)
+      const user = await context.registerUser({ prefix: 'authlogin' });
+
+      await request(context.httpServer)
         .post('/auth/login')
-        .send({
-          email: registeredEmail,
-          password: 'WrongPassword',
-        })
+        .send({ email: user.email, password: 'WrongPassword' })
         .expect(401);
     });
   });
 
   describe('POST /auth/refresh', () => {
     it('should refresh tokens with valid refresh token', async () => {
-      const timestamp = Date.now();
-      const email = `auth-int-refresh-${timestamp}@example.com`;
+      const user = await context.registerUser({ prefix: 'authrefresh' });
 
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Refresh User',
-          username: `authint-refresh-${timestamp}`,
-        })
-        .expect(201);
-
-      const loginRes = await request(httpServer)
+      const loginRes = await request(context.httpServer)
         .post('/auth/login')
-        .send({
-          email,
-          password: 'SecurePass123!',
-        })
+        .send({ email: user.email, password: 'SecurePass123!' })
         .expect(200);
 
-      const cookies = loginRes.headers['set-cookie'];
-      const refreshTokenCookie = cookies?.find((cookie: string) => cookie.startsWith('refresh_token='));
+      const cookies: unknown = loginRes.headers['set-cookie'];
+      const cookieList: string[] = Array.isArray(cookies)
+        ? cookies.filter((entry): entry is string => typeof entry === 'string')
+        : [];
+      const refreshTokenCookie = cookieList.find((cookie) => cookie.startsWith('refresh_token='));
       const refreshToken = refreshTokenCookie?.split(';')[0]?.split('=')[1];
       expect(refreshToken).toBeDefined();
 
-      const res = await request(httpServer)
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(200);
+      const res = await request(context.httpServer).post('/auth/refresh').send({ refreshToken }).expect(200);
 
       expect(res.body).toHaveProperty('tokens');
       expect(res.body.tokens).toHaveProperty('accessToken');
+    });
+
+    it('should return 401 for an unknown refresh token', async () => {
+      await request(context.httpServer).post('/auth/refresh').send({ refreshToken: 'not-a-real-token' }).expect(401);
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('should revoke the refresh token', async () => {
+      const user = await context.registerUser({ prefix: 'authlogout' });
+
+      const loginRes = await request(context.httpServer)
+        .post('/auth/login')
+        .send({ email: user.email, password: 'SecurePass123!' })
+        .expect(200);
+
+      const refreshToken: string = loginRes.body.tokens.refreshToken;
+
+      await request(context.httpServer).post('/auth/logout').send({ refreshToken }).expect(200);
+
+      await request(context.httpServer).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
   });
 
   describe('POST /auth/forgot-password', () => {
     it('should accept email and return success', async () => {
-      const res = await request(httpServer)
+      const user = await context.registerUser({ prefix: 'authforgot' });
+
+      const res = await request(context.httpServer)
         .post('/auth/forgot-password')
-        .send({ email: registeredEmail })
+        .send({ email: user.email })
         .expect(200);
 
       expect(res.body).toHaveProperty('message');
@@ -234,35 +170,34 @@ describe('Auth Integration', () => {
   });
 
   describe('POST /auth/reset-password', () => {
-    it('should accept reset token and return success', async () => {
-      const timestamp = Date.now();
-      const email = `auth-int-reset-${timestamp}@example.com`;
+    it('should accept the reset token stored by forgot-password', async () => {
+      const user = await context.registerUser({ prefix: 'authreset' });
 
-      await request(httpServer)
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          name: 'Auth Reset User',
-          username: `authint-reset-${timestamp}`,
-        })
-        .expect(201);
-
-      await request(httpServer)
-        .post('/auth/forgot-password')
-        .send({ email })
-        .expect(200);
+      await request(context.httpServer).post('/auth/forgot-password').send({ email: user.email }).expect(200);
 
       const result = await db.execute(sql`
-        SELECT password_reset_token FROM users WHERE email = ${email}
+        SELECT password_reset_token FROM users WHERE email = ${user.email}
       `);
-      const token = result.rows?.[0]?.password_reset_token;
+      const token: unknown = result.rows[0]?.password_reset_token;
       expect(token).toBeDefined();
 
-      const res = await request(httpServer)
+      const res = await request(context.httpServer)
         .post('/auth/reset-password')
         .send({ token, password: 'NewPass123!' })
         .expect(200);
+
+      expect(res.body).toHaveProperty('message');
+      await request(context.httpServer)
+        .post('/auth/login')
+        .send({ email: user.email, password: 'NewPass123!' })
+        .expect(200);
+    });
+
+    it('should return 400 for an unknown reset token', async () => {
+      const res = await request(context.httpServer)
+        .post('/auth/reset-password')
+        .send({ token: 'not-a-real-token', password: 'NewPass123!' })
+        .expect(400);
 
       expect(res.body).toHaveProperty('message');
     });

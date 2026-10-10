@@ -41,11 +41,9 @@ describe('ReactionsController', () => {
         createdAt: new Date(),
       } as Reaction);
 
-      const result = await controller.addReaction(
-        'story-1',
-        { type: 'like' },
-        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
-      );
+      const result = await controller.addReaction('story-1', { type: 'like' }, {
+        user: { sub: 'user-1' },
+      } as unknown as ExpressRequest & { user: { sub: string } });
 
       expect(result).toEqual({
         id: 'reaction-123',
@@ -62,10 +60,9 @@ describe('ReactionsController', () => {
     it('should remove a reaction from a story', async () => {
       vi.mocked(reactionsService.removeReaction).mockResolvedValue(undefined as void);
 
-      const result = await controller.removeReaction(
-        'story-1',
-        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
-      );
+      const result = await controller.removeReaction('story-1', {
+        user: { sub: 'user-1' },
+      } as unknown as ExpressRequest & { user: { sub: string } });
 
       expect(result).toEqual({ message: 'Reaction removed' });
       expect(reactionsService.removeReaction).toHaveBeenCalledWith('user-1', 'story-1');
@@ -79,7 +76,9 @@ describe('ReactionsController', () => {
         total: 0,
       });
 
-      const result = await controller.getReactions('story-1');
+      // The handler now takes one validated query object rather than two loose strings, so the
+      // declared defaults live in `ReactionPageQueryDto` instead of in a `Number(x) || n` pair.
+      const result = await controller.getReactions('story-1', {});
 
       expect(result).toEqual({ reactions: [], total: 0 });
       expect(reactionsService.getReactions).toHaveBeenCalledWith('story-1', 1, 20);
@@ -91,7 +90,7 @@ describe('ReactionsController', () => {
         total: 0,
       });
 
-      const result = await controller.getReactions('story-1', '2', '10');
+      const result = await controller.getReactions('story-1', { page: 2, limit: 10 });
 
       expect(result).toEqual({ reactions: [], total: 0 });
       expect(reactionsService.getReactions).toHaveBeenCalledWith('story-1', 2, 10);
@@ -133,10 +132,9 @@ describe('ReactionsController', () => {
         createdAt: new Date(),
       } as Reaction);
 
-      const result = await controller.getUserReaction(
-        'story-1',
-        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
-      );
+      const result = await controller.getUserReaction('story-1', {
+        user: { sub: 'user-1' },
+      } as unknown as ExpressRequest & { user: { sub: string } });
 
       expect(result).toEqual({
         id: 'reaction-123',
@@ -151,10 +149,9 @@ describe('ReactionsController', () => {
     it('should return null when user has no reaction', async () => {
       vi.mocked(reactionsService.getUserReaction).mockResolvedValue(null);
 
-      const result = await controller.getUserReaction(
-        'story-1',
-        { user: { sub: 'user-1' } } as unknown as ExpressRequest & { user: { sub: string } },
-      );
+      const result = await controller.getUserReaction('story-1', {
+        user: { sub: 'user-1' },
+      } as unknown as ExpressRequest & { user: { sub: string } });
 
       expect(result).toBeNull();
       expect(reactionsService.getUserReaction).toHaveBeenCalledWith('user-1', 'story-1');

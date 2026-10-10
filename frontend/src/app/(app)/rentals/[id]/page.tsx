@@ -1,69 +1,85 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { ReadingProgressCard } from "@/components/library/ReadingProgressCard";
+import { EXTENSION_DURATION_OPTIONS } from "@/components/rental/RentalRow";
+import { RentalStatusBadge } from "@/components/rental/RentalStatusBadge";
+import { useToast } from "@/components/providers/ToastProvider";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Input";
 import { Loading } from "@/components/ui/Loading";
-import { Rental, Book, ReadingProgress } from "@/types/api";
+import type { Book, ReadingProgress, Rental } from "@/types/api";
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  active: { label: "نشط", color: "bg-green-100 text-green-800" },
-  returned: { label: "مُرجع", color: "bg-gray-100 text-gray-800" },
-  expired: { label: "منتهي", color: "bg-red-100 text-red-800" },
-  overdue: { label: "متأخر", color: "bg-red-100 text-red-800" },
-};
-
-function getStatusInfo(status: string) {
-  return STATUS_LABELS[status] || { label: status, color: "bg-gray-100 text-gray-800" };
-}
-
-const EXTENSION_OPTIONS = [
-  { label: "أسبوع واحد", days: 7 },
-  { label: "أسبوعان", days: 14 },
-  { label: "شهر واحد", days: 30 },
-];
-
+/**
+ * One rental in full: the book, the dates, the progress the reader has made in it, and the actions
+ * that are still open.
+ *
+ * The book and the progress degrade to nothing rather than failing the page — a rental whose book
+ * record has gone is still a rental, and still returnable. The actions card appears only while the
+ * rental is active, because returning a returned book is not an action.
+ */
 export default function RentalDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const id = typeof params.id === "string" ? params.id : "";
+  const { notify } = useToast();
+
   const [rental, setRental] = useState<Rental | null>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [progress, setProgress] = useState<ReadingProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
   const [extending, setExtending] = useState(false);
   const [extendDays, setExtendDays] = useState<number | "">("");
 
   useEffect(() => {
+    let active = true;
+
     async function load() {
       try {
         const rentalData = await api.getRental(id);
+        if (!active) return;
         setRental(rentalData);
+
         try {
           const bookData = await api.getBook(rentalData.bookId);
-          setBook(bookData);
+          if (active) setBook(bookData);
         } catch {
-          setBook(null);
+          if (active) setBook(null);
         }
         try {
           const progressData = await api.getReadingProgress(rentalData.bookId);
-          setProgress(progressData);
+          if (active) setProgress(progressData.progress[0] ?? null);
         } catch {
-          setProgress(null);
+          if (active) setProgress(null);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "فشل تحميل تفاصيل الإيجار");
+        if (active) setError(err instanceof Error ? err.message : "فشل تحميل تفاصيل الإيجار");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
+
     load();
-  }, [id]);
+    return () => {
+      active = false;
+    };
+  }, [id, attempt]);
+
+  /** Re-arms the same request; the reset lives here so the effect only awaits. */
+  function retry() {
+    setLoading(true);
+    setError("");
+    setAttempt((n) => n + 1);
+  }
 
   const handleReturn = async () => {
     if (!rental) return;
@@ -72,7 +88,7 @@ export default function RentalDetailPage() {
       const updated = await api.returnRental(rental.id);
       setRental(updated);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "فشل إرجاع الكتاب");
+      notify(err instanceof Error ? err.message : "فشل إرجاع الكتاب", "error");
     } finally {
       setActionLoading(false);
     }
@@ -86,71 +102,113 @@ export default function RentalDetailPage() {
       setRental(updated);
       setExtendDays("");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "فشل تمديد الإيجار");
+      notify(err instanceof Error ? err.message : "فشل تمديد الإيجار", "error");
     } finally {
       setExtending(false);
     }
   };
 
   if (loading) return <Loading />;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!rental) return <div className="p-6">الإيجار غير موجود</div>;
 
-  const statusInfo = getStatusInfo(rental.status);
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <ErrorMessage error={error} onRetry={retry} />
+        <ButtonLink href="/rentals" variant="ghost" size="sm">
+          <Icon name="chevron" size="sm" />
+          العودة للإيجارات
+        </ButtonLink>
+      </div>
+    );
+  }
+
+  if (!rental) {
+    return (
+      <EmptyState
+        icon="clock"
+        title="الإيجار غير موجود"
+        description="ربما انتهى هذا الإيجار أو حُذف."
+        action={<ButtonLink href="/rentals">العودة للإيجارات</ButtonLink>}
+      />
+    );
+  }
+
   const isActive = rental.status === "active";
   const canExtend = isActive && rental.extendedCount < rental.maxExtensions;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto" dir="rtl">
-      <div className="mb-6">
-        <Link href="/rentals" className="text-blue-600 hover:text-blue-500">
-          ← العودة للإيجارات
-        </Link>
-      </div>
+    <div className="space-y-6" dir="rtl">
+      <PageHeader
+        title={book?.title || "تفاصيل الإيجار"}
+        description={book?.title ? "تفاصيل الإيجار" : undefined}
+        action={
+          <>
+            <RentalStatusBadge status={rental.status} endDate={rental.endDate} />
+            <ButtonLink href="/rentals" variant="ghost" size="sm">
+              <Icon name="chevron" size="sm" />
+              العودة للإيجارات
+            </ButtonLink>
+          </>
+        }
+      />
 
-      <Card className="mb-6">
+      <Card>
         <CardHeader>
-          <h1 className="text-2xl font-bold text-gray-900">تفاصيل الإيجار</h1>
+          <h2 className="text-xl font-semibold text-ink">بيانات الإيجار</h2>
         </CardHeader>
+
         <CardBody>
-          <div className="flex flex-col md:flex-row gap-6">
-            {book?.coverImage && (
+          <div className="flex flex-col gap-6 sm:flex-row">
+            {book?.coverImage ? (
               <img
                 src={book.coverImage}
-                alt={book.title}
-                className="w-40 h-56 object-cover rounded-lg flex-shrink-0 mx-auto md:mx-0"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-56 w-40 shrink-0 self-start rounded-lg object-cover"
               />
+            ) : (
+              <div className="grid h-56 w-40 shrink-0 place-items-center self-start rounded-lg bg-surface-raised text-ink-faint">
+                <Icon name="book" size="lg" />
+              </div>
             )}
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{book?.title || "كتاب"}</h2>
-              <p className="text-lg text-gray-600 mb-4">بواسطة {book?.author || ""}</p>
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${statusInfo.color}`}
-              >
-                {statusInfo.label}
-              </span>
-              <div className="grid grid-cols-2 gap-3 text-sm text-gray-600 mt-4">
-                <div>
-                  <span className="text-gray-500">تاريخ البدء: </span>
-                  {new Date(rental.startDate).toLocaleDateString("ar-EG")}
+
+            <div className="min-w-0 flex-1 space-y-4">
+              <p className="text-base text-ink-muted">{book?.author ? `بواسطة ${book.author}` : "كتاب"}</p>
+
+              <dl className="grid gap-2 text-sm text-ink-muted sm:grid-cols-2">
+                <div className="flex items-center gap-2">
+                  <Icon name="calendar" size="sm" />
+                  <dt className="sr-only">تاريخ البدء</dt>
+                  <span>تاريخ البدء:</span>
+                  <dd className="hk-numeric">{new Date(rental.startDate).toLocaleDateString("ar-EG")}</dd>
                 </div>
-                <div>
-                  <span className="text-gray-500">تاريخ الانتهاء: </span>
-                  {new Date(rental.endDate).toLocaleDateString("ar-EG")}
+                <div className="flex items-center gap-2">
+                  <Icon name="clock" size="sm" />
+                  <dt className="sr-only">تاريخ الانتهاء</dt>
+                  <span>تاريخ الانتهاء:</span>
+                  <dd className="hk-numeric">{new Date(rental.endDate).toLocaleDateString("ar-EG")}</dd>
                 </div>
-                <div>
-                  <span className="text-gray-500">التمديدات: </span>
-                  {rental.extendedCount} / {rental.maxExtensions}
+                <div className="flex items-center gap-2">
+                  <Icon name="plus" size="sm" />
+                  <dt className="sr-only">التمديدات</dt>
+                  <span>التمديدات:</span>
+                  <dd className="hk-numeric">
+                    {rental.extendedCount} / {rental.maxExtensions}
+                  </dd>
                 </div>
                 {rental.returnedAt && (
-                  <div>
-                    <span className="text-gray-500">تاريخ الإرجاع: </span>
-                    {new Date(rental.returnedAt).toLocaleDateString("ar-EG")}
+                  <div className="flex items-center gap-2">
+                    <Icon name="check" size="sm" />
+                    <dt className="sr-only">تاريخ الإرجاع</dt>
+                    <span>تاريخ الإرجاع:</span>
+                    <dd className="hk-numeric">{new Date(rental.returnedAt).toLocaleDateString("ar-EG")}</dd>
                   </div>
                 )}
-              </div>
+              </dl>
+
               {book?.description && (
-                <p className="text-gray-700 mt-4 whitespace-pre-line">{book.description}</p>
+                <p className="whitespace-pre-line leading-8 text-ink-muted">{book.description}</p>
               )}
             </div>
           </div>
@@ -158,76 +216,35 @@ export default function RentalDetailPage() {
       </Card>
 
       {progress && (
-        <Card className="mb-6">
-          <CardHeader>
-            <h2 className="text-xl font-semibold text-gray-900">تقدم القراءة</h2>
-          </CardHeader>
-          <CardBody>
-            <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
-              <div
-                className="bg-blue-600 h-4 rounded-full transition-all"
-                style={{ width: `${Math.min(progress.progressPercentage, 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>
-                الصفحة {progress.currentPage}
-                {progress.totalPages ? ` من ${progress.totalPages}` : ""}
-              </span>
-              <span>{progress.progressPercentage.toFixed(1)}%</span>
-            </div>
-            {progress.startedAt && (
-              <p className="text-sm text-gray-500 mt-2">
-                بدأت القراءة: {new Date(progress.startedAt).toLocaleDateString("ar-EG")}
-              </p>
-            )}
-            {progress.lastReadAt && (
-              <p className="text-sm text-gray-500 mt-1">
-                آخر قراءة: {new Date(progress.lastReadAt).toLocaleDateString("ar-EG")}
-              </p>
-            )}
-            {progress.completedAt && (
-              <p className="text-sm text-green-600 mt-1 font-medium">
-                اكتملت القراءة: {new Date(progress.completedAt).toLocaleDateString("ar-EG")}
-              </p>
-            )}
-            <div className="mt-4">
-              <Link href={`/reading-progress?bookId=${rental.bookId}`}>
-                <Button variant="secondary" size="sm">
-                  تحديث تقدم القراءة
-                </Button>
-              </Link>
-            </div>
-          </CardBody>
-        </Card>
+        <ReadingProgressCard
+          progress={progress}
+          action={
+            <ButtonLink href="/library" size="sm">
+              تحديث القراءة من مكتبتي
+            </ButtonLink>
+          }
+        />
       )}
 
       {isActive && (
         <Card>
           <CardHeader>
-            <h2 className="text-xl font-semibold text-gray-900">إجراءات</h2>
+            <h2 className="text-xl font-semibold text-ink">إجراءات</h2>
           </CardHeader>
           <CardBody>
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               {canExtend && (
-                <div className="flex gap-2 flex-1">
-                  <select
-                    value={extendDays}
-                    onChange={(e) => setExtendDays(e.target.value ? Number(e.target.value) : "")}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">مدة التمديد</option>
-                    {EXTENSION_OPTIONS.map((opt) => (
-                      <option key={opt.days} value={opt.days}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    disabled={!extendDays || extending}
-                    onClick={handleExtend}
-                  >
-                    {extending ? "جاري التمديد..." : "تمديد الإيجار"}
+                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+                  <Select
+                    aria-label="مدة التمديد"
+                    value={extendDays === "" ? "" : String(extendDays)}
+                    onChange={(event) => setExtendDays(event.target.value ? Number(event.target.value) : "")}
+                    options={EXTENSION_DURATION_OPTIONS}
+                    className="text-sm"
+                    wrapperClassName="sm:w-44"
+                  />
+                  <Button disabled={!extendDays} loading={extending} onClick={handleExtend}>
+                    تمديد الإيجار
                   </Button>
                 </div>
               )}
@@ -235,7 +252,7 @@ export default function RentalDetailPage() {
                 variant="danger"
                 loading={actionLoading}
                 onClick={handleReturn}
-                className={canExtend ? "" : "flex-1"}
+                className={canExtend ? "" : "sm:flex-1"}
               >
                 إرجاع الكتاب
               </Button>

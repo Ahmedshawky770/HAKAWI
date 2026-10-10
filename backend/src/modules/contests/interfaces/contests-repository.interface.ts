@@ -2,6 +2,7 @@ export const CONTESTS_REPOSITORY = Symbol('CONTESTS_REPOSITORY');
 
 import type {
   Contest,
+  ContestCategorySummary,
   ContestSubmission,
   ContestVote,
   ContestPrize,
@@ -16,6 +17,7 @@ import type {
 
 export type {
   Contest,
+  ContestCategorySummary,
   ContestSubmission,
   ContestVote,
   ContestPrize,
@@ -37,10 +39,15 @@ export interface IContestsRepository {
     status?: string;
     search?: string;
   }): Promise<{ contests: Contest[]; total: number }>;
+  findCategoriesByIds(categoryIds: string[]): Promise<ContestCategorySummary[]>;
   createContest(data: CreateContestInput & { createdBy: string; status: string }): Promise<Contest>;
   updateContest(id: string, data: UpdateContestInput): Promise<Contest>;
   findSubmissionById(id: string): Promise<ContestSubmission | null>;
-  findSubmissionsByContest(contestId: string, page: number, limit: number): Promise<{ submissions: ContestSubmission[]; total: number }>;
+  findSubmissionsByContest(
+    contestId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ submissions: ContestSubmission[]; total: number }>;
   findSubmissionByContestAndAuthor(contestId: string, authorId: string): Promise<ContestSubmission | null>;
   createSubmission(data: CreateSubmissionInput): Promise<ContestSubmission>;
   reviewSubmission(id: string, status: string, reviewedBy: string): Promise<ContestSubmission>;

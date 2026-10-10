@@ -8,6 +8,9 @@ export type PaymentResponse = {
   paymobOrderId: string | null;
   paymobPaymentId: string | null;
   paymobTransactionId: string | null;
+  paymobPaymentKey: string | null;
+  paymobIframeUrl: string | null;
+  paymobAcceptUrl: string | null;
   description: string | null;
   createdAt: string;
   updatedAt: string;
@@ -45,3 +48,12 @@ export type PaymentsListResponse = {
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'refunded';
 export type TransactionType = 'authorize' | 'capture' | 'void' | 'refund' | 'inquiry';
 export type RefundStatus = 'pending' | 'processed' | 'failed' | 'cancelled';
+
+export type PaymobCheckoutResponse = {
+  paymentId: string;
+  orderId: string;
+  paymentKey: string;
+  iframeUrl: string;
+  acceptUrl: string;
+  status: string;
+};

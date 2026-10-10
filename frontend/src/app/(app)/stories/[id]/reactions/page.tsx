@@ -1,6 +1,9 @@
 import { Metadata } from "next";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Loading } from "@/components/ui/Loading";
+
+import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/Card";
+import { ReactionListEmpty, ReactionListSkeleton, ReactionRow } from "@/components/social/ReactionRow";
+import { api } from "@/lib/api";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -17,15 +20,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function StoryReactionsPage({ params }: Props) {
   const { id } = await params;
 
+  const reactions = await api.getReactions(id, { page: 1, limit: 20 }).catch(() => null);
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <Card>
-        <CardBody>
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">التفاعلات</h1>
-          <p className="text-gray-600">معرّف القصة: {id}</p>
-          <p className="text-gray-500 mt-2">سيتم تحميل التفاعلات هنا.</p>
-        </CardBody>
-      </Card>
+    <div>
+      <PageHeader title="التفاعلات" description={`تفاعلات القصة ${id}`} />
+      {!reactions || reactions.reactions.length === 0 ? (
+        <ReactionListEmpty />
+      ) : (
+        <div className="space-y-3">
+          {reactions.reactions.map((reaction) => (
+            <ReactionRow key={reaction.id} reaction={reaction} />
+          ))}
+        </div>
+      )}
+      <div className="mt-6">
+        <ButtonLink href={`/stories/${id}`} variant="secondary">
+          العودة للقصة
+        </ButtonLink>
+      </div>
     </div>
   );
 }

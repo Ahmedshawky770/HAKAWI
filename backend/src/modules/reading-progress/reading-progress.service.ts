@@ -3,9 +3,19 @@ import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nest
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 
-import type { IReadingProgressRepository, ReadingProgress, CreateReadingProgressInput, UpdateReadingProgressInput } from './interfaces/reading-progress-repository.interface.ts';
+import type {
+  IReadingProgressRepository,
+  ReadingProgress,
+  CreateReadingProgressInput,
+  UpdateReadingProgressInput,
+} from './interfaces/reading-progress-repository.interface.ts';
 import { READING_PROGRESS_REPOSITORY } from './interfaces/reading-progress-repository.interface.ts';
-import type { ReadingProgressResponse, ReadingProgressListResponse, CreateReadingProgressInput as CreateReadingProgressDtoInput, UpdateReadingProgressInput as UpdateReadingProgressDtoInput } from './types.ts';
+import type {
+  ReadingProgressResponse,
+  ReadingProgressListResponse,
+  CreateReadingProgressInput as CreateReadingProgressDtoInput,
+  UpdateReadingProgressInput as UpdateReadingProgressDtoInput,
+} from './types.ts';
 
 @Injectable()
 export class ReadingProgressService {
@@ -27,7 +37,10 @@ export class ReadingProgressService {
     };
 
     const progress = await this.readingProgressRepository.create(data);
-    this.logger.info(`Reading progress created: ${progress.id} for user: ${userId}, book: ${input.bookId}`, 'ReadingProgressService');
+    this.logger.info(
+      `Reading progress created: ${progress.id} for user: ${userId}, book: ${input.bookId}`,
+      'ReadingProgressService',
+    );
     return progress;
   }
 
@@ -38,7 +51,7 @@ export class ReadingProgressService {
     }
 
     if (progress.userId !== userId) {
-      throw new ForbiddenException('You can only view your own reading progress');
+      throw new NotFoundException('Reading progress not found');
     }
 
     return progress;
@@ -52,7 +65,10 @@ export class ReadingProgressService {
     return progress;
   }
 
-  async findMyProgress(userId: string, params: { bookId?: string; page?: number; limit?: number }): Promise<ReadingProgressListResponse> {
+  async findMyProgress(
+    userId: string,
+    params: { bookId?: string; page?: number; limit?: number },
+  ): Promise<ReadingProgressListResponse> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
 
@@ -74,7 +90,7 @@ export class ReadingProgressService {
     }
 
     if (progress.userId !== userId) {
-      throw new ForbiddenException('You can only update your own reading progress');
+      throw new NotFoundException('Reading progress not found');
     }
 
     const data: UpdateReadingProgressInput = {
@@ -96,7 +112,7 @@ export class ReadingProgressService {
     }
 
     if (progress.userId !== userId) {
-      throw new ForbiddenException('You can only delete your own reading progress');
+      throw new NotFoundException('Reading progress not found');
     }
 
     await this.readingProgressRepository.delete(id);

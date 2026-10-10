@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
@@ -15,7 +17,6 @@ import { NotificationsController } from './notifications.controller.ts';
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -64,6 +65,14 @@ describe('NotificationsController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
+        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // This module is hand-built rather than importing `CommonModule`, so both must be provided
+        // here or Nest fails at DI resolution before any assertion runs.
+        { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
       ],
     }).compile();
 
@@ -91,10 +100,7 @@ describe('NotificationsController', () => {
         total: 0,
       });
 
-      const res = await request(httpServer)
-        .get('/notifications')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(httpServer).get('/notifications').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('notifications');
       expect(res.body).toHaveProperty('total', 0);
@@ -114,23 +120,34 @@ describe('NotificationsController', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(notificationsService.findUnread).toHaveBeenCalledWith('user-1');
+      expect(notificationsService.findUnread).toHaveBeenCalledWith('user-1', 50);
     });
   });
 
-  describe('GET /notifications/unread/count', () => {
+  // `GET unread/count` and `GET unread-count` were the same handler registered twice. `unread-count` is
+  // the one every caller uses (`frontend/src/lib/api.ts:422` and the integration suite), so it is the
+  // survivor; the cases below pin that it resolves and that the removed spelling no longer does.
+  describe('GET /notifications/unread-count', () => {
     it('should return unread notification count', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       vi.mocked(notificationsService.countUnread).mockResolvedValue(3);
 
       const res = await request(httpServer)
-        .get('/notifications/unread/count')
+        .get('/notifications/unread-count')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(res.body).toEqual({ count: 3 });
       expect(notificationsService.countUnread).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should no longer resolve the removed unread/count spelling', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      await request(httpServer).get('/notifications/unread/count').set('Authorization', `Bearer ${token}`).expect(404);
+
+      expect(notificationsService.countUnread).not.toHaveBeenCalled();
     });
   });
 
@@ -145,6 +162,7 @@ describe('NotificationsController', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -170,6 +188,7 @@ describe('NotificationsController', () => {
         comments: true,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -180,6 +199,7 @@ describe('NotificationsController', () => {
         comments: false,
         follows: true,
         mentions: true,
+        messages: true,
         system: true,
       });
 
@@ -191,7 +211,10 @@ describe('NotificationsController', () => {
 
       expect(res.body).toHaveProperty('emailEnabled', false);
       expect(res.body).toHaveProperty('comments', false);
-      expect(notificationsService.updatePreferences).toHaveBeenCalledWith('user-1', { emailEnabled: false, comments: false });
+      expect(notificationsService.updatePreferences).toHaveBeenCalledWith('user-1', {
+        emailEnabled: false,
+        comments: false,
+      });
     });
   });
 
@@ -221,6 +244,9 @@ describe('NotificationsController', () => {
     });
   });
 
+  // `PATCH read-all` and `PUT read-all` were the same handler registered under two verbs. Only PATCH
+  // has a caller, so PATCH is the contract and PUT is gone; the 404 below is what stops it creeping
+  // back in as a second spelling.
   describe('PATCH /notifications/read-all', () => {
     it('should mark all notifications as read', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
@@ -234,6 +260,14 @@ describe('NotificationsController', () => {
 
       expect(res.body).toEqual({ message: 'All notifications marked as read' });
       expect(notificationsService.markAllAsRead).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should no longer answer the same path under PUT', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      await request(httpServer).put('/notifications/read-all').set('Authorization', `Bearer ${token}`).expect(404);
+
+      expect(notificationsService.markAllAsRead).not.toHaveBeenCalled();
     });
   });
 

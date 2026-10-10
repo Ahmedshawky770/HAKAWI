@@ -1,0 +1,170 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: '22'
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.backend-image.outputs.image }}
+      frontend-image: ${{ steps.frontend-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push backend image
+        id: backend-image
+        run: |
+          docker build -t $ECR_REGISTRY/hakawi/backend:${{ github.sha }} -f ./backend/Dockerfile .
+          docker push $ECR_REGISTRY/hakawi/backend:${{ github.sha }}
+          echo "image=$ECR_REGISTRY/hakawi/backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build, tag, and push frontend image
+        id: frontend-image
+        run: |
+          docker build -t $ECR_REGISTRY/hakawi/frontend:${{ github.sha }} -f ./frontend/Dockerfile .
+          docker push $ECR_REGISTRY/hakawi/frontend:${{ github.sha }}
+          echo "image=$ECR_REGISTRY/hakawi/frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Save pre-deploy state for rollback
+        run: |
+          mkdir -p /tmp/rollback
+          helm get manifest hakawi-production-backend -n hakawi > /tmp/rollback/backend-prev.yaml 2>/dev/null || true
+          helm get manifest hakawi-production-frontend -n hakawi > /tmp/rollback/frontend-prev.yaml 2>/dev/null || true
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name hakawi-production-eks --alias production
+
+      - name: Deploy infrastructure to production
+        id: tf-apply
+        run: |
+          cd infrastructure/terraform
+          terraform init -backend-config="key=hakawi/production/terraform.tfstate"
+          terraform apply -var-file="environments/production/terraform.tfvars" -auto-approve
+
+      - name: Capture terraform outputs
+        id: tf-output
+        run: |
+          cd infrastructure/terraform
+          echo "rds_primary_endpoint=$(terraform output -raw rds_primary_endpoint)" >> $GITHUB_OUTPUT
+          echo "rds_replica_endpoints=$(terraform output -json rds_replica_endpoints | jq -r 'join(",")')" >> $GITHUB_OUTPUT
+          echo "elasticache_primary_endpoint=$(terraform output -raw elasticache_primary_endpoint)" >> $GITHUB_OUTPUT
+          echo "s3_bucket_name=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+
+      - name: Deploy backend to production
+        run: |
+          kubectl config use-context production
+          helm upgrade --install hakawi-production-backend ./infrastructure/helm/backend \
+            --namespace hakawi \
+            --values infrastructure/helm/backend/values.yaml \
+            --values infrastructure/helm/backend/values-production.yaml \
+            --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/backend \
+            --set image.tag=${{ github.sha }} \
+            --set image.pullPolicy=Always \
+            --set env.db.primaryHost=${{ steps.tf-output.outputs.rds_primary_endpoint }} \
+            --set env.db.replicaHosts=${{ steps.tf-output.outputs.rds_replica_endpoints }} \
+            --set env.valkey.host=${{ steps.tf-output.outputs.elasticache_primary_endpoint }} \
+            --set env.s3.bucket=${{ steps.tf-output.outputs.s3_bucket_name }} \
+            --set env.aws.region=us-east-1 \
+            --set serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-production-hakawi-backend-irsa \
+            --wait --timeout=600s
+
+      - name: Deploy frontend to production
+        run: |
+          kubectl config use-context production
+          helm upgrade --install hakawi-production-frontend ./infrastructure/helm/frontend \
+            --namespace hakawi \
+            --values infrastructure/helm/frontend/values.yaml \
+            --values infrastructure/helm/frontend/values-production.yaml \
+            --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/frontend \
+            --set image.tag=${{ github.sha }} \
+            --set image.pullPolicy=Always \
+            --set env.db.host=${{ steps.tf-output.outputs.rds_primary_endpoint }} \
+            --wait --timeout=600s
+
+      - name: Run migrations
+        run: |
+          POD=$(kubectl get pods -n hakawi -l app.kubernetes.io/name=hakawi-production-backend -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n hakawi "$POD" -- npx drizzle-kit migrate
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/hakawi-production-backend -n hakawi --timeout=300s
+          kubectl rollout status deployment/hakawi-production-frontend -n hakawi --timeout=300s
+
+      - name: Run health checks
+        run: |
+          kubectl wait --for=condition=available deployment/hakawi-production-backend -n hakawi --timeout=120s
+          curl -sf https://api.hakawi.io/api/v1/health || exit 1
+          curl -sf https://app.hakawi.io/ || exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Production deployment failed. Rolling back..."
+          cd /tmp/rollback
+          if [ -f backend-prev.yaml ]; then
+            kubectl apply -f backend-prev.yaml
+          fi
+          if [ -f frontend-prev.yaml ]; then
+            kubectl apply -f frontend-prev.yaml
+          fi
+          helm rollback hakawi-production-backend -n hakawi 2>/dev/null || true
+          helm rollback hakawi-production-frontend -n hakawi 2>/dev/null || true
+          kubectl rollout status deployment/hakawi-production-backend -n hakawi --timeout=300s
+          echo "Rollback completed"
+          exit 1
+
+      - name: Notify (on failure)
+        if: failure()
+        run: echo "Production deployment failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

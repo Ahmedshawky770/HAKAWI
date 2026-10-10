@@ -19,7 +19,10 @@ export type LibraryQuery = {
 
 export interface ILibraryRepository {
   findById(id: string): Promise<LibraryItem | null>;
-  findByUser(userId: string, params: { status?: string; page?: number; limit?: number }): Promise<{ items: LibraryItem[]; total: number }>;
+  findByUser(
+    userId: string,
+    params: { status?: string; page?: number; limit?: number },
+  ): Promise<{ items: LibraryItem[]; total: number }>;
   findByUserAndBook(userId: string, bookId: string): Promise<LibraryItem | null>;
   create(data: { userId: string; bookId: string; rentalId?: string | null; status?: string }): Promise<LibraryItem>;
   update(id: string, data: Partial<LibraryItem>): Promise<LibraryItem>;

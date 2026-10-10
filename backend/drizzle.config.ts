@@ -12,7 +12,7 @@ const schemaFiles = readdirSync(schemaDir)
 
 export default defineConfig({
   schema: schemaFiles,
-  out: '../migrations',
+  out: '../migrations/drizzle-draft',
   dialect: 'postgresql',
   dbCredentials: {
     host: process.env.DB_HOST || 'localhost',

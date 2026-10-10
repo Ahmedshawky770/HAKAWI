@@ -2,16 +2,23 @@ import { pgTable, uuid, varchar, text, timestamp, index, integer } from 'drizzle
 
 import { users } from './index.ts';
 
+export const REPORT_SOURCES = ['user', 'auto'] as const;
+
+export type ReportSource = (typeof REPORT_SOURCES)[number];
+
 export const reports = pgTable(
   'reports',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    reporterId: uuid('reporter_id').notNull().references(() => users.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    reporterId: uuid('reporter_id').references(() => users.id),
     targetId: uuid('target_id').notNull(),
     targetType: varchar('target_type', { length: 20 }).notNull(),
     reason: varchar('reason', { length: 500 }).notNull(),
     description: text('description'),
     status: varchar('status', { length: 20 }).notNull().default('open'),
+    source: varchar('source', { length: 20, enum: REPORT_SOURCES }).notNull().default('user'),
     escalatedAt: timestamp('escalated_at'),
     resolvedAt: timestamp('resolved_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -22,15 +29,20 @@ export const reports = pgTable(
     targetIdx: index('reports_target_id_idx').on(table.targetId),
     statusIdx: index('reports_status_idx').on(table.status),
     targetTypeIdx: index('reports_target_type_idx').on(table.targetType),
-  })
+    sourceIdx: index('reports_source_idx').on(table.source),
+  }),
 );
 
 export const moderationActions = pgTable(
   'moderation_actions',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     reportId: uuid('report_id').references(() => reports.id),
-    adminId: uuid('admin_id').notNull().references(() => users.id),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => users.id),
     targetUserId: uuid('target_user_id').references(() => users.id),
     action: varchar('action', { length: 20 }).notNull(),
     reason: varchar('reason', { length: 500 }).notNull(),
@@ -41,24 +53,30 @@ export const moderationActions = pgTable(
     reportIdx: index('moderation_actions_report_id_idx').on(table.reportId),
     adminIdx: index('moderation_actions_admin_id_idx').on(table.adminId),
     targetUserIdx: index('moderation_actions_target_user_id_idx').on(table.targetUserId),
-  })
+  }),
 );
 
 export const userRestrictions = pgTable(
   'user_restrictions',
   {
-    id: uuid('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    userId: uuid('user_id').notNull().references(() => users.id),
+    id: uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
     type: varchar('type', { length: 20 }).notNull(),
     reason: varchar('reason', { length: 500 }).notNull(),
     expiresAt: timestamp('expires_at'),
-    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     userIdIdx: index('user_restrictions_user_id_idx').on(table.userId),
     typeIdx: index('user_restrictions_type_idx').on(table.type),
-  })
+  }),
 );
 
 export type Report = typeof reports.$inferSelect;

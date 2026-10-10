@@ -1,431 +1,557 @@
 # Deployment Guide
-## Hakawi - Production Deployment
 
----
+## Overview
 
-## Deployment Strategy
+This guide explains how to deploy the Hakawi platform to production. The platform consists of:
+- Backend: NestJS API (3-5 replicas)
+- Frontend: Next.js application (3-5 replicas)
+- Database: AWS RDS PostgreSQL 15 (Primary + Read Replicas in Multi-AZ)
+- Cache: AWS ElastiCache Valkey 8 (with encryption and replication)
+- Storage: AWS S3 (with CloudFront CDN and OAI)
+- Load Balancing: AWS Application Load Balancer (via Ingress)
+- Container Orchestration: AWS EKS (Kubernetes 1.28)
+- Infrastructure as Code: Terraform (AWS + Kubernetes)
+- Secrets Management: AWS Secrets Manager + External Secrets Operator
+- Monitoring: Prometheus/Grafana stack via Helm
 
-### Environments
+## Deployment Options
 
-| Environment | Purpose | URL |
-|-------------|---------|-----|
-| **Development** | Local development | http://localhost:3000 |
-| **Staging** | Pre-production testing | https://staging.hakawi.com |
-| **Production** | Live application | https://hakawi.com |
+| Option | Use Case | Infrastructure |
+|--------|----------|----------------|
+| **Kubernetes (Recommended)** | Production, staging | EKS, RDS, ElastiCache, S3 managed by Terraform |
+| **Docker Compose** | Local development, small deployments | Self-managed on a single host |
+| **Kubernetes (Manual)** | Self-managed Kubernetes | Bring your own cluster |
 
-### Deployment Platforms
+## Architecture (Principle #9 — Single Source of Truth) — Kubernetes
 
-| Component | Platform | Reason |
-|-----------|----------|--------|
-| **Frontend** | Vercel | Optimized for Next.js, edge network, automatic deployments |
-| **Backend** | Railway | Containerized NestJS, easy scaling, PostgreSQL managed |
-| **Database** | Railway Managed PostgreSQL | Automated backups, high availability |
-| **Cache** | Railway Managed Valkey | Redis-compatible, managed service |
-| **Storage** | Cloudflare R2 | S3-compatible, no egress fees |
-| **Monitoring** | Sentry | Error tracking and performance monitoring |
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          VPC (10.0.0.0/16)                        │
+│                                                                     │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐            │
+│  │ AZ A (a)    │    │ AZ B (b)    │    │ AZ C (c)    │            │
+│  │             │    │             │    │             │            │
+│  │ RDS Primary │    │ RDS Replica │    │ RDS Replica │            │
+│  │ (r6g.xlarge)│    │ (r6g.xlarge)│    │ (r6g.xlarge)│            │
+│  │             │    │             │    │             │            │
+│  │ EKS Nodes   │    │ EKS Nodes   │    │ EKS Nodes   │            │
+│  │ (m6i.xlarge)│    │ (m6i.xlarge)│    │ (m6i.xlarge)│            │
+│  └─────────────┘    └─────────────┘    └─────────────┘            │
+│                                                                     │
+│  VPC Endpoints: S3, ECR, CloudWatch, STS                           │
+└─────────────────────────────────────────────────────────────────────┘
 
----
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Ingress (ALB)                             │
+│                                                                     │
+│  api.hakawi.io                     app.hakawi.io                    │
+│  (backend)                         (frontend)                       │
+└────────────────────────┬───────────────────────────────┬──────────┘
+                         │                               │
+                         ▼                               ▼
+┌─────────────────────────────────┐  ┌───────────────────────────────┐
+│ Namespace: hakawi               │  │ Namespace: monitoring          │
+│                                 │  │                               │
+│  Backend (3-5 pods)             │  │  Prometheus                   │
+│  Frontend (3-5 pods)            │  │  Grafana                      │
+│  Secrets (ExternalSecrets)      │  │  Alertmanager                  │
+│                                 │  │                               │
+│  HPA + PDB enabled              │  │  S3 Backup Bucket              │
+│  Topology spread                │  │                               │
+└─────────────────────────────────┘  └───────────────────────────────┘
 
-## Pre-Deployment Checklist
+External Services:
+  - S3 (Media, with CloudFront OAI)
+  - Route 53 (DNS)
+  - ACM (TLS Certificates)
+  - WAF (Web Application Firewall)
+  - Secrets Manager (credentials)
 
-### Code Quality
-
-- [ ] All tests pass (`npm test`)
-- [ ] E2E tests pass (`npm run test:e2e`)
-- [ ] Linting passes (`npm run lint`)
-- [ ] TypeScript compilation passes (`npm run build`)
-- [ ] No security vulnerabilities (`npm audit`)
-
-### Database
-
-- [ ] All migrations tested on staging
-- [ ] Migration rollback tested
-- [ ] Database backup completed
-- [ ] Migration script reviewed
-
-### Configuration
-
-- [ ] Environment variables set in deployment platform
-- [ ] Secrets rotated
-- [ ] CORS origins configured
-- [ ] SSL certificates valid
-
-### Monitoring
-
-- [ ] Sentry DSN configured
-- [ ] Alerts configured
-- [ ] Health check endpoints working
-- [ ] Log aggregation working
-
----
-
-## Frontend Deployment (Vercel)
-
-### Setup
-
-1. Connect GitHub repository to Vercel
-2. Configure environment variables in Vercel dashboard
-3. Deploy
-
-### Environment Variables
-
-```env
-NEXT_PUBLIC_API_URL=https://api.hakawi.com/v1
-NEXT_PUBLIC_SANITY_PROJECT_ID=your-project-id
-NEXT_PUBLIC_SANITY_DATASET=production
-NEXT_PUBLIC_APP_URL=https://hakawi.com
-NEXT_PUBLIC_APP_ENV=production
-NEXT_PUBLIC_SENTRY_DSN=your-sentry-dsn
+Secrets Injection:
+  External Secrets Operator reads from AWS Secrets Manager
+  and creates/ updates Kubernetes Secret objects.
 ```
 
-### Build Settings
+**Routing Logic (Application Layer):**
+- **Writes** (INSERT/UPDATE/DELETE) → Primary PostgreSQL via RDS Proxy
+- **Reads** (SELECT) → Read replicas when `DB_REPLICA_HOSTS` is set
+- **Post-write reads** → Primary (read-your-writes consistency)
 
-- **Build Command:** `npm run build`
-- **Output Directory:** `.next`
-- **Install Command:** `npm install`
+## Prerequisites
 
-### Automatic Deployments
+### For Kubernetes Deployment (Production)
 
-- **Production:** Deploys on `main` branch push
-- **Preview:** Deploys on PR creation
-- **Rollback:** Available in Vercel dashboard
+- AWS CLI configured with deployment credentials
+- `kubectl`, `helm`, and `kustomize` v5+ installed
+- `terraform` v1.9+ installed
+- IAM permissions for EKS, RDS, S3, and Secrets Manager
 
----
+### For Docker Compose (Development)
 
-## Backend Deployment (Railway)
+- Docker and Docker Compose
+- PostgreSQL 15+ (Primary + 1-2 Replicas)
+- Valkey 8+ instance
+- S3-compatible storage bucket
 
-### Setup
+## Option 1: Kubernetes (Recommended for Production)
 
-1. Connect GitHub repository to Railway
-2. Add PostgreSQL and Valkey plugins
-3. Configure environment variables
-4. Deploy
-
-### Environment Variables
-
-```env
-NODE_ENV=production
-PORT=3001
-DB_HOST=${{Postgres.PGHOST}}
-DB_PORT=${{Postgres.PGPORT}}
-DB_NAME=${{Postgres.PGDATABASE}}
-DB_USER=${{Postgres.PGUSER}}
-DB_PASSWORD=${{Postgres.PGPASSWORD}}
-VALKEY_HOST=${{Valkey.HOST}}
-VALKEY_PORT=${{Valkey.PORT}}
-VALKEY_PASSWORD=${{Valkey.PASSWORD}}
-JWT_SECRET=your-jwt-secret
-REFRESH_TOKEN_SECRET=your-refresh-secret
-PAYMOB_API_KEY=your-paymob-api-key
-PAYMOB_WEBHOOK_SECRET=your-webhook-secret
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=noreply@hakawi.com
-EMAIL_PASSWORD=your-email-password
-STORAGE_PROVIDER=r2
-STORAGE_BUCKET=hakawi-media
-STORAGE_ACCESS_KEY=your-access-key
-STORAGE_SECRET_KEY=your-secret-key
-SENTRY_DSN=your-sentry-dsn
-CORS_ORIGIN=https://hakawi.com
-```
-
-### Build Settings
-
-- **Build Command:** `npm run build`
-- **Start Command:** `npm run start:prod`
-- **Port:** `$PORT` (Railway provides this)
-
-### Scaling
-
-- **Start:** 1 instance
-- **Scale:** Add instances based on traffic
-- **Auto-scaling:** Configure based on CPU/memory
-
----
-
-## Database Migrations
-
-### Pre-Migration
+### Step 1: Provision Infrastructure with Terraform
 
 ```bash
-# 1. Backup database
-pg_dump -h localhost -U postgres hakawi > backup.sql
+# Initialize Terraform (backend state, provider plugins)
+cd infrastructure/terraform
+./../scripts/tf-init.sh production
 
-# 2. Test migration on staging
-npm run migration:run
+# Review the plan
+terraform plan -var-file=environments/production/terraform.tfvars
 
-# 3. Verify data integrity
-npm run db:verify
+# Apply infrastructure (creates VPC, RDS, EKS, S3, Secrets Manager entries)
+terraform apply -var-file=environments/production/terraform.tfvars -auto-approve
 ```
 
-### Migration Deployment
+This provisions:
+- VPC with public/private/database subnets across 3 AZs
+- RDS PostgreSQL cluster (primary + 2 read replicas)
+- ElastiCache Valkey 8 replication group
+- S3 media bucket with CloudFront CDN
+- EKS cluster with managed node groups
+- IAM roles (IRSA) for each service
+- Secrets Manager entries for all credentials
+
+### Step 2: Configure kubeconfig
 
 ```bash
-# 1. Deploy code first (backward compatible)
-git push origin main
-
-# 2. Run migration
-npm run migration:run
-
-# 3. Verify application
-curl https://api.hakawi.com/health
+aws eks update-kubeconfig --name hakawi-production-eks --alias production
+kubectl config use-context production
 ```
 
-### Rollback
+### Step 3: Populate Secrets Manager
 
 ```bash
-# 1. Revert migration
-npm run migration:revert
-
-# 2. Deploy previous code
-git revert HEAD
-git push origin main
-
-# 3. Verify application
-curl https://api.hakawi.com/health
+# Store credentials in AWS Secrets Manager
+aws secretsmanager create-secret --name "hakawi/production/db/host" --secret-string "hakawi-production.cluster-xxxxxxxx.rds.amazonaws.com"
+aws secretsmanager create-secret --name "hakawi/production/db/user" --secret-string "hakawi_user"
+aws secretsmanager create-secret --name "hakawi/production/db/password" --secret-string "your-strong-password" --kms-key-id alias/aws/secretsmanager
+aws secretsmanager create-secret --name "hakawi/production/jwt/secret" --secret-string "$(openssl rand -hex 32)"
+aws secretsmanager create-secret --name "hakawi/production/encryption/key" --secret-string "$(openssl rand -hex 32)"
 ```
 
----
+### Step 4: Deploy to Cluster with Helm
 
-## Health Checks
+```bash
+# Deploy backend
+helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
+  --namespace hakawi \
+  --values infrastructure/kubernetes/overlays/production/backend-values.yaml \
+  --set image.tag=v1.0.0 \
+  --wait --timeout=600s
 
-### Backend Health Endpoint
+# Deploy frontend
+helm upgrade --install hakawi-frontend ./infrastructure/helm/frontend \
+  --namespace hakawi \
+  --values infrastructure/kubernetes/overlays/production/frontend-values.yaml \
+  --set image.tag=v1.0.0 \
+  --wait --timeout=600s
 
-```typescript
-@Get('health')
-async healthCheck() {
-  return {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    services: {
-      database: await this.checkDatabase(),
-      valkey: await this.checkValkey(),
-      sanity: await this.checkSanity(),
-    },
-  };
-}
+# Alternatively, use Kustomize
+kustomize build infrastructure/kubernetes/overlays/production | kubectl apply -f -
 ```
 
-### Health Check Response
+### Step 5: Run Database Migrations
 
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-09-19T10:00:00Z",
-  "services": {
-    "database": "ok",
-    "valkey": "ok",
-    "sanity": "ok"
-  }
-}
+```bash
+kubectl exec -it deploy/hakawi-production-backend -n hakawi \
+  -- npx drizzle-kit migrate --config=./backend/drizzle.config.ts
 ```
 
----
+### Step 6: Verify
 
-## Monitoring
+```bash
+kubectl get pods,svc,ingress,hpa -n hakawi
 
-### Sentry Configuration
-
-```typescript
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
-});
+# Health checks
+kubectl exec -n hakawi deploy/hakawi-production-backend -- curl -s http://localhost:3001/health
+curl https://api.hakawi.io/health
+curl https://app.hakawi.io/
 ```
 
-### Alerts
+### Step 7: Rollback (if needed)
 
-- **Error rate > 1%** — Alert immediately
-- **Response time > 2s** — Alert
-- **Database connection pool exhausted** — Alert
-- **Disk space > 80%** — Alert
+```bash
+helm rollback hakawi-backend -n hakawi
 
-### Dashboards
-
-- Error rate over time
-- Response time percentiles (p50, p95, p99)
-- Database query performance
-- Cache hit rate
-- Payment success rate
-
----
-
-## SSL/TLS
-
-### Frontend (Vercel)
-
-- Automatically provisioned by Vercel
-- Force HTTPS redirects
-
-### Backend (Railway)
-
-- Automatically provisioned by Railway
-- Force HTTPS redirects in NestJS:
-
-```typescript
-app.enable('trust proxy');
-app.use((req, res, next) => {
-  if (req.headers['x-forwarded-proto'] !== 'https') {
-    return res.redirect(`https://${req.hostname}${req.url}`);
-  }
-  next();
-});
+# Or with kubectl
+kubectl rollout undo deployment/hakawi-production-backend -n hakawi
+kubectl rollout status deployment/hakawi-production-backend -n hakawi --timeout=300s
 ```
 
----
+## Option 2: CI/CD Automated Deployment (Recommended for Production)
 
-## CI/CD Pipeline
+### Step 1: Configure AWS Credentials
 
-### GitHub Actions
+Set up OIDC authentication between GitHub and AWS once:
 
-```yaml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - run: npm install
-      - run: npm run lint
-      - run: npm run test:cov
-
-  deploy-backend:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: railway-app/action@v1
-        with:
-          railway-token: ${{ secrets.RAILWAY_TOKEN }}
-          service: hakawi-backend
-
-  deploy-frontend:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: amondnet/vercel-action@v20
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+```bash
+./infrastructure/scripts/setup-iam.sh
 ```
 
----
+Add the role ARN to your GitHub repository secrets as `AWS_ROLE_ARN`.
 
-## Rollback Strategy
+### Step 2: Deploy Environments
 
-### Frontend (Vercel)
+The following GitHub Actions workflows automate deployment:
 
-- Go to Vercel dashboard
-- Click "Deployments"
-- Click "..." on previous deployment
-- Click "Promote to Production"
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `deploy-dev.yml` | Push to `develop` | Deploys to dev EKS cluster |
+| `deploy-staging.yml` | Push to `main` | Deploys to staging EKS cluster |
+| `deploy-production.yml` | Push to `main` / manual | Deploys to production EKS cluster |
+| `terraform.yml` | Changes to `infrastructure/terraform/` | Runs `terraform fmt`, `validate`, `tflint`, `tfsec`, and `plan` |
 
-### Backend (Railway)
+```bash
+# Manual trigger for production (requires approval)
+gh workflow run deploy-production.yml --ref main
 
-- Go to Railway dashboard
-- Click "Deployments"
-- Click "Redeploy" on previous deployment
-- Or use Railway CLI: `railway rollback`
+# Deploy a specific environment manually
+./infrastructure/scripts/deploy.sh staging deploy
+./infrastructure/scripts/deploy.sh production deploy
+```
 
-### Database
+### Prerequisites
 
-- Never rollback migrations in production
-- Instead, create new migration to fix issue
-- If critical, restore from backup
+- EKS cluster with `helm` and `kubectl` configured
+- AWS credentials for image pulls and secret management
 
----
+### Step 1: Deploy with Helm Charts
 
-## Performance Optimization
+Both backend and frontend have Helm charts under `infrastructure/helm/`:
 
-### Frontend
+```bash
+# Backend
+helm upgrade --install hakawi-backend infrastructure/helm/backend \
+  --namespace hakawi \
+  --set image.tag=v1.0.0 \
+  --set env.db.host=hakawi-cluster.cluster-xxxxxxxx.rds.amazonaws.com \
+  --set env.valkey.host=hakawi.xxxxxx.cache.amazonaws.com \
+  --set env.s3.bucket=hakawi-media \
+  --wait --timeout=300s
 
-- Enable CDN caching (Vercel Edge Network)
-- Optimize images (Next.js Image component)
-- Code splitting (dynamic imports)
-- Minify assets (automatic in production)
+# Frontend
+helm upgrade --install hakawi-frontend infrastructure/helm/frontend \
+  --namespace hakawi \
+  --set image.tag=v1.0.0 \
+  --wait --timeout=300s
+```
+
+### Step 2: Deploy with Kustomize
+
+```bash
+kustomize build infrastructure/kubernetes/overlays/staging | kubectl apply -f -
+kustomize build infrastructure/kubernetes/overlays/production | kubectl apply -f -
+```
+
+### Step 3: Run Migrations
+
+```bash
+kubectl exec -it deploy/hakawi-backend -n hakawi -- npx drizzle-kit migrate
+```
+
+## Environment Variables
 
 ### Backend
 
-- Enable compression (gzip/brotli)
-- Database query optimization (indexes)
-- Connection pooling
-- Cache frequently accessed data
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NODE_ENV` | Yes | `production` for production |
+| `DB_PRIMARY_HOST` | Yes | Primary PostgreSQL host |
+| `DB_PRIMARY_PORT` | Yes | Primary PostgreSQL port (5432) |
+| `DB_PRIMARY_NAME` | Yes | Database name |
+| `DB_PRIMARY_USER` | Yes | Database user |
+| `DB_PRIMARY_PASSWORD` | Yes | Database password |
+| `DB_REPLICA_HOSTS` | No | Comma-separated replica hosts (enables read replicas) |
+| `DB_REPLICA_PORT` | No | Replica port (default 5432) |
+| `DB_REPLICA_NAME` | No | Replica database name |
+| `DB_REPLICA_USER` | No | Replica user |
+| `DB_REPLICA_PASSWORD` | No | Replica password |
+| `DB_HOST` | Yes* | Primary host (used by migration runner, same as RDS primary) |
+| `DB_PORT` | Yes* | Primary port (5432) |
+| `DB_NAME` | Yes | Database name |
+| `DB_USER` | Yes* | Primary user (migration runner) |
+| `DB_PASSWORD` | Yes* | Primary password (migration runner) |
+| `DB_REPLICA_HOSTS` | No | Comma-separated replica hosts |
+| `DB_REPLICA_PORT` | No | Replica port |
+| `DB_REPLICA_NAME` | No | Replica database name |
+| `DB_REPLICA_USER` | No | Replica user |
+| `DB_REPLICA_PASSWORD` | No | Replica password |
+| `VALKEY_HOST` | Yes | Valkey (ElastiCache) endpoint |
+| `VALKEY_PORT` | Yes | Valkey port (6379) |
+| `VALKEY_PASSWORD` | Yes | Valkey auth token |
+| `JWT_SECRET` | Yes | JWT signing secret (min 32 chars) |
+| `ENCRYPTION_KEY` | Yes | Encryption key (32 bytes, hex) |
+| `PAYMOB_API_KEY` | Yes | Paymob API key |
+| `PAYMOB_MERCHANT_ID` | Yes | Paymob merchant ID |
+| `PAYMOB_INTEGRATION_ID` | Yes | Paymob integration ID |
+| `S3_BUCKET` | Yes | S3 bucket name |
+| `S3_REGION` | Yes | S3 region |
+| `AWS_REGION` | Yes | AWS region |
+| `SENTRY_DSN` | No | Sentry DSN for error tracking |
+| `EMAIL_FROM` | No | From address for emails |
 
----
+*Legacy variables used by migration runner only.
+
+### Kubernetes Secret Keys
+
+Secrets are managed via AWS Secrets Manager and synced to Kubernetes by External Secrets Operator.
+
+| Secret Name | Key | Description |
+|-------------|-----|-------------|
+| hakawi-backend-secrets | db.host | Primary RDS endpoint |
+| hakawi-backend-secrets | db.password | Database password |
+| hakawi-backend-secrets | valkey.password | Valkey auth token |
+| hakawi-backend-secrets | jwt.secret | JWT signing secret |
+| hakawi-backend-secrets | jwt.refresh | Refresh token secret |
+| hakawi-backend-secrets | encryption.key | Encryption key |
+| hakawi-backend-secrets | paymob.api-key | Paymob API key |
+| hakawi-backend-secrets | paymob.merchant-id | Paymob merchant ID |
+| hakawi-backend-secrets | paymob.integration-id | Paymob integration ID |
+| hakawi-backend-secrets | paymob.webhook-secret | Paymob webhook secret |
+
+### Frontend
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Yes | Backend API URL |
+| `NEXT_PUBLIC_SENTRY_DSN` | No | Sentry DSN |
+
+## Health Checks
+
+### Backend
+
+```bash
+# Health check
+curl https://your-domain.com/health
+
+# Expected response (with replicas):
+{
+  "status": "healthy",
+  "database": "connected",
+  "replicas": ["connected", "connected"],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
+
+# Response without replicas:
+{
+  "status": "healthy",
+  "database": "connected",
+  "replicas": [],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
+
+# Degraded (primary down):
+{
+  "status": "degraded",
+  "database": "disconnected",
+  "replicas": ["connected", "connected"],
+  "valkey": "connected",
+  "timestamp": "2026-01-01T12:00:00.000Z"
+}
+
+# Metrics
+curl https://your-domain.com/metrics/cache
+```
+
+### Frontend
+
+```bash
+# Health check
+curl https://your-domain.com/api/health
+```
+
+## Monitoring
+
+### Metrics
+
+The application exposes metrics at:
+- Backend: `GET /metrics/cache` (cache hit rate)
+- Backend: `GET /metrics/degradation` (circuit breaker status)
+
+### Replication Lag Monitoring
+
+Add to Prometheus alerting rules:
+
+```yaml
+- alert: PostgreSQLReplicationLag
+  expr: pg_replication_lag_seconds > 30
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "PostgreSQL replication lag high"
+    description: "Replication lag exceeds 30 seconds"
+```
+
+### Logs
+
+Logs are structured JSON via Winston. Configure your log aggregator to parse:
+- `level`: log level
+- `message`: log message
+- `correlationId`: request correlation ID
+- `context`: additional context
+
+### Alerting
+
+Alert rules are defined in `monitoring/prometheus/rules/hakawi-alerts.yml`. To deploy:
+
+1. Prometheus is auto-deployed via Terraform monitoring module (kube-prometheus-stack Helm chart)
+2. Alertmanager routes to configured notification channels (Slack, email, PagerDuty)
+3. Test alerts with `kubectl apply -f monitoring/prometheus/test-alert.json`
+
+## Backup Strategy
+
+### Automated Backups
+
+- **RDS**: Automated snapshots daily, 30-day retention, cross-region copy
+- **Valkey**: RDB snapshots every 6 hours, AOF persistence, 7-day retention
+- **S3**: Versioning enabled, cross-region replication for media bucket
+- **Kubernetes**: etcd automatic backups to S3 bucket (via Velero)
+
+### Manual Database Backup
+
+```bash
+# Trigger a manual RDS snapshot
+aws rds create-db-snapshot \
+  --db-instance-identifier hakawi-production-db \
+  --db-snapshot-identifier hakawi-manual-$(date +%Y%m%d)
+
+# Export RDS snapshot to S3
+aws rds export-snapshot-to-s3 \
+  --export-task-identifier hakawi-export-$(date +%Y%m%d) \
+  --source-arn arn:aws:rds:us-east-1:123456789012:snapshot:hakawi-manual-$(date +%Y%m%d) \
+  --s3-bucket hakawi-backups \
+  --s3-prefix rds-exports
+```
+
+## Rollback
+
+### Docker Compose (Local)
+
+```bash
+# Rollback to previous image
+docker compose up -d --force-recreate backend frontend
+```
+
+### Kubernetes (Production)
+
+```bash
+# Rollback deployment
+helm rollback hakawi-backend -n hakawi
+helm rollback hakawi-frontend -n hakawi
+
+# Check status
+kubectl rollout status deployment/hakawi-backend -n hakawi --timeout=300s
+```
 
 ## Security
 
-### HTTPS
+### Checklist
 
-- Force HTTPS everywhere
-- HSTS headers
-- TLS 1.3 only
+- [x] All secrets stored in AWS Secrets Manager (not in Terraform state)
+- [x] HTTPS enabled with ACM-managed TLS certificates
+- [x] Database not exposed to public internet (private subnets only)
+- [x] Replicas not exposed to public internet (private subnets only)
+- [x] Valkey password protected with auto-rotated auth token
+- [x] S3 bucket private (access via CloudFront OAI only)
+- [x] Network ACLs and security groups restrict access
+- [x] Rate limiting enabled via WAF
+- [x] WAF rules active on ALB
+- [x] Error tracking enabled (Sentry)
+- [x] Backup encryption enabled (KMS-managed keys)
+- [x] IAM roles use IRSA (no static credentials in pods)
+- [x] Pod Security Standards enforced (restricted policy)
+- [x] Container images scanned at build time
 
-### Headers
+### TLS/HTTPS
 
-```typescript
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-  },
-}));
-```
+TLS certificates are provisioned automatically via AWS Certificate Manager (ACM) and attached to the ALB Ingress.
 
-### Secrets
+## Troubleshooting
 
-- Never log secrets
-- Rotate secrets regularly
-- Use different secrets per environment
-
----
-
-## Maintenance
-
-### Regular Tasks
-
-- **Weekly:** Review error logs in Sentry
-- **Monthly:** Update dependencies
-- **Quarterly:** Security audit
-- **Bi-annually:** Disaster recovery drill
-
-### Updates
+### Backend won't start
 
 ```bash
-# Update dependencies
-npm audit fix
-npm update
+# Check logs
+kubectl logs -n hakawi deployment/hakawi-backend --tail=100
 
-# Test updates
-npm test
-npm run test:e2e
+# Check events
+kubectl describe pod -n hakawi -l app.kubernetes.io/name=backend
 
-# Deploy
-git push origin main
+# Common issues:
+# - Missing environment variables
+# - Secret not synced (check ExternalSecrets)
+# - Database connectivity (check VPC peering, security groups)
 ```
 
----
+### Replica connection issues
 
-*This document defines the deployment process for Hakawi.*
+```bash
+# Check RDS replica status
+aws rds describe-db-instances --db-instance-identifier hakawi-production-db \
+  --query "DBInstances[0].Status"
+
+# Check Valkey connectivity
+kubectl exec -n hakawi deployment/hakawi-backend -- redis-cli -h <valkey-endpoint> ping
+```
+
+### Database connection issues
+
+```bash
+# Test connection from within the pod
+kubectl exec -n hakawi deployment/hakawi-backend -- \
+  psql -h <rds-endpoint> -U hakawi_user -d hakawi -c "SELECT 1;"
+
+# Check RDS status
+aws rds describe-db-instances --db-instance-identifier hakawi-production-db
+
+# Check secret sync
+kubectl get externalsecret -n hakawi hakawi-backend-secrets -o yaml
+```
+
+### Frontend build fails
+
+```bash
+# Check build logs
+kubectl logs -n hakawi deployment/hakawi-frontend --tail=100
+```
+
+## Performance
+
+### Recommended Resources (Kubernetes on AWS)
+
+| Service | CPU | Memory | Storage |
+|---------|-----|--------|---------|
+| Backend (per pod) | 500m | 512Mi | N/A |
+| Frontend (per pod) | 100m | 256Mi | N/A |
+| PostgreSQL Primary | 4 vCPU | 8 GB | 100 GB (gp3) |
+| PostgreSQL Replica (x2) | 2 vCPU | 4 GB | 100 GB (gp3) |
+| Valkey (cache.r6g.large) | 2 vCPU | 4 GB | 7.5 GB |
+| EKS Nodes (m6i.xlarge) | 4 vCPU | 16 GB | 100 GB (per node) |
+
+### Optimization
+
+- CDN for static assets via CloudFront (pointing to S3 origin)
+- Database connection pooling via RDS Proxy
+- Valkey persistence with both RDB and AOF
+- Read replicas for read-heavy workloads (SELECT → replicas)
+- Gzip compression at ALB level
+- Monitor replication lag (alert if > 30s)
+- Enable EKS cluster autoscaling
+
+### Read Replica Best Practices
+
+1. **Read-your-writes consistency**: After a write, read from primary for immediate consistency
+2. **Stale reads acceptable**: Analytics, listings, search can tolerate replica lag
+3. **Post-write redirect**: After `POST /stories`, next `GET /stories` hits primary
+4. **Auth checks**: Always hit primary for auth/authorization queries
+5. **Financial queries**: Payments, rentals always use primary

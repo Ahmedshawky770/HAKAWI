@@ -1,0 +1,212 @@
+groups:
+  - name: hakawi-backend
+    interval: 30s
+    rules:
+      # High-level health
+      - alert: BackendDown
+        expr: up{job="hakawi-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hakawi backend is down"
+          description: "Backend API has been down for more than 1 minute"
+
+      - alert: BackendHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="hakawi-backend",status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="hakawi-backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on backend"
+          description: "5xx error rate is above 5% for 5 minutes"
+
+      - alert: BackendHighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job="hakawi-backend"}[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency (p95)"
+          description: "95th percentile latency exceeds 2 seconds"
+
+      # Database
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL exporter reports database is down"
+
+      - alert: PostgreSQLConnectionsHigh
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections near limit"
+          description: "Connection usage exceeds 80% of max_connections"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL replication lag high"
+          description: "Replication lag exceeds 30 seconds"
+
+      # Valkey/Redis
+      - alert: ValkeyDown
+        expr: up{job="valkey"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey is down"
+          description: "Valkey exporter reports instance is down"
+
+      - alert: ValkeyMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey memory usage high"
+          description: "Memory usage exceeds 85% of maxmemory"
+
+      - alert: ValkeyHitRateLow
+        expr: |
+          rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Valkey cache hit rate low"
+          description: "Cache hit rate below 50% for 10 minutes"
+
+      # WAF & Security
+      - alert: WAFHighViolationRate
+        expr: |
+          rate(waf_violations_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High WAF violation rate"
+          description: "WAF violations exceed 100 per second"
+
+      - alert: WAFIPBlockedSurge
+        expr: |
+          increase(waf_blocked_ips_total[5m]) > 50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Surge in WAF IP blocks"
+          description: "More than 50 IPs blocked in 5 minutes - possible attack"
+
+      - alert: AuthFailureSpike
+        expr: |
+          rate(auth_failures_total[5m]) > 20
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Authentication failure spike"
+          description: "Auth failures exceed 20 per second - possible brute force"
+
+      # Rate Limiting
+      - alert: RateLimitExhausted
+        expr: |
+          rate(rate_limit_exceeded_total[5m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit exhaustion"
+          description: "Rate limit exceeded events exceed 50 per second"
+
+      # Business Metrics
+      - alert: PaymentFailureRateHigh
+        expr: |
+          (
+            sum(rate(payments_failed_total[5m]))
+            /
+            sum(rate(payments_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Payment failure rate high"
+          description: "Payment failure rate exceeds 10%"
+
+      - alert: EmailQueueBacklog
+        expr: |
+          email_queue_size > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Email delivery queue backlog"
+          description: "Email queue has more than 1000 pending messages"
+
+  - name: hakawi-infrastructure
+    interval: 30s
+    rules:
+      - alert: HostCPUHigh
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU usage high"
+          description: "CPU usage exceeds 90% for 10 minutes"
+
+      - alert: HostMemoryHigh
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage high"
+          description: "Memory usage exceeds 90% for 10 minutes"
+
+      - alert: HostDiskHigh
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host disk space critical"
+          description: "Root filesystem has less than 10% free space"
+
+      - alert: HostNetworkReceiveErrors
+        expr: rate(node_network_receive_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network receive errors"
+          description: "Network interface receive errors exceed 10/sec"
+
+  - name: hakawi-deployment
+    interval: 60s
+    rules:
+      - alert: DeploymentStale
+        expr: time() - max by(job) (time() * up) > 3600
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Service not reporting metrics"
+          description: "Service {{ $labels.job }} has not reported metrics for over 1 hour"
