@@ -133,7 +133,7 @@ Routes are shown **without** the `/api/v1` prefix, which `app.setGlobalPrefix('a
 
 **Purpose:** authentication and token lifecycle.
 
-**Public Interface** (`auth.controller.ts`):
+**Public Interface** (`auth.controller.ts` + `mfa.controller.ts`):
 - `POST /auth/register` (:53)
 - `POST /auth/login` (:62)
 - `POST /auth/refresh` (:71)
@@ -143,9 +143,14 @@ Routes are shown **without** the `/api/v1` prefix, which `app.setGlobalPrefix('a
 - `POST /auth/reset-password` (:107)
 - `GET /auth/oauth/:provider` (:115)
 - `GET /auth/oauth/:provider/callback` (:122) — 5 providers: Google, Apple, Facebook, GitHub, TikTok
+- `GET /auth/mfa/status` (:40) · `POST /auth/mfa/setup` (:61) · `POST /auth/mfa/verify` (:70) ·
+  `POST /auth/mfa/challenge` (:83) · `POST /auth/mfa/backup-codes` (:95) · `DELETE /auth/mfa` (:105) —
+  all JWT-guarded, all on the `auth` throttle tier
 
-⛔ **`POST /auth/mfa` does not exist.** There is no MFA anywhere in the codebase. The requirement is
-retained in `docs/security-architecture/auth/auth-overview.md`.
+✅ **MFA exists** (`mfa.controller.ts`, `mfa.service.ts`, migration `0029_add_mfa_support.sql`):
+optional per user, TOTP (RFC 6238) + 8 backup codes, secret AES-256-GCM encrypted into
+`users.totp_secret_encrypted`. ⚠️ No route *enforces* it — `@RequireMfa()` has no call site and
+`MfaGuard` is in no module's `providers`.
 
 **Dependencies:** the Users repository interface (read/write for user lookup and creation); Valkey
 for the refresh-token blacklist and the password-reset TTL; `CircuitBreakerService` for the OAuth
@@ -355,7 +360,7 @@ See **`module-boundaries/events/event-schema-registry.md`** for the contract def
 | **Playlists Module** in the dependency graph | ⛔ **Does not exist.** No playlist table, route, or service |
 | 8 modules in the graph | **23 registered modules** in `app.module.ts` |
 | — | **Added to the graph:** Badges, SharedCache, Categories, Tags, Search, Upload, ReadingProgress, Library, Rentals, Follows, Reactions, Comments, Messages, Notifications, Moderation, Database |
-| `POST /auth/mfa` | ⛔ **Does not exist.** No MFA in the codebase |
+| `POST /auth/mfa` | ⚠️ The bare `POST /auth/mfa` still does not exist, but MFA **does**: 6 routes in `mfa.controller.ts` — `GET /auth/mfa/status`, `POST /auth/mfa/setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa` |
 | `POST /users/:id/verify` | ⛔ **Does not exist.** Real: `POST /users/me/verification` + `POST /users/verification/confirm` |
 | Missing from the Users contract | ✅ **`POST /users` and `DELETE /users/:id` now exist** (super-admin only) — the roadmap item that was previously listed as open |
 | Missing from the Auth contract | ✅ `forgot-password`, `reset-password`, `oauth/:provider`, `oauth/:provider/callback` |

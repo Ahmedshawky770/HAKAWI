@@ -87,7 +87,7 @@ This document defines the public API contracts for each module, including HTTP e
 **Error Responses:**
 - 401: Invalid credentials
 - 403: Account locked
-- 423: MFA required
+- 401 + `code: 'MFA_REQUIRED'`: requires MFA — ⚠️ **not emitted by this route.** `POST /auth/login` has no MFA branch; step-up verification is the separate authenticated endpoint `POST /api/v1/auth/mfa/challenge`, and `MfaGuard` (which emits that 401) is mounted on no route
 
 ---
 

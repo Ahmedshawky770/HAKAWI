@@ -72,7 +72,7 @@ They are listed below as a **retained requirement**, not a description of the AP
 | `INVALID_CREDENTIALS` | 401 | Wrong email/password | ⛔ login throws a bare `UnauthorizedException('Invalid credentials')` |
 | `TOKEN_EXPIRED` | 401 | Token has expired | ⚠️ the **status** is right (401) but the **code** does not exist. `JwtAuthGuard` catches the library's `TokenExpiredError` and rethrows `UnauthorizedException('Invalid or expired token')` (`backend/src/common/guards/jwt-auth.guard.ts:35-42`), so an expired and a malformed token are indistinguishable |
 | `SESSION_REVOKED` | 401 | Session was revoked | ⚠️ the *message* `"Refresh token has been revoked"` is real; there is no code |
-| `MFA_REQUIRED` | 403 | MFA code needed | ⛔ there is no MFA |
+| `MFA_REQUIRED` | 401 | MFA code needed | ⚠️ MFA is implemented (`mfa.controller.ts` — 6 routes under `/api/v1/auth/mfa`), and `MfaGuard` raises 401 with `code: 'MFA_REQUIRED'`, but it is mounted on no route, so no client sees it today |
 
 ### 5xx Server Errors — ⛔ all unimplemented as codes
 
@@ -307,12 +307,15 @@ marked `failed`** — rather than fabricating a checkout URL.
 
 ---
 
-## Alerting — ⛔ NOT IMPLEMENTED
+## Alerting — ⚠️ DEFINED, NOT DEPLOYED
 
-- ⛔ 5xx-rate alerting: no metrics pipeline, no alert rules
-- ⛔ 4xx-rate alerting: same
-- ⛔ Payment-error alerting: same
-- ⛔ `this.metrics.increment(...)` — **there is no `this.metrics` in the codebase**
+- ⚠️ 5xx-rate alerting: `BackendHighErrorRate` exists in `monitoring/prometheus/rules/hakawi-alerts.yml`, but no cluster applies it. A metrics pipeline exists on paper — `GET /api/v1/metrics/cache` / `/metrics/degradation` plus a Prometheus scrape job for `hakawi-backend` (`monitoring/prometheus/prometheus.yml`, `metrics_path: '/api/v1/metrics'`) — ⛔ but the backend exports no Prometheus series (no `prom-client`), so the expression has no data source
+- ⛔ 4xx-rate alerting: no rule — the rules file contains no 4xx expression
+- ⚠️ Payment-error alerting: `PaymentFailureRateHigh` exists in the same rules file; ⛔ not deployed, and `payments_failed_total` is not exported
+- ⚠️ `this.metrics.increment(...)` — **the error filter has no metrics object**, so no counter is
+  incremented on a 5xx. A `CacheMetrics` object *does* exist and is injected in
+  `cache.interceptor.ts`, but it only records cache events (`recordHit`/`recordMiss`/
+  `recordError`/`recordWrite`/`recordInvalidation`) and has no `increment()`
 
 ### What is observable
 - ✅ Sentry receives every unhandled (non-`HttpException`) error, with `{ method, url }` context
@@ -346,7 +349,7 @@ marked `failed`** — rather than fabricating a checkout URL.
 | Global filter named `GlobalExceptionFilter` | Named `AllExceptionsFilter` | `backend/src/common/filters/all-exceptions.filter.ts:8` |
 | `CorrelationIdMiddleware` with `uuidv4()` | ⛔ No such middleware. IDs come from `generateCorrelationId()` in the WAF headers module; not a UUIDv4 | `backend/src/common/waf/headers.ts:28` |
 | `correlationId` required | ⚠️ Optional; omitted from the JSON when the client sends no header | `backend/src/common/filters/all-exceptions.filter.ts:50` |
-| `this.metrics.increment(...)` | ⛔ No metrics object exists in the codebase | — |
+| `this.metrics.increment(...)` | ⚠️ No metrics object in the filter. A `CacheMetrics` service exists and is injected in `cache.interceptor.ts`, but it records cache events only and has no `increment()` | `backend/src/common/interceptors/cache.interceptor.ts:35-60` |
 | `processWithRetry` hand-written snippet | ✅ Replaced by `ResilientHttpClient` + the resilience module | `backend/src/common/resilience/` |
 | `useApi()` frontend hook | ⛔ Does not exist | `frontend/src/lib/api.ts` |
 | `TOKEN_EXPIRED` → 401 | ⚠️ Status is 401 but the code does not exist; expired and malformed tokens both yield `"Invalid or expired token"` | `backend/src/common/guards/jwt-auth.guard.ts:35-42` |

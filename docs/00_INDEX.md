@@ -27,14 +27,14 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 10 | `system-architecture/overview/high-level-architecture.md` | System architecture overview | ✅ 2026-09-30 |
 | 11 | `system-architecture/non-functional-requirements.md` | NFRs, with a per-claim verification status | ✅ 2026-09-30 (fully rewritten) |
 | 12 | `system-architecture/ui-ux-design-system.md` | UI/UX design system | ⚠️ not audited |
-| 13 | `system-architecture/infrastructure/read-replicas.md` | Read replica strategy | ⛔ **describes an unbuilt system** |
+| 13 | `system-architecture/infrastructure/read-replicas.md` | Read replica strategy | ⚠️ **code implemented, wired nowhere** — `db/router.ts` is registered but no query is split; 26 files import plain `db/index.ts` |
 | 14 | `data-architecture/overview/data-architecture.md` | Data architecture overview | ⚠️ not audited |
 | 14b | `data-architecture/seeders/seed-strategy.md` | Seed strategy | ✅ 2026-09-30 (paths and scripts corrected) |
 | 15 | `data-architecture/schema/schema-overview.md` | Schema: 33 tables, ID strategy, audit fields | ✅ 2026-09-30 (fully rewritten) |
 | 16 | `data-architecture/erd/entity-relationship.md` | ERD: real FKs, indexes, cascade rules | ✅ 2026-09-30 (fully rewritten) |
 | 17 | `data-architecture/migrations/migration-strategy.md` | Migration runner, checksums, rollback classes | ✅ 2026-09-30 (fully rewritten) |
 | 19 | `security-architecture/overview/security-architecture.md` | Security architecture | ✅ 2026-09-30 |
-| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions | ✅ 2026-09-30 (MFA marked unbuilt) |
+| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions, MFA (TOTP + backup codes) | ✅ 2026-09-30 (MFA marked unbuilt) · ⚠️ 2026-10-11 the MFA sections are stale — MFA is implemented (enforcement still open) |
 | 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 51 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
 | 22 | `security-architecture/waf/waf-overview.md` | 34 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
 | 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ⚠️ not audited |
@@ -44,8 +44,8 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 27 | `module-boundaries/payments/payment-system.md` | Paymob flows, webhooks, refunds | ✅ 2026-09-30 |
 | 28 | `module-boundaries/contracts.md` | The real repository interfaces and event shapes | ✅ 2026-09-30 (fully rewritten) |
 | 28b | `module-boundaries/dependency-rules.md`, `interfaces.md` + nested dirs | ⚠️ **four near-duplicate pairs**, no canonical file named. `contracts.md` is now the audited one |
-| 29 | `api-contract/openapi/rest-api-spec.md` | REST API specification — all 149 routes enumerated | ✅ 2026-09-30 (fully rewritten) |
-| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-09-30 (14 codes marked unbuilt) |
+| 29 | `api-contract/openapi/rest-api-spec.md` | REST API specification — all 167 route handlers enumerated | ✅ 2026-09-30 (fully rewritten) · ⚠️ 2026-10-11 route count and MFA section corrected |
+| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-09-30 (14 codes marked unbuilt; `MFA_REQUIRED` is now real in `MfaGuard` but mounted on no route) |
 | 31 | `api-contract/{examples,openapi-spec,integration-tests,postman-collection}.md` | Supporting API docs | ⚠️ `integration-tests.md` describes Supertest; the suite is Vitest. `postman-collection.md` ✅ baseUrl corrected to 3001 |
 | 32 | `development/setup.md` | Development setup guide | ✅ 2026-09-30 |
 | 33 | `development/code-standards.md` | Code standards | ✅ 2026-09-30 |
@@ -71,10 +71,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 
 Four things a reader should know before trusting this documentation set:
 
-1. **`docs/system-architecture/infrastructure/read-replicas.md` describes an unbuilt system.** There
-   are no read replicas and no read/write splitting. `grep -rni "replica" backend/src` returns
-   nothing. The file now carries a ⛔ **NOT IMPLEMENTED** banner at the top and is explicitly a
-   proposal.
+1. **`docs/system-architecture/infrastructure/read-replicas.md` describes a system whose code exists but is wired nowhere.** `grep -rni "replica" backend/src` now matches: `backend/src/db/router.ts` implements read/write splitting (select → replica round-robin with primary fallback; writes → primary; `DB_REPLICA_*`) and is registered in `database.module.ts`. It is unused in practice: no module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA`, and 26 files import the plain `db` from `db/index.ts`. The file's banner now reads ⚠️ **CODE IMPLEMENTED, NOT WIRED**, and the read-scaling problem it addresses remains unsolved.
 2. **`docs/module-boundaries/` has four near-duplicate pairs** — `contracts.md` /
    `contracts/module-contracts.md`, `dependency-rules.md` / `dependencies/dependency-rules.md`,
    `interfaces.md` / `interfaces/shared-interfaces.md`, plus a flat `security/` set that overlaps
@@ -110,7 +107,7 @@ Four things a reader should know before trusting this documentation set:
 - Then: `testing/testing-strategy.md`
 
 ### For DevOps
-- Start with: `deployment/deployment.md` — **read the "Missing artifact" section first**
+- Start with: `deployment/deployment.md`, then `deployment/infrastructure-as-code.md` (Terraform + Helm)
 - Then: `deployment/environment.md` (follows `backend/.env.example`)
 - Then: `deployment/backup.md`
 - Then: `deployment/infrastructure-as-code.md` (Terraform, Helm, Kubernetes)
@@ -208,7 +205,7 @@ docs/
 │   ├── overview/high-level-architecture.md
 │   ├── non-functional-requirements.md
 │   ├── ui-ux-design-system.md
-│   └── infrastructure/read-replicas.md   # ⛔ describes an unbuilt system
+│   └── infrastructure/read-replicas.md   # ⚠️ code implemented, wired nowhere
 ├── data-architecture/               # Data architecture
 │   ├── overview/
 │   ├── schema/schema-overview.md          # 33 tables

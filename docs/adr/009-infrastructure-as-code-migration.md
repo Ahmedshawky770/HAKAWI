@@ -42,11 +42,11 @@ the docker-compose-only model for production and staging environments.
 | Infrastructure provisioning | Terraform v1.9 | Cloud-agnostic, state-managed, drift detection |
 | Container orchestration | Amazon EKS (Kubernetes 1.28) | Managed control plane, HA worker nodes, IAM integration |
 | Application deployment | Helm 3 | Package management, rollback, versioned releases |
-| Overlay configuration | Kustomize | Environment-specific patches (dev/staging/production) |
+| Overlay configuration | Helm values files | `values.yaml` + `values-staging.yaml` + `values-production.yaml` per chart |
 | Secrets management | AWS Secrets Manager + External Secrets Operator | KMS-encrypted, auto-rotation, no plaintext secrets |
 | Secrets distribution | IRSA roles | No static credentials in pods, principle of least privilege |
 | Monitoring | kube-prometheus-stack (Helm) | Prometheus + Grafana + Alertmanager, S3 backup |
-| Load balancing | AWS Load Balancer Controller + ALB Ingress | TLS termination, WAF integration, host-based routing |
+| Load balancing | NGINX Ingress + cert-manager (charts set `ingress.className: nginx`) | TLS termination, host-based routing; the `iam/` module also provisions an `aws_load_balancer_controller` IRSA role |
 | DNS | Route 53 | Health checks, failover routing, low TTL updates |
 
 ### Architecture Mapping from docker-compose.yml
@@ -57,7 +57,7 @@ The docker-compose.yml architecture was translated to managed AWS services:
 |------------------------|------------------------|
 | `postgres-primary` | RDS PostgreSQL (primary, `db.r6g.xlarge`) |
 | `postgres-replica-1` / `postgres-replica-2` | RDS Read Replicas (2x, `db.r6g.xlarge`) |
-| `pgbouncer-primary` / `pgbouncer-replica` | RDS Proxy (managed, auto-scaling) |
+| `pgbouncer-primary` / `pgbouncer-replica` | Application connection pool (NestJS `pg`); RDS Proxy was not adopted |
 | `valkey` | ElastiCache Valkey 8 (replication group, KMS-encrypted) |
 | `backend` | EKS Deployment (3-5 pods, HPA-enabled) |
 | `frontend` | EKS Deployment (3-5 pods, HPA-enabled) |
@@ -94,20 +94,20 @@ infrastructure/terraform/
     └── production/terraform.tfvars
 ```
 
-### Kubernetes Overlay Structure
+### Helm Values Layout
 
 ```
-infrastructure/kubernetes/
-├── base/                                # Shared manifests
-│   ├── namespaces.yaml
-│   ├── configmap.yaml
-│   ├── secrets.yaml
-│   ├── backend/
-│   └── frontend/
-└── overlays/
-    ├── dev/kustomization.yaml           # 1 replica, t3.medium, low resources
-    ├── staging/kustomization.yaml       # 2 replicas, ExternalSecrets, PDBs
-    └── production/kustomization.yaml    # 5 replicas, full HA, WAF
+infrastructure/helm/
+├── backend/
+│   ├── Chart.yaml
+│   ├── values.yaml                      # defaults: 3 replicas, ingress api.hakawi.com
+│   ├── values-staging.yaml              # 2 replicas, min 2 / max 10
+│   └── values-production.yaml           # 5 replicas, 1000m/1Gi req, 4000m/4Gi lim, min 5 / max 30
+└── frontend/
+    ├── Chart.yaml
+    ├── values.yaml                      # defaults: 3 replicas, ingress app.hakawi.com + hakawi.com
+    ├── values-staging.yaml              # 2 replicas
+    └── values-production.yaml           # 5 replicas, 500m/512Mi req, 2000m/2Gi lim, min 5 / max 20
 ```
 
 ### Helm Charts
@@ -119,14 +119,16 @@ infrastructure/helm/
 │   ├── values.yaml
 │   ├── templates/
 │   │   ├── _helpers.tpl
-│   │   └── deployment.yaml              # All k8s objects in one template
+│   │   ├── deployment.yaml              # ConfigMap, ServiceAccount, Deployment, Service, Ingress, HPA, PDB
+│   │   └── externalsecrets.yaml          # ExternalSecret synced from AWS Secrets Manager
 │   └── README.md
 └── frontend/                            # Next.js chart
     ├── Chart.yaml
     ├── values.yaml
     ├── templates/
     │   ├── _helpers.tpl
-    │   └── deployment.yaml
+    │   ├── deployment.yaml
+    │   └── externalsecrets.yaml          # ExternalSecret synced from AWS Secrets Manager
     └── README.md
 ```
 
@@ -144,7 +146,7 @@ infrastructure/helm/
 
 ### Negative / Trade-offs
 
-1. **Complexity** — EKS + Terraform + Helm + Kustomize requires more DevOps knowledge
+1. **Complexity** — EKS + Terraform + Helm requires more DevOps knowledge
 2. **AWS lock-in** — EKS, RDS, ElastiCache are AWS-specific; multi-region DR would be complex
 3. **Learning curve** — Team must learn Terraform, Kubernetes, Helm, IRSA patterns
 4. **Operational cost** — Managed services cost more than self-managed docker-compose
@@ -152,8 +154,9 @@ infrastructure/helm/
 
 ### Mitigated Risks
 
-1. **"Cannot connect to database"** — RDS Proxy handles connection draining, security groups
-   restrict access to EKS node CIDR blocks only
+1. **"Cannot connect to database"** — security groups restrict access to EKS node CIDR blocks only
+   and RDS enforces SSL; connection draining is handled by the application pool (no RDS Proxy is
+   provisioned)…
 2. **"Cannot read secrets"** — External Secrets Operator refreshes every 1 hour; fallback to
    manual `kubectl apply` with `kubectl create secret` if needed
 3. **"Migration hangs"** — Migrations run against RDS primary with a 60-second timeout in CI
@@ -169,7 +172,7 @@ infrastructure/helm/
 
 ## Alternatives Considered
 
-1. **ECS Fargate** — Rejected: less mature tooling ecosystem, no standard Kustomize/Helm support
+1. **ECS Fargate** — Rejected: less mature tooling ecosystem, no standard Helm support
 2. **Self-managed Kubernetes** — Rejected: operational burden of patching control plane
 3. **CDK (Cloud Development Kit)** — Rejected: would require team to learn TypeScript infrastructure,
    whereas Terraform is already the standard
@@ -180,7 +183,7 @@ infrastructure/helm/
 ## References
 
 - `infrastructure/terraform/` — Terraform configurations
-- `infrastructure/kubernetes/` — Kubernetes manifests and overlays
+- `infrastructure/helm/backend/templates/externalsecrets.yaml` and `infrastructure/helm/frontend/templates/externalsecrets.yaml` — ExternalSecrets synced from AWS Secrets Manager
 - `infrastructure/helm/` — Helm charts for backend and frontend
 - `infrastructure/scripts/` — CLI helpers for init, deploy, IAM setup
 - `docs/deployment/deployment.md` — Updated deployment guide

@@ -2,33 +2,44 @@
 
 ## Hakawi - Database Read Scaling and Consistency
 
-> ## ⛔ STATUS: NOT IMPLEMENTED — this is a design proposal, not a description
+> ## ⚠️ STATUS: CODE IMPLEMENTED, NOT WIRED — the router exists, but no query is split today
 >
-> **There is no read replica, no read/write splitting, and no replication-lag monitoring in this
-> repository.**
+> **Read/write splitting exists in `backend/src/db/router.ts`** (select → replica round-robin with
+> primary fallback; writes → primary; `DB_REPLICA_*`) **and is registered in `database.module.ts`,
+> but no module injects the router** — 26 files import the plain `db` from `db/index.ts`, so no
+> query is split today. `checkDatabaseHealth` is used by the health endpoint.
 >
 > ```bash
 > $ grep -rni "replica" --include='*.ts' backend/src/
-> (no matches)
+> backend/src/db/router.ts:12: *   - select() → replica (round-robin, fallback to primary)
+> backend/src/db/router.ts:117:export const db = new Proxy({} as DrizzleDb, {
+> backend/src/db/router.ts:163:export const dbReplica = new Proxy({} as DrizzleDb, {
+> backend/src/db/database.module.ts:22:    { provide: 'DATABASE_REPLICA', useValue: dbReplica },
 > ```
 >
-> - ⛔ The application connects to exactly **one** PostgreSQL primary
->   (`backend/src/config/database.config.ts` — `DB_HOST`, `DB_PORT`, `DB_NAME`; there is no
->   `DB_REPLICA_*` variable)
-> - ⛔ No connection is read-only, and no query is routed to a replica
-> - ⛔ `docker-compose.yml` defines a single `postgres` service with no replica
-> - ⛔ No `pg_stat_replication` query, no lag metric, and no lag alert exists
+> - ⚠️ In practice the application connects to exactly **one** PostgreSQL primary: the plain pooled
+>   `db` from `db/index.ts` (`DB_HOST`, `DB_PORT`, `DB_NAME`) is what all 26 importers use — and the
+>   `DB_REPLICA_*` variables do exist (`database.config.ts`, `backend/.env.example`)
+> - ⚠️ The router *can* route `select()` to a replica (round-robin, primary fallback) and writes to
+>   the primary — but no module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA`, so no query
+>   is routed to a replica
+> - ⚠️ `docker-compose.yml` defines `postgres-primary` plus `postgres-replica-1`/`postgres-replica-2`
+>   and passes `DB_REPLICA_HOSTS` to the backend — the replicas exist at the infrastructure layer
+>   while the application still queries only the primary
+> - ⚠️ The application issues no `pg_stat_replication` query and records no lag metric; a
+>   `PostgreSQLReplicationLag` alert rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml`
+>   but no cluster applies it
 >
 > **The rest of this document is a proposal.** It is retained so the design is not silently lost, and
-> so that whoever implements it does not have to start from scratch. Nothing in it may be cited as
-> current behaviour. The read-scaling problem it addresses is real and unsolved: today, every read —
-> including the full-text search, the cached list endpoints, and the admin dashboard aggregations —
-> hits the single primary.
+> so that whoever finishes the wiring does not have to start from scratch. The read-scaling problem
+> it addresses is real and unsolved: today, every read — including the full-text search, the cached
+> list endpoints, and the admin dashboard aggregations — hits the single primary.
 >
 > Its roadmap status is tracked in
 > `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*, items 1–3.
 >
-> Related: `docs/consistency-matrix.md` → *Monitoring*, which records the same absence.
+> Related: `docs/consistency-matrix.md` → *Monitoring*, which records the same "built but unused"
+> state.
 
 ---
 
@@ -44,12 +55,13 @@ Read replicas are introduced when:
 - **Database CPU** exceeds **70%** due to read load
 - **Reporting/analytics** queries impact production performance
 
-### Current Stage — ⛔ none
+### Current Stage — ⚠️ router built, wired nowhere
 
-**Actual:** single primary database, no replicas, no read/write splitting. This has not changed
-since Phase 1 and is not scheduled in any phase; it is an open roadmap item with no week assigned.
-The "Phase 4+ (Weeks 8+)" line in the previous version of this document was aspirational — Phase 4
-shipped in week 10 and read replicas did not arrive.
+**Actual:** single primary database in practice; no query is split today. The read/write-splitting
+router (`backend/src/db/router.ts`) is registered in `database.module.ts` but injected by no module —
+26 files import the plain `db` from `db/index.ts`, so every read still hits the primary, and no
+replica exists in any deployed environment. The "Phase 4+ (Weeks 8+)" line in the previous version of
+this document was aspirational — Phase 4 shipped in week 10 and read replicas did not arrive.
 
 ---
 
@@ -481,12 +493,14 @@ const config = {
 
 | Previous | Reality |
 |---|---|
-| Presented in the present tense as a database read-scaling strategy | ⛔ **Nothing in it is implemented.** A status banner now says so at the top of the file |
+| Presented in the present tense as a database read-scaling strategy | ⚠️ The routing code now exists — read/write splitting is implemented in `backend/src/db/router.ts` and registered in `database.module.ts` — but no module injects it, so nothing is split. The status banner says exactly that |
 | "**Phase 4+ (Weeks 8+):** Introduce read replicas when thresholds are met" | ⛔ Phase 4 shipped in week 10 and no replicas were introduced. The line was aspirational, not a plan |
 | "ADR-003: Database Schema Design" and "ADR-004: Caching Strategy" in *Related Documentation* | ⚠️ The ADRs are `adr/003-use-valkey-cache.md` and `adr/004-use-event-emitter2.md`. There is no ADR-003 on schema design and no ADR-004 on caching |
 | No acknowledgement that the read-scaling problem is unsolved | ✅ Now stated explicitly: every read, including full-text search and admin aggregations, hits the single primary |
 
 ---
 
-*This document is a **proposal** for a read-replica strategy that has not been built. It is retained
-as a design reference; the current state is a single PostgreSQL primary with no read replicas.*
+*This document is a **proposal** for a read-replica strategy that is coded but not wired: the
+routing code exists (`backend/src/db/router.ts`) and no module injects it, and no replica exists in
+any deployed environment. It is retained as a design reference; in the running application the
+current state is a single PostgreSQL primary with no read replicas.*

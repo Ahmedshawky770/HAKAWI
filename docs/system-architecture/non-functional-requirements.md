@@ -39,8 +39,11 @@ should perform, not **what** it should do.
 
 ### Response Time Targets — ⛔ NONE OF THESE HAS BEEN MEASURED
 
-These are **goals**, not observations. There is no benchmark harness, no load test, no APM, and no
-recorded latency data anywhere in the repository. Nothing below may be cited as a measurement.
+These are **goals**, not observations. Load testing exists — k6 wired into CI
+(`load-tests/k6.conf.js` + the `load-test` job in `.github/workflows/ci.yml`, `grafana/k6-action`) —
+and a benchmark harness exists (`benchmarks/benchmark.js`, `perf_hooks`, p95 report) but is wired to
+no npm script. There is no APM, and no recorded latency data anywhere in the repository. Nothing
+below may be cited as a measurement.
 
 | Endpoint Type | Target | p95 | p99 | Measured? |
 |---------------|--------|-----|-----|-----------|
@@ -196,9 +199,10 @@ async createStory(userId: string) {
 ### Rate Limiting Strategy — ⚠️ the snippet below is not how it works
 
 ```typescript
-// ⛔ INTENDED, NOT IMPLEMENTED. There is no `ThrottlerGuard` in this codebase and no
-// `rate-limit:{user}:{endpoint}` key. The real implementation is Nest's stock ThrottlerGuard
-// paired with a custom Valkey storage adapter that it delegates to.
+// ✅ IMPLEMENTED — Nest's `ThrottlerGuard` is registered as a global `APP_GUARD`
+// (`backend/src/common/common.module.ts:143-145`) over the Valkey-backed storage and the
+// per-tier limits. ⛔ There is no `rate-limit:{user}:{endpoint}` key: `ValkeyThrottlerStorage`
+// increments one key per tier, not per endpoint.
 ```
 
 The real path:
@@ -237,17 +241,17 @@ X-RateLimit-Reset: 1700000000
 
 Prevent cascade failures when external services are unavailable.
 
-### External Services Requiring Circuit Breakers — ⚠️ 2 of 5 are wired
+### External Services Requiring Circuit Breakers — ⚠️ 3 of 5 are wired
 
 `CircuitBreakerService` (`backend/src/common/resilience/circuit-breaker.service.ts`) and
-`ResilientHttpClient` exist and are real. **They are injected in only two places.**
+`ResilientHttpClient` exist and are real. **They are injected in only three places.**
 
 | Service | Wired? | Evidence |
 |---|---|---|
 | **Sanity CMS** | ✅ | `CircuitBreakerService` injected at `backend/src/modules/stories/sanity/sanity.service.ts` |
 | **Paymob** | ✅ | `ResilientHttpClient` at `backend/src/modules/payments/clients/paymob.client.ts:85` — retry + breaker + timeout + fallback |
 | **OAuth providers** | ✅ | `CircuitBreakerService` injected at `backend/src/modules/auth/auth.service.ts:59` |
-| **Email service** | ⛔ | **No SMTP client exists at all.** Only `EMAIL_FROM` is read |
+| **Email service** | ⛔ | The service exists — `SmtpEmailTransporter` (nodemailer; SendGrid/Mailgun/SES), registered and exported by `notifications.module.ts` — but no breaker wraps it |
 | **Storage (R2/S3)** | ⛔ | The S3 presigner is called with no breaker |
 | **PostgreSQL / Valkey** | ⛔ | No breaker. Both fail open, so an outage degrades protection rather than refusing service |
 
@@ -608,7 +612,7 @@ async updateUser(userId: string, data: UpdateUserDto) {
 | **Password hashing** | bcrypt, cost factor 12 | ✅ Real — `backend/src/common/utils/password.util.ts:7` |
 | **JWT expiration** | 15 min access / 7 d refresh | ✅ Real — `backend/src/config/jwt.config.ts` |
 | **Session timeout** | 24 h (remember me), 1 h (default) | ⛔ **NOT IMPLEMENTED.** There is no session store, no session timeout, and no "remember me". A session is a JWT pair; the only server-side state is the refresh-token blacklist |
-| **MFA support** | TOTP (Google Authenticator) | ⛔ **NOT IMPLEMENTED.** `grep -rn "mfa\|totp\|two.factor\|2fa"` across `backend/src`, `frontend/src`, `packages/` returns **zero** matches. No `POST /auth/mfa`, no TOTP secret, no recovery codes. An admin account is protected by authorization only |
+| **MFA support** | TOTP (Google Authenticator) | ✅ **IMPLEMENTED as a per-user option.** TOTP (RFC 6238) + 8 backup codes via `backend/src/modules/auth/mfa.controller.ts` (`GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`); secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029_add_mfa_support.sql`). ⛔ **Not enforced on any route** — `@RequireMfa()` has no call site and `MfaGuard` is mounted nowhere, so an admin account is still protected by authorization only |
 | **OAuth providers** | Google, Apple, Facebook, GitHub, TikTok | ✅ All 5 real. ⚠️ the variable names are `FACEBOOK_APP_ID`/`FACEBOOK_APP_SECRET` and `TIKTOK_CLIENT_KEY`, **not** the `FACEBOOK_CLIENT_ID` / `TIKTOK_CLIENT_ID` in `backend/.env.example` |
 | **Account lockout** | — | ⛔ **NOT IMPLEMENTED.** `auth.service.ts` keeps no attempt counter. The only brake on credential stuffing is the `auth` tier: 10/min per IP |
 
@@ -647,17 +651,17 @@ async updateUser(userId: string, data: UpdateUserDto) {
 
 | Metric | Target | Status |
 |--------|--------|--------|
-| **RPO (Recovery Point Objective)** | 1 hour | ⛔ Unachievable today — nothing backs the database up automatically |
-| **RTO (Recovery Time Objective)** | 4 hours | ⛔ Unachievable today — no restore drill, no artifact to restore onto |
-| **Backup frequency** | Daily full backup, hourly incremental | ⛔ **NOT IMPLEMENTED.** No backup job, no `pg_dump` schedule, no PITR config, no CI step. `pg_dump` appears only as a manual command inside a doc |
-| **Backup retention** | 30 days | ⛔ Nothing retains anything |
+| **RPO (Recovery Point Objective)** | 1 hour | ⛔ Still unmet — CI takes a daily (`0 2 * * *`) snapshot and `pg_dump`, but ⛔ there is no in-cluster schedule and no PITR/WAL archiving, so the newest recoverable point can be a day old |
+| **RTO (Recovery Time Objective)** | 4 hours | ⛔ Unmeasured — `scripts/restore-drill.sh` exists and `ci.yml` runs a `backup-verify` job, but no drill runs on a schedule and no environment has been restored onto |
+| **Backup frequency** | Daily full backup, hourly incremental | ⚠️ **Automated in CI, not in-cluster.** `.github/workflows/backup.yml` runs daily (`cron: '0 2 * * *'`) with a DB snapshot + `pg_dump`; `scripts/backup.sh`, `verify-backup.sh`, and `restore-drill.sh` exist, and `ci.yml` has a `backup-verify` job. ⛔ No in-cluster cron/systemd scheduler and no PITR, so the hourly-incremental half of the target is still unimplemented |
+| **Backup retention** | 30 days | 🔄 `scripts/backup.sh` implements retention (`BACKUP_RETENTION_DAYS`, default 30; `BACKUP_S3_RETENTION_DAYS` 90) and the daily workflow uploads snapshots; ⛔ nothing schedules it inside the cluster |
 | **Cross-region replication** | Yes (future) | ⛔ Not built, and marked "future" even here |
 
 ### Backup Strategy
 
 | Data Type | Backup Method | Frequency | Retention | Status |
 |-----------|--------------|----------|-----------|--------|
-| **PostgreSQL** | pg_dump + WAL archiving | Daily full, hourly incremental | 30 days | ⛔ **NOT AUTOMATED** — a manual procedure only |
+| **PostgreSQL** | pg_dump + WAL archiving | Daily full, hourly incremental | 30 days | 🔄 `pg_dump` is automated in CI (`.github/workflows/backup.yml`, daily 2 AM UTC, snapshot + dump) with 30-day retention in `scripts/backup.sh`; ⛔ no in-cluster schedule, no WAL archiving/PITR, and the hourly-incremental half is still absent |
 | **Valkey** | RDB snapshot | Every 6 hours | 7 days | ⛔ No configuration. ⚠️ note the state at risk: the refresh-token blacklist and the rate-limit counters |
 | **Sanity content** | Sanity export | Daily | 30 days | ⛔ No export job |
 | **File uploads** | R2/S3 replication | Real-time | 30 days | ⛔ Depends entirely on the storage provider; nothing configured in-repo |
@@ -719,8 +723,8 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 |-------------|--------|--------|
 | **API documentation** | 100% of endpoints | ⚠️ `@nestjs/swagger` is served at `/api/docs` and `/api/docs-json`, but coverage is **not** 100% — the Zod DTOs in `moderation/dto/` are invisible to `class-validator`, so the decorators cannot see them. `docs/api-contract/openapi/rest-api-spec.md` is the hand-maintained fallback and was reconciled on 2026-09-30 |
 | **Code comments** | Complex logic only | ✅ Matches the repo convention |
-| **README** | Every module | ⛔ **NOT TRUE.** Only `backend/src/modules/search/README.md` exists. `c4-model/component/module-boundaries.md` previously told new joiners to read their module's README |
-| **Changelog** | Updated with every release | ⛔ **No CHANGELOG file exists in the repository** |
+| **README** | Every module | ⚠️ **Not universal** — **20** module READMEs exist under `backend/src/modules/**`, but not every module has one. `c4-model/component/module-boundaries.md` previously told new joiners to read their module's README |
+| **Changelog** | Updated with every release | ✅ `CHANGELOG.md` exists at the repository root (Keep a Changelog); ⛔ no release automation checks that it was updated |
 
 ### Deployment
 
@@ -740,8 +744,8 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 | Component | Scaling Strategy | Max Instances | Status |
 |-----------|-----------------|---------------|--------|
 | **Frontend** | Auto-scale (Vercel) | Unlimited | ✅ `next build` succeeds. The root `build` script builds shared-types first |
-| **Backend** | Horizontal pod autoscaling | 10+ instances | ⚠️ **Stateless and horizontally safe** — no in-process session state, and the cache and rate-limit counters are in Valkey, so the previous per-instance in-memory throttler problem is gone. ⛔ But there is **no deployment artifact**, so no autoscaler has anything to scale. See `system-architecture/infrastructure/read-replicas.md` |
-| **PostgreSQL** | Read replicas | 1 primary + 3 replicas | ⛔ **NOT BUILT.** One primary. `grep -rni replica --include='*.ts' backend/src/` returns nothing, and there is no `DB_REPLICA_*` variable |
+| **Backend** | Horizontal pod autoscaling | 10+ instances | ⚠️ **Stateless and horizontally safe** — no in-process session state, and the cache and rate-limit counters are in Valkey, so the previous per-instance in-memory throttler problem is gone. ⛔ But no environment has been applied from `infrastructure/terraform/` / `infrastructure/helm/`, so no autoscaler has anything to scale (the backend chart defines an HPA). See `system-architecture/infrastructure/read-replicas.md` |
+| **PostgreSQL** | Read replicas | 1 primary + 3 replicas | ⚠️ **Router built, wired nowhere.** `backend/src/db/router.ts` reads `DB_REPLICA_*` and routes `select()` → replica (round-robin, primary fallback) and writes → primary, and is registered in `database.module.ts`. ⛔ Zero modules inject `DATABASE`; 26 source files import the plain `db` from `db/index.ts`, so every query hits the primary |
 | **Valkey** | Cluster mode | 3+ nodes | ⛔ Not configured. ⛔ Also a **single point of failure**: the cache, the refresh-token blacklist, the rate-limit counters, and the WAF blocklist all live in it, and both the cache and the throttler **fail open** |
 | **Sanity** | Managed service | Unlimited | ⚠️ Wrapped in a `CircuitBreakerService` with a PostgreSQL fallback |
 
@@ -760,39 +764,41 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 ### The previous per-phase checklist — replaced
 
 The old table claimed ✅ for **"Response time < 200ms"**, **"Monitoring dashboards"**, and
-**"Backup strategy"** in Phase 1, and ✅ for **"Load testing"** in Phase 4+. **None of those four is
-true.** A per-phase checklist that marks unmeasured or unbuilt work as done is worse than no
-checklist, so it is replaced by a status-per-claim table.
+**"Backup strategy"** in Phase 1, and ✅ for **"Load testing"** in Phase 4+. **None of those four
+claims was true as written** — dashboards and backups are defined in the repo but deployed nowhere,
+load testing runs in CI only, and no latency target has ever been measured in a release run. A
+per-phase checklist that marks unmeasured or unbuilt work as done is worse than no checklist, so it
+is replaced by a status-per-claim table.
 
 ### Status of every NFR, as of 2026-09-30
 
 | NFR | Status | Evidence |
 |---|---|---|
-| Response time < 200ms p95 | ⛔ **Never measured** | No benchmark harness, no load test, no APM. Targets are unverified |
+| Response time < 200ms p95 | ⛔ **Still unverified by a release run** | `benchmarks/benchmark.js` and the CI k6 job exist; no measured p95 is recorded. No APM |
 | Throughput targets | ⛔ Never measured | — |
 | Cache hit rate > 90% | 🔄 **Instrumented, not verified** | `GET /api/v1/metrics/cache` reports `hits`/`misses`/`hitRate`. No threshold is enforced and no value has been recorded |
 | Resource utilisation targets | ⛔ No metrics pipeline | No Prometheus endpoint, no metrics registry |
 | Rate limiting implemented | ✅ **Real** | **5** tiers over `ValkeyThrottlerStorage`; real 429 tests |
 | Rate limit values | ⚠️ **Corrected** | 100/10/5/50, not the 8-row table the previous version listed |
 | Resource quotas per user/tenant | ⛔ **Not implemented** | No tiers, no balances, no counters. Rate limits ≠ quotas |
-| Circuit breakers configured | ⚠️ **Partially** | Wired into Sanity, Paymob, and OAuth. Not into S3, email (doesn't exist), PostgreSQL, or Valkey |
+| Circuit breakers configured | ⚠️ **Partially** | Wired into Sanity, Paymob, and OAuth. Not into S3, email (SMTP exists — `SmtpEmailTransporter`), PostgreSQL, or Valkey |
 | Connection pooling tuned | ⛔ **Not configurable** | `DB_POOL_*` read by nothing. One constant for all environments |
 | Valkey TTLs configured | ⚠️ **3 real TTLs** | 600s stories/books, 300s payments, 3600s default — compile-time constants, not env vars |
 | Cache invalidation | ✅ **Real** | `@CacheInvalidateTags` on every write, tags `stories`/`books`/`payments` |
-| Monitoring dashboards | ⛔ **None exist** | Sentry receives errors; there is no dashboard definition in the repository |
+| Monitoring dashboards | ⚠️ **Defined, not deployed** | `monitoring/grafana/dashboards/hakawi-overview.json` exists; nothing applies it (no cluster). Sentry receives errors |
 | Error tracking (Sentry) | ✅ **Real** | `@sentry/nestjs@11.1.0`; a no-op when `SENTRY_DSN` is unset |
-| Backup strategy | ⛔ **Documented, not automated** | No job, no schedule, no PITR, no restore drill |
+| Backup strategy | 🔄 **Automated in CI** | Daily `backup.yml` workflow + `scripts/*.sh` + `backup-verify` CI job; ⛔ no in-cluster schedule, no PITR, restore drill not run automatically |
 | Security audit | ✅ **CI only** | `npm audit --omit=dev` + `npm audit`. ⛔ No external penetration test |
-| Load testing | ⛔ **Not built** | No k6 / Locust / autocannon / Artillery config anywhere |
+| Load testing | ✅ **k6, wired in CI** | `load-tests/k6.conf.js` + the `load-test` job in `ci.yml` (`grafana/k6-action`) |
 | Password hashing | ✅ bcrypt 12 | — |
-| MFA | ⛔ **Not built** | Zero matches for `mfa`/`totp` |
+| MFA | ✅ **Built (per-user, optional)** | `backend/src/modules/auth/mfa.controller.ts`, `mfa.service.ts`, `migrations/0029_add_mfa_support.sql`. ⛔ Unenforced: `@RequireMfa()` has no call site |
 | Account lockout | ⛔ **Not built** | No attempt counter in `auth.service.ts` |
 | Session timeout / "remember me" | ⛔ **Not built** | No session store at all |
 | Permission audit trail | ⛔ **Not built** | Zero `audit` hits in `common/permissions/` and `common/guards/` |
-| Read replicas | ⛔ **Not built** | One primary; no `DB_REPLICA_*` |
-| Horizontal backend scaling | ⚠️ Safe in theory, no artifact | Stateless + Valkey-backed counters; ⛔ no `Dockerfile` |
-| Per-module README | ⛔ **Does not exist** | Only `backend/src/modules/search/README.md` |
-| CHANGELOG | ⛔ **Does not exist** | — |
+| Read replicas | ⚠️ **Built, unused** | `db/router.ts` + `DB_REPLICA_*`, registered in `database.module.ts`; no module injects it — 26 source files import `db/index.ts` |
+| Horizontal backend scaling | ⚠️ Safe in theory, no artifact | Stateless + Valkey-backed counters; Dockerfiles exist (root, `backend/`, `frontend/`) but ⛔ no environment applies them |
+| Per-module README | ⚠️ **Partially exists** | 20 module READMEs under `backend/src/modules/**`; coverage is not universal |
+| CHANGELOG | ✅ Exists — `CHANGELOG.md` at the repo root (Keep a Changelog) | — |
 | Cyclomatic complexity limit | ⛔ No lint rule | — |
 | API docs coverage 100% | ⚠️ Partial | Zod DTOs are invisible to `class-validator` decorators |
 | Uptime 99.9% | ⛔ Not applicable | Not deployed |
@@ -829,7 +835,7 @@ A short and real list:
 - Deployment: `deployment/deployment.md` — read its "Missing artifact" section first
 - Backups: `deployment/backup.md`, `deployment/backup-strategy.md`
 - Testing: `testing/testing-strategy.md`
-- Read replicas (a proposal, not built): `system-architecture/infrastructure/read-replicas.md`
+- Read replicas (router built, injected nowhere): `system-architecture/infrastructure/read-replicas.md`
 
 ---
 
@@ -837,7 +843,7 @@ A short and real list:
 
 | Previous claim | Reality |
 |---|---|
-| Per-phase checklist marking ✅ for response time, dashboards, backup strategy, and load testing | ⛔ **All four are false.** Replaced with a status-per-claim table plus a short "what is genuinely satisfied" list |
+| Per-phase checklist marking ✅ for response time, dashboards, backup strategy, and load testing | ⛔ **All four were false as written.** Replaced with a status-per-claim table plus a short "what is genuinely satisfied" list |
 | 8 rate-limit rows (auth 5/IP, auth 10/user, public 50/IP, upload 10/user, search 50/IP, comments 30/user, webhooks unlimited) | ✅ Reality is **5 tiers**: `default` 30/user, `auth` 10/IP, `session` 120/IP, `upload` 5/user, `search` 50/user. Comments have no tier; webhooks are not whitelisted. ⛔ This row previously said "4 tiers: 100/user, 10/IP, 5/user, 50/user" — the count was short by the `session` tier and the `default` limit was the pre-correction 100/min |
 | Resource quotas per user/tenant with 7 rows and a `QuotaExceededException` | ⛔ **No quota system exists.** Rate limits are not quotas |
 | A `ThrottlerGuard` keyed `rate-limit:{key}:{endpoint}` | ⛔ No such guard and no per-endpoint key. Nest's guard + `ValkeyThrottlerStorage`, keyed per tier |
@@ -846,22 +852,22 @@ A short and real list:
 | 21 cache rows with hand-written key templates and a `cache.config.ts` | ⚠️ **3 real TTLs** (600/600/300 + 3600 default), tag-based invalidation, no config file |
 | `session:{userId}` with a 7-day TTL | ⛔ **No session cache exists** |
 | WAF block key `waf:block:{ip}` with a 5-minute TTL | ⚠️ A Valkey set; temp TTL 3600s, permanent has no TTL |
-| "MFA support: TOTP (Google Authenticator)" | ⛔ **Not implemented.** Zero matches across backend, frontend, and packages |
+| "MFA support: TOTP (Google Authenticator)" | ✅ **Implemented** — TOTP (RFC 6238) + 8 backup codes, optional per user (`mfa.controller.ts`, migration `0029`). ⚠️ Unenforced: `@RequireMfa()` has no call site, so the claim "admin accounts have MFA" remains false |
 | "Session timeout: 24 hours (remember me), 1 hour (default)" | ⛔ No session store, no timeout, no remember-me |
 | "Login rate limits: 5 attempts per minute per IP" | ✅ Rate limiting exists, but at **10/min per IP** |
 | "Password reset: 3 attempts per hour per email" | ⛔ Not implemented |
 | "Encryption at rest: PostgreSQL TDE, Valkey encryption" | ⚠️ AES-256-GCM on two token columns only. TDE is not enabled |
 | "Audit logging: all sensitive operations logged" | ⚠️ Winston + Sentry. ⛔ No permission-decision audit trail |
-| "Backup frequency: daily full, hourly incremental" / "retention 30 days" | ⛔ **Nothing backs up automatically** |
-| RPO 1 hour / RTO 4 hours | ⛔ Unachievable — nothing to restore from |
-| "PostgreSQL: read replicas, 1 primary + 3 replicas" | ⛔ **Not built** |
+| "Backup frequency: daily full, hourly incremental" / "retention 30 days" | 🔄 Daily backup exists in CI (`.github/workflows/backup.yml`, `0 2 * * *`) and `scripts/backup.sh` retains 30 days locally; ⛔ no in-cluster scheduler and no PITR, so the incremental half is still absent |
+| RPO 1 hour / RTO 4 hours | 🔄 Daily snapshot + `pg_dump` in CI and `scripts/restore-drill.sh` exist; ⛔ nothing schedules them in-cluster and no drill runs automatically, so both figures remain unverified |
+| "PostgreSQL: read replicas, 1 primary + 3 replicas" | ⚠️ Router exists (`backend/src/db/router.ts`) but is injected nowhere — all 26 consumers use the plain `db/index.ts`, so the split is not in effect |
 | "Code coverage > 80% overall, 90% for critical modules" | ⚠️ Backend met (S 84.28 / B 80.49 / F 78.86 / L 84.45); frontend not (S 40.75 / B 35.79 / F 39.64 / L 41.25). The 90% tier was never a configured floor. **Retired in favour of the unified ≥ 80% roadmap target** |
 | "Cyclomatic complexity < 10 per function" | ⛔ No such lint rule |
-| "README: every module" | ⛔ Only `modules/search/README.md` exists |
-| "Changelog: updated with every release" | ⛔ **No CHANGELOG in the repository** |
+| "README: every module" | ⚠️ **20** module READMEs exist under `backend/src/modules/**`; coverage is not universal |
+| "Changelog: updated with every release" | ✅ `CHANGELOG.md` exists at the repository root |
 | "Related: ADR-007, ADR-015" | ⛔ Neither exists. The ADR set is `001`–`004` |
 | `valkey.conf` maxmemory / allkeys-lru / save / eviction policy | ⛔ No `valkey.conf` in the repo; the container runs the image default. ⚠️ `allkeys-lru` would silently evict the token blacklist and rate-limit counters |
-| Horizontal backend scaling to 10+ instances | ⚠️ The code is stateless and Valkey-backed, so it is safe — but ⛔ there is no deployment artifact to scale |
+| Horizontal backend scaling to 10+ instances | ⚠️ The code is stateless and Valkey-backed, and `infrastructure/helm/backend` defines an HPA — but ⛔ no environment has been applied to scale |
 
 ---
 

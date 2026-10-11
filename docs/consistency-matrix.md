@@ -109,7 +109,7 @@ redeploying.
 |---|---|
 | **Cache hit rate** | ✅ **Live.** `GET /api/v1/metrics/cache` returns `{ hits, misses, hitRate, … }` from `CacheMetrics` (`backend/src/common/interceptors/cache.interceptor.ts:62-72`) |
 | **Consistency-violation detection** | ⛔ **NOT BUILT.** No code compares a cache read against the database to detect divergence |
-| **Replication lag monitoring** | ⛔ **NOT BUILT**, and not applicable — there are no read replicas |
+| **Replication lag monitoring** | ⚠️ **Built but unused** — `db/router.ts` implements the split (`select` → replica round-robin with primary fallback, writes → primary) and is registered in `database.module.ts`; no module injects the router tokens, and 26 files import the plain `db` from `db/index.ts` |
 | **Payment double-charge detection** | ⛔ **NOT BUILT.** The `uniqueIndex` on `paymob_transaction_id` prevents duplicate *rows*, not duplicate *charges* |
 | **Event DLQ depth** | ⚠️ A DLQ exists (`dlq.service.ts`) but there is no metric or alert on its size |
 
@@ -119,7 +119,19 @@ redeploying.
 - Structured Winston logs with correlation IDs
 - Sentry for unhandled errors
 
-There is **no Prometheus endpoint, no metrics registry, and no alerting rule** in the repository.
+The metric surface is exactly two endpoints, both mounted behind `JwtAuthGuard` + `RolesGuard` for
+the super-admin role (`backend/src/common/observability/metrics.controller.ts`):
+`GET /api/v1/metrics/cache` (cache hits, misses, hit rate) and `GET /api/v1/metrics/degradation`
+(rate-limiter and WAF-blocklist fallback health, so a fail-open episode is alertable). There is no
+Prometheus `/metrics` endpoint, no metrics registry and no exporter — the payloads are JSON.
+
+⚠️ **Alerting is defined, not deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` holds
+**20 rules** (BackendDown, BackendHighErrorRate, BackendHighLatency, PostgreSQLDown,
+PostgreSQLConnectionsHigh, PostgreSQLReplicationLag, ValkeyDown, ValkeyMemoryHigh,
+ValkeyHitRateLow, WAFHighViolationRate, AuthFailureSpike, PaymentFailureRateHigh, …), alongside
+`monitoring/prometheus/prometheus.yml`, `monitoring/alertmanager/alertmanager.yml` and the Grafana
+dashboard `monitoring/grafana/dashboards/hakawi-overview.json`. ⛔ Nothing deploys them — there is no
+cluster, so no rule is ever evaluated.
 
 ---
 
@@ -140,7 +152,7 @@ There is **no Prometheus endpoint, no metrics registry, and no alerting rule** i
 | "Valkey cache with **immediate invalidation**" for Users and Stories | ✅ **Confirmed real** — the cache is tagged (`books`, `stories`, `payments`) and `@CacheInvalidateTags` fires on every write. The claim was right; the document understated how much depends on it |
 | "Cache hit-rate monitoring (planned for Phase 7)" | ✅ **Live now**, at `GET /api/v1/metrics/cache` |
 | "Consistency-violation detection (planned for Phase 7)" | ⛔ Still not built |
-| "Replication lag monitoring for read replicas (planned for Phase 7)" | ⛔ Still not built — and there are no read replicas to monitor |
+| "Replication lag monitoring for read replicas (planned for Phase 7)" | ⚠️ Still unused — the router and its health check exist (`checkDatabaseHealth`), but no module injects the router, so no reads are split to monitor |
 | Payments "PostgreSQL with pessimistic locking (Phase 4+)" | ⛔ Phase 4 shipped; **no locking was implemented.** The only concurrency control is a unique index on `paymob_transaction_id` |
 | Inventory "PostgreSQL with optimistic locking (Phase 4+)" | ⛔ No inventory entity and no locking exist |
 | "Cache TTL ensures data converges within 5 minutes" | Measured: 600s stories/books, 300s payments, 3600s default — and **not configurable**, since no `CACHE_TTL_*` variable is read |

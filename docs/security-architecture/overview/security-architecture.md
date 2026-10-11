@@ -88,15 +88,20 @@ graph TB
 - ⛔ **No session store.** There is no session table, no per-user token index, no device/IP capture
   and no concurrent-session cap. See `docs/security-architecture/auth/auth-overview.md`.
 
-### MFA — ⛔ NOT IMPLEMENTED
-- ⛔ TOTP is **not** implemented
-- ⛔ Recovery codes are **not** implemented
-- ⛔ `POST /api/v1/auth/mfa` does **not** exist
-- ⛔ Admin-enforcement of MFA is **not** implemented
+### MFA — ✅ IMPLEMENTED (optional per user), ⛔ NOT ENFORCED
+- ✅ TOTP (RFC 6238) is implemented — `speakeasy` + `qrcode`, secret AES-256-GCM encrypted into
+  `users.totp_secret_encrypted`
+- ✅ Backup codes are implemented — 8 one-time codes, held encrypted in Valkey
+- ✅ `GET /api/v1/auth/mfa/status`, `POST /auth/mfa/setup`, `POST /auth/mfa/verify`,
+  `POST /auth/mfa/challenge`, `POST /auth/mfa/backup-codes` and `DELETE /auth/mfa` all exist
+  (`backend/src/modules/auth/mfa.controller.ts`, migration `0029_add_mfa_support.sql`)
+- ⛔ Enforcement is **not** implemented: `@RequireMfa()` has no call site and `MfaGuard` is in no
+  module's `providers`, so no route requires a second factor
 
-A `grep -rn "mfa\|totp\|two.factor\|2fa"` across `backend/src`, `frontend/src` and `packages/`
-returns zero matches. An admin account is protected by authorization only. The requirement is
-retained in `docs/security-architecture/auth/auth-overview.md`.
+A `grep -rniE "mfa|totp|two.factor|2fa"` across `backend/src` returns 15 files / 255 lines;
+`frontend/src` and `packages/` return zero. Admin enforcement is coded but unreachable, so an admin
+account is still protected by authorization only. The full MFA contract is in
+`docs/security-architecture/auth/auth-overview.md`.
 
 ---
 
@@ -214,7 +219,7 @@ No retention job, no purge, and no lifecycle policy exists in the codebase.
 
 | Claim | Reality | Evidence |
 |---|---|---|
-| "MFA (Optional): TOTP, recovery codes, admin-enforced" | ⛔ Not implemented at all | zero `mfa`/`totp` matches in `backend/`, `frontend/`, `packages/` |
+| "MFA (Optional): TOTP, recovery codes, admin-enforced" | ✅ TOTP + 8 backup codes, optional per user (`mfa.controller.ts`, `mfa.service.ts`, migration `0029`). ⛔ "admin-enforced" is still false — `@RequireMfa()` has no call site | `backend/src/modules/auth/mfa.controller.ts`; 6 routes under `/api/v1/auth/mfa` |
 | "Session management: token rotation, session revocation" | Rotation ✅ and single-token revocation ✅ are real; ⛔ there is no session store, session metadata, concurrent-session cap, or bulk revocation | `backend/src/modules/auth/auth.service.ts:549-641` |
 | "Permission model: `stories:read`, `stories:write:own`" | 51 real permissions; `stories:write:own` does not exist (`stories:edit:own` does) | `backend/src/common/permissions/permissions.ts` |
 | "Ownership checks" as a guard | ⛔ `OwnershipGuard` is a factory used by no module | `backend/src/common/guards/ownership.guard.ts` |

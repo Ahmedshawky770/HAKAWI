@@ -318,10 +318,7 @@ Still the right approach, and the reversibility header is where it is recorded:
 5. Post-mortem; write a forward migration.
 
 ### ⛔ Not implemented
-- ⛔ **Automated backups.** There is no backup job, no `pg_dump` cron, and no PITR configuration in
-  the repository. `docs/deployment/backup.md` describes an `nginx.conf` and a `scripts/` directory
-  that do not exist. Restoring from a backup is currently a manual operation against a snapshot you
-  must already have.
+- 🔄 **Automated backups exist in CI** (`.github/workflows/backup.yml`, daily 2 AM UTC, snapshot + pg_dump) with `scripts/backup.sh`; ⛔ no in-cluster scheduler and no PITR. Restoring is still manual — `scripts/restore-drill.sh` exists but no drill runs on a schedule.
 - ⛔ **Maintenance mode.** Nothing pauses traffic during a migration.
 - ⛔ **Zero-downtime column drops.** Principle #6 asks for additive-only changes; the runner does not
   enforce it, the reversibility header just records the risk.
@@ -355,7 +352,7 @@ Still the right approach, and the reversibility header is where it is recorded:
 | Rollback "tested before deployment" (unimplemented) | ✅ machine-read reversibility headers with 3 classifications | `migrations/down/*.down.sql` first line |
 | 17 migrations | **18** files, with a gap at 0017 | `migrations/` listing |
 | — | New: `migrations/meta/` ledger-support directory | `migrations/meta` |
-| Backup/restore as part of rollback | ⛔ No backup automation exists | no backup script or cron in the repo |
+| Backup/restore as part of rollback | 🔄 Backup automation exists in CI (daily `backup.yml` workflow; `scripts/backup.sh`) | ⛔ no in-cluster cron, no PITR |
 | Zero-downtime enforcement | ⚠️ Aspiration only; the runner records risk, it does not prevent it | — |
 
 **Newly documented (was missing entirely):** the classification policy, the four flags, the

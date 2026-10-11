@@ -602,7 +602,7 @@ The strongest principle in the set, and now mechanised rather than aspirational:
   sandwiched case (0000 applied, 0001 pending, 0002 applied → 0001 ran *after* 0002), and the
   repository has a live sequence gap at 0017, so it was reachable
 - ⚠️ "All migrations reviewed by 2+ developers" is a process claim with no tooling behind it
-- ⛔ "Backup before migrations" has no automation behind it — no backup job exists
+- 🔄 "Backup before migrations" has CI automation behind it — `.github/workflows/backup.yml` runs daily and `scripts/backup.sh` can run before a migration; ⛔ no pre-migration hook triggers it automatically
 - ✅ `backend/push-schema.ts` — a third, divergent hand-rolled bootstrap creating a table that does
   not exist in the Drizzle schema — was **deleted**. `drizzle-kit` and `dotenv` were imported by
   `drizzle.config.ts` and declared nowhere, so `db:studio` had never worked; both are now declared
@@ -656,7 +656,9 @@ The strongest principle in the set, and now mechanised rather than aspirational:
 - ✅ The `Secured` decorator composes guards without editing them; the `@Cacheable` /
   `@CacheInvalidateTags` decorators add caching without touching service code
 - ⚠️ "Plugin architecture for optional features" does not exist. The email delivery path is
-  configured but has no pluggable transport, and no optional feature is loaded dynamically
+  configured but has no pluggable transport — the transport is a concrete class, not a plugin:
+  `SmtpEmailTransporter` (`modules/notifications/email/smtp-email-transporter.ts`, nodemailer) is
+  registered and exported in `notifications.module.ts`. No optional feature is loaded dynamically
 
 ### #9 Single Source of Truth — ✅ ENFORCED
 - ✅ **Roles:** `ACCOUNT_TYPES` / `ADMIN_ROLES` in `@hakawi/shared-types`, re-exported by
@@ -802,7 +804,7 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
   `POST /admin/waf/unblock-ip`, `POST /admin/waf/clear-counters` and `POST /admin/waf/clear-blocks`
   are all absent. An operator blocked by the WAF has no supported way out except direct Valkey
   manipulation
-- ⛔ **No WAF metrics endpoint.** No counters, no dashboards, no alerting
+- ⛔ **No WAF metrics endpoint.** No WAF counters and no WAF dashboard. Alerting is not WAF-specific either: a `WAFHighViolationRate` rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml`, but ⛔ no cluster applies it
 - ⛔ **No XML injection (XXE) rule**
 - ⛔ **No `Content-Security-Policy`** is emitted
 
@@ -912,24 +914,27 @@ capability inventory.
 
 | Feature | Which principle assumes it | Reality |
 |---|---|---|
-| **MFA / TOTP + recovery codes** | #15 (proactive defense), #9 (SSOT for auth state) | ⛔ **Not built.** `grep -rn "mfa\|totp\|two.factor\|2fa"` across `backend/src`, `frontend/src`, `packages/` returns **zero** matches. No `POST /auth/mfa`. An admin account is protected by authorization only |
+| **MFA / TOTP + backup codes** | #15 (proactive defense), #9 (SSOT for auth state) | ✅ **Built for enrolment, not enforcement.** TOTP (RFC 6238, `speakeasy`) + 8 one-time backup codes, optional per user: `GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa` (`mfa.controller.ts`). Secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029`). ⛔ Still unenforced: `@RequireMfa()` has no call site and `MfaGuard` is in no module's `providers`, so an admin account is still protected by authorization only |
 | **Account lockout after failed logins** | #15 | ⛔ **Not built.** `auth.service.ts` keeps no attempt counter. The only brake is the `auth` rate-limit tier: 10/min per IP — a brake on the *IP*, not the account |
 | **Session store** | #11 (Valkey for sessions), #16 | ⛔ **Not built.** No session table, no session key in Valkey, no device/IP capture, no concurrent-session cap. `session:{userId}` in the cache table is fictional. A session is a signed JWT pair; the only server-side token state is the refresh-token blacklist |
 | **Permission-decision audit trail** | #9 (SSOT), #15 | ⛔ **Not built.** Zero `audit` hits in `backend/src/common/permissions/` and `backend/src/common/guards/`. Moderation *actions* are recorded, but not authorization decisions |
-| **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ⛔ **Not built.** `grep -rni "replica" --include='*.ts' backend/src/` returns nothing. One primary; no `DB_REPLICA_*`. See `system-architecture/infrastructure/read-replicas.md`, which is marked as a proposal |
+| **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ⚠️ **Router built, unused.** `db/router.ts` splits reads/writes and reads `DB_REPLICA_*`; registered in `database.module.ts`. ⛔ No module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA` and 26 files import the plain `db` from `db/index.ts`, so no query is split today. See `system-architecture/infrastructure/read-replicas.md` |
 | **Backup automation** | #6 (minimize migrations: "backup before migrations"), #16 (disaster recovery) | 🔄 **Automated via GitHub Actions.** `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads as an artifact. ⛔ No PITR or restore drill |
 | **Resource quotas per user/tenant** | #15 | ⛔ **Not built.** No tiers, no balances, no counters that deduct. The throttler limits a 60-second window; it is a rate limit, not a quota |
 | **Write-through caching + cache warming** | #11 | ⛔ **Not built.** The write path invalidates. `@CacheWarmTags` exists with no caller |
 | **Consistency-violation detection** | #16 | ⛔ **Not built.** No code compares a cache read against the database to detect divergence |
 | **Compensation mechanisms** | #16 | ⛔ **Not built.** No saga, no compensating action, no reconciliation job |
-| **Plugin architecture for optional features** | #8 (open/closed) | ⛔ **Not built.** The email path is configured but has no pluggable transport — in fact no SMTP client exists at all |
-| **Monitoring dashboards + alerting** | #4, #15 | ⛔ **Not built.** Sentry receives errors and `GET /api/v1/metrics/cache` reports hit rate, but there is no dashboard definition and **no alert rule anywhere in the repository** |
+| **Plugin architecture for optional features** | #8 (open/closed) | ⛔ **Not built** as a plugin system — but the SMTP client it lacked now exists: `SmtpEmailTransporter` (`modules/notifications/email/smtp-email-transporter.ts`, nodemailer with SendGrid/Mailgun/SES hosts), registered in `notifications.module.ts` behind the `EmailTransporter` interface |
+| **Monitoring dashboards + alerting** | #4, #15 | ⚠️ **Defined, not deployed.** Alert rules exist (`monitoring/prometheus/rules/hakawi-alerts.yml` — 20 rules across three groups: BackendDown, BackendHighErrorRate, BackendHighLatency, PostgreSQLDown, PostgreSQLConnectionsHigh, PostgreSQLReplicationLag, ValkeyDown, ValkeyMemoryHigh, ValkeyHitRateLow, WAFHighViolationRate, …), with `monitoring/alertmanager/alertmanager.yml` and a Grafana dashboard (`monitoring/grafana/dashboards/hakawi-overview.json`). ⛔ No cluster applies them, and no rule covers MFA. Sentry and `GET /api/v1/metrics/cache` are live |
 | **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⛔ **Not built.** No `SELECT … FOR UPDATE`, no version column. The only money-path concurrency control is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges* |
 | **User documentation** | #4, #5 | ⛔ **Not built.** No user-facing docs exist outside `docs/` |
 | ~~**CHANGELOG**~~ | #4 (explicitly listed as a documentation type) | ✅ **Built — this entry is retracted.** `CHANGELOG.md` exists at the repository root (commit `febf264`), following Keep a Changelog 1.1.0 with an `[Unreleased]` section. The previous version of this table said "⛔ Not built. No CHANGELOG file in the repository", which was false |
-| **Email delivery** | #15, #9 | ⛔ **Not built.** No SMTP client. Only `EMAIL_FROM` is read, by `notifications-email.service.ts` |
+| **Email delivery** | #15, #9 | ✅ **Built.** `SmtpEmailTransporter` (nodemailer; SendGrid/Mailgun/SES) is registered and exported by `notifications.module.ts`; `EMAIL_*` config feeds it |
 
-**15 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true.
+**10 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true,
+**Email delivery is now built**, and read replicas and monitoring/alerting exist in the repo but are
+unwired or undeployed; MFA is built but still unenforced (`@RequireMfa()` has no call site), and
+backup automation runs in CI.
 All are tracked in `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
 
 And one defect is materially worse than anything in that table:

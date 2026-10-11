@@ -74,14 +74,17 @@ evidence for each absence, is in
 [`phases/implementation-roadmap.md`](./phases/implementation-roadmap.md#open-items--the-complete-list-of-⛔-work).
 
 - ⛔ Read replicas, read/write splitting, replication-lag monitoring (Phase 7, Week 16)
-- ⛔ Load testing automation — `load-tests/k6.conf.js` exists but is not executed by any CI job
-      (Phase 7, Weeks 14, 18)
-- ⛔ Staging and production deployment — no manifest, IaC, or deploy script, despite a `Dockerfile`
-      existing at the repo root (Phase 7, Week 18)
-- ⛔ Backup automation — `scripts/backup.sh` exists but there is no cron job, scheduler, or PITR
-      configuration running it (Phase 7, Week 17)
-- ⛔ Alerting deployment — `monitoring/alert-rules.yml` exists but is not deployed or wired to any
-      alertmanager (M8)
+- 🔄 Load testing automation — `load-tests/k6.conf.js` **is** executed by the `load-test` CI job in
+      `ci.yml` (via `grafana/k6-action@v0.3.0`) on push to main (Phase 7, Weeks 14, 18)
+- ⛔ Staging and production deployment — the IaC, charts and deploy workflows exist
+      (`infrastructure/terraform/`, `infrastructure/helm/{backend,frontend}`, `deploy-dev/staging/production.yml`),
+      but no environment has been applied (Phase 7, Week 18)
+- 🔄 Backup automation — `scripts/backup.sh` exists and CI runs a daily backup workflow
+      (`.github/workflows/backup.yml`); ⛔ there is no in-cluster cron/scheduler and no PITR
+      configuration (Phase 7, Week 17)
+- ⛔ Alerting deployment — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus
+      `monitoring/alertmanager/alertmanager.yml` and the Grafana dashboard exist, but nothing deploys
+      them (M8)
 - ⛔ User-facing documentation — `docs/user/` has starter content; comprehensive help centre and
       onboarding are missing (Phase 7, Weeks 17, 18)
 - ⛔ Security penetration testing (Phase 7, Week 18)

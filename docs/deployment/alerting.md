@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to deploy and configure alerting for the Hakawi platform. Alert rules are defined in `monitoring/alert-rules.yml`, but they are not deployed by default. This document explains how to wire them to an alertmanager and configure notifications.
+This guide explains how to deploy and configure alerting for the Hakawi platform. Alert rules are defined in `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules), with routing in `monitoring/alertmanager/alertmanager.yml` and a dashboard at `monitoring/grafana/dashboards/hakawi-overview.json`; none of them is deployed by default. This document explains how to wire them to an alertmanager and configure notifications.
 
 ## Prerequisites
 

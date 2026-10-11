@@ -83,17 +83,17 @@ aws s3 cp media_backup_$(date +%Y%m%d).tar.gz s3://hakawi-backups/media/
 ├── frontend/.env.production    # encrypted
 ├── migrations/                 # ✅ exists — 18 .sql files + down/ sidecars
 ├── .github/workflows/ci.yml    # ✅ exists
-└── (no Dockerfile — none exists in this repository)
+└── Dockerfile                  # ✅ multi-stage app image (also ./backend/Dockerfile and ./frontend/Dockerfile)
 ```
 
 ### Corrections to the previous version
 
-The previous list contained two paths that **do not exist in this repository**:
+The previous list contained a path that **does not exist in this repository**:
 
 | Path | Reality |
 |---|---|
 | `nginx.conf` | ⛔ Does not exist. `find . -name nginx.conf` returns nothing — there is no reverse proxy in the repo |
-| `scripts/` | ⛔ Does not exist at the repo root. `backend/scripts/` exists and holds `generate-migration.ts`, `check-migrations.ts`, and `print-coverage-summary.mjs` |
+| `scripts/` | ✅ Exists at the repo root — `backup.sh`, `verify-backup.sh`, `restore-drill.sh` (`backend/scripts/` also holds `generate-migration.ts`, `check-migrations.ts`, `print-coverage-summary.mjs`) |
 
 A tar of `docker compose.yml nginx.conf scripts/` **fails**. The command below is the working
 version.
@@ -116,9 +116,11 @@ gpg --encrypt --recipient admin@hakawi.com config_backup.tar.gz
 
 ### ⛔ No automated configuration backup
 
-There is no scheduled job, no cron entry, and no CI step that produces a configuration backup. The
-`pg_dump` commands in the Database Backup section above are **manual procedures**, not automation.
-Nothing in this repository runs them on a schedule.
+Nothing in this repository produces a **configuration** backup on a schedule, and no cron entry runs
+these commands. The `pg_dump` commands in the Database Backup section above are **manual procedures**,
+not automation — database backups are scheduled, configuration backups are not:
+`.github/workflows/backup.yml` snapshots and `pg_dump`s the database daily at 2 AM UTC, and the
+`backup-verify` job in `ci.yml` exercises verification.
 
 ---
 

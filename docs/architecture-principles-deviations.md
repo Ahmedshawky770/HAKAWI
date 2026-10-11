@@ -182,10 +182,12 @@ Recorded so the next reader does not re-investigate it:
   Drizzle.** That document describes a system that does not exist: it references a "Core Module", an
   "Interactions Module" and `@core/*` path aliases, none of which are in the codebase. It is
   documentation debt, not a code deviation, and the honest fix is to rewrite the document.
-- **`WAF_BLOCKED_COUNTRIES` is parsed and deliberately inert.** This follows Principle #15's spirit
-  rather than violating it: there is no GeoIP source, and enforcing on a client-supplied country header
-  would be forgeable — a security control that reads as enforced and is not. It is pinned by a test that
-  asserts the field is named `reserved*` and that no key named `blockedCountries` exists.
+- **`WAF_BLOCKED_COUNTRIES` was parsed and deliberately inert; it is now enforced.** GeoIP enforcement
+  exists: `GeoIpService` (`common/waf/geo-ip.service.ts`) is injected in `waf.middleware.ts` and
+  `isBlocked(ip)` enforces `WAF_BLOCKED_COUNTRIES` (`waf.config.ts:164`), keyed on the resolved
+  client IP rather than a forgeable client-supplied header. The test that pinned the absence has
+  already been removed — `waf.config.spec.ts` now asserts that `blockedCountries` parses the variable
+  and arms the `geoBlocking` opt-in control.
 - **`body-size-limit` is detection, not prevention.** Defence in depth, not a gap: `requestSizeLimit`
   and the two parser `limit` options run first and abort the stream. Both the rule and the middleware
   say so in their own comments.

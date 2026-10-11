@@ -206,7 +206,7 @@ WAF_TEMP_BLOCK_SECONDS=3600
 WAF_VIOLATION_WINDOW_SECONDS=900
 WAF_VIOLATIONS_BEFORE_TEMP_BLOCK=5
 WAF_VIOLATIONS_BEFORE_PERMANENT_BLOCK=25
-WAF_BLOCKED_COUNTRIES=                   # reserved: geo-blocking is NOT implemented
+WAF_BLOCKED_COUNTRIES=                   # comma-separated ISO codes; non-empty arms geo-blocking (GeoIpService, enforced in waf.middleware.ts)
 ```
 
 ⛔ **Removed, read by nothing:** `WAF_RATE_LIMIT_ENABLED`, `WAF_RATE_LIMIT_REQUESTS`,
@@ -282,10 +282,12 @@ EMAIL_FROM=noreply@hakawi.com            # the ONLY email variable any code read
 
 `EMAIL_FROM` is read at `backend/src/modules/notifications/email/notifications-email.service.ts:21`.
 
-⛔ **Read by nothing:** `EMAIL_PROVIDER`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`,
-`EMAIL_PASSWORD`, `EMAIL_REPLY_TO`. **No SMTP client is wired.** The notification module emits
-events; nothing sends mail. The password-reset flow will create a token and emit
-`password.reset.requested`, and no email will ever be delivered.
+⚠️ **Read by the SMTP client:** `EMAIL_PROVIDER`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`,
+`EMAIL_PASSWORD`, `EMAIL_REPLY_TO` are consumed by `SmtpEmailTransporter`
+(`modules/notifications/email/smtp-email-transporter.ts`), registered in `notifications.module.ts`.
+Delivery is inert until `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD` are set — the
+transporter throws “No email transporter configured” otherwise. With no host configured, the
+password-reset flow creates a token and emits `password.reset.requested`, and no email is delivered.
 
 ### Cache — ⛔ the entire block is fiction
 ```env
@@ -416,7 +418,7 @@ with NodeNext `.js` specifiers it cannot resolve.
 | `TIKTOK_CLIENT_ID` | Code reads `TIKTOK_CLIENT_KEY`. Same `.env.example` defect |
 | `STORAGE_ENDPOINT` | ⛔ Read by nothing. Removed |
 | `API_PREFIX` | ⛔ Read by nothing; `api/v1` is hard-coded. Removed |
-| `EMAIL_PROVIDER`/`_HOST`/`_PORT`/`_USER`/`_PASSWORD`/`_REPLY_TO` | ⛔ Read by nothing; no SMTP client is wired. Only `EMAIL_FROM` is real |
+| `EMAIL_PROVIDER`/`_HOST`/`_PORT`/`_USER`/`_PASSWORD`/`_REPLY_TO` | ⚠️ Read by `SmtpEmailTransporter`; delivery is inert until `EMAIL_HOST` and the credentials are set |
 | `CACHE_ENABLED` + the four `CACHE_TTL_*` | ⛔ Read by nothing — TTLs are compile-time constants. Removed. `.env.example` still lists them |
 | `WAF_RATE_LIMIT_*` (3 vars) | ⛔ Never existed; rate limiting is the `THROTTLE_*` tiers |
 | `WAF_ADMIN_EMAIL`, `WAF_STRICT_REFERRER`, `WAF_FINGERPRINT_PROTECTION` | ⛔ Read by nothing, though listed in `.env.example`. Removed |

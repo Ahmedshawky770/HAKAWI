@@ -29,6 +29,6 @@
 
 ### Kubernetes
 - Deploy (Helm): `helm upgrade --install hakawi-backend ./infrastructure/helm/backend --namespace hakawi`
-- Deploy (Kustomize): `kustomize build infrastructure/kubernetes/overlays/production | kubectl apply -f -`
+- Deploy (production): `helm upgrade --install hakawi-backend ./infrastructure/helm/backend --namespace hakawi --values infrastructure/helm/backend/values-production.yaml`
 - Status: `kubectl rollout status deployment/hakawi-backend -n hakawi`
 - Logs: `kubectl logs -n hakawi deployment/hakawi-backend -f`

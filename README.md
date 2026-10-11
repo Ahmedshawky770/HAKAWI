@@ -165,16 +165,16 @@ documenting an aspiration as a capability — is what this README exists to avoi
 
 | area | state |
 | --- | --- |
-| Docker image / deployment | **3 `Dockerfile`s exist** (root, backend, frontend). No deploy manifest, no IaC. Compose runs datastores plus source-mounted apps, for local development only. |
+| Docker image / deployment | **3 `Dockerfile`s exist** (root, backend, frontend). **IaC exists**: Terraform (`infrastructure/terraform/` — `vpc`/`eks`/`rds`/`elasticache`/`s3`/`iam`/`monitoring` modules + `environments/{dev,staging,production}`) and Helm-only deployment (`infrastructure/helm/backend` + `infrastructure/helm/frontend`, per-environment `values-*.yaml`); `.github/workflows/deploy-{dev,staging,production}.yml` run `terraform apply` then `helm upgrade`. ⛔ **Nothing has been applied — no EKS cluster exists.** Compose runs datastores plus source-mounted apps, for local development only. |
 | Backup & restore | Documented in `docs/deployment/`. Backup script with verification and S3 replication in `scripts/`. GitHub Actions daily backup job. Restore drill script in `scripts/`. |
 | Migrations rollback | `migrations/down/` exists for every migration and `db:check` verifies it structurally. CI now runs up → down → up roundtrip (`migration-roundtrip` job). |
 | Email delivery | **SMTP client implemented** (`SmtpEmailTransporter` in `modules/notifications/email/`). `EmailTransporter` interface wired in `NotificationsModule`. |
-| MFA, account lockout | **Account lockout implemented** (`AccountLockoutService` in `modules/auth/`). Progressive delay, IP + user tracking, auto-unlock. MFA not implemented. |
+| MFA, account lockout | **Both implemented.** Account lockout: `AccountLockoutService` in `modules/auth/` — progressive delay, IP + user tracking, auto-unlock. MFA: `MfaController`/`MfaService` in `modules/auth/` — TOTP (RFC 6238) + 8 backup codes, optional per user, 6 routes under `/api/v1/auth/mfa` (migration `0029`). ⚠️ Enrolment works, enforcement does not: `@RequireMfa()` has no call site, so no endpoint actually requires a second factor. |
 | Alerting | **Alert rules configured** (`monitoring/alertmanager/alertmanager.yml`, `monitoring/prometheus/rules/`). **Grafana dashboards** configured (`monitoring/grafana/dashboards/`). Sentry wired. |
 | Load / performance testing | **k6 config exists** (`load-tests/k6.conf.js`). CI runs load test on main branch (`load-test` job). |
-| Read replicas | None. Single primary; no replication-lag monitoring. |
+| Read replicas | ⚠️ **Read/write-splitting code exists, wired nowhere.** `backend/src/db/router.ts` routes `select()` → replica (round-robin, primary fallback) and writes → primary, reads `DB_REPLICA_*`, and is registered in `database.module.ts` — but 0 modules inject `DATABASE`; 26 files import the plain pooled `db` from `db/index.ts`, so no query is split today. The health endpoint does report replica health via `checkDatabaseHealth` |
 | WAF administration | **Admin endpoints implemented** (`GET/POST /admin/waf/*` in `modules/admin/`). IP blocklist management, violation clearing. |
-| Geo-blocking | `WAF_BLOCKED_COUNTRIES` is parsed into `reservedBlockedCountries` and deliberately inert. It has no GeoIP source, and enforcing on a client-supplied country header would be forgeable. |
+| Geo-blocking | **Enforced.** `WAF_BLOCKED_COUNTRIES` → `blockedCountries` (`waf.config.ts:164`, `geoBlockingEnabled` when non-empty); `GeoIpService` (`common/waf/geo-ip.service.ts`) is injected in `waf.middleware.ts` and `isBlocked(ip)` blocks requests at the `geo-blocked-country` rule (`waf.middleware.ts:341`). Country comes from the resolved client IP, not a client header. |
 | Production configuration | **Production env template** (`backend/.env.production.template`). `NODE_ENV` must be exactly `production` for secret checks to arm. `THROTTLE_TRUST_PROXY` must be `true` behind reverse proxy. |
 
 ## Where things are written down

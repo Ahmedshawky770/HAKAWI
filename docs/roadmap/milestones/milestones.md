@@ -48,7 +48,7 @@ Establish the project foundation: authentication, database, and basic infrastruc
 - [x] Next.js frontend with App Router
 - [x] PostgreSQL database configured — 33 tables
 - [x] Valkey cache configured
-- [x] Docker Compose for local development — ⚠️ services only; **no `Dockerfile` exists**
+- [x] Docker Compose for local development — ✅ services plus `docker-compose.yml`; **Dockerfiles exist** (root, `backend/`, `frontend/`)
 - [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **12 jobs**. ⚠️ the previous version of
       this line said **10** and omitted `migration-roundtrip`
 
@@ -523,8 +523,13 @@ Shipped early (during Phases 1–2), not in Weeks 15–16.
 - [x] Timeout configuration — `TimeoutService`
 - [x] Fallback strategies — `FallbackService`
 - [x] **Unit tests** for all of the above
-- [ ] ⛔ Read replica — **NOT BUILT.** `grep -rni replica backend/src` → no matches
-- [ ] ⛔ Read/write splitting — **NOT BUILT**
+- [ ] ⚠️ Read replica — **built but unwired.** `backend/src/db/router.ts` implements the split
+      (`select()` → replica round-robin with primary fallback, writes/transactions → primary,
+      `DB_REPLICA_*`) and is registered in `database.module.ts`, but no module injects
+      `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA` — 26 files import the plain `db` from
+      `db/index.ts`, so no query is split today
+- [ ] ⛔ Read/write splitting — **code exists, not in effect** — the router above is not injected
+      into any module
 - [ ] ⛔ Replication lag monitoring — **NOT BUILT**
 
 ### Verification Steps
@@ -556,18 +561,19 @@ Complete testing, optimisation, and deploy to production.
       8 previously-never-executed tests then failed on stale fixtures and were fixed
 - [x] Security audit in CI — `npm audit --omit=dev` + `npm audit`
 - [x] Monitoring setup — Sentry (`@sentry/nestjs@11.1.0`) + Winston
-- [ ] 🔄 **Production deployment — deploy workflow and per-service Dockerfiles exist, but there is no
-       staging/production manifest/IaC.** `.github/workflows/deploy.yml` builds and pushes images to
-       ghcr.io on push to main from `./backend/Dockerfile` and `./frontend/Dockerfile`, which now exist.
-       A root `Dockerfile` also exists for local/production image builds
+- [ ] 🔄 **Production deployment — deploy workflows and per-service Dockerfiles exist, and so does the
+       IaC, but no environment has been applied.** `.github/workflows/deploy-production.yml` runs
+       `terraform apply` then `helm upgrade --install` against `infrastructure/helm/backend` and
+       `infrastructure/helm/frontend` (`values.yaml` + `values-production.yaml`). A root `Dockerfile`
+       also exists for local/production image builds
 - [ ] 🔄 **Backup automation — implemented via GitHub Actions.** `.github/workflows/backup.yml` runs
       `pg_dump` daily at 2 AM UTC and uploads as an artifact. No PITR is configured
 - [ ] 🔄 **Load testing — automated in CI via k6.** `load-tests/k6.conf.js` is executed by the
       `load-test` CI job on push to main via `grafana/k6-action@v0.3.0`
-- [ ] ⛔ **Performance benchmarking — NOT BUILT.** The p95 targets have never been measured
+- [ ] ⚠️ **Benchmark harness exists, unwired** (`benchmarks/benchmark.js`); the p95 targets have never been measured in CI
 - [ ] ⛔ **Security penetration testing — NOT BUILT**
 - [ ] ⛔ **User documentation — NOT BUILT**
-- [ ] ⛔ **Alerting rules — NOT BUILT**
+- [ ] ⚠️ **Alerting rules — defined, not deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` + `alertmanager.yml` + Grafana dashboard exist; nothing applies them yet
 - [ ] ⛔ **Duplicated contest notifications** — `contests.event-handler.ts` and
       `notifications.event-handler.ts` both subscribe to `winner.selected` and `prize.distributed`, so a
       winner gets **two** rows for each. Recorded, not fixed: one side must be declared canonical
@@ -583,11 +589,15 @@ Complete testing, optimisation, and deploy to production.
    target, and the gate itself is set to 38/33/33/38 — it encodes the current number rather than the
    target. ⚠️ **both quadruples were wrong before this pass** (the document said 85.43/82.39/79.00/85.58
    and 39.79/35.90/35.74/40.22)
-2. **Performance** ⛔ — no benchmark harness exists, so no target has been measured
-3. **Security** 🔄 — CI audit passes; ⛔ no pentest, ⛔ no WAF metrics endpoint, ⛔ no admin
-   operations endpoints to manage blocks
-4. **Deployment** ⛔ — nothing to deploy
-5. **Monitoring** 🔄 — Sentry wired; ⛔ no dashboards, ⛔ no alert rules
+2. **Performance** ⛔ — the harness exists (`benchmarks/benchmark.js`) but is unwired, so no target has been measured
+3. **Security** 🔄 — CI audit passes; ⛔ no pentest, ⛔ no WAF metrics endpoint; ✅ WAF admin operations
+   endpoints exist — `backend/src/modules/admin/admin-waf.controller.ts` (`@Controller('admin/waf')`,
+   registered in `admin.module.ts`) serves `GET blocked-ips`, `POST block-ip`, `POST unblock-ip`,
+   `POST clear-counters` and `POST clear-blocks`
+4. **Deployment** ⛔ — the IaC and charts exist (Terraform modules, `infrastructure/helm/*`, `deploy-*.yml`), but no environment has been provisioned or deployed
+5. **Monitoring** 🔄 — Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`**
+   (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 20 rules,
+   `alertmanager/alertmanager.yml`), but nothing deploys them
 
 ### Verification Steps — the real ones
 
@@ -658,7 +668,7 @@ M8 is the current blocker, and its blockers are enumerated in
 | Every `curl` used **port 3000** for API calls | The API is on **3001** with the `api/v1` prefix. All 20+ commands corrected |
 | `npm run test:coverage` (root) | ⛔ Does not exist. Replaced with `npm test` (backend, which includes the coverage gate) and `npm run test:coverage --workspace=frontend` |
 | `npm run security:scan` | ⛔ Does not exist. Replaced with `npm audit --omit=dev` |
-| `npm run test:perf` | ⛔ Does not exist, and no perf harness exists. Removed rather than replaced |
+| `npm run test:perf` | ⛔ Does not exist (still true) — but a harness does: `benchmarks/benchmark.js` is not wired to any npm script |
 | `npm run deploy:staging` | ⛔ Does not exist. There is no deployment script |
 | `npm run test:smoke` | ⛔ Does not exist. Replaced with the e2e suite |
 | Health check shown as `curl http://localhost:3000/health` | `GET /api/v1/health` on port 3001. The endpoint also returns `degraded` rather than a `services: { sanity }` object — the app checks PostgreSQL and Valkey only |
@@ -666,7 +676,7 @@ M8 is the current blocker, and its blockers are enumerated in
 | "Messages are real-time" | ✅ WebSocket gateway with a Redis adapter, but ⚠️ never load-tested |
 | Story create body shown with `"category":"fiction"` | The API takes `categoryId` (UUID) |
 | Rental body shown with `"duration":"one_week"` | The API takes `durationDays` as an **integer** in `[1,3,7,14,30,90]` (`@IsIn`). An enumeration, but not a `CREATE TYPE` enum, and the key is `durationDays` not `duration` |
-| M1 "Docker Compose for local development" listed as met | Kept, with the note that there is **no `Dockerfile`** — it is services only |
+| M1 "Docker Compose for local development" listed as met | Kept — and the "no `Dockerfile`" note is **false**: three exist (repo root, `backend/`, `frontend/`). It is Compose plus containerised images |
 | Moderation listed under M6 Production with no status | Now its own milestone M6, ✅, including the note that the `@RequireAdminRole` authorization hole is closed |
 
 ---

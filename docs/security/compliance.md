@@ -161,7 +161,7 @@ if (userAge < 18) {
 | Insecure Design | Security by design |
 | Security Misconfiguration | Security headers, WAF |
 | Vulnerable Components | Dependency scanning |
-| Authentication Failures | Strong auth, MFA |
+| Authentication Failures | Strong auth, MFA (TOTP RFC 6238 + 8 backup codes — optional per user, enforced on no route) |
 | Data Integrity Failures | Input validation, signing |
 | Logging Failures | Comprehensive logging |
 | SSRF | URL validation, whitelist |

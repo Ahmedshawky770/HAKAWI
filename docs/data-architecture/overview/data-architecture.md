@@ -185,7 +185,7 @@ graph TB
 4. Notification service creates notifications
 5. Notifications stored in PostgreSQL
 6. Valkey cache updated
-7. Real-time push via WebSocket (future)
+7. Real-time push via WebSocket — `MessagesGateway` (`@WebSocketGateway`, namespace `/messages`, JWT handshake auth, Redis IO adapter) in `modules/messages/gateways/`
 ```
 
 ---

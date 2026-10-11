@@ -54,7 +54,7 @@ Phase: [P1: Foundation ✅]
 | 10 | M5: Payments | ✅ |
 | 12 | M6: Contests | ✅ |
 | 13 | M7: Moderation | ✅ |
-| 18 | M8: Production | ⛔ Not met — no deployment artifact, no staging, no production |
+| 18 | M8: Production | ⛔ Not met — Terraform + Helm IaC exists but no environment applied, no staging, no production |
 
 ---
 
@@ -65,8 +65,9 @@ Phase: [P1: Foundation ✅]
 3. **Books & Commerce** (Phase 4) — highest-risk phase (payment integration) ✅ built
 4. **Polish & Launch** (Phase 7) — 🔄 the only open path, and it is the reason M8 has not been met
 
-Everything blocking M8 is infrastructure, not product: read replicas, load testing automation, a
-`Dockerfile` that exists but is not deployed, a deployment manifest, backup automation, and alerting
+Everything blocking M8 is infrastructure, not product: read replicas, load testing automation,
+applying the Terraform/Helm IaC that exists (`infrastructure/terraform/`,
+`infrastructure/helm/{backend,frontend}`, `deploy-*.yml`), backup automation, and alerting
 deployment. Two items are neither infrastructure nor product, and are ⛔ as of 2026-10-04: four social
 UI pages have **no call sites** to the routes the client now points at, and the frontend coverage
 gate certifies roughly 68% instead of the 80% target.
@@ -81,7 +82,7 @@ gate certifies roughly 68% instead of the 80% target.
 | Sanity CMS integration | 2 | Medium | `CircuitBreakerService` wrapper, PostgreSQL fallback | ✅ Built |
 | Testing coverage | All | High | TDD, **3986 tests across four suites**, 11-job CI with hard gates | ✅ Built; ⚠️ frontend **S 68.39 / L 68.17** against an 80% target, and the frontend gate is set to 38/33/33/38 — it encodes the current number, not the target. ⛔ and until 2026-10-04 the 11-file integration suite had never executed |
 | Migration data loss | All | High | sha256 content-checksum ledger, per-migration transactions, reversibility classification — **0 irreversible, 18 data-loss, 4 reversible** across the 22 down scripts | ✅ Materially reduced |
-| Performance under load | 7 | Medium | Cache-aside + tagged invalidation + hit-rate metrics | ⛔ Unmitigated — k6 config exists but is not run in CI; no benchmark harness |
+| Performance under load | 7 | Medium | Cache-aside + tagged invalidation + hit-rate metrics | 🔄 k6 runs in CI (`load-test` job in `ci.yml`, `grafana/k6-action`); ⛔ no p95 target is measured — the `benchmarks/benchmark.js` harness is wired to no npm script or CI job |
 | **Backend could not boot** | 1 | **Fatal** | `forwardRef()` on both sides of the `BooksModule` ↔ `LibraryModule` cycle | ✅ **Retired 2026-10-04** |
 | **CI green on a suite that did not run** | All | High | Fix the module graph; assert the integration specs execute | ✅ **Retired 2026-10-04** |
 

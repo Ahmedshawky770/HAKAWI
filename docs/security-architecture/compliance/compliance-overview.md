@@ -136,7 +136,7 @@ maskId('usr_123456789') => 'usr_***'
    - Login attempts (success/failure)
    - Logout events
    - Password changes
-   - MFA enrollment/changes
+   - MFA enrollment/changes — the events now exist (`mfa.enabled`, `mfa.disabled`), but nothing records them as audit records
 
 2. **Authorization Events**
    - Permission checks

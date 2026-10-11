@@ -20,7 +20,7 @@ This guide explains how to deploy the Hakawi platform to production. The platfor
 |--------|----------|----------------|
 | **Kubernetes (Recommended)** | Production, staging | EKS, RDS, ElastiCache, S3 managed by Terraform |
 | **Docker Compose** | Local development, small deployments | Self-managed on a single host |
-| **Kubernetes (Manual)** | Self-managed Kubernetes | Bring your own cluster |
+| **Kubernetes (Manual)** | Self-managed Kubernetes | Bring your own cluster and render the Helm charts yourself (`helm template`) |
 
 ## Architecture (Principle #9 — Single Source of Truth) — Kubernetes
 
@@ -73,7 +73,7 @@ Secrets Injection:
 ```
 
 **Routing Logic (Application Layer):**
-- **Writes** (INSERT/UPDATE/DELETE) → Primary PostgreSQL via RDS Proxy
+- **Writes** (INSERT/UPDATE/DELETE) → Primary PostgreSQL (application pool); no RDS Proxy is provisioned
 - **Reads** (SELECT) → Read replicas when `DB_REPLICA_HOSTS` is set
 - **Post-write reads** → Primary (read-your-writes consistency)
 
@@ -82,7 +82,7 @@ Secrets Injection:
 ### For Kubernetes Deployment (Production)
 
 - AWS CLI configured with deployment credentials
-- `kubectl`, `helm`, and `kustomize` v5+ installed
+- `kubectl` and `helm` installed (deployment is Helm-only — no `kustomize`)
 - `terraform` v1.9+ installed
 - IAM permissions for EKS, RDS, S3, and Secrets Manager
 
@@ -142,19 +142,19 @@ aws secretsmanager create-secret --name "hakawi/production/encryption/key" --sec
 # Deploy backend
 helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
   --namespace hakawi \
-  --values infrastructure/kubernetes/overlays/production/backend-values.yaml \
+  --values infrastructure/helm/backend/values-production.yaml \
   --set image.tag=v1.0.0 \
   --wait --timeout=600s
 
 # Deploy frontend
 helm upgrade --install hakawi-frontend ./infrastructure/helm/frontend \
   --namespace hakawi \
-  --values infrastructure/kubernetes/overlays/production/frontend-values.yaml \
+  --values infrastructure/helm/frontend/values-production.yaml \
   --set image.tag=v1.0.0 \
   --wait --timeout=600s
 
-# Alternatively, use Kustomize
-kustomize build infrastructure/kubernetes/overlays/production | kubectl apply -f -
+# The two helm commands above are the whole deployment path; the identical pair runs in
+# .github/workflows/deploy-production.yml (terraform apply, then helm upgrade)
 ```
 
 ### Step 5: Run Database Migrations
@@ -243,11 +243,12 @@ helm upgrade --install hakawi-frontend infrastructure/helm/frontend \
   --wait --timeout=300s
 ```
 
-### Step 2: Deploy with Kustomize
+### Step 2: Verify the Rollout
 
 ```bash
-kustomize build infrastructure/kubernetes/overlays/staging | kubectl apply -f -
-kustomize build infrastructure/kubernetes/overlays/production | kubectl apply -f -
+kubectl get pods,svc,ingress,hpa,pdb -n hakawi
+kubectl rollout status deployment/hakawi-backend -n hakawi --timeout=300s
+kubectl rollout status deployment/hakawi-frontend -n hakawi --timeout=300s
 ```
 
 ### Step 3: Run Migrations
@@ -541,7 +542,7 @@ kubectl logs -n hakawi deployment/hakawi-frontend --tail=100
 ### Optimization
 
 - CDN for static assets via CloudFront (pointing to S3 origin)
-- Database connection pooling via RDS Proxy
+- Database connection pooling in the application pool (NestJS `pg`); no RDS Proxy is provisioned by Terraform
 - Valkey persistence with both RDB and AOF
 - Read replicas for read-heavy workloads (SELECT → replicas)
 - Gzip compression at ALB level

@@ -181,14 +181,16 @@ await blocklist.clearViolations(ip);    // :196
 > and an `isBlocked` returning `boolean`. Both were wrong: the real signature takes a `BlockOptions`
 > object, and `isBlocked` returns the full `BlockRecord`.
 
-### ⛔ Admin operations endpoints — NOT IMPLEMENTED
+### ✅ Admin operations endpoints — IMPLEMENTED (`admin/admin-waf.controller.ts`, `@Controller('admin/waf')`, registered in `admin.module.ts`)
 
-The service methods exist, but **nothing exposes them over HTTP.** There is no
-`GET /admin/waf/blocked-ips`, no `POST /admin/waf/unblock-ip`, no
-`POST /admin/waf/clear-counters`, and no `POST /admin/waf/clear-blocks` — a grep for
-`admin/waf` across `backend/src` returns zero hits. **An operator blocked by the WAF today has no
-supported way to unblock the IP except direct Valkey manipulation.** The service API is the intended
-surface and is retained below as a requirement.
+`AdminWafController` (`backend/src/modules/admin/admin-waf.controller.ts`) exposes the blocklist
+service over HTTP at `@Controller('admin/waf')` and is registered in `admin.module.ts:9`:
+`GET blocked-ips`, `POST block-ip`, `POST unblock-ip`, `POST clear-counters`,
+`POST clear-blocks`. **An operator blocked by the WAF now has a supported way to unblock the IP**
+— every route is guarded by `JwtAuthGuard` + `@RequireAdminRole(AdminRole.SUPER_ADMIN)` on the
+`default` throttle tier, so direct Valkey manipulation is no longer the only path. ⚠️
+`clear-counters` / `clear-blocks` called without an `ip` in the body are stubs: they log a warning
+and return `{ success: true }` without clearing anything. The service API is retained below.
 
 ---
 
@@ -258,7 +260,7 @@ it matches `^[A-Za-z0-9_-]{1,128}$` (`resolveCorrelationId`), and echoed on the 
 ## Security Headers — ⚠️ partial
 
 ### Application-level headers — ✅
-Set by a hand-written map in `backend/src/main.ts:15-21`. There is **no `helmet` dependency**; the
+Set by a hand-written map in `backend/src/main.ts:17-26`. There is **no `helmet` dependency**; the
 earlier `app.use(helmet({...}))` snippet in `docs/deployment/deployment.md` was never real.
 
 ```
@@ -268,12 +270,16 @@ X-XSS-Protection: 1; mode=block
 Referrer-Policy: strict-origin-when-cross-origin
 Permissions-Policy: geolocation=(), microphone=(), camera=()
 Strict-Transport-Security: max-age=31536000; includeSubDomains   # production only
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 ```
 
-### ⛔ Headers NOT set
+`Content-Security-Policy` is set from the same map — the earlier document listed
+`default-src 'self'` as missing because `SECURITY_HEADERS` (`backend/src/main.ts:25`) did not carry
+it yet. It now does.
+
+### Headers NOT set
 | Header | Status |
 |---|---|
-| `Content-Security-Policy` | ⛔ **NOT SET.** The earlier document listed `default-src 'self'`; no CSP is emitted anywhere |
 | HSTS outside production | ⛔ Not set (deliberate — HSTS on a non-TLS dev origin is harmful) |
 | `trust proxy` | ⛔ Not configured. Behind a reverse proxy the client IP the WAF sees is the proxy's, so per-IP throttling and blocking key on the wrong address until `THROTTLE_TRUST_PROXY=true` is set |
 
@@ -297,7 +303,7 @@ WAF_TEMP_BLOCK_SECONDS=3600
 WAF_VIOLATION_WINDOW_SECONDS=900
 WAF_VIOLATIONS_BEFORE_TEMP_BLOCK=5
 WAF_VIOLATIONS_BEFORE_PERMANENT_BLOCK=25
-WAF_BLOCKED_COUNTRIES=                   # reserved: geo-blocking is NOT implemented
+WAF_BLOCKED_COUNTRIES=                   # comma-separated ISO country codes; non-empty arms geo-blocking via GeoIpService (enforced in waf.middleware.ts)
 ```
 
 ### Corrections to the previous variable list
@@ -306,7 +312,7 @@ WAF_BLOCKED_COUNTRIES=                   # reserved: geo-blocking is NOT impleme
 |---|---|
 | `WAF_RATE_LIMIT_ENABLED`, `WAF_RATE_LIMIT_REQUESTS`, `WAF_RATE_LIMIT_WINDOW` | ⛔ **DOES NOT EXIST.** Rate limiting is the throttler tier set (`THROTTLE_*`), not a WAF setting. Zero references in `backend/src` |
 | `WAF_ADMIN_EMAIL`, `WAF_STRICT_REFERRER`, `WAF_FINGERPRINT_PROTECTION` | ⛔ **DOES NOT EXIST.** They appear in `backend/.env.example` but no code reads them — the example file is ahead of the code here. Zero references in `backend/src` |
-| `WAF_BLOCKED_COUNTRIES` | ⚠️ parsed and stored, but **geo-blocking is not implemented** — the field is reserved and the `.env.example` comment says so |
+| `WAF_BLOCKED_COUNTRIES` | ✅ parsed into `blockedCountries` and enforced — `GeoIpService.isBlocked(ip)` runs in `waf.middleware.ts` for the `geo-blocked-country` rule |
 
 ---
 
@@ -319,30 +325,43 @@ WAF_BLOCKED_COUNTRIES=                   # reserved: geo-blocking is NOT impleme
 - ✅ Unhandled errors forwarded to Sentry
 
 ### ⛔ Not implemented
-- ⛔ **No WAF metrics endpoint.** There is no `GET /api/v1/metrics/waf`; the only metrics endpoint in
-  the application is `GET /api/v1/metrics/cache` (`backend/src/main.ts:96-98`).
+- ⛔ **No WAF metrics endpoint.** There is no `GET /api/v1/metrics/waf`; the application's metric
+  endpoints are `GET /api/v1/metrics/cache` and `GET /api/v1/metrics/degradation`
+  (`backend/src/common/observability/metrics.controller.ts:73,80`), both super-admin guarded and
+  neither counting WAF events.
 - ⛔ **No counters** for total requests, blocked requests, rate-limited requests, violations by
   type, blocked-IP count, or active blocks.
-- ⛔ **No dashboards.**
-- ⛔ **No alerting.** The "block rate > 10%", "rate limit spikes", "new threat patterns" and "WAF
-  errors" alerts in the previous version of this document do not exist.
+- 🔄 **No dashboard is deployed.** `monitoring/grafana/dashboards/hakawi-overview.json` exists in the
+  repository, but no cluster applies it.
+- 🔄 **No alerting is deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` (incl.
+  `WAFHighViolationRate`, `WAFIPBlockedSurge`) and `monitoring/alertmanager/alertmanager.yml` exist,
+  but no cluster applies them, and no WAF counter is exported for the rules to read. The "block rate
+  > 10%", "rate limit spikes", "new threat patterns" and "WAF errors" alerts the previous version of
+  this document listed still do not exist.
 
-Operators currently read structured logs. That is the whole story.
+Operators currently read structured logs, plus the two admin-gated JSON metric endpoints. That is
+the whole story.
 
 ---
 
 ## Operations
 
-### ⛔ Viewing and clearing blocks over HTTP — NOT IMPLEMENTED
+### ✅ Viewing and clearing blocks over HTTP — IMPLEMENTED
 
 ```text
-GET  /admin/waf/blocked-ips      ⛔ does not exist
-POST /admin/waf/unblock-ip       ⛔ does not exist
-POST /admin/waf/clear-counters   ⛔ does not exist
-POST /admin/waf/clear-blocks     ⛔ does not exist
+GET  /admin/waf/blocked-ips      ✅ exists (admin-waf.controller.ts); requires an admin role
+POST /admin/waf/block-ip         ✅ exists (admin-waf.controller.ts); requires an admin role
+POST /admin/waf/unblock-ip       ✅ exists (admin-waf.controller.ts); requires an admin role
+POST /admin/waf/clear-counters   ✅ exists (admin-waf.controller.ts); requires an admin role
+POST /admin/waf/clear-blocks     ✅ exists (admin-waf.controller.ts); requires an admin role
 ```
 
-**Interim procedure** — call the service directly:
+**Procedure** — call the endpoints above with a super-admin JWT (`JwtAuthGuard` +
+`@RequireAdminRole(AdminRole.SUPER_ADMIN)` on `admin-waf.controller.ts`). ⚠️
+`clear-counters` / `clear-blocks` without an `ip` in the body are stubs that log a warning and
+return `{ success: true }` without clearing anything.
+
+**Fallback for an operator with no super-admin token** — call the service directly:
 
 ```ts
 import { IpBlocklistService } from './common/waf/ip-blocklist.service.ts';
@@ -352,10 +371,10 @@ await ipBlocklistService.unblock('192.168.1.1');
 await ipBlocklistService.clearViolations('192.168.1.1');
 ```
 
-**Intended procedure** — the four endpoints above, guarded by
-`@Secured(AccountType.ADMIN) + @RequireAdminRole(AdminRole.SUPER_ADMIN)`. This is the pattern to
-follow; the guards exist (`backend/src/common/decorators/secured.decorator.ts`), only the controller
-is missing.
+The earlier document described these four endpoints as the *intended* surface guarded by
+`@Secured(AccountType.ADMIN) + @RequireAdminRole(AdminRole.SUPER_ADMIN)`, with only the controller
+missing. The controller exists now, and the real guard pair is `JwtAuthGuard` +
+`@RequireAdminRole` — `@Secured(AccountType.ADMIN)` is not used on this route.
 
 ---
 
@@ -374,12 +393,12 @@ is missing.
 | IP blocking temp/permanent + auto-unblock | ✅ Real, Valkey TTL | `backend/src/common/waf/ip-blocklist.service.ts:79-164` |
 | `ipBlocker.block(ip, durationSeconds, reason)` | Signature is `block(ip, BlockOptions)` | `backend/src/common/waf/ip-blocklist.service.ts:79` |
 | `isBlocked` returns boolean | Returns `BlockRecord \| null` | `backend/src/common/waf/ip-blocklist.service.ts:106` |
-| `GET /admin/waf/*` operations endpoints | ⛔ Not implemented; service methods exist, no controller | zero `admin/waf` hits in `backend/src` |
+| `GET /admin/waf/*` operations endpoints | ✅ Implemented — `admin-waf.controller.ts` serves `GET blocked-ips`, `POST block-ip`, `POST unblock-ip`, `POST clear-counters`, `POST clear-blocks` | `backend/src/modules/admin/admin-waf.controller.ts` |
 | XML injection detection | ⛔ No rule | — |
 | Rate limiting as WAF pipeline stage 2 | Not part of the WAF; handled by the throttler guard | `backend/src/common/middleware/waf.middleware.ts:290-340` |
-| CSP `default-src 'self'` | ⛔ No CSP is emitted | absent from `SECURITY_HEADERS` in `backend/src/main.ts:15-21` |
-| Metrics: counts, dashboards, alerts | ⛔ None. Only structured logs | only `/api/v1/metrics/cache` exists |
-| `WAF_BLOCKED_COUNTRIES` | Parsed, reserved; geo-blocking not implemented | `backend/src/config/waf.config.ts:38` |
+| CSP `default-src 'self'` | ✅ CSP is emitted — `Content-Security-Policy` is in `SECURITY_HEADERS` (`backend/src/main.ts:25`) | `backend/src/main.ts` |
+| Metrics: counts, dashboards, alerts | ⛔ No counters and no WAF metrics endpoint — structured logs are still the whole WAF story. Alert rules and a Grafana dashboard now exist in `monitoring/` (incl. `WAFHighViolationRate`, `WAFIPBlockedSurge`), ⛔ deployed nowhere | `monitoring/prometheus/rules/hakawi-alerts.yml`, `monitoring/grafana/dashboards/hakawi-overview.json`; the app metric endpoints are `/api/v1/metrics/cache` + `/api/v1/metrics/degradation` |
+| `WAF_BLOCKED_COUNTRIES` | Enforced via `GeoIpService.isBlocked` in `waf.middleware.ts` | `backend/src/config/waf.config.ts:164` + `backend/src/common/waf/geo-ip.service.ts` |
 
 ---
 

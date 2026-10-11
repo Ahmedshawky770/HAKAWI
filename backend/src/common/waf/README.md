@@ -85,12 +85,16 @@ alertable, not to silently flip a production default.
 
 ---
 
-## `WAF_BLOCKED_COUNTRIES` is reserved, not a control
+## `WAF_BLOCKED_COUNTRIES` is enforced, not reserved
 
-Geo-blocking is not implemented: there is no GeoIP source, no country matching, and no
-code path reads the list. The value is still parsed — so an existing deployment setting it
-is not silently discarded — and the field is named `reservedBlockedCountries` so it cannot
-be read as something that is on. Setting it has no effect on any request.
+Geo-blocking is live. `WAF_BLOCKED_COUNTRIES` is parsed into `blockedCountries`
+(`backend/src/config/waf.config.ts:164`), and `geoBlockingEnabled` is true whenever the list is
+non-empty (`:143`), which arms the `geoBlocking` opt-in control so the `geo-blocked-country` rule
+(`rules.ts:634`, severity `high`) can fire. The resolved client IP — never a client-supplied
+country header — is what decides: `GeoIpService` is injected in
+`backend/src/common/middleware/waf.middleware.ts:293`, and `this.geoIp.isBlocked(ip)` pushes a
+violation for the rule at `:341`. An empty list leaves the rule inert, which is why a deployment
+that never set the variable saw no effect.
 
 ---
 

@@ -1,34 +1,50 @@
 # Backup Strategy
 
-> ## ⛔ None of this is implemented. Read it as a target design.
+> ## 🔄 Database backup automation exists in CI — the in-cluster design below does not. Read this as a target design.
 >
-> This document previously read as an account of configured infrastructure. It is not. Verified
-> against the repository on 2026-10-04:
+> This document previously read as an account of configured infrastructure. It is not: the CI
+> database-backup automation above is real, and everything below it is design, not a running state.
+> Verified against the repository on 2026-10-04:
 >
-> - ⛔ **There is no backup job of any kind.** No `pg_dump` cron, no systemd timer, no scheduled job.
+> - ⛔ **No backup job runs inside the cluster** — no `pg_dump` cron, no systemd timer there.
+>   CI does automate it: `.github/workflows/backup.yml` runs daily (2 AM UTC), and `scripts/backup.sh`
+>   + `verify-backup.sh` exist; the `backup-verify` job in `ci.yml` exercises verification.
 >   The shell scripts printed below are **proposals** with `Location: /opt/hakawi/scripts/...`
 >   annotations; that directory is an operator host path and **does not exist in this repository**.
 >   (`backend/scripts/` does exist, and holds `generate-migration.ts`, `check-migrations.ts` and
->   `print-coverage-summary.mjs` — none of them backup scripts.)
+>   `print-coverage-summary.mjs` — none of them backup scripts; the real ones live in the repo-root
+>   `scripts/` and are not scheduled.)
 > - ⛔ **There is no WAL archiving and no PITR.** No `postgresql.conf` in the repo sets `wal_level`,
 >   `archive_mode` or `archive_command`, and no `docker-compose.yml` service configures archiving.
-> - ⛔ **No restore drill has ever been run**, because there is nothing to restore from.
-> - ⛔ **No Kubernetes, Terraform, or Ansible configuration exists.** There is no `infra/`,
->   `terraform/`, `k8s/` or `ansible/` directory and no `kubectl` manifest. The DR tiers in §6.2 —
->   "تبديل تلقائي عبر Kubernetes / systemd", "إعادة بناء البنية التحتية عبر Terraform / Ansible" —
->   describe tooling this project does not have.
-> - ⛔ **No `Dockerfile` exists** anywhere in the repository, and no backup procedure here has ever
->   been executed against a deployed artifact.
+> - ⛔ **The restore drill is not automated.** `scripts/restore-drill.sh` exists and `ci.yml` runs a
+>   `backup-verify` job, but no drill runs on a schedule
+> - ⛔ **No backup job is wired to the IaC.** Terraform, Helm charts and the EKS cluster definition
+>   all exist (`infrastructure/terraform/`, `infrastructure/helm/backend`, `infrastructure/helm/frontend`),
+>   but none of them schedules a backup: there is no `pg_dump` cron, no systemd timer, no scheduled job.
+>   The shell scripts printed below are **proposals** with `Location: /opt/hakawi/scripts/...`
+>   annotations; that directory is an operator host path and **does not exist in this repository**.
+>   (`scripts/backup.sh`, `scripts/verify-backup.sh` and `scripts/restore-drill.sh` do exist, and are
+>   not scheduled either.) The DR tiers in §6.2 — "تبديل تلقائي عبر Kubernetes / systemd",
+>   "إعادة بناء البنية التحتية عبر Terraform / Ansible" — name tooling the repository now has
+>   (`infrastructure/terraform/` can rebuild the stack; EKS replaces systemd for compute) but that no
+>   workflow runs on a schedule.
+> - ⛔ **Dockerfiles exist** — `Dockerfile`, `backend/Dockerfile`, `frontend/Dockerfile`; what is
+>   missing is a deploy that uses them — no environment has been applied — and no backup procedure
+>   here has ever been executed against a deployed artifact.
 > - ⛔ **The RTO/RPO targets in §6.1 are unreachable as written**, because the 5-minute RPO depends
 >   entirely on the PITR that does not exist.
 >
-> The *only* recovery story the repository actually supports today is: restore from a dump an
-> operator took by hand, following §5. That is a manual procedure with no schedule and no
-> verification.
+> The *only* recovery story the repository actually supports today is a scheduled database dump, not
+> a configuration one: `.github/workflows/backup.yml` snapshots and `pg_dump`s the database daily at
+> 2 AM UTC, `scripts/backup.sh` + `verify-backup.sh` implement the same locally, and the `backup-verify`
+> job in `ci.yml` exercises verification. Configuration backups, by contrast, are still **manual
+> procedures with no schedule and no verification** — see `backup.md`.
 >
-> `docs/01_ARCHITECTURE_PRINCIPLES.md` records the same gap under Principle #6 — "Backup before
-> migrations has no automation behind it" — and in *Unbuilt Features* as **Backup automation ⛔ Not
-> built**. This file is the design that would close it; it is not evidence that it is closed.
+> `docs/01_ARCHITECTURE_PRINCIPLES.md` records the same position under Principle #6 — "Backup before
+> migrations" has CI automation behind it (daily `.github/workflows/backup.yml`, `scripts/backup.sh`),
+> with no pre-migration hook that triggers it — and in *Unbuilt Features* as
+> **Backup automation 🔄 Automated via GitHub Actions** (no PITR, no restore drill). This file is the
+> design that would close the in-cluster and PITR halves; it is not evidence that they are closed.
 > `docs/deployment/backup.md` is the companion document and is where the *actual* current state is
 > recorded.
 
@@ -330,7 +346,7 @@ aws s3 cp s3://hakawi-backups/uploads/manifests/uploads_20250924.txt.gz - | \
 
 **Tier 3: Complete Data Center Failure**
 - Restore from S3 + Glacier
-- Rebuild infrastructure via Terraform / Ansible
+- Rebuild infrastructure via Terraform (`infrastructure/terraform`, dev/staging/production tfvars) — no Ansible in this repository
 - RTO: < 4 hours
 - RPO: < 24 hours (daily backups)
 
@@ -530,6 +546,6 @@ aws s3 cp s3://hakawi-uploads/images/abc123.png?versionId=version-id /local/path
 
 **المستوى 3: فشل مركز البيانات بالكامل**
 - الاستعادة من S3 + Glacier
-- إعادة بناء البنية التحتية عبر Terraform / Ansible
+- إعادة بناء البنية التحتية عبر Terraform (`infrastructure/terraform`) — لا يوجد Ansible في هذا المستودع
 - RTO: < 4 ساعات
 - RPO: < 24 ساعة (نسخ احتياطية يومية)

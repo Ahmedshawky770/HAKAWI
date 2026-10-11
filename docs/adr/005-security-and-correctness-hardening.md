@@ -508,3 +508,11 @@ That is a caution about gate results generally, and it is why the `test-e2e` row
 this ADR's verification table never included the database-backed suite, so it could not have
 revealed the problem even if the numbers had been checked continuously. Both causes are fixed, and 8
 tests that had never executed were failing once the suite could run.
+
+> *"… the `@CacheWarmTags` caller, MFA, account lockout counters, a session store …"*
+
+That gap is **closed for MFA**: `MfaController`/`MfaService` ship TOTP (RFC 6238) + 8 backup codes
+under `/api/v1/auth/mfa`, backed by migration `0029_add_mfa_support.sql`. Account lockout is also
+closed (`AccountLockoutService`). Enforcement is still open — `@RequireMfa()` has no call site and
+`MfaGuard` is mounted on no route — which is recorded in
+`docs/security-architecture/auth/auth-overview.md`.

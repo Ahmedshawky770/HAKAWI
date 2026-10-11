@@ -250,11 +250,24 @@ Payload: {
 - Multiple failed attempts
 - Unusual access patterns
 
-### Two-Factor Authentication (Future)
+### Two-Factor Authentication (TOTP + Backup Codes — implemented)
 
-- TOTP (Time-based One-Time Password)
-- SMS verification
-- Backup codes
+- TOTP (Time-based One-Time Password) — RFC 6238, 6 digits / 30 s window, base32 secret, issued as a QR code
+- Backup codes — 8 one-time codes, regenerable via `POST /api/v1/auth/mfa/backup-codes`
+- SMS verification — not implemented (TOTP was chosen deliberately; see migration `0029_add_mfa_support.sql`)
+
+**Endpoints** (all require a JWT; `POST /auth/login` itself has no MFA step):
+
+```
+GET    /api/v1/auth/mfa/status          enabled, enforced, backupCodesRemaining
+POST   /api/v1/auth/mfa/setup           secret + otpauth URL + QR data URL + backup codes
+POST   /api/v1/auth/mfa/verify          confirm first TOTP code to finish enrolment
+POST   /api/v1/auth/mfa/challenge       verify a TOTP or backup code (step-up)
+DELETE /api/v1/auth/mfa                 disable MFA
+```
+
+⚠️ No endpoint *requires* a second factor yet: `@RequireMfa()` has no call site and `MfaGuard` is
+mounted on no route.
 
 ---
 

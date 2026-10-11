@@ -32,9 +32,10 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   - TanStack Query configured
 - **Docker Setup**
   - ✅ `docker-compose.yml` at the repo root (PostgreSQL, Valkey, Adminer)
-  - ✅ **`Dockerfile` exists at the repo root** (multi-stage build). `.github/workflows/deploy.yml`
-    builds and pushes images to ghcr.io, but it references `./backend/Dockerfile` and
-    `./frontend/Dockerfile` which do not exist
+  - ✅ **`Dockerfile` exists at the repo root** (multi-stage build), and so do `./backend/Dockerfile` and
+    `./frontend/Dockerfile`. Images are built and pushed to ghcr.io by
+    `.github/workflows/deploy-dev.yml`, `deploy-staging.yml` and `deploy-production.yml`, which then run
+    `terraform apply` + `helm upgrade` (there is no `deploy.yml`)
 
 ### Acceptance Criteria — met
 - [x] `npm install` runs successfully at the root
@@ -148,9 +149,9 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   as `type: 'story_reaction'`, so a reaction to a **comment** resolved to the **story-reaction**
   preference: muting comments did not stop them and muting stories stopped comments. The type is now
   **`comment_reaction`**
-- ⛔ **Email notifications — NOT BUILT.** The `EMAIL_*` variables are documented and
-  `EMAIL_FROM` is read by `backend/src/modules/notifications/email/notifications-email.service.ts:21`, but **no SMTP client is wired**;
-  the module emits events
+- ✅ **Email notifications — BUILT** (SMTP via `SmtpEmailTransporter`, registered in
+  `notifications.module.ts`). The `EMAIL_*` variables are documented and `EMAIL_FROM` is read by
+  `backend/src/modules/notifications/email/notifications-email.service.ts:21`
 - ⛔ Push notifications — future, as stated
 
 #### 3.3 Messages Module ✅
@@ -316,7 +317,7 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
   S 39.79 / B 35.90 / F 35.74 / L 40.22 — **all four were wrong**. The gate in `frontend/vitest.config.ts`
   is set to **38 / 33 / 33 / 38**, so CI passes at roughly 68%: the gate encodes the current number
   rather than the target
-- ⛔ **Performance tests — NOT BUILT.** No k6 / Locust / autocannon / Artillery config
+- ✅ **Performance tests — k6 wired in CI** (`load-tests/k6.conf.js` + `load-test` job in `ci.yml`)
 
 #### 6.3 Documentation ✅ / 🔄
 - ✅ API documentation — OpenAPI served at `/api/docs` and `/api/docs-json`. ⚠️ enabled by
@@ -327,10 +328,11 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - ⛔ **User documentation — NOT BUILT**
 
 #### 6.4 Deployment 🔄
-- [ ] Staging deployment — ⛔ no artifact
-- [ ] 🔄 Production deployment — deploy workflow exists (`.github/workflows/deploy.yml`) and
-  per-service Dockerfiles now exist (`./backend/Dockerfile`, `./frontend/Dockerfile`), but there is no
-  staging/production manifest or IaC
+- [ ] 🔄 Staging deployment — IaC exists (`infrastructure/terraform` + `infrastructure/helm/*` + `deploy-staging.yml`); ⛔ no cluster has been provisioned
+- [ ] 🔄 Production deployment — deploy workflows exist (`.github/workflows/deploy-dev.yml`,
+  `deploy-staging.yml`, `deploy-production.yml`, `terraform.yml`) and per-service Dockerfiles now exist
+  (`./backend/Dockerfile`, `./frontend/Dockerfile`), along with Terraform (`infrastructure/terraform/`)
+  and Helm charts (`infrastructure/helm/{backend,frontend}`); ⛔ no environment has actually been applied
 - [x] Monitoring setup — `@sentry/nestjs@11.1.0`, `common/observability/sentry.config.ts`
 - [x] CI/CD pipeline — **12 jobs** (`lint`, `test-unit`, `test-frontend`, `test-coverage`,
   `test-e2e`, `test-browser`, `migration-premerge`, `migration-verify`, `migration-roundtrip`,
@@ -347,7 +349,7 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - [ ] Performance meets targets — ⛔ never measured
 - [ ] Security audit passed — 🔄 CI `npm audit` only; no pentest
 - [ ] Production deployed — ⛔
-- [ ] Monitoring configured — 🔄 Sentry wired, no dashboards, no alert rules
+- [ ] Monitoring configured — 🔄 Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`** (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 20 rules, `alertmanager/alertmanager.yml`), but nothing deploys them
 
 ### Owner
 - Backend: Backend Team
@@ -366,8 +368,8 @@ Delivered early, during Phases 1–2:
 Still open:
 - ⛔ Read replicas, read/write splitting, replication-lag monitoring
 - 🔄 Load testing — automated in CI via k6 (`load-tests/k6.conf.js`, `load-test` job on push to main)
-- 🔄 Production `Dockerfile`s exist at repo root, `backend/`, and `frontend/`; deploy workflow exists but
-  there is no staging/production manifest or IaC
+- 🔄 Production `Dockerfile`s exist at repo root, `backend/`, and `frontend/`; Terraform + Helm IaC and
+  the `deploy-*.yml` workflows exist, but nothing has been applied to a cluster
 - ⛔ Staging and production deployment
 - 🔄 Backup automation — `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads
   as an artifact; no PITR
@@ -426,13 +428,13 @@ canonical status table.
 | "Phase 5 (Contests): ⏳ Not Started" | ✅ Complete, including the badges module | `backend/src/modules/badges/`, `migrations/0013_create_badges_tables.sql` |
 | "Phase 6 (Moderation & Polish): ⏳ Not Started" | Moderation ✅ complete; Polish 🔄 in progress | same |
 | "Phase 4: 🔄 In Progress" | ✅ Complete | same |
-| "Docker Compose … PostgreSQL / Valkey / Adminer" ✅ | ✅ correct, but ⚠️ **no `Dockerfile` exists**, so the app is not containerised | `find . -name Dockerfile*` → empty |
+| "Docker Compose … PostgreSQL / Valkey / Adminer" ✅ | ✅ **Dockerfiles exist** (root, `backend/`, `frontend/`) — the app is containerised | `find . -name Dockerfile* -not -path "*/node_modules/*"` |
 | Phase 2 "Verification workflow" | ✅ correct, and the `isVerified` **write path** now exists | `backend/src/modules/users/events/users.event-handler.ts:53` |
 | — | **New:** `POST /users` and `DELETE /users/:id` now exist, closing the old "CRUD-minus-create-and-delete" gap | `users.controller.ts:87,118` |
 | — | **New:** `SearchFiltersDto` is a real class again; it was a Zod type alias the global `ValidationPipe` silently skipped | `backend/src/modules/search/dto/search.dto.ts` |
 | — | **New:** Paymob is a real client; the doc implied a stub | `backend/src/modules/payments/clients/paymob.client.ts` |
 | — | **New:** `PAYMOB_ENVIRONMENT` selects the credential set, **not** the base URL | `backend/src/config/paymob.config.ts:52-55` |
-| — | **New:** no email delivery; only `EMAIL_FROM` is read | `backend/src/modules/notifications/email/notifications-email.service.ts:21` |
+| — | **New:** email delivery **is** built — `SmtpEmailTransporter` (nodemailer; SendGrid/Mailgun/SES hosts) is registered and exported by `notifications.module.ts`; only `EMAIL_FROM` was the old reading | `backend/src/modules/notifications/email/smtp-email-transporter.ts` + `notifications.module.ts` |
 
 ---
 

@@ -548,7 +548,8 @@ global gate applies.
       is executed by the `load-test` CI job on push to main via `grafana/k6-action@v0.3.0`
 - [ ] ⛔ **Payment flow testing against a live sandbox — NOT BUILT.** The Paymob client is
       unit-tested against Zod-validated fixtures; no test has ever hit Paymob's API
-- [ ] 🔄 Performance optimization — not a measured activity; there is no benchmark suite
+- [ ] 🔄 Performance optimization — not a measured activity; `benchmarks/benchmark.js` exists but is
+      not wired to npm/CI
 
 ### Week 15: Event Schema Registry — ✅ SHIPPED EARLY
 Delivered in the Phase 1–2 window rather than Week 15.
@@ -565,8 +566,13 @@ Delivered in the Phase 1–2 window rather than Week 15.
 - [x] **Unit tests** (event bus)
 
 ### Week 16: Read Replicas & Resilience — 🔄 HALF BUILT
-- [ ] ⛔ **Read replica — NOT BUILT.** `grep -rni "replica" backend/src` returns nothing
-- [ ] ⛔ **Read/write splitting — NOT BUILT**
+- [ ] ⚠️ **Read replica — built but unwired.** `backend/src/db/router.ts` implements the split
+      (`select()` → replica round-robin with primary fallback, writes/transactions → primary,
+      `DB_REPLICA_*`) and is registered in `database.module.ts`, but no module injects
+      `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA` — 26 files import the plain `db` from
+      `db/index.ts`, so every query still hits the primary
+- [ ] ⛔ **Read/write splitting — code exists, not in effect** — the router above is not injected
+      into any module, so no query is split
 - [ ] ⛔ **Replication lag monitoring — NOT BUILT**
 - [x] **Circuit breakers for external services** — ✅ now **wired**, not dead code:
       `CircuitBreakerService` is injected into `backend/src/modules/auth/auth.service.ts:59` and
@@ -582,9 +588,10 @@ Delivered in the Phase 1–2 window rather than Week 15.
 - [ ] ⛔ **User documentation — NOT COMPLETE.** `docs/user/` contains `help-centre.md`,
       `getting-started.md`, and `faq.md`, but these are not comprehensive user-facing docs
 - [x] ✅ **Production Dockerfiles exist** — multi-stage builds at the repo root, `./backend/Dockerfile`,
-      and `./frontend/Dockerfile`. A deploy workflow exists in `.github/workflows/deploy.yml` that builds
-      and pushes images from `./backend/Dockerfile` and `./frontend/Dockerfile`; there is no staging or
-      production manifest/IaC
+      and `./frontend/Dockerfile`. Deploy workflows exist in `.github/workflows/deploy-dev.yml`,
+      `deploy-staging.yml` and `deploy-production.yml`, which build and push images and then run
+      `terraform apply` + `helm upgrade` against `infrastructure/helm/{backend,frontend}` (Terraform
+      modules under `infrastructure/terraform/modules/`); ⛔ no environment has actually been applied
 - [x] Monitoring setup (Sentry + Winston) — `@sentry/nestjs@11.1.0`,
       `common/observability/sentry.config.ts`
 - [ ] 🔄 **Backup strategy — automated via GitHub Actions.** `.github/workflows/backup.yml` runs
@@ -595,15 +602,18 @@ Delivered in the Phase 1–2 window rather than Week 15.
       `test-frontend`, `test-coverage`, `test-e2e`, `test-browser`, `migration-premerge`,
       `migration-verify`, `migration-roundtrip`, `security`, `build`, `load-test`.
 - [ ] ⛔ **Security penetration testing — NOT BUILT.** No pentest report, no external engagement
-- [ ] ⛔ **Performance benchmarking — NOT BUILT.** No benchmark harness
+- [ ] ⚠️ **Benchmark harness exists, unwired.** `benchmarks/benchmark.js` (node `perf_hooks`, p95 report);
+      ⛔ not exposed as an npm script and not run in CI
 - [ ] 🔄 **Load testing — automated in CI via k6.** `load-tests/k6.conf.js` is executed by the
       `load-test` CI job on push to main
 - [ ] ⛔ **Staging deployment — NOT BUILT**
-- [ ] 🔄 **Production deployment — deploy workflow and per-service Dockerfiles exist, but there is no
-      staging or production manifest/IaC.** `.github/workflows/deploy.yml` builds and pushes
-      `ghcr.io/${{ github.repository }}-backend` and `-frontend` images on push to main from
-      `./backend/Dockerfile` and `./frontend/Dockerfile`. A root `Dockerfile` also exists for
-      local/production image builds, but it is not referenced by `deploy.yml`
+- [ ] 🔄 **Production deployment — deploy workflows, per-service Dockerfiles, Terraform and Helm charts
+      all exist, but no environment has been applied.** `.github/workflows/deploy-production.yml`
+      builds and pushes `ghcr.io/${{ github.repository }}-backend` and `-frontend` images from
+      `./backend/Dockerfile` and `./frontend/Dockerfile`, applies `infrastructure/terraform`
+      (`environments/production/terraform.tfvars`) and then `helm upgrade --install`s the backend and
+      frontend charts. A root `Dockerfile` also exists for local/production image builds, but it is not
+      referenced by the deploy workflows
 - [ ] ⛔ **Post-launch monitoring — NOT BUILT** (Sentry is wired, but there is no deployed instance
       to monitor)
 - [ ] 🔄 **User documentation — PARTIAL.** `docs/user/` has starter content; comprehensive help
@@ -616,17 +626,17 @@ Delivered in the Phase 1–2 window rather than Week 15.
 | All tests pass (unit, integration, E2E) | ✅ 151 unit files / 3270 tests · 22 e2e + integration files / 186 tests · 62 frontend files / 794 tests · 3 Playwright files / 15 tests |
 | Code coverage ≥ 80% | ✅ backend **S 84.28 / B 80.49 / F 78.86 / L 84.45** against floors 78/73/70/79 + 9 ratchets; ⚠️ frontend **S 68.39 / L 68.17**, with the gate set to 38/38 rather than the target |
 | Payment E2E tests pass | ✅ against fixtures; ⛔ never run against a live sandbox |
-| Performance targets met (< 200ms p95) | ⛔ not measured — no benchmark harness |
+| Performance targets met (< 200ms p95) | ⛔ not measured — the harness (`benchmarks/benchmark.js`) exists but is wired to no npm script and to no CI job |
 | Security audit passed | ✅ CI `npm audit` job; ⛔ no pentest |
 | Load testing passed (1000 concurrent users) | 🔄 k6 config executed in CI via `load-test` job on push to main |
-| Monitoring dashboards active | 🔄 Sentry wired; ⛔ no dashboards defined in the repo |
+| Monitoring dashboards active | 🔄 Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`** (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml`) but nothing deploys them |
 | Backup strategy implemented | 🔄 automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR |
 
 **Deliverables — status:**
 
 | Deliverable | Status |
 |---|---|
-| Production-ready application | 🔄 feature-complete; per-service Dockerfiles and deploy workflow exist, but no staging/production IaC |
+| Production-ready application | 🔄 feature-complete; per-service Dockerfiles, Terraform (`infrastructure/terraform/`), Helm charts (`infrastructure/helm/*`) and deploy workflows exist, but no environment has been applied |
 | Full test coverage | ✅ **3270** backend unit (151 files) + **186** backend e2e/integration (22 files) + **794** frontend (62 files) + **15** Playwright (3 files) = **4265 tests** |
 | Complete documentation | 🔄 `docs/` reconciled; user docs partial |
 | Live deployment | ⛔ none |
@@ -661,9 +671,9 @@ holds today; a ⛔ means it was never satisfied.
 | **No critical bugs** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 |
 | **API response < 200ms (p95)** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ never measured |
 | **Security audit passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ✅ | 🔄 CI audit only |
-| **Performance tests passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛔ no harness |
+| **Performance tests passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛔ never measured — `benchmarks/benchmark.js` exists but is wired to no npm script or CI job |
 | **Load testing passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | 🔄 k6 config executed in CI via `load-test` job |
-| **Monitoring configured** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 Sentry, no dashboards |
+| **Monitoring configured** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 Sentry live; dashboards + 20 alert rules defined in `monitoring/` but not deployed |
 | **Backup strategy implemented** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔄 automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR |
 | **Circuit breakers configured** | ⛭️ | ⛭️ | ⛭️ | ✅ | ✅ | ✅ | ✅ |
 
@@ -750,7 +760,9 @@ than failing on the gap.
 - ⛔ Uptime > 99.9% — not deployed, so not applicable
 - 🔄 Backup strategy automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR
 - ✅ Monitoring configured (Sentry + Winston + WAF logs + cache metrics)
-- 🔄 Alerting — `monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager
+- 🔄 Alerting — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus
+      `monitoring/alertmanager/alertmanager.yml` and `monitoring/grafana/dashboards/hakawi-overview.json`
+      exist, but nothing deploys them (no cluster, no running Prometheus/Alertmanager)
 - 🔄 Disaster recovery plan documented; ⛔ no restore drill, no backup artifact
 
 ### Documentation
@@ -796,7 +808,7 @@ silently lose them.
 - Microservices extraction (if needed)
 - Multi-region deployment
 - CDN for static assets
-- Advanced monitoring (Prometheus, Grafana)
+- Advanced monitoring beyond the Terraform-provisioned stack (`terraform/modules/monitoring` ships kube-prometheus-stack 55.5.0 into the `monitoring` namespace); dashboards, alert routing and retention tuning are still open
 
 ---
 
@@ -810,21 +822,35 @@ Everything the roadmap claims and the repository does not contain:
     main via `grafana/k6-action@v0.3.0` (Phase 7, Weeks 14, 18)
 4. **Performance benchmarking** — no harness; the p95 targets were never measured (Phase 7, Weeks 14, 18)
 5. **Staging and production deployment** — per-service Dockerfiles exist (`./backend/Dockerfile`,
-       `./frontend/Dockerfile`) and a deploy workflow exists (`.github/workflows/deploy.yml`), but there
-       is no staging/production manifest or IaC (Phase 7, Week 18)
+       `./frontend/Dockerfile`), as do the deploy workflows (`deploy-dev.yml`, `deploy-staging.yml`,
+       `deploy-production.yml`), Terraform (`infrastructure/terraform/` + `environments/*/terraform.tfvars`)
+       and the Helm charts (`infrastructure/helm/{backend,frontend}`); ⛔ no environment has been applied
+       (Phase 7, Week 18)
 6. **Backup automation** — `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads
     as an artifact. No PITR is configured (Phase 7, Week 17)
-7. **Alerting deployment** — `monitoring/alert-rules.yml` exists but is not deployed or wired to any
-    alertmanager (M8 success criteria)
+7. **Alerting deployment** — `monitoring/prometheus/rules/hakawi-alerts.yml` +
+     `monitoring/alertmanager/alertmanager.yml` + the Grafana dashboard exist, but nothing deploys them
+     (M8 success criteria)
 8. **User documentation** — `docs/user/` contains starter content but comprehensive help centre,
       onboarding guide, and contextual help are missing (Phase 7, Weeks 17, 18)
 9. **Security penetration testing** (Phase 7, Week 18)
 10. **Live-sandbox payment testing** (Phase 7, Week 14)
-11. **Email delivery** — `EMAIL_*` config exists but no SMTP client is wired; only `EMAIL_FROM` is read
-12. **MFA / TOTP** — see `docs/security-architecture/auth/auth-overview.md`
+11. **Email delivery** — ✅ the SMTP client **is** wired: `SmtpEmailTransporter`
+     (`backend/src/modules/notifications/email/smtp-email-transporter.ts`, nodemailer with
+     SendGrid/Mailgun/SES/Gmail hosts) is registered and exported by `notifications.module.ts` and is
+     the `EmailTransporter` behind `notifications-email.service.ts`. ⛔ It stays inert until
+     `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD` are set, and no delivery has been
+     exercised against a live provider
+12. **MFA enforcement** — enrolment and verification are shipped (`GET /api/v1/auth/mfa/status`,
+    `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`;
+    `backend/src/modules/auth/mfa.service.ts`, migration `0029_add_mfa_support.sql`). Still open:
+    `@RequireMfa()` has no call site and `MfaGuard` is mounted on no route, so no endpoint requires a
+    second factor — see `docs/security-architecture/auth/auth-overview.md`
 13. **Account lockout** after failed logins — see the same document
 14. **Permission-decision audit trail** — see `docs/security-architecture/permissions/permissions-overview.md`
-15. **WAF admin operations endpoints** (`GET /admin/waf/blocked-ips` and friends)
+15. **WAF admin operations endpoints** — ✅ they exist: `backend/src/modules/admin/admin-waf.controller.ts`
+     (`@Controller('admin/waf')`, registered in `admin.module.ts`) serves `GET blocked-ips`,
+     `POST block-ip`, `POST unblock-ip`, `POST clear-counters` and `POST clear-blocks`
 16. **Machine-readable error codes** and custom exception classes — see `docs/api-contract/error-handling.md`
 17. **Frontend coverage** at the 80% target — ⚠️ currently **S 68.39 / B 68.75 / F 70.97 / L 68.17**,
       with the CI gate set to 38/33/33/38, so it certifies ~68% instead of holding the line at 80%

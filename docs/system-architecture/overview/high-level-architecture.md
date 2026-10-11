@@ -498,7 +498,7 @@ graph LR
 
 - **Logging:** Winston with structured JSON output
 - **Error Tracking:** Sentry
-- **Metrics:** Custom metrics via Prometheus (future)
+- **Metrics:** Prometheus scrape config + 20 alert rules + alertmanager + Grafana dashboard exist in `monitoring/`; ⛔ not deployed (no cluster yet)
 - **Tracing:** Correlation IDs across services
 
 ---

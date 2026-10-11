@@ -79,7 +79,7 @@ aws rds describe-db-instances --db-instance-identifier hakawi-production-db \
   --query "DBInstances[0].{Status:DBInstanceStatus,State:DBInstanceIdentifier}"
 
 # Check security group rules
-aws ec2 describe-security-groups --group-ids $(terraform output -raw db_security_group_id)
+aws ec2 describe-security-groups --group-ids $(terraform output -raw database_security_group_id)
 
 # Check VPC connectivity from pod
 kubectl exec -n hakawi -it deploy/hakawi-backend -- ping -c 3 $(kubectl get secret hakawi-backend-secrets -o jsonpath='{.data.db\.host}' | base64 -d)
@@ -178,7 +178,7 @@ kubectl rollout status deployment/hakawi-backend -n hakawi --timeout=300s
 
 ```bash
 # Create a new deployment with a different version
-kubectl apply -f k8s/backend-v2.yaml
+helm upgrade --install hakawi-backend-v2 ./infrastructure/helm/backend --namespace hakawi --set image.tag=v2.0.0
 
 # Test the new version
 kubectl exec -n hakawi deploy/hakawi-backend-v2 -- curl -s http://localhost:3001/health

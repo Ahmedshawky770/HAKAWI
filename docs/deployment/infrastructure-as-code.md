@@ -47,9 +47,9 @@ This document describes the Infrastructure as Code (IaC) setup for the Hakawi pl
 │  │  └──────────────┘  └──────────────┘  └──────────────┘                │   │
 │  │                                                                      │   │
 │  │  ┌──────────────┐  ┌──────────────┐                                  │   │
-│  │  │  Valkey      │  │  PgBouncer   │                                  │   │
-│  │  │  (ElastiCache│  │  (Self-mgmt  │                                  │   │
-│  │  │   via RDS    │  │   on EC2)    │                                  │   │
+│  │  │  Valkey      │  │  App Pool    │                                  │   │
+│  │  │  (ElastiCache│  │  (nestjs pg, │                                  │   │
+│  │  │   Valkey 8)  │  │   in-pod)    │                                  │   │
 │  │  └──────────────┘  └──────────────┘                                  │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -89,18 +89,7 @@ infrastructure/
 │       ├── dev/terraform.tfvars         # Development configuration
 │       ├── staging/terraform.tfvars     # Staging configuration
 │       └── production/terraform.tfvars # Production configuration
-├── kubernetes/
-│   ├── base/                            # Base manifests
-│   │   ├── kustomization.yaml
-│   │   ├── namespaces.yaml
-│   │   ├── configmap.yaml
-│   │   ├── secrets.yaml
-│   │   ├── backend/
-│   │   └── frontend/
-│   └── overlays/
-│       ├── dev/kustomization.yaml       # Development overlay
-│       ├── staging/kustomization.yaml   # Staging overlay
-│       └── production/kustomization.yaml # Production overlay
+├── scripts/                             # tf-init.sh, setup-iam.sh, deploy.sh
 └── helm/
     ├── backend/                         # Backend Helm chart
     └── frontend/                        # Frontend Helm chart
@@ -130,8 +119,8 @@ The Terraform modules use explicit type constraints on all variables:
 ### Principle #4: Document Problems and Solutions
 
 - Every module has inline `WHY` comments explaining design decisions
-- ADR-007: Infrastructure as Code decisions are documented
-- Runbooks in `docs/runbooks/` cover operational procedures
+- ADR-009: Infrastructure as Code decisions are documented
+- Runbooks in `docs/deployment/runbooks.md` cover operational procedures
 
 ### Principle #5: Architecture Before Code
 
@@ -155,7 +144,7 @@ The Terraform modules use explicit type constraints on all variables:
 ### Principle #8: Open for Extension, Closed for Modification
 
 - Helm charts allow environment-specific value overrides
-- Kustomize overlays for dev/staging/production layering
+- Per-environment Helm values files (`values-staging.yaml`, `values-production.yaml`) layering over `values.yaml`
 - Ingress annotations and pod annotations are extensible
 
 ### Principle #9: Single Source of Truth (SSOT)
@@ -166,7 +155,7 @@ The Terraform modules use explicit type constraints on all variables:
 
 ### Principle #10: Unified Typing Files
 
-- All Kubernetes manifests share common labels via Kustomize
+- All Kubernetes objects rendered by the charts share common labels via Helm `_helpers.tpl`
 - Helm `_helpers.tpl` centralizes naming conventions
 - Terraform variables and outputs are centralized
 
@@ -244,7 +233,10 @@ terraform show
 aws eks update-kubeconfig --name <cluster-name>
 
 # Deploy
-kustomize build overlays/staging | kubectl apply -f -
+helm upgrade --install hakawi-staging-backend ./infrastructure/helm/backend \
+  --namespace hakawi \
+  --values infrastructure/helm/backend/values-staging.yaml \
+  --set image.tag=v1.0.0
 
 # Check status
 kubectl get pods -n hakawi
@@ -260,16 +252,17 @@ kubectl describe pod -n hakawi <pod-name>
 
 ```bash
 # Deploy
-helm upgrade --install backend ./helm/backend \
+helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
   --namespace hakawi \
-  --set image.tag=v1.0.0 \
-  --set env.NODE_ENV=production
+  --values infrastructure/helm/backend/values.yaml \
+  --values infrastructure/helm/backend/values-production.yaml \
+  --set image.tag=v1.0.0
 
 # Lint
-helm lint ./helm/backend
+helm lint ./infrastructure/helm/backend
 
 # Template
-helm template backend ./helm/backend
+helm template hakawi-backend ./infrastructure/helm/backend
 ```
 
 ## Secrets Management

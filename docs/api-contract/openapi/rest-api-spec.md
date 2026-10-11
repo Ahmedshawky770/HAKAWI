@@ -26,8 +26,8 @@ Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exi
 
 ### Scope
 
-The previous version documented **14 endpoints**. The application exposes **149** route handlers
-across 20 controllers. This document now enumerates all of them, and gives worked request/response
+The previous version documented **14 endpoints**. The application exposes **167** route handlers
+across 27 controller files. This document now enumerates all of them, and gives worked request/response
 examples for the eight most-used resources.
 
 ---
@@ -52,11 +52,11 @@ endpoint uses — it is not uniform.
 
 ---
 
-## Complete Route Map — 149 handlers
+## Complete Route Map — 167 handlers
 
 All paths are relative to `/api/v1`.
 
-### Auth — 9 (`auth.controller.ts`)
+### Auth — 15 (`auth.controller.ts` 9 + `mfa.controller.ts` 6)
 | Method | Path | Line | Guard |
 |---|---|---|---|
 | POST | `/auth/register` | :53 | `@Public()` |
@@ -69,7 +69,22 @@ All paths are relative to `/api/v1`.
 | GET | `/auth/oauth/:provider` | :115 | `@Public()` |
 | GET | `/auth/oauth/:provider/callback` | :122 | `@Public()` |
 
-⛔ **`POST /auth/mfa` does not exist.** There is no MFA in the codebase.
+✅ **MFA exists — 6 routes, all `@UseGuards(JwtAuthGuard)` + `@ThrottleTier('auth')`**
+(`backend/src/modules/auth/mfa.controller.ts`):
+
+| Method | Path | Handler |
+|---|---|---|
+| GET | `/auth/mfa/status` | :40 |
+| POST | `/auth/mfa/setup` | :61 |
+| POST | `/auth/mfa/verify` | :70 |
+| POST | `/auth/mfa/challenge` | :83 |
+| POST | `/auth/mfa/backup-codes` | :95 |
+| DELETE | `/auth/mfa` | :105 |
+
+Optional per user: TOTP (RFC 6238) + 8 backup codes; the secret is AES-256-GCM encrypted into
+`users.totp_secret_encrypted` (migration `0029_add_mfa_support.sql`). There is no bare
+`POST /auth/mfa`. ⚠️ No route *enforces* MFA: `@RequireMfa()` has no call site and `MfaGuard`
+appears in no module's `providers`.
 
 ### Users — 11 (`users.controller.ts`)
 `GET :id/stats` :38 · `GET me` :43 · `PATCH me` :48 · `GET me/verification` :54 ·
@@ -418,7 +433,7 @@ no single rate limit; there are four.
 | Previous claim | Reality |
 |---|---|
 | Base URL `https://api.hakawi.com/v1` | **`/api/v1`** — `app.setGlobalPrefix('api/v1')` (`backend/src/main.ts:65`) |
-| **14 endpoints** | **149** route handlers across 20 controllers. All enumerated above |
+| **14 endpoints** | **167** route handlers across 27 controller files. All enumerated above |
 | No `stories` routes for slug / publish / archive | ✅ All three exist |
 | `GET /stories?q=` | **`?search=`** — `StoriesQueryDto` has `search`, not `q` |
 | `GET /stories?category=fiction` | `category` is a **UUID** (`categoryId`), not a slug |

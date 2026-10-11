@@ -26,10 +26,10 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 | Team availability | Low | High | Cross-training, documentation | ✅ — `docs/` reconciled 2026-09-30 and re-verified 2026-10-04 |
 | **Backend cannot boot (module graph)** | Was High | **Was fatal** | `forwardRef()` on both sides of the cycle | ✅ **RETIRED 2026-10-04** — see "Risks retired" below |
 | **Integration suite silently skipping** | Was High | High | Fix the graph; assert the suite actually executes | ✅ **RETIRED 2026-10-04** — the 11 specs ran for the first time |
-| **No deployment artifact** | High | High | Build a `Dockerfile` + manifest | ⛔ **Unmitigated — a `Dockerfile` exists but there is no CI workflow, IaC, or deploy script** |
-| **No backup automation** | Medium | High | Scheduled `pg_dump` + PITR | ⛔ **Unmitigated — `scripts/backup.sh` exists but there is no cron job or scheduler running it** |
-| **No load/performance testing** | High | Medium | k6 or Artillery suite | ⛔ **Unmitigated — `load-tests/k6.conf.js` exists but is not executed by any CI job; every p95 target is unmeasured** |
-| **No alerting** | Medium | High | Define alert rules on the metrics that exist | 🔄 **`monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager** |
+| **No deployed environment** | High | High | Apply the existing Terraform + Helm charts in CI | ⛔ **Unmitigated — the IaC exists (`infrastructure/terraform/`, `infrastructure/helm/{backend,frontend}`) and `deploy-dev/staging/production.yml` + `terraform.yml` apply it, but no environment has ever been provisioned** |
+| **Backup automation not scheduled in-cluster** | Medium | High | Scheduled `pg_dump` + PITR | 🔄 **Partially mitigated — `scripts/backup.sh` exists and CI runs a daily backup workflow (`.github/workflows/backup.yml`); ⛔ no in-cluster cron/scheduler and no PITR** |
+| **No load/performance testing** | High | Medium | k6 or Artillery suite | 🔄 **Partially mitigated — `load-tests/k6.conf.js` runs in CI (the `load-test` job in `ci.yml`, via `grafana/k6-action@v0.3.0`); ⛔ every p95 target is still unmeasured, and the `benchmarks/benchmark.js` harness is wired to no npm script** |
+| **No alerting** | Medium | High | Define alert rules on the metrics that exist | 🔄 **Rules exist — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules), `monitoring/alertmanager/alertmanager.yml` and `monitoring/grafana/dashboards/hakawi-overview.json` — but nothing deploys them** |
 
 ---
 
@@ -298,8 +298,8 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 - All features implemented
 - Full testing
 - Production deployment
-- ⛔ **Not achievable as written:** no deployment artifact exists. This plan requires a
-  `Dockerfile`, a deployment manifest, and backup automation before it can be executed.
+- ⛔ **Not achievable as written:** no environment has been applied. The `Dockerfile`s, Terraform and
+  Helm charts exist; what this plan still needs is a provisioned cluster plus backup automation.
 
 ### Plan B: Reduced Scope
 - Delay non-critical features
@@ -313,8 +313,8 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 - Launch the features that are safe without production infrastructure: the API, the web client, the
   admin dashboard.
 - Defer the payment path until a live-sandbox verification has been performed.
-- Defer until a deployment artifact exists: read replicas, load testing, backup automation,
-  alerting.
+- Defer until an environment is actually provisioned from the existing IaC: read replicas, load
+  testing against that environment, backup automation, alerting.
 - Monitor and iterate on the metrics that already exist: Sentry, Winston, `GET /api/v1/metrics/cache`.
 
 ---
@@ -334,16 +334,20 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 | 10 | Phase 4: Books & Commerce | Commerce complete? Payments tested? | ✅ Go — with the open item that no test has run against a live Paymob sandbox |
 | 12 | Phase 5: Contests | Contests complete? | ✅ Go |
 | 13 | Phase 6: Moderation | Moderation complete? | ✅ Go |
-| 18 | Phase 7: Polish & Launch | Tested, measured, deployed, backed up, alerting? | ⛔ **No-go** — load testing is not automated in CI, no benchmark harness, no CI deploy workflow, backup script exists but is not automated, and alert rules exist but are not deployed |
+| 18 | Phase 7: Polish & Launch | Tested, measured, deployed, backed up, alerting? | ⛔ **No-go** — k6 runs in CI but no p95 target has been measured (the `benchmarks/benchmark.js` harness is wired to no npm script), no environment has been provisioned from the Terraform/Helm IaC, backup automation runs only in CI (daily `.github/workflows/backup.yml`) with no in-cluster scheduler or PITR, and the alert rules that exist are not deployed |
 
 ### What blocks the Week 18 decision
-1. A `Dockerfile` exists but there is no CI workflow, IaC, or deploy script
-2. No load test or performance benchmark in CI — `load-tests/k6.conf.js` exists but is not executed;
-      the p95 targets have never been measured
-3. `scripts/backup.sh` exists but there is no cron job, scheduler, or PITR configuration running it,
-      so there is nothing to restore from
-4. `monitoring/alert-rules.yml` exists but is not deployed or wired to any alertmanager
-5. No WAF metrics endpoint or WAF admin operations endpoints
+1. `Dockerfile`s, Terraform (`infrastructure/terraform/`), Helm charts (`infrastructure/helm/*`), a deploy script (`infrastructure/scripts/deploy.sh`) and the `deploy-*.yml` workflows all exist — but no environment has been applied
+2. No measured p95 — `load-tests/k6.conf.js` **is** executed by the `load-test` job in `ci.yml`
+      (`grafana/k6-action@v0.3.0`), and a harness exists (`benchmarks/benchmark.js`), but that harness is
+      wired to no npm script and to no CI job, so the p95 targets have never been measured
+3. `scripts/backup.sh` exists and CI runs a daily backup workflow (`.github/workflows/backup.yml`);
+      ⛔ no in-cluster scheduler and no PITR configuration, and the restore drill is not scheduled
+4. `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus `monitoring/alertmanager/alertmanager.yml`
+      exist, but nothing deploys them
+5. No WAF metrics endpoint — the WAF **admin** operations endpoints do exist
+      (`backend/src/modules/admin/admin-waf.controller.ts`, registered in `admin.module.ts`:
+      `GET blocked-ips`, `POST block-ip`, `POST unblock-ip`, `POST clear-counters`, `POST clear-blocks`)
 6. ⛔ Frontend coverage at **68.39** statements / **68.17** lines, against an 80% target — and the CI
       gate is set to 38/33/33/38, so a passing build certifies roughly 68%, not 80%. ⚠️ **both published
       figures were wrong** (the document said 40.75 / 41.25); re-derive from
@@ -386,7 +390,7 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
 | Risk 3 "Start integration early (Week 10)" | Week 10 is correct under the canonical model ✅ |
 | Risk 8 "Buffer week (Week 8)" | Week 8 is the start of Phase 4 under the canonical model ✅ |
 | Risk 7 "Use transactions where possible" | Now literal: **every** migration is transaction-wrapped, plus a checksum ledger and reversibility classification |
-| Risk 7 "Backup before migrations" | ⛔ There is no backup automation. `pg_dump` in a deployment docstring is the current practice; `docs/deployment/backup.md` describes an `nginx.conf` that does not exist and a `scripts/` directory that now contains `backup.sh` but is not scheduled |
+| Risk 7 "Backup before migrations" | ⛔ Backup automation exists in CI (daily `backup.yml` + `scripts/backup.sh`) but the restore drill is not scheduled and there is no PITR |
 | No status on any risk | Added a status column to the risk summary and to the decision-point table |
 | — | Added **Risks retired by the refactor**, so the register does not keep warning about hazards that have been closed |
 | Plan A assumed a deployable artifact | Marked explicitly as not achievable in the current state; Plan C is now identified as the plan that fits |
@@ -410,8 +414,11 @@ risk is as misleading as one that never recorded a live one, and this one had do
 | Every retired-risk row cited only the "why" | Rows now carry the file and line where the fix landed, so each claim is checkable against the tree |
 
 ### Still open, and unchanged by this pass
-No CI deploy workflow · backup script exists but is not automated · k6 config exists but is not run in
-CI · no benchmark harness · no deployed alert rules · no WAF metrics or admin endpoints · frontend
+No environment provisioned from the existing Terraform/Helm IaC · backup automation runs only in CI
+(daily `.github/workflows/backup.yml`) with no in-cluster scheduler and no PITR · k6 runs in CI
+(`load-test` job) but no p95 target is measured — `benchmarks/benchmark.js` is wired to no npm script ·
+alert rules exist (`monitoring/prometheus/rules/hakawi-alerts.yml`) but are not deployed · no WAF
+metrics endpoint (the WAF admin endpoints do exist — `admin-waf.controller.ts`) · frontend
 coverage at ~68% · ⛔ **two social UI pages with no navigation call sites** (`/stories/[id]/comments`,
 `/stories/[id]/reactions`).
 
