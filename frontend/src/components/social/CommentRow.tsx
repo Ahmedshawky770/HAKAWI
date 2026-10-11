@@ -4,7 +4,6 @@ import React from "react";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
-import { ListRowSkeleton } from "@/components/ui/Skeleton";
 import type { Comment } from "@/types/api";
 
 interface CommentRowProps {
@@ -34,16 +33,6 @@ export function CommentRow({ comment }: CommentRowProps) {
         </div>
       </div>
     </Card>
-  );
-}
-
-export function CommentListSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="space-y-3" aria-hidden="true">
-      {Array.from({ length: count }, (_, index) => (
-        <ListRowSkeleton key={index} />
-      ))}
-    </div>
   );
 }
 

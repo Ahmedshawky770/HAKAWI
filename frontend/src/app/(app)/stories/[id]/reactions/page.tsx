@@ -2,7 +2,7 @@ import { Metadata } from "next";
 
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
-import { ReactionListEmpty, ReactionListSkeleton, ReactionRow } from "@/components/social/ReactionRow";
+import { ReactionListEmpty, ReactionRow } from "@/components/social/ReactionRow";
 import { api } from "@/lib/api";
 
 interface Props {

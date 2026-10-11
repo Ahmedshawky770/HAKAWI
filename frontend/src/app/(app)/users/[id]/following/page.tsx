@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 import { PageHeader } from "@/components/ui/Card";
-import { FollowListEmpty, FollowListSkeleton, FollowListRow } from "@/components/social/FollowListRow";
+import { FollowListEmpty, FollowListRow } from "@/components/social/FollowListRow";
 import { api } from "@/lib/api";
 
 interface Props {
@@ -25,7 +25,7 @@ export default async function UserFollowingPage({ params }: Props) {
     <div>
       <PageHeader title="المتابَعون" description="الحسابات التي يتابعها" />
       {!data || data.following.length === 0 ? (
-        <FollowListEmpty />
+        <FollowListEmpty label="لا يوجد متابَعون بعد." />
       ) : (
         <div className="space-y-3">
           {data.following.map((follow) => (

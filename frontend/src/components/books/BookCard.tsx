@@ -5,6 +5,7 @@ import React from "react";
 import { CardLink } from "@/components/ui/Card";
 import { formatPrice } from "@/lib/money";
 import { Icon } from "@/components/ui/Icon";
+import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { Book } from "@/types/api";
 
@@ -63,11 +64,8 @@ function BookCover({ book }: { book: Book }) {
   return (
     <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-surface-raised">
       {book.coverImage ? (
-        <img
+        <RemoteImage
           src={book.coverImage}
-          alt=""
-          loading="lazy"
-          decoding="async"
           className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
         />
       ) : (

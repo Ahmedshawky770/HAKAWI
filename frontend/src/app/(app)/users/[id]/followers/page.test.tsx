@@ -1,19 +1,9 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
-import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { followersResponseSchema } from "@/lib/schemas";
 
 import UsersFollowersPage from "@/app/(app)/users/[id]/followers/page";
 
@@ -54,24 +44,26 @@ describe("Users followers page", () => {
     mockedApi.getFollowers.mockResolvedValue(mockFollowers);
   });
 
-  it("renders the page title", () => {
-    render(<UsersFollowersPage params={Promise.resolve({ id: "user-1" })} />);
+  it("renders the page title", async () => {
+    render(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
     expect(screen.getByRole("heading", { name: "المتابعون" })).toBeInTheDocument();
   });
 
   it("loads followers on mount", async () => {
-    render(<UsersFollowersPage params={Promise.resolve({ id: "user-1" })} />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.getFollowers).toHaveBeenCalledWith("user-1");
+    render(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
+    expect(mockedApi.getFollowers).toHaveBeenCalledWith("user-1", { page: 1, limit: 20 });
   });
 
-  it("shows loading state", () => {
-    render(<UsersFollowersPage params={Promise.resolve({ id: "user-1" })} />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+  it("renders the follower rows", async () => {
+    render(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
+    expect(screen.getByText("متابع")).toBeInTheDocument();
+    const joined = new Date(mockFollowers.followers[0].createdAt).toLocaleDateString("ar-EG");
+    expect(screen.getByText(joined)).toBeInTheDocument();
   });
 
-  it("displays followers list", () => {
-    render(<UsersFollowersPage params={Promise.resolve({ id: "user-1" })} />);
-    expect(screen.getByText("علي محمد")).toBeInTheDocument();
+  it("falls back to the empty state when the request fails", async () => {
+    mockedApi.getFollowers.mockRejectedValueOnce(new Error("request failed"));
+    render(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
+    expect(screen.getByText("لا يوجد متابعون بعد.")).toBeInTheDocument();
   });
 });

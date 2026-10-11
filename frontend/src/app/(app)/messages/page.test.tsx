@@ -4,25 +4,14 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { messagesListResponseSchema } from "@/lib/schemas";
 
+import { AnchorLink } from "@/test-utils/navigation-mock";
 import MessagesPage from "@/app/(app)/messages/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -34,27 +23,16 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
-    listStories: vi.fn(),
-    getUnreadNotificationCount: vi.fn(),
+    getConversations: vi.fn(),
   },
 }));
 
 const mockedApi = vi.mocked(api);
 
 describe("Messages page", () => {
-  const mockMessages = [
-    {
-      id: "msg-1",
-      conversationId: "conv-1",
-      lastMessage: "مرحبا",
-      lastMessageTime: new Date().toISOString(),
-      unreadCount: 2,
-    },
-  ];
-
   beforeEach(() => {
-    mockedApi.listStories.mockResolvedValue({
-      stories: [],
+    mockedApi.getConversations.mockResolvedValue({
+      conversations: [],
       total: 0,
       page: 1,
       limit: 20,
@@ -68,11 +46,11 @@ describe("Messages page", () => {
 
   it("shows loading state on mount", () => {
     render(<MessagesPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
-  it("handles empty state", () => {
+  it("handles empty state", async () => {
     render(<MessagesPage />);
-    expect(screen.getByText("لا توجد رسائل بعد")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "لا توجد محادثات بعد" })).toBeInTheDocument();
   });
 });

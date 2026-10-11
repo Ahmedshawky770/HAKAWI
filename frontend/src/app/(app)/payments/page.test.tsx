@@ -2,27 +2,17 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { paymentsListResponseSchema } from "@/lib/schemas";
+import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 
 import PaymentsPage from "@/app/(app)/payments/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -70,25 +60,27 @@ describe("Payments page", () => {
     });
   });
 
-  it("renders the page title", () => {
-    render(<PaymentsPage />);
-    expect(screen.getByRole("heading", { name: "المدفوعات" })).toBeInTheDocument();
+  it("renders the page title", async () => {
+    renderWithProviders(<PaymentsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "سجل المدفوعات" })).toBeInTheDocument();
+    });
   });
 
   it("calls getPaymentHistory on mount", async () => {
-    render(<PaymentsPage />);
+    renderWithProviders(<PaymentsPage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mockedApi.getPaymentHistory).toHaveBeenCalled();
   });
 
   it("handles loading state", () => {
-    render(<PaymentsPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    renderWithProviders(<PaymentsPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("displays payments when available", async () => {
-    render(<PaymentsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("1,000")).toBeInTheDocument();
+    renderWithProviders(<PaymentsPage />);
+    expect(await screen.findByText("1000 EGP")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /pay-1/ })).toHaveAttribute("href", "/payments/pay-1");
   });
 });

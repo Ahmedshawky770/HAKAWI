@@ -2,28 +2,17 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { contestsListResponseSchema, contestSchema } from "@/lib/schemas";
-import { z } from "zod";
+import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 
 import ContestsPage from "@/app/(app)/contests/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -53,8 +42,6 @@ const contestDefaults = {
   status: "active",
   createdBy: "user-1",
   winnerId: null,
-  prize: "1000 ج.م",
-  rules: "قواعد المسابقة",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -69,25 +56,30 @@ describe("Contests list page", () => {
     });
   });
 
-  it("renders the page title", () => {
-    render(<ContestsPage />);
-    expect(screen.getByRole("heading", { name: "المنافسات" })).toBeInTheDocument();
+  it("renders the page title", async () => {
+    renderWithProviders(<ContestsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "المسابقات" })).toBeInTheDocument();
+    });
   });
 
   it("calls listContests on mount", async () => {
-    render(<ContestsPage />);
+    renderWithProviders(<ContestsPage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mockedApi.listContests).toHaveBeenCalled();
   });
 
   it("handles loading state", () => {
-    render(<ContestsPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    renderWithProviders(<ContestsPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("displays contests when available", async () => {
-    render(<ContestsPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("مسابقة القصص القصيرة")).toBeInTheDocument();
+    renderWithProviders(<ContestsPage />);
+    expect(await screen.findByText("مسابقة القصص القصيرة")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /مسابقة القصص القصيرة/ })).toHaveAttribute(
+      "href",
+      "/contests/contest-1",
+    );
   });
 });

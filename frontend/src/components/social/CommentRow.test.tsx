@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
-import { CommentListEmpty, CommentListSkeleton, CommentRow } from "@/components/social/CommentRow";
+import { CommentListEmpty, CommentRow } from "@/components/social/CommentRow";
 import type { Comment } from "@/types/api";
 
 const sampleComment: Comment = {
@@ -24,14 +24,6 @@ describe("CommentRow", () => {
 
     expect(screen.getByText("كاتب تجريبي")).toBeDefined();
     expect(screen.getByText("هذا تعليق تجريبي")).toBeDefined();
-  });
-});
-
-describe("CommentListSkeleton", () => {
-  it("renders the requested number of skeletons", () => {
-    render(<CommentListSkeleton count={2} />);
-
-    expect(screen.getByLabelText("جارٍ التحميل…")).toBeDefined();
   });
 });
 

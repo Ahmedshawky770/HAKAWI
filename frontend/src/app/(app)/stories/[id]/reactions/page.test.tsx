@@ -4,25 +4,17 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { storyRecordResponseSchema } from "@/lib/schemas";
 
 import StoryReactionsPage from "@/app/(app)/stories/[id]/reactions/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -57,24 +49,27 @@ describe("Story reactions page", () => {
     mockedApi.getReactions.mockResolvedValue(mockReactions);
   });
 
-  it("renders the story reactions heading", () => {
-    render(<StoryReactionsPage params={Promise.resolve({ id: "story-1" })} />);
-    expect(screen.getByRole("heading", { name: "تفاعلات القصة" })).toBeInTheDocument();
+  it("renders the story reactions heading", async () => {
+    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    expect(screen.getByRole("heading", { name: "التفاعلات" })).toBeInTheDocument();
   });
 
   it("loads reactions on mount", async () => {
-    render(<StoryReactionsPage params={Promise.resolve({ id: "story-1" })} />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.getReactions).toHaveBeenCalledWith("story-1");
+    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    expect(mockedApi.getReactions).toHaveBeenCalledWith("story-1", { page: 1, limit: 20 });
   });
 
-  it("shows loading state", () => {
-    render(<StoryReactionsPage params={Promise.resolve({ id: "story-1" })} />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+  it("renders the back link to the story", async () => {
+    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    expect(screen.getByRole("link", { name: "العودة للقصة" })).toHaveAttribute(
+      "href",
+      "/stories/story-1",
+    );
   });
 
-  it("displays reaction counts", () => {
-    render(<StoryReactionsPage params={Promise.resolve({ id: "story-1" })} />);
-    expect(screen.getByText("8")).toBeInTheDocument();
+  it("displays the reaction type labels", async () => {
+    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    expect(screen.getByText("أحببتها")).toBeInTheDocument();
+    expect(screen.getByText("أعجبني")).toBeInTheDocument();
   });
 });

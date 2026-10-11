@@ -2,30 +2,21 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { searchResponseSchema } from "@/lib/schemas";
 
+import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 import SearchPage from "@/app/(app)/search/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams("q=اختبار"),
   useRouter: () => ({
     push: vi.fn(),
     replace: vi.fn(),
@@ -45,24 +36,22 @@ const mockSearchResults = {
     {
       id: "story-1",
       title: "قصة البحث",
-      author: { id: "user-1", name: "أحمد محمد" },
-      category: "fiction",
       slug: "story-1",
       excerpt: "مقتطف من القصة",
       status: "published",
+      category: "fiction",
       tags: [],
-      coverImage: "https://example.com/cover.jpg",
-      views: 0,
+      author: { id: "user-1", name: "أحمد محمد" },
+      views: 10,
       reactions: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: "2026-01-01T00:00:00.000Z",
     },
   ],
   total: 1,
-  query: "اختبار",
-  took: 42,
   page: 1,
   limit: 20,
+  query: "اختبار",
+  took: 1,
 };
 
 describe("Search page", () => {
@@ -71,30 +60,24 @@ describe("Search page", () => {
   });
 
   it("renders the page title", () => {
-    render(<SearchPage />);
+    renderWithProviders(<SearchPage />);
     expect(screen.getByRole("heading", { name: "البحث" })).toBeInTheDocument();
   });
 
-  it("calls search on mount with default query", async () => {
-    render(<SearchPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.search).toHaveBeenCalledWith({
-      query: expect.any(String),
-      category: undefined,
-      tag: undefined,
-      page: 1,
-      limit: 20,
+  it("calls search on mount with the url query", async () => {
+    renderWithProviders(<SearchPage />);
+    await waitFor(() => {
+      expect(mockedApi.search).toHaveBeenCalledWith({ query: "اختبار" });
     });
   });
 
   it("handles loading state", () => {
-    render(<SearchPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    renderWithProviders(<SearchPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("جاري البحث…");
   });
 
   it("displays search results", async () => {
-    render(<SearchPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("قصة البحث")).toBeInTheDocument();
+    renderWithProviders(<SearchPage />);
+    expect(await screen.findByText("قصة البحث")).toBeInTheDocument();
   });
 });

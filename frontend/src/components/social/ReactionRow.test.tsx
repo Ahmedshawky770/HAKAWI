@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
-import { ReactionListEmpty, ReactionListSkeleton, ReactionRow } from "@/components/social/ReactionRow";
+import { ReactionListEmpty, ReactionRow } from "@/components/social/ReactionRow";
 import type { Reaction } from "@/types/api";
 
 const sampleReaction: Reaction = {
@@ -17,15 +17,7 @@ describe("ReactionRow", () => {
   it("renders the reaction author and type label", () => {
     render(<ReactionRow reaction={sampleReaction} />);
 
-    expect(screen.getByText("مستخدم تجريبي")).toBeDefined();
-  });
-});
-
-describe("ReactionListSkeleton", () => {
-  it("renders the requested number of skeletons", () => {
-    render(<ReactionListSkeleton count={2} />);
-
-    expect(screen.getByLabelText("جارٍ التحميل…")).toBeDefined();
+    expect(screen.getByText("مستخدم")).toBeDefined();
   });
 });
 

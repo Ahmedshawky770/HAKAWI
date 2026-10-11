@@ -2,7 +2,7 @@ import { Metadata } from "next";
 
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
-import { CommentListEmpty, CommentListSkeleton, CommentRow } from "@/components/social/CommentRow";
+import { CommentListEmpty, CommentRow } from "@/components/social/CommentRow";
 import { api } from "@/lib/api";
 
 interface Props {

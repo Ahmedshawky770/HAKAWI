@@ -4,23 +4,13 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
+import { AnchorLink } from "@/test-utils/navigation-mock";
 import StoriesPage from "./page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -70,18 +60,18 @@ describe("Stories list page", () => {
   it("handles loading state", () => {
     mockedApi.listStories.mockResolvedValue({ stories: [], total: 0, page: 1, limit: 20 });
     render(<StoriesPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
-  it("handles error state", () => {
+  it("handles error state", async () => {
     mockedApi.listStories.mockRejectedValue(new Error("Failed to load stories"));
     render(<StoriesPage />);
-    expect(screen.getByText("فشل تحميل القصص")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to load stories");
   });
 
-  it("handles empty stories list", () => {
+  it("handles empty stories list", async () => {
     render(<StoriesPage />);
-    expect(screen.getByText("لا توجد قصص بعد")).toBeInTheDocument();
+    expect(await screen.findByText("لا توجد قصص بعد")).toBeInTheDocument();
   });
 
   it("displays stories when available", async () => {

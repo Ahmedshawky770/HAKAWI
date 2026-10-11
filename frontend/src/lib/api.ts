@@ -265,16 +265,6 @@ async function apiRequest<S extends z.ZodTypeAny>(
   return handleResponse(response, schema, endpoint);
 }
 
-async function apiUpload<S extends z.ZodTypeAny>(schema: S, endpoint: string, body: FormData): Promise<z.infer<S>> {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    method: "POST",
-    body,
-    credentials: "include",
-  });
-
-  return handleResponse(response, schema, endpoint);
-}
-
 export const api = {
   request: <S extends z.ZodTypeAny>(schema: S, endpoint: string, options: RequestInit = {}): Promise<z.infer<S>> =>
     apiRequest(schema, endpoint, options),
@@ -707,9 +697,8 @@ export const api = {
       }),
     ),
 
-  uploadFile: async (file: File, options?: { storyId?: string; folder?: 'images' | 'pdfs' }) => {
+  uploadFile: async (file: File, options?: { storyId?: string }) => {
     const isPdf = file.type === 'application/pdf';
-    const folder = options?.folder || (isPdf ? 'pdfs' : 'images');
     const endpoint = isPdf ? '/upload/pdf' : '/upload/image';
 
     const generateUploadUrlSchema = z.object({

@@ -2,22 +2,27 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// Mock @/lib/api first - MUST be first
-const mockGetStory = vi.fn();
-const mockDeleteStory = vi.fn();
-const mockGetStoredUser = vi.fn(() => ({ id: "user-1" }));
+const { mockGetStory, mockDeleteStory, mockGetStoredUser } = vi.hoisted(() => ({
+  mockGetStory: vi.fn(),
+  mockDeleteStory: vi.fn(),
+  mockGetStoredUser: vi.fn(() => ({ id: "user-1" })),
+}));
 
 vi.mock("@/lib/api", () => ({
   api: {
     getStory: mockGetStory,
     deleteStory: mockDeleteStory,
-    getStoredUser: mockGetStoredUser,
+    getReactionCounts: vi.fn(),
+    getReactions: vi.fn(),
+    addReaction: vi.fn(),
+    removeReaction: vi.fn(),
   },
+  getStoredUser: mockGetStoredUser,
 }));
 
-// Mock next/navigation
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "story-1" }),
   useRouter: () => ({
@@ -26,14 +31,6 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-// Mock UI components
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 vi.mock("@/components/providers/ToastProvider", () => ({
   useToast: () => ({
     notify: () => {},
@@ -44,7 +41,6 @@ vi.mock("@/components/providers/LocaleProvider", () => ({
   LocaleProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-// Import after all mocks are set up
 import StoryDetailPage from "./page";
 
 const mockStory = {
@@ -58,61 +54,85 @@ const mockStory = {
   createdAt: new Date().toISOString(),
 };
 
+let queryClient: QueryClient;
+
+function renderPage() {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <StoryDetailPage />
+    </QueryClientProvider>,
+  );
+}
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe("Story detail page", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     mockGetStory.mockResolvedValue(mockStory);
+    mockGetStoredUser.mockReturnValue({ id: "user-1" });
   });
 
-  it("renders the story title", () => {
-    render(<StoryDetailPage />);
-    expect(screen.getByText("قصة مميزة")).toBeInTheDocument();
+  it("renders the story title", async () => {
+    renderPage();
+    expect(await screen.findByText("قصة مميزة")).toBeInTheDocument();
   });
 
-  it("renders the story category", () => {
-    render(<StoryDetailPage />);
-    expect(screen.getByText("فiction")).toBeInTheDocument();
+  it("renders the story category", async () => {
+    renderPage();
+    expect(await screen.findByText("fiction")).toBeInTheDocument();
   });
 
-  it("renders the author avatar and name", () => {
-    render(<StoryDetailPage />);
-    expect(screen.getByAltText("أحمد محمد")).toBeInTheDocument();
+  it("renders the author byline and avatar initial", async () => {
+    renderPage();
+    expect(await screen.findByText("بواسطة أحمد محمد")).toBeInTheDocument();
+    expect(screen.getByText("أ")).toBeInTheDocument();
   });
 
-  it("renders the story views and reactions", () => {
-    render(<StoryDetailPage />);
+  it("renders the story views and reactions", async () => {
+    renderPage();
+    expect(await screen.findByText("قصة مميزة")).toBeInTheDocument();
     expect(screen.getByText("1,500")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  it("shows loading state initially", () => {
+  it("shows loading state initially", async () => {
     mockGetStory.mockResolvedValueOnce(null);
-    render(<StoryDetailPage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    renderPage();
+    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
+    await settle();
   });
 
   it("handles error when story not found", async () => {
-    mockGetStory.mockRejectedValue(new Error("Story not found"));
-    render(<StoryDetailPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("تعذّر فتح القصة")).toBeInTheDocument();
+    mockGetStory.mockRejectedValueOnce(new Error("Story not found"));
+    renderPage();
+    expect(await screen.findByText("تعذّر فتح القصة")).toBeInTheDocument();
   });
 
-  it("handles delete story action", async () => {
-    mockDeleteStory.mockResolvedValue(undefined);
-    render(<StoryDetailPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  it("deletes the story when the owner confirms", async () => {
+    renderPage();
+    await screen.findByText("قصة مميزة");
+    fireEvent.click(screen.getByRole("button", { name: "حذف القصة" }));
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الحذف" }));
+    await settle();
     expect(mockDeleteStory).toHaveBeenCalledWith("story-1");
   });
 
   it("shows empty state when story is not found", async () => {
-    mockGetStory.mockResolvedValue(null);
-    render(<StoryDetailPage />);
-    expect(screen.getByText("القصة غير موجودة")).toBeInTheDocument();
+    mockGetStory.mockResolvedValueOnce(null);
+    renderPage();
+    expect(await screen.findByText("القصة غير موجودة")).toBeInTheDocument();
   });
 
-  it("renders reaction bar", () => {
-    render(<StoryDetailPage />);
-    expect(screen.getByRole("button", { name: "تفاعل" })).toBeInTheDocument();
+  it("renders reaction bar", async () => {
+    renderPage();
+    expect(await screen.findByRole("group", { name: "التفاعلات" })).toBeInTheDocument();
   });
 });

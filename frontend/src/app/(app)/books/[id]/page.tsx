@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Icon } from "@/components/ui/Icon";
 import { Input, Select } from "@/components/ui/Input";
+import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Loading } from "@/components/ui/Loading";
 import type { Book } from "@/types/api";
 
@@ -285,13 +286,7 @@ export default function BookDetailPage() {
         <CardBody>
           <div className="flex flex-col gap-6 sm:flex-row">
             {book.coverImage ? (
-              <img
-                src={book.coverImage}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-56 w-40 shrink-0 self-start rounded-lg object-cover"
-              />
+              <RemoteImage src={book.coverImage} className="h-56 w-40 shrink-0 self-start rounded-lg object-cover" />
             ) : (
               <div className="grid h-56 w-40 shrink-0 place-items-center self-start rounded-lg bg-surface-raised text-ink-faint">
                 <Icon name="library" size="lg" />

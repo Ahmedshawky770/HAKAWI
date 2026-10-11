@@ -10,6 +10,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Input";
+import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { Book, Rental } from "@/types/api";
 
@@ -88,13 +89,7 @@ export function RentalRow({
         <div className="flex flex-col gap-4 sm:flex-row">
           {book?.coverImage ? (
             <Link href={`/books/${book.id}`} className="shrink-0 self-start rounded-md focus-visible:outline-2">
-              <img
-                src={book.coverImage}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-36 w-24 rounded-md object-cover"
-              />
+              <RemoteImage src={book.coverImage} className="h-36 w-24 rounded-md object-cover" />
             </Link>
           ) : (
             <div className="grid h-36 w-24 shrink-0 place-items-center rounded-md bg-surface-raised text-ink-faint">

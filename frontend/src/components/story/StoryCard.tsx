@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { StoryByline, StoryCategory } from "./StoryMeta";
 import { Icon } from "@/components/ui/Icon";
+import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { Story } from "@/types/api";
 
@@ -35,11 +36,8 @@ export function StoryCard({ story, showCover = true }: { story: Story; showCover
       <Link href={`/stories/${story.id}`} className="block rounded-xl p-5 focus-visible:outline-2">
         {showCover && story.coverImage && (
           <div className="mb-4 overflow-hidden rounded-lg bg-surface-raised">
-            <img
+            <RemoteImage
               src={story.coverImage}
-              alt=""
-              loading="lazy"
-              decoding="async"
               className="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             />
           </div>

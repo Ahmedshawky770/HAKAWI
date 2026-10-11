@@ -1,6 +1,5 @@
 import type {
   AuthResponse,
-  BadgeCatalogEntry,
   Book,
   BookRecord,
   Contest,

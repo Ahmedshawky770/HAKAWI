@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 import { PageHeader } from "@/components/ui/Card";
-import { FollowListEmpty, FollowListSkeleton, FollowListRow } from "@/components/social/FollowListRow";
+import { FollowListEmpty, FollowListRow } from "@/components/social/FollowListRow";
 import { api } from "@/lib/api";
 
 interface Props {

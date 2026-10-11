@@ -7,6 +7,7 @@ import { LibraryStatusBadge } from "./LibraryStatusBadge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
+import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { Book, LibraryItem } from "@/types/api";
 
@@ -41,13 +42,7 @@ export function LibraryCard({
       <CardBody className="flex-1">
         <div className="flex gap-4">
           {book?.coverImage ? (
-            <img
-              src={book.coverImage}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="h-28 w-20 shrink-0 rounded-md object-cover"
-            />
+            <RemoteImage src={book.coverImage} className="h-28 w-20 shrink-0 rounded-md object-cover" />
           ) : (
             <div className="grid h-28 w-20 shrink-0 place-items-center rounded-md bg-surface-raised text-ink-faint">
               <Icon name="book" size="md" />

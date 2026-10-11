@@ -1,5 +1,7 @@
 import React from "react";
 
+import { RemoteImage } from "./RemoteImage";
+
 /**
  * The avatar with its fallback.
  *
@@ -34,7 +36,7 @@ export function Avatar({
       className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-surface-raised font-arabic-heading font-bold text-accent-ink ${sizes[size]} ${className}`.trim()}
     >
       {src ? (
-        <img src={src} alt="" className="size-full object-cover" loading="lazy" decoding="async" />
+        <RemoteImage src={src} className="size-full object-cover" />
       ) : (
         <span aria-hidden="true">{initial}</span>
       )}

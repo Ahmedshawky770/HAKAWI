@@ -5,7 +5,6 @@ import React from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { ListRowSkeleton } from "@/components/ui/Skeleton";
 import type { Reaction } from "@/types/api";
 
 interface ReactionRowProps {
@@ -42,16 +41,6 @@ export function ReactionRow({ reaction }: ReactionRowProps) {
         </Badge>
       </div>
     </Card>
-  );
-}
-
-export function ReactionListSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="space-y-3" aria-hidden="true">
-      {Array.from({ length: count }, (_, index) => (
-        <ListRowSkeleton key={index} />
-      ))}
-    </div>
   );
 }
 

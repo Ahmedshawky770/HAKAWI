@@ -2,27 +2,18 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
-
-vi.mock("@/components/ui/Button", () => ({__esModule: true, default: {to: "/", className: ""}}));
-vi.mock("@/components/ui/Card", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/EmptyState", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/ErrorMessage", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Loading", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Skeleton", () => ({__esModule: true, default: "div"}));
-vi.mock("@/components/ui/Avatar", () => ({__esModule: true, default: "div"}));
 import { api } from "@/lib/api";
-import { storyRecordResponseSchema } from "@/lib/schemas";
 
+import { AnchorLink } from "@/test-utils/navigation-mock";
+import { createDeferred } from "@/test-utils/support";
 import StoryCreatePage from "@/app/(app)/stories/create/page";
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: {
-    to: "/",
-    className: "",
-  },
+  default: AnchorLink,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -43,28 +34,23 @@ const mockedApi = vi.mocked(api);
 
 const mockStory = {
   id: "story-1",
-  title: "قصة جديدة",
-  author: { id: "user-1", name: "أحمد محمد" },
-  category: "fiction",
   authorId: "user-1",
   authorName: "أحمد محمد",
-  slug: "story-1",
-  excerpt: "مقتطف من القصة",
+  title: "قصة جديدة",
+  slug: "new-story",
+  excerpt: null,
   content: "محتوى القصة",
   coverImage: null,
-  status: "draft",
+  status: "published",
   categoryId: "cat-1",
   viewCount: 0,
   likeCount: 0,
   commentCount: 0,
-  readingTime: 5,
+  readingTime: 3,
+  publishedAt: null,
   deletedAt: null,
-  tags: [],
-  views: 0,
-  reactions: 0,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  publishedAt: null,
 };
 
 describe("Story create page", () => {
@@ -74,18 +60,40 @@ describe("Story create page", () => {
 
   it("renders the story create heading", () => {
     render(<StoryCreatePage />);
-    expect(screen.getByRole("heading", { name: "إنشاء قصة جديدة" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "إنشاء قصة" })).toBeInTheDocument();
   });
 
-  it("shows loading state", () => {
+  it("shows loading state", async () => {
+    const deferred = createDeferred<typeof mockStory>();
+    mockedApi.createStory.mockReturnValue(deferred.promise);
+    const user = userEvent.setup({ delay: null });
     render(<StoryCreatePage />);
-    expect(screen.getByRole("status", { name: "جارٍ التحميل…" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("العنوان"), "قصة جديدة");
+    await user.type(screen.getByLabelText("المحتوى"), "محتوى القصة");
+    await user.click(screen.getByRole("button", { name: "إنشاء القصة" }));
+    expect(screen.getByRole("button", { name: "إنشاء القصة" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getByTestId("button-spinner")).toBeInTheDocument();
+    await act(async () => {
+      deferred.resolve(mockStory);
+    });
   });
 
   it("handles form submission", async () => {
-    mockedApi.createStory.mockResolvedValue(mockStory);
+    const user = userEvent.setup({ delay: null });
     render(<StoryCreatePage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockedApi.createStory).toHaveBeenCalled();
+    await user.type(screen.getByLabelText("العنوان"), "قصة جديدة");
+    await user.type(screen.getByLabelText("المحتوى"), "محتوى القصة");
+    await user.click(screen.getByRole("button", { name: "إنشاء القصة" }));
+    await waitFor(() => {
+      expect(mockedApi.createStory).toHaveBeenCalledWith({
+        title: "قصة جديدة",
+        content: "محتوى القصة",
+        category: "fiction",
+        tags: [],
+      });
+    });
   });
 });

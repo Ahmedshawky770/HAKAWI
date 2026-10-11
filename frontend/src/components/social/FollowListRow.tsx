@@ -4,7 +4,6 @@ import React from "react";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
-import { ListRowSkeleton } from "@/components/ui/Skeleton";
 import type { Follow } from "@/types/api";
 
 interface FollowListRowProps {
@@ -29,20 +28,14 @@ export function FollowListRow({ follow }: FollowListRowProps) {
   );
 }
 
-export function FollowListSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="space-y-3" aria-hidden="true">
-      {Array.from({ length: count }, (_, index) => (
-        <ListRowSkeleton key={index} />
-      ))}
-    </div>
-  );
+interface FollowListEmptyProps {
+  label?: string;
 }
 
-export function FollowListEmpty() {
+export function FollowListEmpty({ label = "لا يوجد متابعون بعد." }: FollowListEmptyProps = {}) {
   return (
     <Card className="p-8 text-center">
-      <p className="text-sm text-ink-muted">لا يوجد متابعون بعد.</p>
+      <p className="text-sm text-ink-muted">{label}</p>
     </Card>
   );
 }

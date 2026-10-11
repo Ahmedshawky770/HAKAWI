@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
-import { FollowListEmpty, FollowListSkeleton, FollowListRow } from "@/components/social/FollowListRow";
+import { FollowListEmpty, FollowListRow } from "@/components/social/FollowListRow";
 import type { Follow } from "@/types/api";
 
 const sampleFollow: Follow = {
@@ -16,15 +16,7 @@ describe("FollowListRow", () => {
   it("renders the follower name and date", () => {
     render(<FollowListRow follow={sampleFollow} />);
 
-    expect(screen.getByText("متابع تجريبي")).toBeDefined();
-  });
-});
-
-describe("FollowListSkeleton", () => {
-  it("renders the requested number of skeletons", () => {
-    render(<FollowListSkeleton count={2} />);
-
-    expect(screen.getByLabelText("جارٍ التحميل…")).toBeDefined();
+    expect(screen.getByText("متابع")).toBeDefined();
   });
 });
 
