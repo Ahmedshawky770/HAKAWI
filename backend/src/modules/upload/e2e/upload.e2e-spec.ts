@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -14,23 +14,15 @@ import { UsersRepository } from '../../../modules/users/repositories/users.repos
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
 import { UploadService } from '../../../modules/upload/upload.service.ts';
-import { uploads } from '../../../db/schema/upload.schema.ts';
+import type { JsonResponse, LoginResponseBody } from '../../../test/helpers/test-response-types.ts';
 
-interface JsonResponse<TBody> {
-  status: number;
-  body: TBody;
+interface PresignedUploadResponseBody {
+  url: string;
+  filename: string;
 }
-
-interface LoginResponseBody {
-  tokens: { accessToken: string };
-}
-
-// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
-// Accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 describe('Upload E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
   let accessToken: string;
 
@@ -64,7 +56,7 @@ describe('Upload E2E', () => {
       })
       .overrideProvider(UploadService)
       .useValue({
-        generatePresignedUrl: (filename: string, _contentType: string, folder: string) => ({
+        generatePresignedUrl: (filename: string, contentType: string, folder: string) => ({
           url: `https://s3.amazonaws.com/bucket/${folder}/${filename}`,
           filename: `${folder}/${filename}`,
         }),
@@ -73,7 +65,7 @@ describe('Upload E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
 
     await request(httpServer).post('/auth/register').send({
       email: 'e2e-upload@example.com',
@@ -113,7 +105,7 @@ describe('Upload E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('url');
-      expect(res.body.filename).toContain('images/e2e-test');
+      expect((res.body as PresignedUploadResponseBody).filename).toContain('images/e2e-test');
     });
 
     it('should refuse an unauthenticated caller', async () => {
@@ -133,7 +125,7 @@ describe('Upload E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('url');
-      expect(res.body.filename).toContain('pdfs/e2e-test');
+      expect((res.body as PresignedUploadResponseBody).filename).toContain('pdfs/e2e-test');
     });
 
     it('should refuse an unauthenticated caller', async () => {

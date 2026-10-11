@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 import { categories, stories, storyTags, tags } from '../../../db/schema/stories.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -53,7 +54,7 @@ describe('StoriesRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -102,9 +103,9 @@ describe('StoriesRepository', () => {
 
       await repository.findBySlug(SLUG);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([stories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([stories]);
       expect(whereOf()).toEqual(eq(stories.slug, SLUG));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when no story carries that slug', async () => {
@@ -135,8 +136,8 @@ describe('StoriesRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates with a zero-based offset', async () => {
@@ -144,8 +145,8 @@ describe('StoriesRepository', () => {
 
       await repository.findAll({ page: 4, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([30]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([30]);
     });
 
     it('orders by publication date, newest first, with creation date as a tie-break', async () => {
@@ -156,7 +157,7 @@ describe('StoriesRepository', () => {
       // The second key is not a different order, it is a stable one. `published_at` is NULL for every
       // unpublished row, so the list `GET /stories/mine` returns was ordered by a column that is
       // constant for all of it, and OFFSET pagination over that can repeat and skip rows.
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.publishedAt), desc(stories.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(stories.publishedAt), desc(stories.createdAt)]);
     });
 
     it('hides soft-deleted stories even when no filter is supplied', async () => {
@@ -244,8 +245,8 @@ describe('StoriesRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([stories]);
-      expect(firstArgsOf(chains[1]!, 'from')).toEqual([stories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([stories]);
+      expect(firstArgsOf(chainAt(chains, 1), 'from')).toEqual([stories]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -271,7 +272,7 @@ describe('StoriesRepository', () => {
       const data = { authorId: AUTHOR_ID, title: 'The Long Night', slug: SLUG, categoryId: CATEGORY_ID };
       await repository.create(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -282,7 +283,7 @@ describe('StoriesRepository', () => {
       const updated = await repository.update(STORY_ID, { title: 'Edited' });
 
       expect(updated).toMatchObject({ title: 'Edited' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ title: 'Edited' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -292,7 +293,7 @@ describe('StoriesRepository', () => {
 
       await repository.update(STORY_ID, { status: 'published' });
 
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(whereOf()).toEqual(eq(stories.id, STORY_ID));
       expect(db.update).toHaveBeenCalledWith(stories);
     });
@@ -304,7 +305,7 @@ describe('StoriesRepository', () => {
 
       await repository.softDelete(STORY_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'archived' });
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(db.delete).not.toHaveBeenCalled();
@@ -317,7 +318,7 @@ describe('StoriesRepository', () => {
 
       await repository.incrementViewCount(STORY_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toHaveProperty('viewCount');
       expect(whereOf()).toEqual(eq(stories.id, STORY_ID));
     });
@@ -335,7 +336,7 @@ describe('StoriesRepository', () => {
 
       await repository.findAuthorsByIds([AUTHOR_ID, CATEGORY_ID]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([users]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([users]);
       expect(whereOf()).toEqual(inArray(users.id, [AUTHOR_ID, CATEGORY_ID]));
     });
 
@@ -362,7 +363,7 @@ describe('StoriesRepository', () => {
 
       await repository.findCategoriesByIds([CATEGORY_ID]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([categories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([categories]);
       expect(whereOf()).toEqual(inArray(categories.id, [CATEGORY_ID]));
     });
 
@@ -385,8 +386,8 @@ describe('StoriesRepository', () => {
 
       await repository.findTagsByStoryIds([STORY_ID]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([storyTags]);
-      expect(firstArgsOf(chains[0]!, 'innerJoin')).toEqual([tags, eq(tags.id, storyTags.tagId)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([storyTags]);
+      expect(firstArgsOf(chainAt(chains, 0), 'innerJoin')).toEqual([tags, eq(tags.id, storyTags.tagId)]);
     });
 
     it('matches the story ids on the junction table, not on the joined tag', async () => {

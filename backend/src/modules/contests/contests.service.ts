@@ -10,19 +10,6 @@ import {
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
-import type {
-  ContestCreatedEvent,
-  ContestUpdatedEvent,
-  ContestStartedEvent,
-  ContestCompletedEvent,
-  ContestCancelledEvent,
-  SubmissionSubmittedEvent,
-  SubmissionApprovedEvent,
-  SubmissionRejectedEvent,
-  VoteCastEvent,
-  WinnerSelectedEvent,
-  PrizeDistributedEvent,
-} from '../../common/events/contests.events.ts';
 
 import type { IContestsRepository } from './interfaces/contests-repository.interface.ts';
 import { CONTESTS_REPOSITORY } from './interfaces/contests-repository.interface.ts';
@@ -116,7 +103,7 @@ export class ContestsService {
     };
 
     const contest = await this.contestsRepository.createContest(data);
-    this.eventBus.emit('contest.created', { contestId: contest.id, createdBy });
+    await this.eventBus.emit('contest.created', { contestId: contest.id, createdBy });
     return contest;
   }
 
@@ -188,7 +175,7 @@ export class ContestsService {
     const contest = await this.contestsRepository.updateContest(id, input);
     await this.invalidateContestCache(id);
 
-    this.eventBus.emit('contest.updated', { contestId: id, updatedFields: input });
+    await this.eventBus.emit('contest.updated', { contestId: id, updatedFields: input });
     return contest;
   }
 
@@ -207,7 +194,7 @@ export class ContestsService {
     const updated = await this.contestsRepository.updateContest(id, { status: 'active' });
     await this.invalidateContestCache(id);
 
-    this.eventBus.emit('contest.started', { contestId: id });
+    await this.eventBus.emit('contest.started', { contestId: id });
     return updated;
   }
 
@@ -226,7 +213,7 @@ export class ContestsService {
     const updated = await this.contestsRepository.updateContest(id, { status: 'cancelled' });
     await this.invalidateContestCache(id);
 
-    this.eventBus.emit('contest.cancelled', { contestId: id });
+    await this.eventBus.emit('contest.cancelled', { contestId: id });
     return updated;
   }
 
@@ -256,9 +243,9 @@ export class ContestsService {
 
     if (hasWinner) {
       const winning = winningSubmission;
-      this.eventBus.emit('winner.selected', { contestId: id, submissionId: winning.id, winnerId: winning.authorId });
+      await this.eventBus.emit('winner.selected', { contestId: id, submissionId: winning.id, winnerId: winning.authorId });
     }
-    this.eventBus.emit('contest.completed', { contestId: id, winnerId: updateData.winnerId ?? null });
+    await this.eventBus.emit('contest.completed', { contestId: id, winnerId: updateData.winnerId ?? null });
     return updated;
   }
 
@@ -287,7 +274,7 @@ export class ContestsService {
     }
 
     const submission = await this.contestsRepository.createSubmission({ contestId, storyId, authorId });
-    this.eventBus.emit('submission.submitted', { submissionId: submission.id, contestId, authorId });
+    await this.eventBus.emit('submission.submitted', { submissionId: submission.id, contestId, authorId });
     return submission;
   }
 
@@ -332,7 +319,7 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.reviewSubmission(submissionId, 'approved', userId);
-    this.eventBus.emit('submission.approved', { submissionId, contestId, authorId: submission.authorId });
+    await this.eventBus.emit('submission.approved', { submissionId, contestId, authorId: submission.authorId });
     return updated;
   }
 
@@ -367,7 +354,7 @@ export class ContestsService {
     }
 
     const updated = await this.contestsRepository.reviewSubmission(submissionId, 'rejected', userId);
-    this.eventBus.emit('submission.rejected', { submissionId, contestId, authorId: submission.authorId });
+    await this.eventBus.emit('submission.rejected', { submissionId, contestId, authorId: submission.authorId });
     return updated;
   }
 
@@ -420,7 +407,7 @@ export class ContestsService {
     }
 
     const vote = await this.contestsRepository.castVote({ contestId, submissionId, userId });
-    this.eventBus.emit('vote.cast', { voteId: vote.id, contestId, submissionId, userId });
+    await this.eventBus.emit('vote.cast', { voteId: vote.id, contestId, submissionId, userId });
     return vote;
   }
 
@@ -497,8 +484,8 @@ export class ContestsService {
     const updated = await this.contestsRepository.updateContest(contestId, { winnerId, status: 'completed' });
     await this.invalidateContestCache(contestId);
 
-    this.eventBus.emit('winner.selected', { contestId, submissionId, winnerId });
-    this.eventBus.emit('contest.completed', { contestId, winnerId });
+    await this.eventBus.emit('winner.selected', { contestId, submissionId, winnerId });
+    await this.eventBus.emit('contest.completed', { contestId, winnerId });
     return updated;
   }
 
@@ -542,7 +529,7 @@ export class ContestsService {
       currency: currency ?? null,
     });
 
-    this.eventBus.emit('prize.distributed', { prizeId: prize.id, contestId, winnerId });
+    await this.eventBus.emit('prize.distributed', { prizeId: prize.id, contestId, winnerId });
     return prize;
   }
 

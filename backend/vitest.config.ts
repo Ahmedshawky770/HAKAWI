@@ -123,7 +123,6 @@ export default defineConfig({
     exclude: ['node_modules/**', 'dist/**', 'coverage/**', 'test/**', 'src/e2e/**', 'src/modules/**/e2e/**', 'e2e/**'],
     coverage: {
       provider: 'v8',
-      all: true,
       reporter: ['text', 'json-summary', 'html', 'lcov'],
       reportsDirectory: './coverage',
       include: ['src/**/*.ts'],

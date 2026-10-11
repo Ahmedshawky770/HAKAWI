@@ -1,3 +1,5 @@
+import type { Server } from 'node:http';
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Controller, Get, INestApplication, HttpCode, HttpStatus, Post } from '@nestjs/common';
@@ -6,14 +8,15 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import request from 'supertest';
 
-import { JwtAuthGuard } from './jwt-auth.guard.ts';
-import { PermissionsGuard } from './permissions.guard.ts';
-import { RestrictionGuard } from './restriction.guard.ts';
-import { RolesGuard } from './roles.guard.ts';
 import { Public } from '../decorators/roles.decorator.ts';
 import { Secured } from '../decorators/secured.decorator.ts';
 import { ValkeyService } from '../services/valkey.service.ts';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+
+import { JwtAuthGuard } from './jwt-auth.guard.ts';
+import { PermissionsGuard } from './permissions.guard.ts';
+import { RestrictionGuard } from './restriction.guard.ts';
+import { RolesGuard } from './roles.guard.ts';
 
 /**
  * PROVES THE GUARD IS REACHABLE, which no unit test can do.
@@ -54,7 +57,7 @@ class SecuredProbeController {
 }
 
 describe('RestrictionGuard is wired into @Secured', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let valkey: { exists: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
 
   const tokenFor = (sub: string): Promise<string> =>

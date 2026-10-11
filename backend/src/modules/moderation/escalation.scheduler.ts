@@ -1,6 +1,7 @@
 import { Injectable, Inject, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
 import { ModerationService } from './moderation.service.ts';
 
 export const DEFAULT_ESCALATION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;

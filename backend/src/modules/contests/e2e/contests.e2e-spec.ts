@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { sql } from 'drizzle-orm';
@@ -16,11 +16,8 @@ import { UsersRepository } from '../../../modules/users/repositories/users.repos
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
 import { db } from '../../../db/index.ts';
-
-interface JsonResponse<TBody> {
-  status: number;
-  body: TBody;
-}
+import type { StoryResponseBody } from '../../../test/helpers/test-context.ts';
+import type { JsonResponse, LoginResponseBody } from '../../../test/helpers/test-response-types.ts';
 
 // `POST /auth/register` returns `{ user, tokens }`. This interface used to model the payload FLAT
 // (`{ id, email, ... }`), so every `register.body.id` in this file was `undefined` — which is why
@@ -33,10 +30,6 @@ interface RegisterResponseBody {
     username: string;
     accountType: string;
   };
-}
-
-interface LoginResponseBody {
-  tokens: { accessToken: string };
 }
 
 interface ContestResponseBody {
@@ -57,13 +50,14 @@ interface CategoryResponseBody {
   slug: string;
 }
 
-// drizzle-ORM db and sql template tags are typed as `any` by the library.
-// Supertest request chains propagate `any` from the untyped CommonJS default import.
-// These are accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument */
+interface PublisherStatsResponseBody {
+  totalContests: number;
+  activeContests: number;
+  totalSubmissions: number;
+}
 
 describe('Contests E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
   let logger: WinstonLoggerService;
   let accessToken: string;
@@ -103,7 +97,7 @@ describe('Contests E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
     logger = app.get(WinstonLoggerService);
 
     const registerPublisher = (await request(httpServer).post('/auth/register').send({
@@ -114,11 +108,10 @@ describe('Contests E2E', () => {
       accountType: 'author',
     })) as JsonResponse<RegisterResponseBody>;
 
-
-    const loginPublisher = (await request(httpServer).post('/auth/login').send({
+    await request(httpServer).post('/auth/login').send({
       email: 'e2e-publisher@example.com',
       password: 'SecurePass123!',
-    })) as JsonResponse<LoginResponseBody>;
+    });
 
     // `POST /categories` is `@Secured(ADMIN)` + `@RequireAdminRole(CONTENT_MODERATOR)` +
     // `@RequirePermissions(CONTENT_EDIT_ALL)`. This request used to be issued with the publisher's
@@ -155,24 +148,25 @@ describe('Contests E2E', () => {
 
     categoryId = (categoryRes.body as CategoryResponseBody).id;
 
-    const registerAuthor = (await request(httpServer).post('/auth/register').send({
+    // Both fixtures are registered and never logged in: the author and the voter are separate
+    // accounts in the same database, and the requests below run as the moderator.
+    await request(httpServer).post('/auth/register').send({
       email: 'e2e-author@example.com',
       password: 'SecurePass123!',
       name: 'E2E Author',
       username: 'e2eauthor',
       accountType: 'author',
-    })) as JsonResponse<RegisterResponseBody>;
+    });
 
-
-    const registerVoter = (await request(httpServer).post('/auth/register').send({
+    await request(httpServer).post('/auth/register').send({
       email: 'e2e-voter@example.com',
       password: 'SecurePass123!',
       name: 'E2E Voter',
       username: 'e2evoter',
       accountType: 'reader',
-    })) as JsonResponse<RegisterResponseBody>;
+    });
 
-    const storyRes = await request(httpServer)
+    const storyRes = (await request(httpServer)
       .post('/stories')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
@@ -180,7 +174,7 @@ describe('Contests E2E', () => {
         slug: `e2e-test-story-${Date.now()}`,
         content: 'This is an E2E test story content.',
         categoryId,
-      });
+      })) as JsonResponse<StoryResponseBody>;
 
     if (!storyRes.body?.id) {
       throw new Error(`Story creation failed: ${JSON.stringify(storyRes.body)}`);
@@ -324,7 +318,7 @@ describe('Contests E2E', () => {
       const res = (await request(httpServer)
         .get('/contests/publisher/stats')
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200)) as JsonResponse<Record<string, unknown>>;
+        .expect(200)) as JsonResponse<PublisherStatsResponseBody>;
 
       expect(res.body).toHaveProperty('totalContests');
       expect(res.body).toHaveProperty('activeContests');

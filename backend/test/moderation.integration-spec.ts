@@ -15,7 +15,6 @@ describe('Moderation Integration', () => {
   let superAdminToken: string;
   let readerToken: string;
   let readerUserId: string;
-  let reportId: string;
 
   beforeAll(async () => {
     context = await createTestContext();
@@ -44,7 +43,6 @@ describe('Moderation Integration', () => {
       const body = res.body as ReportResponse;
 
       expect(body).toHaveProperty('id');
-      reportId = body.id;
     });
   });
 

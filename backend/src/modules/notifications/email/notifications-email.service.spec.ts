@@ -2,11 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
-  INotificationsRepository,
   Notification,
   CreateNotificationInput,
 } from '../interfaces/notifications-repository.interface.ts';
-import type { IUsersRepository, User, CreateUserInput } from '../../../common/users/users-repository.interface.ts';
+import type { User, CreateUserInput } from '../../../common/users/users-repository.interface.ts';
 
 import { NotificationsEmailService } from './notifications-email.service.ts';
 
@@ -101,10 +100,6 @@ type MockEmailTransporter = {
     >
   >;
 };
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 describe('NotificationsEmailService', () => {
   let service: NotificationsEmailService;

@@ -119,7 +119,7 @@ type MockWinstonLoggerService = {
 
 // vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
 // This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 const createMockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-123',
@@ -145,6 +145,9 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
   emailVerified: false,
   emailVerificationToken: null,
   passwordResetToken: null,
+  totpSecretEncrypted: null,
+  mfaEnabled: false,
+  mfaEnforcedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,

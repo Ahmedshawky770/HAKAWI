@@ -3,7 +3,6 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { StoryCreatedEvent } from '../../../common/events/stories.events.ts';
 import type { CommentCreatedEvent } from '../../../common/events/social.events.ts';
-
 import { ContentModerationService } from '../content-moderation/content-moderation.service.ts';
 
 import { ContentModerationEventHandler } from './content-moderation.event-handler.ts';

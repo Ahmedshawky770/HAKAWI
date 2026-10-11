@@ -10,10 +10,6 @@ import type {
   UpdateCommentInput,
 } from './interfaces/comments-repository.interface.js';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockCommentsRepository = {
   findById: ReturnType<typeof vi.fn>;
   findByStory: ReturnType<typeof vi.fn>;

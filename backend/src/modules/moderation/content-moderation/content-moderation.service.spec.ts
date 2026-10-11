@@ -11,7 +11,8 @@ import { ContentModerationService } from './content-moderation.service.ts';
 type ChainBuilder = {
   then: (onfulfilled: (value: unknown) => unknown) => Promise<unknown>;
   from: Mock<(table: unknown) => ChainBuilder>;
-  values: Mock<(values: Record<string, unknown>) => ChainBuilder>;
+  /** `values` is only ever called for report inserts here, so the row type is the report's. */
+  values: Mock<(row: typeof reports.$inferInsert) => ChainBuilder>;
   set: Mock<(values: Record<string, unknown>) => ChainBuilder>;
   where: Mock<(clause: unknown) => ChainBuilder>;
   orderBy: Mock<(clause: unknown) => ChainBuilder>;
@@ -205,9 +206,9 @@ describe('ContentModerationService', () => {
 
       await service.reviewStory(TARGET_ID);
 
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({ description: expect.stringContaining('crypto giveaway') }),
-      );
+      expect(insertChain.values).toHaveBeenCalledTimes(1);
+      const [inserted] = insertChain.values.mock.calls[0] ?? [];
+      expect(inserted.description).toContain('crypto giveaway');
     });
 
     it('should escalate a high severity hit immediately', async () => {

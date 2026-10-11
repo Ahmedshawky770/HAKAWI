@@ -2,9 +2,7 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
   Body,
-  Param,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -16,7 +14,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { RequireAdminRole } from '../../common/decorators/roles.decorator.ts';
 import { AdminRole } from '../../common/constants/roles.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
-
 import { IpBlocklistService, BlockRecord, BlockOptions } from '../../common/waf/ip-blocklist.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 

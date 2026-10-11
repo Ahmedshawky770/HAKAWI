@@ -16,6 +16,30 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+/**
+ * What `supertest` hands a spec: the status code beside the parsed body.
+ *
+ * `res.body` is `any` in supertest's own types, so every assertion on a field was
+ * previously unchecked. Naming the body here is what makes a field that the route
+ * stopped sending a compile error instead of a passing test over `undefined`.
+ */
+export interface JsonResponse<TBody> {
+  status: number;
+  body: TBody;
+}
+
+/**
+ * The tokens a login answer carries, as the specs that log in read them.
+ *
+ * Deliberately narrower than {@link AuthResponse}: `POST /auth/login` returns the
+ * user profile as well, but every e2e spec only ever destructures the access token.
+ * A narrow shape keeps a spec from asserting on a profile field that the login
+ * response does not actually populate.
+ */
+export interface LoginResponseBody {
+  tokens: Pick<AuthTokensResponse, 'accessToken'>;
+}
+
 // Comments module responses
 export interface CommentResponse {
   id: string;
@@ -170,12 +194,6 @@ export interface NotificationResponse {
   actor?: NotificationActorResponse;
 }
 
-export interface NotificationsListResponse {
-  notifications: NotificationResponse[];
-  total: number;
-  unreadCount: number;
-}
-
 export interface NotificationCountResponse {
   count: number;
 }
@@ -261,6 +279,32 @@ export interface StoryAuthorResponse {
   id: string;
   username: string;
   name: string;
+}
+
+/**
+ * The wire shape a story READ route returns (`GET /stories/:id`, `GET /stories/slug/:slug` and every
+ * row of `GET /stories`), produced by `toStoryResponse` in `stories/types.ts`.
+ *
+ * Deliberately separate from {@link StoryListItemResponse}/{@link StoryDetailResponse}, which name the
+ * field `viewCount`: the read routes call it `views`, so a cast to those types fails to compile the
+ * moment a test asserts on the counter. The author summary carries `id` and `name` only — no
+ * `username` — and `category` is a slug string, not an object.
+ */
+export interface StoryWireResponse {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  content: string | null;
+  coverImage: string | null;
+  status: string;
+  category: string | null;
+  tags: string[];
+  views: number;
+  reactions: number;
+  author: { id: string; name: string | null };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StoryCategoryResponse {

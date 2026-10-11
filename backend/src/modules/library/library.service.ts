@@ -8,11 +8,11 @@ import type {
   LibraryItemAccessedEvent,
   LibraryItemRemovedEvent,
 } from '../../common/events/library.events.ts';
+import type { IBooksRepository } from '../books/interfaces/books-repository.interface.ts';
+import { BOOKS_REPOSITORY } from '../books/interfaces/books-repository.interface.ts';
 
 import type { ILibraryRepository } from './interfaces/library-repository.interface.ts';
 import { LIBRARY_REPOSITORY } from './interfaces/library-repository.interface.ts';
-import type { IBooksRepository } from '../books/interfaces/books-repository.interface.ts';
-import { BOOKS_REPOSITORY } from '../books/interfaces/books-repository.interface.ts';
 import type { LibraryItem, LibraryQuery, LibraryItemResponse, LibraryListResponse } from './types.ts';
 
 @Injectable()

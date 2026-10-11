@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { library } from '../../../db/schema/library.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -52,7 +53,7 @@ describe('LibraryRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,9 +75,9 @@ describe('LibraryRepository', () => {
 
       await repository.findById(ITEM_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([library]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([library]);
       expect(whereOf()).toEqual(eq(library.id, ITEM_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -111,8 +112,8 @@ describe('LibraryRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('offsets by whole pages for any later page', async () => {
@@ -120,8 +121,8 @@ describe('LibraryRepository', () => {
 
       await repository.findByUser(USER_ID, { page: 3, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('scopes every read to the owner so nobody sees another shelf', async () => {
@@ -157,7 +158,7 @@ describe('LibraryRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(library.addedAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(library.addedAt)]);
     });
 
     it('reads from the library table', async () => {
@@ -165,7 +166,7 @@ describe('LibraryRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([library]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([library]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -194,7 +195,7 @@ describe('LibraryRepository', () => {
       await repository.findByUserAndBook(USER_ID, BOOK_ID);
 
       expect(whereOf()).toEqual(and(eq(library.userId, USER_ID), eq(library.bookId, BOOK_ID)));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the book is not on that reader’s shelf', async () => {
@@ -221,7 +222,7 @@ describe('LibraryRepository', () => {
 
       await repository.create({ userId: USER_ID, bookId: BOOK_ID });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { userId: USER_ID, bookId: BOOK_ID, rentalId: null, status: 'owned' },
       ]);
     });
@@ -231,7 +232,7 @@ describe('LibraryRepository', () => {
 
       await repository.create({ userId: USER_ID, bookId: BOOK_ID, rentalId: RENTAL_ID, status: 'rented' });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { userId: USER_ID, bookId: BOOK_ID, rentalId: RENTAL_ID, status: 'rented' },
       ]);
     });
@@ -244,7 +245,7 @@ describe('LibraryRepository', () => {
       const updated = await repository.update(ITEM_ID, { status: 'read' });
 
       expect(updated).toMatchObject({ status: 'read' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'read' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -255,7 +256,7 @@ describe('LibraryRepository', () => {
       await repository.update(ITEM_ID, { lastAccessedAt: new Date(0) });
 
       expect(whereOf()).toEqual(eq(library.id, ITEM_ID));
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(db.update).toHaveBeenCalledWith(library);
     });
   });

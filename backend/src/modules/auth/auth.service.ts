@@ -17,8 +17,8 @@ import { USERS_REPOSITORY, type CreateUserInput } from '../../common/users/users
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
 import { UserRegisteredEvent } from '../../common/events/users.events.ts';
 import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
-import { AccountLockoutService, LockoutStatus } from './account-lockout.service.ts';
 
+import { AccountLockoutService } from './account-lockout.service.ts';
 import {
   appleTokenResponseSchema,
   facebookTokenResponseSchema,
@@ -592,8 +592,8 @@ export class AuthService {
         'AuthService',
       );
       throw new UnauthorizedException(
-        `Too many failed attempts. Please try again after ${Math.ceil(
-          (lockoutStatus.lockoutExpiresAt! - Date.now()) / 60000,
+        `Too many failed attempts. Please try again after ${this.lockoutRemainingMinutes(
+          lockoutStatus.lockoutExpiresAt,
         )} minutes.`,
       );
     }
@@ -614,8 +614,8 @@ export class AuthService {
         'AuthService',
       );
       throw new UnauthorizedException(
-        `Account temporarily locked due to too many failed attempts. Please try again after ${Math.ceil(
-          (userLockoutStatus.lockoutExpiresAt! - Date.now()) / 60000,
+        `Account temporarily locked due to too many failed attempts. Please try again after ${this.lockoutRemainingMinutes(
+          userLockoutStatus.lockoutExpiresAt,
         )} minutes.`,
       );
     }
@@ -672,7 +672,7 @@ export class AuthService {
       if (!payload) {
         throw new UnauthorizedException('Invalid refresh token');
       }
-    } catch (error) {
+    } catch {
       this.winstonLoggerService.warn('Refresh token validation failed', 'AuthService');
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -786,7 +786,7 @@ export class AuthService {
     let payload: JwtPayload & { type: string };
     try {
       payload = await this.jwtHelper.verifyRefreshToken(presentedToken);
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -826,6 +826,22 @@ export class AuthService {
    * logout became usable again from day 7 onwards, for another 23 days. The TTL has to be at
    * least the token's own remaining lifetime, so it is computed from the same value.
    */
+  /**
+   * Whole minutes left on a lockout, for the retry message the client reads.
+   *
+   * `LockoutStatus.lockoutExpiresAt` is `number | null` because an unlocked status has no expiry,
+   * and both call sites are already inside `isLocked === true`, so every status the lockout service
+   * builds there carries a timestamp. The null branch is guarded rather than asserted away: with
+   * `lockoutExpiresAt!` a missing timestamp would go straight into the subtraction and render a
+   * negative minute count.
+   */
+  private lockoutRemainingMinutes(lockoutExpiresAt: number | null): number {
+    if (lockoutExpiresAt === null) {
+      return 0;
+    }
+    return Math.ceil((lockoutExpiresAt - Date.now()) / 60000);
+  }
+
   private refreshBlacklistTtlSeconds(): number {
     const configured = this.configService.get<string>('jwt.refreshExpiry', '7d');
     const lifetimeMs = parseDurationToMs(configured);

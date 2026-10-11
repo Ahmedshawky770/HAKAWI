@@ -8,7 +8,6 @@ import type {
   StoryPublishedEvent,
 } from '../../../common/events/stories.events.ts';
 import type { CommentCreatedEvent, CommentUpdatedEvent } from '../../../common/events/social.events.ts';
-
 import { ContentModerationService } from '../content-moderation/content-moderation.service.ts';
 
 /**

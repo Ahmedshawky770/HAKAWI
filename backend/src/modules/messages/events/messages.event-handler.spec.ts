@@ -1,15 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import type { IMessagesRepository, Message } from '../interfaces/messages-repository.interface.ts';
+import type { IMessagesRepository } from '../interfaces/messages-repository.interface.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { MessageSentEvent, MessageReadEvent } from '../../../common/events/social.events.ts';
 import { MessagesGateway } from '../gateways/messages.gateway.ts';
 
 import { MessagesEventHandler } from './messages.event-handler.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockMessagesRepository = {
   findById: ReturnType<typeof vi.fn>;

@@ -98,7 +98,7 @@ describe('RestrictionGuard', () => {
 
     it('carries the restriction type in the response body', async () => {
       await expect(guard.canActivate(contextFor('user-1'))).rejects.toMatchObject({
-        response: expect.objectContaining({ type: 'ban' }),
+        response: { type: 'ban' },
       });
     });
   });

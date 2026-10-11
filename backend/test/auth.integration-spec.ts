@@ -4,8 +4,10 @@ import request from 'supertest';
 import { db } from '../src/db/index.ts';
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext } from '../src/test/helpers/test-context.ts';
+import type { AuthResponse, AuthTokensResponse, UserProfileResponse } from '../src/test/helpers/test-response-types.ts';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+/** The reset-token row this suite stores and then confirms over HTTP. */
+type PasswordResetTokenRow = { password_reset_token: string | null };
 
 describe('Auth Integration', () => {
   let context: TestContext;
@@ -31,7 +33,8 @@ describe('Auth Integration', () => {
       const res = await registerRaw(email, username).expect(201);
 
       expect(res.body).toHaveProperty('user');
-      expect(res.body.user.email).toBe(email);
+      const body = res.body as AuthResponse;
+      expect(body.user.email).toBe(email);
       expect(res.body).toHaveProperty('tokens');
     });
 
@@ -72,7 +75,7 @@ describe('Auth Integration', () => {
         .set('Authorization', `Bearer ${created.accessToken}`)
         .expect(200);
 
-      expect(me.body.accountType).toBe('reader');
+      expect((me.body as UserProfileResponse).accountType).toBe('reader');
 
       await request(context.httpServer)
         .get('/moderation/stats')
@@ -91,7 +94,8 @@ describe('Auth Integration', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('user');
-      expect(res.body.user.email).toBe(user.email);
+      const body = res.body as AuthResponse;
+      expect(body.user.email).toBe(user.email);
     });
 
     it('should return 401 with invalid email', async () => {
@@ -120,7 +124,7 @@ describe('Auth Integration', () => {
         .send({ email: user.email, password: 'SecurePass123!' })
         .expect(200);
 
-      const cookies: unknown = loginRes.headers['set-cookie'];
+      const cookies: string | string[] | undefined = loginRes.headers['set-cookie'];
       const cookieList: string[] = Array.isArray(cookies)
         ? cookies.filter((entry): entry is string => typeof entry === 'string')
         : [];
@@ -131,7 +135,8 @@ describe('Auth Integration', () => {
       const res = await request(context.httpServer).post('/auth/refresh').send({ refreshToken }).expect(200);
 
       expect(res.body).toHaveProperty('tokens');
-      expect(res.body.tokens).toHaveProperty('accessToken');
+      const tokens = (res.body as AuthResponse).tokens;
+      expect(tokens.accessToken).toBeDefined();
     });
 
     it('should return 401 for an unknown refresh token', async () => {
@@ -148,7 +153,7 @@ describe('Auth Integration', () => {
         .send({ email: user.email, password: 'SecurePass123!' })
         .expect(200);
 
-      const refreshToken: string = loginRes.body.tokens.refreshToken;
+      const refreshToken = (loginRes.body as AuthTokensResponse).refreshToken;
 
       await request(context.httpServer).post('/auth/logout').send({ refreshToken }).expect(200);
 
@@ -175,10 +180,11 @@ describe('Auth Integration', () => {
 
       await request(context.httpServer).post('/auth/forgot-password').send({ email: user.email }).expect(200);
 
-      const result = await db.execute(sql`
+      const result = await db.execute<PasswordResetTokenRow>(sql`
         SELECT password_reset_token FROM users WHERE email = ${user.email}
       `);
-      const token: unknown = result.rows[0]?.password_reset_token;
+      const row = result.rows[0];
+      const token = row === undefined ? null : row.password_reset_token;
       expect(token).toBeDefined();
 
       const res = await request(context.httpServer)

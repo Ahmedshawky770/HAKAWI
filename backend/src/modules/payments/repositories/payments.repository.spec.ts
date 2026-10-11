@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 
 import { payments, paymentTransactions, refunds } from '../../../db/schema/payments.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 import {
   REFUND_CAPACITY_STATUSES,
   RefundCapacityExceededError,
@@ -96,10 +96,10 @@ describe('PaymentsRepository', () => {
   let transaction: { chains: () => MockChain[] };
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   /** The row literal the write of the only query built in this test was given. */
-  const valuesOf = (): Record<string, unknown> => (firstArgsOf(chains[0]!, 'values') as [Record<string, unknown>])[0];
+  const valuesOf = (): Record<string, unknown> => (firstArgsOf(chainAt(chains, 0), 'values') as [Record<string, unknown>])[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -123,7 +123,7 @@ describe('PaymentsRepository', () => {
       await repository.findById(PAYMENT_ID);
 
       expect(whereOf()).toEqual(eq(payments.id, PAYMENT_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -153,7 +153,7 @@ describe('PaymentsRepository', () => {
       await expect(repository.findByOrderId(ORDER_ID)).resolves.toMatchObject({ id: PAYMENT_ID });
 
       expect(whereOf()).toEqual(eq(payments.paymobOrderId, ORDER_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the order id is unknown', async () => {
@@ -170,7 +170,7 @@ describe('PaymentsRepository', () => {
       await expect(repository.findByTransactionId(TRANSACTION_ID)).resolves.toMatchObject({ id: PAYMENT_ID });
 
       expect(whereOf()).toEqual(eq(payments.paymobTransactionId, TRANSACTION_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the transaction id is unknown', async () => {
@@ -231,7 +231,7 @@ describe('PaymentsRepository', () => {
 
       // If the page and the count disagreed, `total` would not match the rows returned.
       expect(whereOf(1)).toBe(whereOf(0));
-      expect(firstArgsOf(chains[1]!, 'from')).toEqual([payments]);
+      expect(firstArgsOf(chainAt(chains, 1), 'from')).toEqual([payments]);
     });
 
     it('defaults to the first page of twenty with a zero offset', async () => {
@@ -239,8 +239,8 @@ describe('PaymentsRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -248,8 +248,8 @@ describe('PaymentsRepository', () => {
 
       await repository.findAll({ page: 4, limit: 15 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([15]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([45]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([15]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([45]);
     });
 
     it('orders newest first and reads from the payments table', async () => {
@@ -257,8 +257,8 @@ describe('PaymentsRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([payments]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(payments.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([payments]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(payments.createdAt)]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -294,7 +294,7 @@ describe('PaymentsRepository', () => {
 
       expect(created).toMatchObject({ id: PAYMENT_ID });
       expect(db.insert).toHaveBeenCalledWith(payments);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([input]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([input]);
     });
   });
 
@@ -305,7 +305,7 @@ describe('PaymentsRepository', () => {
       const updated = await repository.update(PAYMENT_ID, { status: 'completed' });
 
       expect(updated).toMatchObject({ status: 'completed' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'completed' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -326,7 +326,7 @@ describe('PaymentsRepository', () => {
 
       await repository.softDelete(PAYMENT_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(whereOf()).toEqual(eq(payments.id, PAYMENT_ID));
       expect(db.delete).not.toHaveBeenCalled();
@@ -428,7 +428,7 @@ describe('PaymentsRepository', () => {
       expect(db.update).toHaveBeenCalledWith(refunds);
       expect(whereOf()).toEqual(eq(refunds.id, REFUND_ID));
       // refunds has no updated_at column, so the patch has to be forwarded exactly as given.
-      expect(firstArgsOf(chains[0]!, 'set')).toEqual([{ status: 'succeeded', paymobRefundId: 'REF-5512' }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'set')).toEqual([{ status: 'succeeded', paymobRefundId: 'REF-5512' }]);
     });
   });
 
@@ -438,7 +438,7 @@ describe('PaymentsRepository', () => {
 
       await expect(repository.findRefundsByPayment(PAYMENT_ID)).resolves.toEqual([{ id: REFUND_ID, amount: 250 }]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([refunds]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([refunds]);
       expect(whereOf()).toEqual(eq(refunds.paymentId, PAYMENT_ID));
     });
 
@@ -453,11 +453,11 @@ describe('PaymentsRepository', () => {
     const completedPayment = { id: PAYMENT_ID, amount: 1000, status: 'completed', deletedAt: null };
 
     /** The payment select, then the refunds sum, in the order the method issues them. */
-    const lockedSelect = (): MockChain => transaction.chains()[0]!;
-    const refundSum = (): MockChain => transaction.chains()[1]!;
+    const lockedSelect = (): MockChain => chainAt(transaction.chains(), 0);
+    const refundSum = (): MockChain => chainAt(transaction.chains(), 1);
     /** The refund insert, then the conditional status write. */
-    const refundInsert = (): MockChain => chains[chains.length - 2]!;
-    const statusWrite = (): MockChain => chains[chains.length - 1]!;
+    const refundInsert = (): MockChain => chainAt(chains, chains.length - 2);
+    const statusWrite = (): MockChain => chainAt(chains, chains.length - 1);
 
     it('reads the payment under a row lock inside a transaction', async () => {
       control.queue([completedPayment], [{ reservedTotal: '0' }], [{ id: REFUND_ID, status: 'pending' }]);
@@ -617,7 +617,7 @@ describe('PaymentsRepository', () => {
 
       expect(result.payment.status).toBe('completed');
       expect(result.paymentFullyRefunded).toBe(false);
-      const [patch] = firstArgsOf(chains[chains.length - 1]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, chains.length - 1), 'set') as [Record<string, unknown>];
       expect(patch.status).toBe('completed');
     });
 
@@ -650,7 +650,7 @@ describe('PaymentsRepository', () => {
 
       await repository.reconcileRefundCapacity(PAYMENT_ID);
 
-      expect(firstArgsOf(transaction.chains()[0]!, 'for')).toEqual(['update']);
+      expect(firstArgsOf(chainAt(transaction.chains(), 0), 'for')).toEqual(['update']);
     });
 
     it('reports a payment that does not exist', async () => {

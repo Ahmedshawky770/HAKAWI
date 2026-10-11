@@ -8,10 +8,6 @@ import { ReactionsService } from './reactions.service.ts';
 import type { Reaction } from './interfaces/reactions-repository.interface.ts';
 import { VALID_REACTION_TYPES } from './types.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockReactionsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Reaction | null>>>;
   findByUserAndStory: ReturnType<typeof vi.fn<(userId: string, storyId: string) => Promise<Reaction | null>>>;

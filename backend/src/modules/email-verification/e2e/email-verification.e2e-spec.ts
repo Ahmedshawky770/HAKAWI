@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -12,12 +12,8 @@ import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 
-// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
-// Accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
-
 describe('Email Verification E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
 
   beforeAll(async () => {
@@ -41,7 +37,7 @@ describe('Email Verification E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
   });
 
   afterAll(async () => {

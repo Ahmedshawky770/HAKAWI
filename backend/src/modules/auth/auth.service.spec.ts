@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { JwtHelper, JwtPayload, AppleJwksService, fingerprintToken } from '../../common/utils/jwt.util.ts';
-import { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../../common/utils/encryption.util.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -20,10 +20,6 @@ import { EmailVerificationService } from '../email-verification/email-verificati
 
 import { AuthService } from './auth.service.ts';
 import { AccountLockoutService } from './account-lockout.service.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 function oauthResponse(body: unknown, init: { status?: number; statusText?: string } = {}): Response {
   return {
@@ -290,8 +286,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
       const result = await authService.register(registerDto);
 
@@ -448,10 +444,10 @@ describe('AuthService', () => {
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
-      const result = await authService.login(loginDto);
+      const result = await authService.login(loginDto, '127.0.0.1');
 
       expect(result).toHaveProperty('user');
       expect(result).toHaveProperty('tokens');
@@ -467,7 +463,7 @@ describe('AuthService', () => {
 
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
 
-      await expect(authService.login(loginDto)).rejects.toThrow('Invalid email or password');
+      await expect(authService.login(loginDto, '127.0.0.1')).rejects.toThrow('Invalid email or password');
     });
 
     it('should throw UnauthorizedException when account is blocked', async () => {
@@ -504,7 +500,7 @@ describe('AuthService', () => {
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(user);
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
 
-      await expect(authService.login(loginDto)).rejects.toThrow('Account has been disabled');
+      await expect(authService.login(loginDto, '127.0.0.1')).rejects.toThrow('Account has been disabled');
     });
   });
 
@@ -514,7 +510,7 @@ describe('AuthService', () => {
         refreshToken: 'valid-refresh-token',
       };
 
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -545,8 +541,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       const result = await authService.refreshTokens(refreshTokenDto);
 
@@ -555,7 +551,7 @@ describe('AuthService', () => {
     });
 
     it('rotates the refresh token by blacklisting the one it just consumed', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -564,8 +560,8 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
@@ -585,7 +581,7 @@ describe('AuthService', () => {
     });
 
     it('blacklists for at least as long as the refresh token can still be valid', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -594,16 +590,15 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
       // 7d, derived from jwt.refreshExpiry rather than hardcoded. A blacklist shorter than the
       // token lifetime means a token revoked at logout becomes usable again part-way through
       // its own validity.
-      const ttlSeconds = vi.mocked(valkeyService.set).mock.calls.at(-1)?.[2];
-      expect(ttlSeconds).toBe(7 * 24 * 60 * 60);
+      expect(vi.mocked(valkeyService.set).mock.calls.at(-1)?.[2]).toBe(7 * 24 * 60 * 60);
     });
 
     it('derives the blacklist TTL from a longer configured refresh expiry', async () => {
@@ -617,7 +612,7 @@ describe('AuthService', () => {
         };
         return values[key] ?? fallback;
       });
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -626,8 +621,8 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
@@ -638,7 +633,7 @@ describe('AuthService', () => {
       // Refresh is silent and cookie-driven, so a blocked user holding a valid refresh token
       // would otherwise keep minting access tokens for the token's whole lifetime — up to seven
       // days — with no login and no event in the log.
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -661,7 +656,7 @@ describe('AuthService', () => {
     });
 
     it('never reissues a refresh token that a previous rotation already revoked', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -669,7 +664,7 @@ describe('AuthService', () => {
       } as JwtPayload & { type: string });
       vi.mocked(valkeyService.exists).mockResolvedValue(true);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await expect(authService.refreshTokens({ refreshToken: 'revoked-refresh-token' })).rejects.toThrow(
         'Refresh token has been revoked',
@@ -679,7 +674,7 @@ describe('AuthService', () => {
     });
 
     it('logs the reuse distinctly, so an operator can tell a replay from a typo', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -699,7 +694,7 @@ describe('AuthService', () => {
     // live pair. Burning the presented token first makes the loser of that race fail closed.
     it('burns the presented token before it mints the replacement', async () => {
       const order: string[] = [];
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -710,11 +705,11 @@ describe('AuthService', () => {
         order.push('revoked');
       });
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockImplementation(() => {
+      vi.mocked(jwtHelper.generateAccessToken).mockImplementation(() => {
         order.push('issued');
         return 'new-access-token';
       });
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
@@ -722,7 +717,7 @@ describe('AuthService', () => {
     });
 
     it('leaves the user logged out when minting fails after the token was burned', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -731,7 +726,7 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockImplementation(() => {
+      vi.mocked(jwtHelper.generateAccessToken).mockImplementation(() => {
         throw new Error('signing unavailable');
       });
 
@@ -754,7 +749,7 @@ describe('AuthService', () => {
     });
 
     it('blacklists for at least as long as the refresh token can still be valid', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -763,16 +758,15 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
       // 7d, derived from jwt.refreshExpiry rather than hardcoded. A blacklist shorter than the
       // token lifetime means a token revoked at logout becomes usable again part-way through
       // its own validity.
-      const ttlSeconds = vi.mocked(valkeyService.set).mock.calls.at(-1)?.[2];
-      expect(ttlSeconds).toBe(7 * 24 * 60 * 60);
+      expect(vi.mocked(valkeyService.set).mock.calls.at(-1)?.[2]).toBe(7 * 24 * 60 * 60);
     });
 
     it('derives the blacklist TTL from a longer configured refresh expiry', async () => {
@@ -786,7 +780,7 @@ describe('AuthService', () => {
         };
         return values[key] ?? fallback;
       });
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -795,8 +789,8 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
 
@@ -820,7 +814,7 @@ describe('AuthService', () => {
     });
 
     it('ignores padding around a pasted refresh token instead of failing on it', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -829,8 +823,8 @@ describe('AuthService', () => {
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
       vi.mocked(valkeyService.set).mockResolvedValue(undefined);
       vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('new-access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('new-refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
 
       await authService.refreshTokens({ refreshToken: '  pasted-refresh-token  ' });
 
@@ -845,7 +839,7 @@ describe('AuthService', () => {
         refreshToken: 'invalid-token',
       };
 
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockImplementation(() => {
+      vi.mocked(jwtHelper.verifyRefreshToken).mockImplementation(() => {
         throw new Error('Invalid token');
       });
       vi.mocked(valkeyService.exists).mockResolvedValue(false);
@@ -892,7 +886,7 @@ describe('AuthService', () => {
 
   describe('logout', () => {
     it('should blacklist refresh token', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -911,7 +905,7 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException with invalid refresh token', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockImplementation(() => {
+      vi.mocked(jwtHelper.verifyRefreshToken).mockImplementation(() => {
         throw new Error('Invalid token');
       });
 
@@ -964,7 +958,7 @@ describe('AuthService', () => {
     });
 
     it('keeps the plain success message on the path that really did revoke', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -978,7 +972,7 @@ describe('AuthService', () => {
     });
 
     it('refuses an access token presented as a refresh token', async () => {
-      vi.mocked(jwtHelper.verifyRefreshToken!).mockReturnValue({
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
         sub: 'user-123',
         email: 'test@example.com',
         accountType: AccountType.READER,
@@ -1048,7 +1042,7 @@ describe('AuthService', () => {
       const state = 'state-123';
       vi.mocked(valkeyService.get).mockResolvedValue('google');
 
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'google-access-token' }))
         .mockResolvedValueOnce(oauthResponse({ sub: 'google-id-123', email: 'test@example.com', name: 'Test User' }));
 
@@ -1077,8 +1071,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
       const result = await authService.handleOAuthCallback('google', 'valid-code', state);
 
@@ -1095,7 +1089,7 @@ describe('AuthService', () => {
       const state = 'state-123';
       vi.mocked(valkeyService.get).mockResolvedValue('google');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'google-access-token' }))
         .mockResolvedValueOnce(oauthResponse({ sub: 'google-id-123', email: 'test@example.com', name: 'Test User' }));
       vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(
@@ -1113,7 +1107,7 @@ describe('AuthService', () => {
       const state = 'state-123';
       vi.mocked(valkeyService.get).mockResolvedValue('google');
 
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'google-access-token' }))
         .mockResolvedValueOnce(oauthResponse({ sub: 'user-123', email: 'test@example.com', name: 'Test User' }));
 
@@ -1141,8 +1135,8 @@ describe('AuthService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as User);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
 
       const result = await authService.handleOAuthCallback('google', 'valid-code', state);
 
@@ -1182,8 +1176,8 @@ describe('AuthService', () => {
     function arrangeState(): void {
       vi.mocked(valkeyService.get).mockResolvedValue('google');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
     }
 
     function newUser(): User {
@@ -1215,7 +1209,7 @@ describe('AuthService', () => {
 
     it('rejects a Google token response with no access token', async () => {
       arrangeState();
-      vi.mocked(global.fetch!).mockResolvedValue(oauthResponse({ token_type: 'Bearer' }));
+      vi.mocked(global.fetch).mockResolvedValue(oauthResponse({ token_type: 'Bearer' }));
 
       await expect(authService.handleOAuthCallback('google', 'code', STATE)).rejects.toThrow(
         'Failed to exchange Google authorization code',
@@ -1224,7 +1218,7 @@ describe('AuthService', () => {
 
     it('rejects a Google profile with no subject', async () => {
       arrangeState();
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ email: 'test@example.com' }));
 
@@ -1235,7 +1229,7 @@ describe('AuthService', () => {
 
     it('derives a Google email when the scope did not return one', async () => {
       arrangeState();
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ sub: 'google-1', name: 'Keeper' }));
       vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(newUser());
@@ -1247,7 +1241,7 @@ describe('AuthService', () => {
 
     it('falls back to a placeholder when a Google profile carries no name', async () => {
       arrangeState();
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ sub: 'google-1', email: 'test@example.com' }));
       vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(null);
@@ -1262,7 +1256,7 @@ describe('AuthService', () => {
     it('rejects a Facebook token response that is not an object', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('facebook');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!).mockResolvedValue(oauthResponse('invalid_request'));
+      vi.mocked(global.fetch).mockResolvedValue(oauthResponse('invalid_request'));
 
       await expect(authService.handleOAuthCallback('facebook', 'code', STATE)).rejects.toThrow(
         'Failed to exchange Facebook authorization code',
@@ -1272,7 +1266,7 @@ describe('AuthService', () => {
     it('rejects a GitHub profile whose id is not numeric', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('github');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ id: 'not-a-number', login: 'keeper' }));
 
@@ -1284,9 +1278,9 @@ describe('AuthService', () => {
     it('uses the GitHub login as the username so the derived one is not ambiguous', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('github');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
-      vi.mocked(global.fetch!)
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ id: 42, login: 'keeper', email: 'keeper@github.user' }));
       vi.mocked(usersRepository.findByGithubId).mockResolvedValue(null);
@@ -1311,9 +1305,9 @@ describe('AuthService', () => {
     ])('never creates a Facebook account keyed on $label', async ({ email }) => {
       vi.mocked(valkeyService.get).mockResolvedValue('facebook');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
-      vi.mocked(global.fetch!)
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ id: 'fb-77', name: 'Keeper', email }));
       vi.mocked(usersRepository.findByFacebookId).mockResolvedValue(null);
@@ -1330,9 +1324,9 @@ describe('AuthService', () => {
     it('never creates a GitHub account keyed on an omitted email', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('github');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
-      vi.mocked(global.fetch!)
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ id: 42, login: 'keeper' }));
       vi.mocked(usersRepository.findByGithubId).mockResolvedValue(null);
@@ -1349,9 +1343,9 @@ describe('AuthService', () => {
     it('keeps a real provider email rather than replacing it with the placeholder', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('facebook');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
-      vi.mocked(global.fetch!)
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ id: 'fb-77', name: 'Keeper', email: '  keeper@hakawi.com  ' }));
       vi.mocked(usersRepository.findByFacebookId).mockResolvedValue(null);
@@ -1366,9 +1360,9 @@ describe('AuthService', () => {
     it('derives the TikTok placeholder from the provider account id', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('tiktok');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(jwtHelper.generateAccessToken!).mockReturnValue('access-token');
-      vi.mocked(jwtHelper.generateRefreshToken!).mockReturnValue('refresh-token');
-      vi.mocked(global.fetch!)
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ code: 0, data: { user: { user_id: 'tt-5', display_name: 'K' } } }));
       vi.mocked(usersRepository.findByTiktokId).mockResolvedValue(null);
@@ -1385,7 +1379,7 @@ describe('AuthService', () => {
     it('rejects a TikTok user info envelope whose data block is a string', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('tiktok');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ code: 0, data: 'nope' }));
 
@@ -1397,7 +1391,7 @@ describe('AuthService', () => {
     it('rejects a TikTok user info envelope that reports a non-zero code', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('tiktok');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce(oauthResponse({ access_token: 'token' }))
         .mockResolvedValueOnce(oauthResponse({ code: 36008, message: 'invalid access token' }));
 
@@ -1409,7 +1403,7 @@ describe('AuthService', () => {
     it('rejects an Apple token response with no id token', async () => {
       vi.mocked(valkeyService.get).mockResolvedValue('apple');
       vi.mocked(valkeyService.del).mockResolvedValue(undefined);
-      vi.mocked(global.fetch!).mockResolvedValue(oauthResponse({ access_token: 'only-access' }));
+      vi.mocked(global.fetch).mockResolvedValue(oauthResponse({ access_token: 'only-access' }));
 
       await expect(authService.handleOAuthCallback('apple', 'code', STATE)).rejects.toThrow(
         'Failed to exchange Apple authorization code',
@@ -1418,7 +1412,7 @@ describe('AuthService', () => {
 
     it('records why an OAuth call failed before surfacing the client facing message', async () => {
       arrangeState();
-      vi.mocked(global.fetch!).mockResolvedValue(oauthResponse({}, { status: 500, statusText: 'Server Error' }));
+      vi.mocked(global.fetch).mockResolvedValue(oauthResponse({}, { status: 500, statusText: 'Server Error' }));
 
       await expect(authService.handleOAuthCallback('google', 'code', STATE)).rejects.toThrow(
         'Failed to exchange Google authorization code',

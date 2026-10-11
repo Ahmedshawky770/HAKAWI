@@ -1,22 +1,19 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { MessagesService } from '../messages.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import type { Conversation, ConversationResponse, Message, MessageResponse } from '../types.ts';
 
 import { MessagesController } from './messages.controller.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -24,30 +21,46 @@ async function generateToken(sub = 'user-1', email = 'test@example.com', account
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type ConversationsListResponse = {
+  conversations: ConversationResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type MessagesListResponse = {
+  messages: MessageResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
 type MockMessagesService = {
-  getOrCreateConversation: ReturnType<typeof vi.fn>;
-  getConversations: ReturnType<typeof vi.fn>;
-  getMessages: ReturnType<typeof vi.fn>;
-  sendMessage: ReturnType<typeof vi.fn>;
-  markAsRead: ReturnType<typeof vi.fn>;
-  markAllAsRead: ReturnType<typeof vi.fn>;
-  getUnreadCount: ReturnType<typeof vi.fn>;
+  getOrCreateConversation: ReturnType<typeof vi.fn<(userId: string, recipientId: string) => Promise<Conversation>>>;
+  getConversations: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<ConversationsListResponse>>>;
+  getMessages: ReturnType<
+    typeof vi.fn<(conversationId: string, userId: string, page: number, limit: number) => Promise<MessagesListResponse>>
+  >;
+  sendMessage: ReturnType<typeof vi.fn<(conversationId: string, senderId: string, content: string) => Promise<Message>>>;
+  markAsRead: ReturnType<typeof vi.fn<(messageId: string, userId: string) => Promise<Message>>>;
+  markAllAsRead: ReturnType<typeof vi.fn<(conversationId: string, userId: string) => Promise<void>>>;
+  getUnreadCount: ReturnType<typeof vi.fn<(conversationId: string, userId: string) => Promise<number>>>;
 };
 
 describe('MessagesController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let messagesService: MockMessagesService;
 
   beforeAll(async () => {
     messagesService = {
-      getOrCreateConversation: vi.fn(),
-      getConversations: vi.fn(),
-      getMessages: vi.fn(),
-      sendMessage: vi.fn(),
-      markAsRead: vi.fn(),
-      markAllAsRead: vi.fn(),
-      getUnreadCount: vi.fn(),
+      getOrCreateConversation: vi.fn<(userId: string, recipientId: string) => Promise<Conversation>>(),
+      getConversations: vi.fn<(userId: string, page: number, limit: number) => Promise<ConversationsListResponse>>(),
+      getMessages:
+        vi.fn<(conversationId: string, userId: string, page: number, limit: number) => Promise<MessagesListResponse>>(),
+      sendMessage: vi.fn<(conversationId: string, senderId: string, content: string) => Promise<Message>>(),
+      markAsRead: vi.fn<(messageId: string, userId: string) => Promise<Message>>(),
+      markAllAsRead: vi.fn<(conversationId: string, userId: string) => Promise<void>>(),
+      getUnreadCount: vi.fn<(conversationId: string, userId: string) => Promise<number>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -76,13 +89,10 @@ describe('MessagesController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -101,7 +111,7 @@ describe('MessagesController', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/messages/conversations')
         .set('Authorization', `Bearer ${token}`)
         .send({ recipientId: '00000000-0000-0000-0000-000000000002' })
@@ -124,9 +134,11 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.getConversations).mockResolvedValue({
         conversations: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/messages/conversations')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -144,9 +156,11 @@ describe('MessagesController', () => {
       vi.mocked(messagesService.getMessages).mockResolvedValue({
         messages: [],
         total: 0,
+        page: 1,
+        limit: 50,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/messages/conversations/11111111-1111-4111-8111-111111111111/messages')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -171,7 +185,7 @@ describe('MessagesController', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/messages/conversations/11111111-1111-4111-8111-111111111111/messages')
         .set('Authorization', `Bearer ${token}`)
         .send({ content: 'Hello!' })
@@ -205,7 +219,7 @@ describe('MessagesController', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/messages/22222222-2222-4222-8222-222222222222/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -217,7 +231,7 @@ describe('MessagesController', () => {
     it('should no longer resolve the doubled messages/messages path', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .patch('/messages/messages/22222222-2222-4222-8222-222222222222/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
@@ -231,7 +245,7 @@ describe('MessagesController', () => {
       // segment such as `conversations`; without it such a caller would reach the service.
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .patch('/messages/conversations/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
@@ -248,7 +262,7 @@ describe('MessagesController', () => {
 
       vi.mocked(messagesService.markAllAsRead).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/messages/conversations/11111111-1111-4111-8111-111111111111/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -265,7 +279,7 @@ describe('MessagesController', () => {
 
       vi.mocked(messagesService.getUnreadCount).mockResolvedValue(5);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/messages/conversations/11111111-1111-4111-8111-111111111111/unread')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);

@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { follows } from '../../../db/schema/social.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -51,7 +52,7 @@ describe('FollowsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,9 +74,9 @@ describe('FollowsRepository', () => {
 
       await repository.findById(FOLLOW_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([follows]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([follows]);
       expect(whereOf()).toEqual(eq(follows.id, FOLLOW_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -113,7 +114,7 @@ describe('FollowsRepository', () => {
       await repository.findByUsers(FOLLOWER_ID, FOLLOWING_ID);
 
       expect(whereOf()).toEqual(and(eq(follows.followerId, FOLLOWER_ID), eq(follows.followingId, FOLLOWING_ID)));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the two users are not connected', async () => {
@@ -155,8 +156,8 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowers(FOLLOWING_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('offsets by whole pages for any later page', async () => {
@@ -164,8 +165,8 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowers(FOLLOWING_ID, 3, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders newest first', async () => {
@@ -173,7 +174,7 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowers(FOLLOWING_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(follows.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(follows.createdAt)]);
     });
 
     it('reads from the follows table', async () => {
@@ -181,7 +182,7 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowers(FOLLOWING_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([follows]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([follows]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -228,8 +229,8 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowing(FOLLOWER_ID, 2, 5);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([5]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([5]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([5]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([5]);
     });
 
     it('orders newest first', async () => {
@@ -237,7 +238,7 @@ describe('FollowsRepository', () => {
 
       await repository.findFollowing(FOLLOWER_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(follows.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(follows.createdAt)]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -262,7 +263,7 @@ describe('FollowsRepository', () => {
 
       await repository.create({ followerId: FOLLOWER_ID, followingId: FOLLOWING_ID });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([{ followerId: FOLLOWER_ID, followingId: FOLLOWING_ID }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ followerId: FOLLOWER_ID, followingId: FOLLOWING_ID }]);
     });
   });
 
@@ -282,7 +283,7 @@ describe('FollowsRepository', () => {
       await repository.delete(FOLLOW_ID);
 
       expect(db.delete).toHaveBeenCalledTimes(1);
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
     });
   });
 

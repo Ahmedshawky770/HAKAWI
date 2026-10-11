@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import {
-  installMockDb,
-  type MockChain,
-  type MockDbControl,
-} from '../../../test/helpers/mock-db.ts';
+import { installMockDb, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { CommentReactionsRepository } from './comment-reactions.repository.ts';
 
@@ -39,13 +35,11 @@ vi.mock('../../../common/services/winston-logger.service.ts', () => ({
 
 describe('CommentReactionsRepository', () => {
   let repository: CommentReactionsRepository;
-  let chains: MockChain[];
   let control: MockDbControl;
 
   beforeEach(() => {
     vi.clearAllMocks();
     control = installMockDb(db);
-    chains = control.chains();
     repository = new CommentReactionsRepository(logger as never);
   });
 
@@ -67,6 +61,6 @@ describe('CommentReactionsRepository', () => {
 
   it('should delete reaction', async () => {
     control.queue([]);
-    await repository.delete('u1', 'c1');
+    await repository.delete('r1');
   });
 });

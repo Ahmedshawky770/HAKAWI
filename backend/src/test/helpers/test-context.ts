@@ -91,7 +91,7 @@ export interface TestContextOverrides {
 }
 
 export interface TestContext {
-  readonly app: INestApplication;
+  readonly app: INestApplication<Server>;
   readonly httpServer: Server;
   readonly namespace: string;
   readonly valkeyService: ValkeyService;
@@ -188,7 +188,7 @@ export async function createTestContext(overrides: TestContextOverrides = {}): P
     })
     .compile();
 
-  const app: INestApplication = moduleRef.createNestApplication();
+  const app: INestApplication<Server> = moduleRef.createNestApplication();
   app.useGlobalPipes(createTestValidationPipe());
   await app.init();
   const httpServer = app.getHttpServer();

@@ -4,7 +4,6 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
   PaymentCreatedEvent,
-  PaymentCompletedEvent,
   PaymentFailedEvent,
   RefundCreatedEvent,
   RefundCompletedEvent,

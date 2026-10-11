@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { and, desc, eq } from 'drizzle-orm';
 
 import { notifications, notificationPreferences } from '../../../db/schema/social.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { NotificationsRepository } from './notifications.repository.ts';
 
@@ -55,7 +55,7 @@ describe('NotificationsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,7 +81,7 @@ describe('NotificationsRepository', () => {
       await repository.findById(NOTIFICATION_ID);
 
       expect(whereOf()).toEqual(eq(notifications.id, NOTIFICATION_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -138,8 +138,8 @@ describe('NotificationsRepository', () => {
 
       await repository.findByUser(USER_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -147,8 +147,8 @@ describe('NotificationsRepository', () => {
 
       await repository.findByUser(USER_ID, 3, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders newest first and reads from the notifications table', async () => {
@@ -156,8 +156,8 @@ describe('NotificationsRepository', () => {
 
       await repository.findByUser(USER_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(notifications.createdAt)]);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([notifications]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(notifications.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([notifications]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -174,7 +174,7 @@ describe('NotificationsRepository', () => {
       await expect(repository.findUnread(USER_ID, 50)).resolves.toEqual([{ id: NOTIFICATION_ID, isRead: false }]);
 
       expect(whereOf()).toEqual(and(eq(notifications.userId, USER_ID), eq(notifications.isRead, false)));
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(notifications.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(notifications.createdAt)]);
     });
 
     it('applies the limit, because this query used to have none at all', async () => {
@@ -185,7 +185,7 @@ describe('NotificationsRepository', () => {
 
       await repository.findUnread(USER_ID, 50);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([50]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([50]);
     });
 
     it('returns an empty list when nothing is unread', async () => {
@@ -211,7 +211,7 @@ describe('NotificationsRepository', () => {
 
       expect(created).toMatchObject({ id: NOTIFICATION_ID });
       expect(db.insert).toHaveBeenCalledWith(notifications);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([input]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([input]);
     });
   });
 
@@ -222,7 +222,7 @@ describe('NotificationsRepository', () => {
       const updated = await repository.markAsRead(NOTIFICATION_ID);
 
       expect(updated).toMatchObject({ isRead: true });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.isRead).toBe(true);
       expect(patch.readAt).toBeInstanceOf(Date);
     });
@@ -243,7 +243,7 @@ describe('NotificationsRepository', () => {
 
       await repository.markAllAsRead(USER_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.isRead).toBe(true);
       expect(patch.readAt).toBeInstanceOf(Date);
     });
@@ -315,9 +315,9 @@ describe('NotificationsRepository', () => {
 
       await repository.findPreferences(USER_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([notificationPreferences]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([notificationPreferences]);
       expect(whereOf()).toEqual(eq(notificationPreferences.userId, USER_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('falls back to every channel enabled when the owner has no row yet', async () => {
@@ -345,7 +345,7 @@ describe('NotificationsRepository', () => {
       await repository.upsertPreferences(USER_ID, patch);
 
       expect(db.insert).toHaveBeenCalledWith(notificationPreferences);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([{ userId: USER_ID, ...patch }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ userId: USER_ID, ...patch }]);
     });
 
     it('conflicts on the owner column so a second save updates in place', async () => {
@@ -355,7 +355,7 @@ describe('NotificationsRepository', () => {
 
       await repository.upsertPreferences(USER_ID, patch);
 
-      const [conflict] = firstArgsOf(chains[0]!, 'onConflictDoUpdate') as [
+      const [conflict] = firstArgsOf(chainAt(chains, 0), 'onConflictDoUpdate') as [
         { target: unknown; set: Record<string, unknown> },
       ];
       expect(conflict.target).toBe(notificationPreferences.userId);

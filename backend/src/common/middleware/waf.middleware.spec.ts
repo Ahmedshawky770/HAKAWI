@@ -6,9 +6,9 @@ import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { IpBlocklistService, type BlockOptions, type BlockRecord } from '../waf/ip-blocklist.service.ts';
 import { WAF_RESPONSE_HEADERS } from '../waf/headers.ts';
 import { WAF_RULES, WAF_SEVERITY_RANK, type WafPatternRule } from '../waf/rules.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
-import { WafMiddleware, clientIpOf, resolveClientIp } from './waf.middleware.ts';
-import { GeoIpService } from '../waf/geo-ip.service.ts';
+import { WafMiddleware, clientIpOf, resolveClientIp, type WafGeoIpChecker } from './waf.middleware.ts';
 
 type MockWinstonLoggerService = {
   info: ReturnType<typeof vi.fn>;
@@ -85,6 +85,13 @@ function makeRequest(overrides: Partial<MockRequest> = {}): MockRequest {
   };
 }
 
+function makeMockGeoIp(): WafGeoIpChecker {
+  return {
+    isBlocked: vi.fn().mockReturnValue(false),
+    lookupCountryCode: vi.fn().mockReturnValue(null),
+  };
+}
+
 describe('WafMiddleware', () => {
   let logger: MockWinstonLoggerService;
   let blocklist: FakeBlocklist;
@@ -92,31 +99,19 @@ describe('WafMiddleware', () => {
   let middleware: WafMiddleware;
 
   function build(): WafMiddleware {
-    const mockGeoIp = {
-      isBlocked: vi.fn().mockReturnValue(false),
-      lookupCountryCode: vi.fn().mockReturnValue(null),
-      getBlockedCountries: vi.fn().mockReturnValue([]),
-      enabled: false,
-    };
     return new WafMiddleware(
       logger as unknown as WinstonLoggerService,
       blocklist as unknown as IpBlocklistService,
-      mockGeoIp as unknown as GeoIpService,
+      makeMockGeoIp(),
       config,
     );
   }
 
   function buildWithConfig(overrides: Partial<WafConfig>): WafMiddleware {
-    const mockGeoIp = {
-      isBlocked: vi.fn().mockReturnValue(false),
-      lookupCountryCode: vi.fn().mockReturnValue(null),
-      getBlockedCountries: vi.fn().mockReturnValue([]),
-      enabled: false,
-    };
     return new WafMiddleware(
       logger as unknown as WinstonLoggerService,
       blocklist as unknown as IpBlocklistService,
-      mockGeoIp as unknown as GeoIpService,
+      makeMockGeoIp(),
       { ...config, ...overrides },
     );
   }
@@ -240,7 +235,10 @@ describe('WafMiddleware', () => {
         enabledOptInControls: ['blockForwardingHeaders'],
       });
 
-      const forwardingRule = WAF_RULES.find((r) => r.id === 'header-forbidden-forwarding-headers')!;
+      const forwardingRule = requireValue(
+        WAF_RULES.find((r) => r.id === 'header-forbidden-forwarding-headers'),
+        'header-forbidden-forwarding-headers rule',
+      );
       const request = makeRequest({
         headers: forwardingRule.sampleTarget === 'header' ? { [forwardingRule.sample]: 'x' } : {},
         query: forwardingRule.sampleTarget === 'query' ? { probe: forwardingRule.sample } : {},
@@ -698,6 +696,7 @@ describe('WafMiddleware', () => {
       const fallbackMiddleware = new WafMiddleware(
         logger as unknown as WinstonLoggerService,
         blocklist as unknown as IpBlocklistService,
+        makeMockGeoIp(),
         null,
       );
       const decision = await fallbackMiddleware.decide(makeRequest() as unknown as Request);

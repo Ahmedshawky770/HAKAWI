@@ -1,15 +1,14 @@
 import type { Server } from 'http';
 
-import type { Request as ExpressRequest } from 'express';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 
 import { SearchController } from './search.controller.ts';
@@ -17,7 +16,6 @@ import { SearchService } from './search.service.ts';
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 type MockSearchService = {
   search: ReturnType<typeof vi.fn>;
   searchAuthors: ReturnType<typeof vi.fn>;

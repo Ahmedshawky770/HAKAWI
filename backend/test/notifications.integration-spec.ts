@@ -3,12 +3,7 @@ import request from 'supertest';
 import { AdminRole } from '../src/common/constants/roles.ts';
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
-import type {
-  NotificationResponse,
-  NotificationsListResponse,
-  NotificationCountResponse,
-  NotificationActionResponse,
-} from '../src/test/helpers/test-response-types.ts';
+import type { NotificationCountResponse, NotificationActionResponse } from '../src/test/helpers/test-response-types.ts';
 
 /** `notifications.type` is a plain `string`; this is the shape the read route actually returns. */
 interface NotificationRow {
@@ -92,8 +87,8 @@ describe('Notifications Integration', () => {
       .get('/notifications')
       .set('Authorization', `Bearer ${user.accessToken}`)
       .expect(200);
-    const body = res.body as NotificationsListResponse;
-    return body.notifications as NotificationRow[];
+    const body = res.body as { notifications: NotificationRow[] };
+    return body.notifications;
   };
 
   /**

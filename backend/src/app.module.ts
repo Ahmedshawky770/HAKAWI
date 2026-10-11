@@ -24,7 +24,6 @@ import { ReadingProgressModule } from './modules/reading-progress/reading-progre
 import { SharedCacheModule } from './modules/shared/cache/shared-cache.module.ts';
 import { BadgesModule } from './modules/badges/badges.module.ts';
 import { AdminModule } from './modules/admin/admin.module.ts';
-
 import { AppController } from './app.controller.ts';
 
 @Module({

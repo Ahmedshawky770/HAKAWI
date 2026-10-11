@@ -337,22 +337,18 @@ describe('ModerationController', () => {
       const token = await generateToken({ accountType: AccountType.READER });
 
       const req = request(httpServer)[method](path).set('Authorization', `Bearer ${token}`);
-      if (body) {
-        req.send(body);
-      }
+      const sent = body ? req.send(body) : req;
 
-      await req.expect(403);
+      await sent.expect(403);
     });
 
     it.each(forbiddenRoutes)(
       'should reject a request without any token on $method $path',
       async ({ method, path, body }) => {
         const req = request(httpServer)[method](path);
-        if (body) {
-          req.send(body);
-        }
+        const sent = body ? req.send(body) : req;
 
-        await req.expect(401);
+        await sent.expect(401);
       },
     );
 

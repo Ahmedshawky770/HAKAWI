@@ -1,27 +1,19 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { FollowsService } from '../follows.service.ts';
+import type { Follow, FollowStats } from '../types.ts';
 
 import { FollowsController } from './follows.controller.ts';
-
-type MockFollowsService = {
-  follow: ReturnType<typeof vi.fn>;
-  unfollow: ReturnType<typeof vi.fn>;
-  getFollowers: ReturnType<typeof vi.fn>;
-  getFollowing: ReturnType<typeof vi.fn>;
-  getStats: ReturnType<typeof vi.fn>;
-  isFollowing: ReturnType<typeof vi.fn>;
-};
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -29,19 +21,34 @@ async function generateToken(sub = 'user-1', email = 'test@example.com', account
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type FollowListResponse = {
+  follows: Follow[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type MockFollowsService = {
+  follow: ReturnType<typeof vi.fn<(followerId: string, followingId: string) => Promise<Follow>>>;
+  unfollow: ReturnType<typeof vi.fn<(followerId: string, followingId: string) => Promise<void>>>;
+  getFollowers: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<FollowListResponse>>>;
+  getFollowing: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<FollowListResponse>>>;
+  getStats: ReturnType<typeof vi.fn<(userId: string, currentUserId: string) => Promise<FollowStats>>>;
+  isFollowing: ReturnType<typeof vi.fn<(followerId: string, followingId: string) => Promise<boolean>>>;
+};
+
 describe('FollowsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let followsService: MockFollowsService;
 
   beforeAll(async () => {
     followsService = {
-      follow: vi.fn(),
-      unfollow: vi.fn(),
-      getFollowers: vi.fn(),
-      getFollowing: vi.fn(),
-      getStats: vi.fn(),
-      isFollowing: vi.fn(),
+      follow: vi.fn<(followerId: string, followingId: string) => Promise<Follow>>(),
+      unfollow: vi.fn<(followerId: string, followingId: string) => Promise<void>>(),
+      getFollowers: vi.fn<(userId: string, page: number, limit: number) => Promise<FollowListResponse>>(),
+      getFollowing: vi.fn<(userId: string, page: number, limit: number) => Promise<FollowListResponse>>(),
+      getStats: vi.fn<(userId: string, currentUserId: string) => Promise<FollowStats>>(),
+      isFollowing: vi.fn<(followerId: string, followingId: string) => Promise<boolean>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -70,13 +77,10 @@ describe('FollowsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -94,7 +98,7 @@ describe('FollowsController', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/follows')
         .set('Authorization', `Bearer ${token}`)
         .send({ followingId: '123e4567-e89b-12d3-a456-426614174000' })
@@ -113,7 +117,7 @@ describe('FollowsController', () => {
 
       vi.mocked(followsService.unfollow).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .delete('/follows/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -128,9 +132,11 @@ describe('FollowsController', () => {
       vi.mocked(followsService.getFollowers).mockResolvedValue({
         follows: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/followers')
         .expect(200);
 
@@ -145,9 +151,11 @@ describe('FollowsController', () => {
       vi.mocked(followsService.getFollowing).mockResolvedValue({
         follows: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/following')
         .expect(200);
 
@@ -170,7 +178,7 @@ describe('FollowsController', () => {
         isFollowing: true,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -184,7 +192,7 @@ describe('FollowsController', () => {
 
       // Anonymous callers now get a 401 rather than a payload whose `isFollowing` is always false.
       // The public surface is `/follows/user/:id/followers` and `/following`, which stay `@Public()`.
-      await request(httpServer).get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats').expect(401);
+      await request(app.getHttpServer()).get('/follows/user/123e4567-e89b-12d3-a456-426614174000/stats').expect(401);
     });
   });
 
@@ -194,7 +202,7 @@ describe('FollowsController', () => {
 
       vi.mocked(followsService.isFollowing).mockResolvedValue(true);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/follows/check/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);

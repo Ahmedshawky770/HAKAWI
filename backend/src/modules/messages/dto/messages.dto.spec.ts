@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 
 import { parseOrThrow } from '../../shared/validation/zod-validation.util.ts';
+
 import {
   CreateConversationDto,
   MAX_MESSAGE_LENGTH,

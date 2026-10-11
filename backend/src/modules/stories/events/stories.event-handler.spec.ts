@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import type { IStoriesRepository, Story } from '../interfaces/stories-repository.interface.ts';
+import type { IStoriesRepository } from '../interfaces/stories-repository.interface.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../../shared/cache/tagged-cache.service.ts';
 import { STORY_CACHE_NAMESPACE, STORIES_CACHE_TAG } from '../stories.service.ts';

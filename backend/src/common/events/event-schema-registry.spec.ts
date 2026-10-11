@@ -4,8 +4,6 @@ import { EventSchemaRegistry } from './event-schema-registry.ts';
 import type { DLQService } from './dlq.service.ts';
 import { UserRegisteredSchema } from './event-schemas.ts';
 
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockDLQService = {
   add: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
@@ -96,7 +94,7 @@ describe('EventSchemaRegistry', () => {
 
   describe('getDLQStats', () => {
     it('should return DLQ stats', async () => {
-      vi.mocked(dlqService.list!).mockResolvedValue([
+      vi.mocked(dlqService.list).mockResolvedValue([
         {
           id: 'dlq-1',
           eventName: 'user.registered',

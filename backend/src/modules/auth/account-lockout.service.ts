@@ -1,5 +1,6 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 

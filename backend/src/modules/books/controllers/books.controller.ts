@@ -76,7 +76,7 @@ export class BooksController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/download')
   @HttpCode(HttpStatus.OK)
-  async download(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+  async download(@Param('id') id: string) {
     await this.booksService.incrementDownloadCount(id);
     const book = await this.booksService.findById(id);
     return { downloadUrl: book.fileUrl };

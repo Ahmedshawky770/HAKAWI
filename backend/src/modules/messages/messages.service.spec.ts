@@ -15,10 +15,6 @@ import type {
   ParticipantSummary,
 } from './interfaces/messages-repository.interface.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockConversationsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Conversation | null>>>;
   findByParticipants: ReturnType<

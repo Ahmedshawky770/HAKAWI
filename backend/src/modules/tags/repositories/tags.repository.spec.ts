@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 
 import { tags } from '../../../db/schema/stories.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { TagsRepository } from './tags.repository.ts';
 
@@ -45,7 +45,7 @@ describe('TagsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,9 +60,9 @@ describe('TagsRepository', () => {
 
       await expect(repository.findById(TAG_ID)).resolves.toMatchObject({ id: TAG_ID, slug: SLUG });
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([tags]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([tags]);
       expect(whereOf()).toEqual(eq(tags.id, TAG_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -93,8 +93,8 @@ describe('TagsRepository', () => {
       control.queue([{ id: TAG_ID, name: NAME }]);
 
       await expect(repository.findAll()).resolves.toEqual([{ id: TAG_ID, name: NAME }]);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([tags]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([tags.name]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([tags]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([tags.name]);
     });
 
     it('returns an empty array when there are no tags', async () => {
@@ -112,7 +112,7 @@ describe('TagsRepository', () => {
 
       expect(created).toMatchObject({ id: TAG_ID });
       expect(db.insert).toHaveBeenCalledWith(tags);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([{ name: NAME, slug: SLUG }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ name: NAME, slug: SLUG }]);
     });
   });
 
@@ -123,7 +123,7 @@ describe('TagsRepository', () => {
       const updated = await repository.update(TAG_ID, { slug: 'haunted-mansion' });
 
       expect(updated).toMatchObject({ slug: 'haunted-mansion' });
-      expect(firstArgsOf(chains[0]!, 'set')).toEqual([{ slug: 'haunted-mansion' }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'set')).toEqual([{ slug: 'haunted-mansion' }]);
       expect(whereOf()).toEqual(eq(tags.id, TAG_ID));
       expect(db.update).toHaveBeenCalledWith(tags);
     });

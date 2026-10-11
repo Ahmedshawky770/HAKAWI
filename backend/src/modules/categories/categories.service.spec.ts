@@ -5,15 +5,10 @@ import { WinstonLoggerService } from '../../common/services/winston-logger.servi
 
 import { CategoriesService } from './categories.service.ts';
 import type {
-  ICategoriesRepository,
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
 } from './interfaces/categories-repository.interface.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockCategoriesRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Category | null>>>;

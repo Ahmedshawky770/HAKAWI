@@ -13,10 +13,6 @@ import type {
 } from './interfaces/notifications-repository.interface.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockNotificationsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Notification | null>>>;
   findByUser: ReturnType<

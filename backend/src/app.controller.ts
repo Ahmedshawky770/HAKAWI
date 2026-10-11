@@ -1,7 +1,6 @@
-import { Controller, Get, Inject } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { Controller, Get } from '@nestjs/common';
 
-import { db, checkDatabaseHealth } from './db/router.ts';
+import { checkDatabaseHealth } from './db/router.ts';
 import { ValkeyService } from './common/services/valkey.service.ts';
 import { SWAGGER_API_PATH, SWAGGER_TITLE, SWAGGER_VERSION } from './common/swagger/swagger.config.ts';
 

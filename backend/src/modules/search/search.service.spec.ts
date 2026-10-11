@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 
 import { SearchService } from './search.service.ts';
-import type { ISearchRepository } from './interfaces/search-repository.interface.ts';
 import type { SearchResponse } from './types.ts';
 import {
   SEARCH_CACHE_NAMESPACE,

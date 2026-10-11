@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -13,15 +13,19 @@ import { EncryptionService } from '../../../common/utils/encryption.util.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
-import { books } from '../../../db/schema/books.schema.ts';
-import { library } from '../../../db/schema/library.schema.ts';
+import type {
+  IdResponse,
+  JsonResponse,
+  LoginResponseBody,
+} from '../../../test/helpers/test-response-types.ts';
 
-// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
-// Accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+interface LibraryEntryResponseBody {
+  id: string;
+  status: string;
+}
 
 describe('Library E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
   let accessToken: string;
   let freeBookId: string;
@@ -59,7 +63,7 @@ describe('Library E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
 
     await request(httpServer).post('/auth/register').send({
       email: 'e2e-library@example.com',
@@ -68,10 +72,10 @@ describe('Library E2E', () => {
       username: 'e2elibrary',
     });
 
-    const loginRes = await request(httpServer).post('/auth/login').send({
+    const loginRes = (await request(httpServer).post('/auth/login').send({
       email: 'e2e-library@example.com',
       password: 'SecurePass123!',
-    });
+    })) as JsonResponse<LoginResponseBody>;
 
     accessToken = loginRes.body.tokens.accessToken;
 
@@ -79,19 +83,19 @@ describe('Library E2E', () => {
     // catalogue's default state and is left unstated. The paid book has to be explicit, because the
     // whole point of `POST /library/claim` is that it refuses `is_free = false` — a fixture where
     // every book is free could not tell the two apart.
-    const freeBookRes = await request(httpServer)
+    const freeBookRes = (await request(httpServer)
       .post('/books')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: 'E2E Library Free Book', author: 'Test Author' });
+      .send({ title: 'E2E Library Free Book', author: 'Test Author' })) as JsonResponse<IdResponse>;
 
-    freeBookId = freeBookRes.body.id as string;
+    freeBookId = freeBookRes.body.id;
 
-    const paidBookRes = await request(httpServer)
+    const paidBookRes = (await request(httpServer)
       .post('/books')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: 'E2E Library Paid Book', author: 'Test Author', price: 149, isFree: false });
+      .send({ title: 'E2E Library Paid Book', author: 'Test Author', price: 149, isFree: false })) as JsonResponse<IdResponse>;
 
-    paidBookId = paidBookRes.body.id as string;
+    paidBookId = paidBookRes.body.id;
   });
 
   afterAll(async () => {
@@ -119,7 +123,7 @@ describe('Library E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.status).toBe('owned');
+      expect((res.body as LibraryEntryResponseBody).status).toBe('owned');
     });
 
     it('should refuse a book that is not free', async () => {

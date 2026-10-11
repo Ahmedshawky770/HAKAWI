@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { reactions } from '../../../db/schema/social.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -52,7 +53,7 @@ describe('ReactionsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,9 +75,9 @@ describe('ReactionsRepository', () => {
 
       await repository.findById(REACTION_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([reactions]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([reactions]);
       expect(whereOf()).toEqual(eq(reactions.id, REACTION_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -114,7 +115,7 @@ describe('ReactionsRepository', () => {
       await repository.findByUserAndStory(USER_ID, STORY_ID);
 
       expect(whereOf()).toEqual(and(eq(reactions.userId, USER_ID), eq(reactions.storyId, STORY_ID)));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the user has not reacted to that story', async () => {
@@ -149,8 +150,8 @@ describe('ReactionsRepository', () => {
 
       await repository.findReactionsByStory(STORY_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('offsets by whole pages for any later page', async () => {
@@ -158,8 +159,8 @@ describe('ReactionsRepository', () => {
 
       await repository.findReactionsByStory(STORY_ID, 4, 15);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([15]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([45]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([15]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([45]);
     });
 
     it('orders newest first', async () => {
@@ -167,7 +168,7 @@ describe('ReactionsRepository', () => {
 
       await repository.findReactionsByStory(STORY_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(reactions.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(reactions.createdAt)]);
     });
 
     it('reads from the reactions table', async () => {
@@ -175,7 +176,7 @@ describe('ReactionsRepository', () => {
 
       await repository.findReactionsByStory(STORY_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([reactions]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([reactions]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -206,7 +207,7 @@ describe('ReactionsRepository', () => {
 
       await repository.create({ userId: USER_ID, storyId: STORY_ID, type: TYPE });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([{ userId: USER_ID, storyId: STORY_ID, type: TYPE }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ userId: USER_ID, storyId: STORY_ID, type: TYPE }]);
     });
   });
 
@@ -217,7 +218,7 @@ describe('ReactionsRepository', () => {
       const updated = await repository.update(REACTION_ID, { type: 'wow' });
 
       expect(updated).toMatchObject({ type: 'wow' });
-      expect(firstArgsOf(chains[0]!, 'set')).toEqual([{ type: 'wow' }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'set')).toEqual([{ type: 'wow' }]);
     });
 
     it('narrows the write to the requested row', async () => {
@@ -226,7 +227,7 @@ describe('ReactionsRepository', () => {
       await repository.update(REACTION_ID, { type: 'wow' });
 
       expect(whereOf()).toEqual(eq(reactions.id, REACTION_ID));
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(db.update).toHaveBeenCalledWith(reactions);
     });
   });
@@ -320,9 +321,9 @@ describe('ReactionsRepository', () => {
 
       await repository.countByType(STORY_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([reactions]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([reactions]);
       expect(whereOf()).toEqual(eq(reactions.storyId, STORY_ID));
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([reactions.type]);
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([reactions.type]);
     });
 
     it('coerces counts delivered as text to numbers', async () => {

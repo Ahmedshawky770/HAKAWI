@@ -1,25 +1,28 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { CategoriesService } from '../categories.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import type { Category } from '../types.ts';
+import type { Category, CreateCategoryInput, UpdateCategoryInput } from '../types.ts';
 
 import { CategoriesController } from './categories.controller.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
+
+type TokenPayload = {
+  sub: string;
+  email: string;
+  accountType: string;
+  adminRole?: string;
+};
 
 async function generateToken(
   sub = 'user-1',
@@ -27,7 +30,11 @@ async function generateToken(
   accountType = 'reader',
   adminRole?: string,
 ): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType, adminRole });
+  const payload: TokenPayload = { sub, email, accountType };
+  if (adminRole) {
+    payload.adminRole = adminRole;
+  }
+  return new JwtService({ secret: JWT_SECRET }).signAsync(payload);
 }
 
 /** A token that satisfies the taxonomy guards: admin account, content-moderator role. */
@@ -36,27 +43,41 @@ function editorialToken(): Promise<string> {
 }
 
 type MockCategoriesService = {
-  findAll: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  findBySlug: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
+  findAll: ReturnType<typeof vi.fn<() => Promise<Category[]>>>;
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Category>>>;
+  findBySlug: ReturnType<typeof vi.fn<(slug: string) => Promise<Category>>>;
+  create: ReturnType<typeof vi.fn<(input: CreateCategoryInput) => Promise<Category>>>;
+  update: ReturnType<typeof vi.fn<(id: string, input: UpdateCategoryInput) => Promise<Category>>>;
+  delete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
 };
 
+function makeCategory(overrides: Partial<Category> = {}): Category {
+  return {
+    id: 'cat-1',
+    name: 'Fiction',
+    slug: 'fiction',
+    description: null,
+    parentId: null,
+    sortOrder: 0,
+    isActive: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+    ...overrides,
+  };
+}
+
 describe('CategoriesController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let categoriesService: MockCategoriesService;
 
   beforeAll(async () => {
     categoriesService = {
-      findAll: vi.fn(),
-      findById: vi.fn(),
-      findBySlug: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+      findAll: vi.fn<() => Promise<Category[]>>(),
+      findById: vi.fn<(id: string) => Promise<Category>>(),
+      findBySlug: vi.fn<(slug: string) => Promise<Category>>(),
+      create: vi.fn<(input: CreateCategoryInput) => Promise<Category>>(),
+      update: vi.fn<(id: string, input: UpdateCategoryInput) => Promise<Category>>(),
+      delete: vi.fn<(id: string) => Promise<void>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -85,13 +106,10 @@ describe('CategoriesController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -102,7 +120,7 @@ describe('CategoriesController', () => {
     it('should return all categories', async () => {
       vi.mocked(categoriesService.findAll).mockResolvedValue([]);
 
-      const res = await request(httpServer).get('/categories').expect(200);
+      const res = await request(app.getHttpServer()).get('/categories').expect(200);
 
       expect(res.body).toEqual([]);
       expect(categoriesService.findAll).toHaveBeenCalled();
@@ -111,13 +129,9 @@ describe('CategoriesController', () => {
 
   describe('GET /categories/:id', () => {
     it('should return a category by id', async () => {
-      vi.mocked(categoriesService.findById).mockResolvedValue({
-        id: 'cat-1',
-        name: 'Fiction',
-        slug: 'fiction',
-      } as unknown as Category);
+      vi.mocked(categoriesService.findById).mockResolvedValue(makeCategory());
 
-      const res = await request(httpServer).get('/categories/cat-1').expect(200);
+      const res = await request(app.getHttpServer()).get('/categories/cat-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'cat-1');
       expect(categoriesService.findById).toHaveBeenCalledWith('cat-1');
@@ -126,13 +140,9 @@ describe('CategoriesController', () => {
 
   describe('GET /categories/slug/:slug', () => {
     it('should return a category by slug', async () => {
-      vi.mocked(categoriesService.findBySlug).mockResolvedValue({
-        id: 'cat-1',
-        name: 'Fiction',
-        slug: 'fiction',
-      } as unknown as Category);
+      vi.mocked(categoriesService.findBySlug).mockResolvedValue(makeCategory());
 
-      const res = await request(httpServer).get('/categories/slug/fiction').expect(200);
+      const res = await request(app.getHttpServer()).get('/categories/slug/fiction').expect(200);
 
       expect(res.body).toHaveProperty('slug', 'fiction');
       expect(categoriesService.findBySlug).toHaveBeenCalledWith('fiction');
@@ -143,13 +153,9 @@ describe('CategoriesController', () => {
     it('should create a category', async () => {
       const token = await editorialToken();
 
-      vi.mocked(categoriesService.create).mockResolvedValue({
-        id: 'cat-1',
-        name: 'Fiction',
-        slug: 'fiction',
-      } as unknown as Category);
+      vi.mocked(categoriesService.create).mockResolvedValue(makeCategory());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/categories')
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Fiction', slug: 'fiction' })
@@ -164,13 +170,9 @@ describe('CategoriesController', () => {
     it('should update a category', async () => {
       const token = await editorialToken();
 
-      vi.mocked(categoriesService.update).mockResolvedValue({
-        id: 'cat-1',
-        name: 'Fiction Updated',
-        slug: 'fiction',
-      } as unknown as Category);
+      vi.mocked(categoriesService.update).mockResolvedValue(makeCategory({ name: 'Fiction Updated' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/categories/cat-1')
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Fiction Updated' })
@@ -187,7 +189,7 @@ describe('CategoriesController', () => {
 
       vi.mocked(categoriesService.delete).mockResolvedValue(undefined);
 
-      await request(httpServer).delete('/categories/cat-1').set('Authorization', `Bearer ${token}`).expect(204);
+      await request(app.getHttpServer()).delete('/categories/cat-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(categoriesService.delete).toHaveBeenCalledWith('cat-1');
     });
@@ -212,7 +214,7 @@ describe('CategoriesController', () => {
     it('refuses POST a category for a reader', async () => {
       const token = await generateToken('reader-1', 'reader@example.com', 'reader');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/categories')
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Injected', slug: 'injected' })
@@ -224,7 +226,7 @@ describe('CategoriesController', () => {
     it('refuses PATCH a category for a reader', async () => {
       const token = await generateToken('reader-1', 'reader@example.com', 'reader');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .patch('/categories/cat-1')
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Injected', slug: 'injected' })
@@ -236,7 +238,7 @@ describe('CategoriesController', () => {
     it('refuses DELETE a category for a reader', async () => {
       const token = await generateToken('reader-1', 'reader@example.com', 'reader');
 
-      await request(httpServer).delete('/categories/cat-1').set('Authorization', `Bearer ${token}`).expect(403);
+      await request(app.getHttpServer()).delete('/categories/cat-1').set('Authorization', `Bearer ${token}`).expect(403);
 
       expect(categoriesService.delete).not.toHaveBeenCalled();
     });
@@ -247,7 +249,7 @@ describe('CategoriesController', () => {
       // account-type check from a role check, and only one of them is exercised by the cases above.
       const token = await generateToken('fin-1', 'fin@example.com', 'admin', 'financial_officer');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/categories')
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Injected', slug: 'injected' })
@@ -257,7 +259,7 @@ describe('CategoriesController', () => {
     });
 
     it('refuses POST a category with no token at all', async () => {
-      await request(httpServer).post('/categories').send({ name: 'Injected', slug: 'injected' }).expect(401);
+      await request(app.getHttpServer()).post('/categories').send({ name: 'Injected', slug: 'injected' }).expect(401);
 
       expect(categoriesService.create).not.toHaveBeenCalled();
     });

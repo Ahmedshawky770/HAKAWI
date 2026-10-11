@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 
-import { AppleJwksService, type JwtHelper } from './jwt.util.ts';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+
+import { AppleJwksService } from './jwt.util.ts';
 
 /**
  * Tests for the JWKS cache itself, rather than for the token verification that consumes it.

@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm';
 
 import { conversations } from '../../../db/schema/social.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { ConversationsRepository } from './conversations.repository.ts';
 
@@ -46,7 +46,7 @@ describe('ConversationsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,7 +69,7 @@ describe('ConversationsRepository', () => {
       await repository.findById(CONVERSATION_ID);
 
       expect(whereOf()).toEqual(eq(conversations.id, CONVERSATION_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -110,7 +110,7 @@ describe('ConversationsRepository', () => {
       expect(whereOf()).toEqual(
         and(eq(conversations.participant1Id, USER_ID), eq(conversations.participant2Id, OTHER_USER_ID)),
       );
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the pair has no conversation yet', async () => {
@@ -153,8 +153,8 @@ describe('ConversationsRepository', () => {
 
       await repository.findByUser(USER_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -162,8 +162,8 @@ describe('ConversationsRepository', () => {
 
       await repository.findByUser(USER_ID, 3, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders the most recently active conversation first', async () => {
@@ -171,8 +171,8 @@ describe('ConversationsRepository', () => {
 
       await repository.findByUser(USER_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(conversations.lastMessageAt)]);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([conversations]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(conversations.lastMessageAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([conversations]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -190,7 +190,7 @@ describe('ConversationsRepository', () => {
 
       expect(created).toMatchObject({ id: CONVERSATION_ID });
       expect(db.insert).toHaveBeenCalledWith(conversations);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([{ participant1Id: USER_ID, participant2Id: OTHER_USER_ID }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ participant1Id: USER_ID, participant2Id: OTHER_USER_ID }]);
     });
   });
 
@@ -200,7 +200,7 @@ describe('ConversationsRepository', () => {
 
       await repository.updateLastMessage(CONVERSATION_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.lastMessageAt).toBeInstanceOf(Date);
       expect(whereOf()).toEqual(eq(conversations.id, CONVERSATION_ID));
       expect(db.update).toHaveBeenCalledWith(conversations);
@@ -221,7 +221,7 @@ describe('ConversationsRepository', () => {
 
       await repository.findParticipantsByIds([USER_ID, OTHER_USER_ID]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([users]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([users]);
       expect(whereOf()).toEqual(inArray(users.id, [USER_ID, OTHER_USER_ID]));
     });
 

@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -13,15 +13,19 @@ import { EncryptionService } from '../../../common/utils/encryption.util.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
-import { books } from '../../../db/schema/books.schema.ts';
-import { rentals } from '../../../db/schema/rentals.schema.ts';
+import type {
+  IdResponse,
+  JsonResponse,
+  LoginResponseBody,
+} from '../../../test/helpers/test-response-types.ts';
 
-// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
-// Accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+interface RentalResponseBody {
+  id: string;
+  status: string;
+}
 
 describe('Rentals E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
   let accessToken: string;
   let bookId: string;
@@ -58,7 +62,7 @@ describe('Rentals E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
 
     await request(httpServer).post('/auth/register').send({
       email: 'e2e-rentals@example.com',
@@ -67,17 +71,17 @@ describe('Rentals E2E', () => {
       username: 'e2erentals',
     });
 
-    const loginRes = await request(httpServer).post('/auth/login').send({
+    const loginRes = (await request(httpServer).post('/auth/login').send({
       email: 'e2e-rentals@example.com',
       password: 'SecurePass123!',
-    });
+    })) as JsonResponse<LoginResponseBody>;
 
     accessToken = loginRes.body.tokens.accessToken;
 
-    const bookRes = await request(httpServer)
+    const bookRes = (await request(httpServer)
       .post('/books')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: 'E2E Rental Book', author: 'Test Author' });
+      .send({ title: 'E2E Rental Book', author: 'Test Author' })) as JsonResponse<IdResponse>;
 
     bookId = bookRes.body.id;
   });
@@ -97,7 +101,7 @@ describe('Rentals E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.status).toBe('active');
+      expect((res.body as RentalResponseBody).status).toBe('active');
     });
   });
 

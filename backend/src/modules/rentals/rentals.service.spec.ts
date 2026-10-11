@@ -1,20 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
-import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-
 import type { PaymentsService } from '../payments/payments.service.ts';
-import { RENTAL_CACHE_NAMESPACE, RentalsService } from './rentals.service.ts';
-import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
-import type { Rental, CreateRentalInput, RentalExtension } from './types.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
+import { RENTAL_CACHE_NAMESPACE, RentalsService } from './rentals.service.ts';
+import type { Rental, CreateRentalInput, RentalExtension } from './types.ts';
 
 /**
  * An in-memory stand-in for `TaggedCacheService` that reproduces the one behaviour these tests
@@ -399,7 +395,10 @@ describe('RentalsService', () => {
       const result = await rentalsService.extendRental('rental-123', 14, 'user-123');
 
       expect(paymentsService.paymobInitializePayment).toHaveBeenCalledTimes(1);
-      const [, amount, currency, metadata] = vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0]!;
+      const [, amount, currency, metadata] = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
 
       expect(amount).toBe(rentalPriceForDays(14));
       expect(currency).toBe(RENTAL_CURRENCY);

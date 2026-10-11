@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
-import type { ICommentReactionsRepository, CommentReaction } from '../interfaces/comments-repository.interface.ts';
-import type { ICommentsRepository, Comment } from '../interfaces/comments-repository.interface.ts';
+import type { Comment, CommentReaction } from '../interfaces/comments-repository.interface.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 

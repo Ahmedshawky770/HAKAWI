@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length, IsOptional } from 'class-validator';
+import { IsString, Length } from 'class-validator';
 
 export class MfaSetupResponseDto {
   @ApiProperty({ description: 'Base32-encoded TOTP secret' })
@@ -32,13 +32,6 @@ export class MfaVerifyResponseDto {
 
   @ApiProperty({ description: 'Whether a backup code was used', required: false })
   backupCodeUsed?: boolean;
-}
-
-export class MfaDisableDto {
-  @ApiProperty({ description: 'Current password for confirmation', required: false })
-  @IsString()
-  @IsOptional()
-  password?: string;
 }
 
 export class MfaStatusDto {

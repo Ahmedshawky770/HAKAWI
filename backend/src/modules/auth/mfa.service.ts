@@ -1,8 +1,10 @@
+import crypto from 'crypto';
+
 import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
 import * as speakeasy from 'speakeasy';
 import * as qrcode from 'qrcode';
-
 import { ConfigService } from '@nestjs/config';
+
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { EncryptionService } from '../../common/utils/encryption.util.ts';
@@ -26,6 +28,11 @@ export interface MfaSetupResult {
 export interface MfaVerificationResult {
   verified: boolean;
   backupCodeUsed?: boolean;
+}
+
+interface StoredTotpSecret {
+  secret: string;
+  backupCodes: string[];
 }
 
 @Injectable()
@@ -71,8 +78,13 @@ export class MfaService {
       backupCodes,
     }), TOTP_SECRET_TTL);
 
-    // Generate QR code
-    const otpauthUrl = secret.otpauth_url!;
+    // Generate QR code. `otpauth_url` is optional in speakeasy's type, so it is checked rather
+    // than assumed: without it there is no URL to encode, and `qrcode.toDataURL(undefined)` would
+    // fail deep inside the encoder instead of saying the secret was not produced.
+    const otpauthUrl = secret.otpauth_url;
+    if (!otpauthUrl) {
+      throw new BadRequestException('Failed to generate MFA secret');
+    }
     const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
 
     this.logger.info(`MFA setup initiated for user ${userId}`, 'MfaService');
@@ -97,7 +109,7 @@ export class MfaService {
       throw new BadRequestException('MFA setup session expired or not found. Please restart setup.');
     }
 
-    const { secret, backupCodes } = JSON.parse(tempData);
+    const { secret, backupCodes } = JSON.parse(tempData) as StoredTotpSecret;
 
     // Verify the token
     const verified = speakeasy.totp.verify({
@@ -171,7 +183,7 @@ export class MfaService {
     const storedCodesJson = await this.valkey.get(backupKey);
 
     if (storedCodesJson) {
-      const storedCodes = JSON.parse(storedCodesJson);
+      const storedCodes = JSON.parse(storedCodesJson) as string[];
       for (let i = 0; i < storedCodes.length; i++) {
         const decrypted = await this.encryption.decrypt(storedCodes[i]);
         if (timingSafeEqualStrings(decrypted, token)) {
@@ -226,7 +238,7 @@ export class MfaService {
     const backupKey = `${BACKUP_CODES_PREFIX}${userId}`;
     const storedCodesJson = await this.valkey.get(backupKey);
     if (!storedCodesJson) return 0;
-    return JSON.parse(storedCodesJson).length;
+    return (JSON.parse(storedCodesJson) as string[]).length;
   }
 
   /**
@@ -279,5 +291,3 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
   }
   return crypto.timingSafeEqual(bufferA, bufferB);
 }
-
-import crypto from 'crypto';

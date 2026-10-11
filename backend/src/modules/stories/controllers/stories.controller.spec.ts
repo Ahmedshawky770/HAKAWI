@@ -5,13 +5,12 @@ import type { Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication, NotFoundException, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
 import { StoriesService } from '../stories.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { OptionalJwtAuthGuard } from '../../../common/guards/optional-jwt-auth.guard.ts';
@@ -22,10 +21,6 @@ import { PUBLIC_STORY_STATUS } from '../types.ts';
 import type { Story } from '../types.ts';
 
 import { StoriesController } from './stories.controller.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 

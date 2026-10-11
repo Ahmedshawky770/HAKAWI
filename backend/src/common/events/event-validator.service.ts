@@ -65,12 +65,13 @@ export class EventValidatorService {
 
     const result = this.registry.validateEvent(parked.eventName, parked.payload);
     if (!result.success) {
+      const reason = result.error ?? 'still-invalid';
       await this.dlqService.retry(eventId);
       this.logger.error(
-        `Dead-lettered event ${eventId} (${parked.eventName}) still fails validation: ${result.error}`,
+        `Dead-lettered event ${eventId} (${parked.eventName}) still fails validation: ${reason}`,
         'EventValidatorService',
       );
-      return { replayed: false, reason: result.error ?? 'still-invalid' };
+      return { replayed: false, reason };
     }
 
     this.eventEmitter.emit(parked.eventName, parked.payload);

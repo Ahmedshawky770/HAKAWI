@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 
 import { users } from '../../../db/schema/users.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -51,7 +52,7 @@ describe('UsersRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,9 +74,9 @@ describe('UsersRepository', () => {
 
       await repository.findById(USER_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([users]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([users]);
       expect(whereOf()).toEqual(eq(users.id, USER_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -276,7 +277,7 @@ describe('UsersRepository', () => {
         googleId: 'google-1',
       });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         {
           email: EMAIL,
           username: USERNAME,
@@ -300,7 +301,7 @@ describe('UsersRepository', () => {
       });
 
       expect(created).toMatchObject({ isVerified: false, accountType: 'reader' });
-      expect(callsOf(chains[0]!, 'returning')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'returning')).toHaveLength(1);
     });
   });
 
@@ -311,7 +312,7 @@ describe('UsersRepository', () => {
       const updated = await repository.update(USER_ID, { name: 'Noor A.' });
 
       expect(updated).toMatchObject({ name: 'Noor A.' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ name: 'Noor A.' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -322,7 +323,7 @@ describe('UsersRepository', () => {
       await repository.update(USER_ID, { onboardingCompleted: true });
 
       expect(whereOf()).toEqual(eq(users.id, USER_ID));
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(db.update).toHaveBeenCalledWith(users);
     });
   });
@@ -333,7 +334,7 @@ describe('UsersRepository', () => {
 
       await repository.softDelete(USER_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(whereOf()).toEqual(eq(users.id, USER_ID));
       expect(db.delete).not.toHaveBeenCalled();

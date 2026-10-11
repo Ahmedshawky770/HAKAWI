@@ -353,7 +353,6 @@ export class MigrationRunner {
 
   private assertNoDrift(files: readonly MigrationFile[], active: readonly LedgerRow[]): void {
     const byId = new Map(files.map((file) => [file.id, file]));
-    const activeIds = new Set(active.map((row) => row.migrationId));
 
     for (const row of active) {
       const file = byId.get(row.migrationId);

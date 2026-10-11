@@ -1,23 +1,20 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { RentalsService } from '../rentals.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import type { Rental } from '../types.ts';
+import type { PaymobCheckoutResponse } from '../../payments/types.ts';
+import type { CreateRentalRequest, Rental, RentalsListResponse } from '../types.ts';
 
 import { RentalsController } from './rentals.controller.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -25,28 +22,67 @@ async function generateToken(sub = 'user-1', email = 'test@example.com', account
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type RentalsListParams = { status?: string; page?: number; limit?: number };
+
+/**
+ * The checkout `extendRental` answers with, plus the `id` the assertion uses to prove which payload
+ * the controller passed back untouched. Every field is a real `PaymobCheckoutResponse` field.
+ */
+type ExtensionCheckout = PaymobCheckoutResponse & { id: string };
+
 type MockRentalsService = {
-  createRental: ReturnType<typeof vi.fn>;
-  findMyRentals: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  extendRental: ReturnType<typeof vi.fn>;
-  returnRental: ReturnType<typeof vi.fn>;
-  findOverdue: ReturnType<typeof vi.fn>;
+  createRental: ReturnType<typeof vi.fn<(userId: string, input: CreateRentalRequest) => Promise<Rental>>>;
+  findMyRentals: ReturnType<typeof vi.fn<(userId: string, params: RentalsListParams) => Promise<RentalsListResponse>>>;
+  findById: ReturnType<typeof vi.fn<(id: string, userId?: string) => Promise<Rental>>>;
+  extendRental: ReturnType<
+    typeof vi.fn<(id: string, extensionDays: number, userId: string) => Promise<ExtensionCheckout>>
+  >;
+  returnRental: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Rental>>>;
+  findOverdue: ReturnType<typeof vi.fn<() => Promise<Rental[]>>>;
 };
 
+function makeRental(overrides: Partial<Rental> = {}): Rental {
+  return {
+    id: 'rental-1',
+    userId: 'user-1',
+    bookId: 'book-1',
+    status: 'active',
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    extendedCount: 0,
+    maxExtensions: 3,
+    returnedAt: null,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function makeExtensionCheckout(): ExtensionCheckout {
+  return {
+    id: 'extension-1',
+    paymentId: 'payment-1',
+    orderId: 'order-1',
+    paymentKey: 'payment-key-1',
+    iframeUrl: 'https://accept.paymob.com/acceptance/iframes/key-1?merchant_id=merchant-1',
+    acceptUrl: 'https://hakawi.example/payments/return',
+    status: 'processed',
+  };
+}
+
 describe('RentalsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let rentalsService: MockRentalsService;
 
   beforeAll(async () => {
     rentalsService = {
-      createRental: vi.fn(),
-      findMyRentals: vi.fn(),
-      findById: vi.fn(),
-      extendRental: vi.fn(),
-      returnRental: vi.fn(),
-      findOverdue: vi.fn(),
+      createRental: vi.fn<(userId: string, input: CreateRentalRequest) => Promise<Rental>>(),
+      findMyRentals: vi.fn<(userId: string, params: RentalsListParams) => Promise<RentalsListResponse>>(),
+      findById: vi.fn<(id: string, userId?: string) => Promise<Rental>>(),
+      extendRental: vi.fn<(id: string, extensionDays: number, userId: string) => Promise<ExtensionCheckout>>(),
+      returnRental: vi.fn<(id: string, userId: string) => Promise<Rental>>(),
+      findOverdue: vi.fn<() => Promise<Rental[]>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -75,13 +111,10 @@ describe('RentalsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -92,21 +125,9 @@ describe('RentalsController', () => {
     it('should create a rental', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(rentalsService.createRental).mockResolvedValue({
-        id: 'rental-1',
-        userId: 'user-1',
-        bookId: 'book-1',
-        status: 'active',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        extendedCount: 0,
-        maxExtensions: 3,
-        returnedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Rental);
+      vi.mocked(rentalsService.createRental).mockResolvedValue(makeRental());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/rentals')
         .set('Authorization', `Bearer ${token}`)
         .send({ bookId: 'book-1' })
@@ -128,7 +149,7 @@ describe('RentalsController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer).get('/rentals/my').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await request(app.getHttpServer()).get('/rentals/my').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('rentals');
       expect(rentalsService.findMyRentals).toHaveBeenCalled();
@@ -139,21 +160,9 @@ describe('RentalsController', () => {
     it('should return a rental by id', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(rentalsService.findById).mockResolvedValue({
-        id: 'rental-1',
-        userId: 'user-1',
-        bookId: 'book-1',
-        status: 'active',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        extendedCount: 0,
-        maxExtensions: 3,
-        returnedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Rental);
+      vi.mocked(rentalsService.findById).mockResolvedValue(makeRental());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/rentals/rental-1')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -167,16 +176,9 @@ describe('RentalsController', () => {
     it('should extend a rental', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(rentalsService.extendRental).mockResolvedValue({
-        id: 'extension-1',
-        rentalId: 'rental-1',
-        previousEndDate: new Date(),
-        newEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        extensionDays: 7,
-        createdAt: new Date(),
-      });
+      vi.mocked(rentalsService.extendRental).mockResolvedValue(makeExtensionCheckout());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/rentals/rental-1/extend')
         .set('Authorization', `Bearer ${token}`)
         .send({ extensionDays: 7 })
@@ -191,21 +193,9 @@ describe('RentalsController', () => {
     it('should return a rental', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(rentalsService.returnRental).mockResolvedValue({
-        id: 'rental-1',
-        userId: 'user-1',
-        bookId: 'book-1',
-        status: 'returned',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        extendedCount: 0,
-        maxExtensions: 3,
-        returnedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Rental);
+      vi.mocked(rentalsService.returnRental).mockResolvedValue(makeRental({ status: 'returned', returnedAt: new Date() }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/rentals/rental-1/return')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);

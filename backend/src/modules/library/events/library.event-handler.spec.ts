@@ -3,10 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { Payment } from '../../payments/interfaces/payments-repository.interface.ts';
-
-import { LibraryEventHandler } from './library.event-handler.ts';
 import type { ILibraryRepository } from '../interfaces/library-repository.interface.ts';
 import type { IPaymentsRepository } from '../../payments/interfaces/payments-repository.interface.ts';
+
+import { LibraryEventHandler } from './library.event-handler.ts';
 
 /**
  * The commercial flow did not exist.

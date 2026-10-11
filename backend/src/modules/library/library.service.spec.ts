@@ -5,16 +5,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-
 import type { IBooksRepository } from '../books/interfaces/books-repository.interface.ts';
+
 import { LibraryService } from './library.service.ts';
-import type { ILibraryRepository } from './interfaces/library-repository.interface.ts';
 import type { LibraryItem } from './types.ts';
 import type { LibraryQuery } from './types.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockLibraryRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<LibraryItem | null>>>;

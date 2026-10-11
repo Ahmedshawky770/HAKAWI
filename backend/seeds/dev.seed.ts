@@ -1,8 +1,8 @@
-import { db } from '../src/db/index.js';
-import { users } from '../src/db/schema/users.schema.js';
-import { AccountType } from '../src/common/constants/roles.js';
-import { PasswordHasher } from '../src/common/utils/password.util.js';
-import { WinstonLoggerService } from '../src/common/services/winston-logger.service.js';
+import { db } from '../src/db/index.ts';
+import { users } from '../src/db/schema/users.schema.ts';
+import { AccountType } from '../src/common/constants/roles.ts';
+import { PasswordHasher } from '../src/common/utils/password.util.ts';
+import { WinstonLoggerService } from '../src/common/services/winston-logger.service.ts';
 
 export async function run() {
   const passwordHasher = new PasswordHasher();
@@ -20,5 +20,5 @@ export async function run() {
     accessBlocked: false,
   }).returning();
 
-  logger.log('Seed completed', adminUser[0]);
+  logger.log(`Seed completed: admin ${adminUser[0].email}`, 'DevSeed');
 }

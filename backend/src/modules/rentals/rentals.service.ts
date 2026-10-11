@@ -7,16 +7,15 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
+import { RENTAL_CURRENCY, RENTAL_DURATION_DAYS, isRentalDurationDays, rentalPriceForDays } from '@hakawi/shared-types';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-import { RENTAL_CURRENCY, RENTAL_DURATION_DAYS, isRentalDurationDays, rentalPriceForDays } from '@hakawi/shared-types';
 import { PaymentsService } from '../payments/payments.service.ts';
 import type { PaymobCheckoutResponse } from '../payments/types.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type {
   RentalCreatedEvent,
-  RentalExtendedEvent,
   RentalReturnedEvent,
   RentalExpiredEvent,
 } from '../../common/events/rentals.events.ts';

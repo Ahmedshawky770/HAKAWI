@@ -6,7 +6,6 @@ import {
   Delete,
   Body,
   Param,
-  UseGuards,
   Inject,
   HttpCode,
   HttpStatus,

@@ -5,7 +5,7 @@ import { ReactionsController } from './controllers/reactions.controller.ts';
 import { ReactionsService } from './reactions.service.ts';
 import type { Reaction } from './types.ts';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 type MockReactionsService = {
   addReaction: ReturnType<typeof vi.fn>;

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../../db/database.module.ts';
 import { CommonModule } from '../../common/common.module.ts';
+import { StoriesModule } from '../stories/stories.module.ts';
+import { CommentsModule } from '../comments/comments.module.ts';
 
 import { NotificationsService } from './notifications.service.ts';
 import { NotificationsController } from './controllers/notifications.controller.ts';
@@ -10,8 +12,6 @@ import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.
 import { NotificationsEventHandler } from './events/notifications.event-handler.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
 import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
-import { StoriesModule } from '../stories/stories.module.ts';
-import { CommentsModule } from '../comments/comments.module.ts';
 
 @Module({
   // StoriesModule and CommentsModule are imported so `NotificationsEventHandler` can resolve an

@@ -1,25 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  ACCOUNT_TYPES,
-  AccountType,
-  ADMIN_ROLES,
-  AdminRole,
-  DEFAULT_ACCOUNT_TYPE,
-  LEGACY_ACCOUNT_TYPE_MAP,
-  LEGACY_ADMIN_ROLE_MAP,
-  isAccountType,
-  isAdminRole,
-  normalizeAccountType,
-  normalizeAdminRole,
-  ACCOUNT_TYPE_IMPLIES,
-  ADMIN_ROLE_IMPLIES,
-  accountTypeAtLeast,
-  adminRoleAtLeast,
-  accountTypeSatisfies,
-  isAdminAccount,
-  isSuperAdmin,
-} from '../constants/roles.ts';
-import {
   ACCOUNT_TYPES as SHARED_ACCOUNT_TYPES,
   AccountType as SharedAccountType,
   ADMIN_ROLES as SHARED_ADMIN_ROLES,
@@ -39,6 +19,27 @@ import {
   ACCOUNT_TYPE_IMPLIES as SHARED_ACCOUNT_TYPE_IMPLIES,
   ADMIN_ROLE_IMPLIES as SHARED_ADMIN_ROLE_IMPLIES,
 } from '@hakawi/shared-types';
+
+import {
+  ACCOUNT_TYPES,
+  AccountType,
+  ADMIN_ROLES,
+  AdminRole,
+  DEFAULT_ACCOUNT_TYPE,
+  LEGACY_ACCOUNT_TYPE_MAP,
+  LEGACY_ADMIN_ROLE_MAP,
+  isAccountType,
+  isAdminRole,
+  normalizeAccountType,
+  normalizeAdminRole,
+  ACCOUNT_TYPE_IMPLIES,
+  ADMIN_ROLE_IMPLIES,
+  accountTypeAtLeast,
+  adminRoleAtLeast,
+  accountTypeSatisfies,
+  isAdminAccount,
+  isSuperAdmin,
+} from '../constants/roles.ts';
 
 describe('constants/roles barrel', () => {
   it('re-exports the shared account type vocabulary by identity', () => {

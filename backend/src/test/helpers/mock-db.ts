@@ -146,6 +146,21 @@ export function callsOf(chain: MockChain, method: string): ChainCall[] {
   return chain.calls.filter((call) => call.method === method);
 }
 
+/**
+ * The chain built by the nth `db.*` call this test, failing loudly when the count is wrong.
+ *
+ * Replaces `chains[0]!`. The postfix `!` hid the "method issued fewer queries than the spec
+ * predicted" case: the following property read then failed with `Cannot read properties of
+ * undefined` instead of naming which query was missing.
+ */
+export function chainAt(chains: readonly MockChain[], index: number): MockChain {
+  const chain = chains[index];
+  if (!chain) {
+    throw new Error(`Expected a query chain at index ${index}, but only ${chains.length} were built`);
+  }
+  return chain;
+}
+
 /** Arguments of the first `method` call on a chain, or `undefined` when it was never called. */
 export function firstArgsOf(chain: MockChain, method: string): unknown[] | undefined {
   const [call] = callsOf(chain, method);

@@ -1,65 +1,71 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication, UnauthorizedException } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
+import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 
 import { AuthController } from './auth.controller.ts';
 import { AuthService } from './auth.service.ts';
+import type {
+  AuthResponseDto,
+  LoginDto,
+  LogoutResponseDto,
+  RefreshTokenDto,
+  RegisterDto,
+  SessionResponseDto,
+} from './dto/auth.dto.ts';
 
-type MockAuthService = {
-  register: ReturnType<typeof vi.fn>;
-  login: ReturnType<typeof vi.fn>;
-  refreshTokens: ReturnType<typeof vi.fn>;
-  session: ReturnType<typeof vi.fn>;
-  logout: ReturnType<typeof vi.fn>;
-  forgotPassword: ReturnType<typeof vi.fn>;
-  resetPassword: ReturnType<typeof vi.fn>;
-  getAuthorizationUrl: ReturnType<typeof vi.fn>;
-  handleOAuthCallback: ReturnType<typeof vi.fn>;
-};
+type OAuthTokens = { accessToken: string; refreshToken: string };
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 function readSetCookies(res: request.Response): readonly string[] {
-  const raw: unknown = res.headers['set-cookie'];
-
-  if (typeof raw === 'string') {
-    return [raw];
-  }
-  if (Array.isArray(raw)) {
-    return raw.filter((entry: unknown): entry is string => typeof entry === 'string');
-  }
-  return [];
+  // `set-cookie` is the one header the runtime hands back as an array, and `get` is the accessor
+  // whose return type already says so.
+  return res.get('Set-Cookie') ?? [];
 }
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type MockAuthService = {
+  register: ReturnType<typeof vi.fn<(dto: RegisterDto) => Promise<AuthResponseDto>>>;
+  login: ReturnType<typeof vi.fn<(dto: LoginDto, clientIp: string) => Promise<AuthResponseDto>>>;
+  refreshTokens: ReturnType<typeof vi.fn<(dto: RefreshTokenDto) => Promise<AuthResponseDto>>>;
+  session: ReturnType<typeof vi.fn<(userId: string) => Promise<SessionResponseDto>>>;
+  logout: ReturnType<typeof vi.fn<(refreshToken: string | undefined) => Promise<LogoutResponseDto>>>;
+  forgotPassword: ReturnType<typeof vi.fn<(email: string) => Promise<void>>>;
+  resetPassword: ReturnType<typeof vi.fn<(token: string, newPassword: string) => Promise<void>>>;
+  getAuthorizationUrl: ReturnType<typeof vi.fn<(provider: string, state?: string) => Promise<string>>>;
+  handleOAuthCallback: ReturnType<
+    typeof vi.fn<(provider: string, code: string, state?: string) => Promise<OAuthTokens>>
+  >;
+};
+
 describe('AuthController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let authService: MockAuthService;
 
   beforeAll(async () => {
     authService = {
-      register: vi.fn(),
-      login: vi.fn(),
-      refreshTokens: vi.fn(),
-      session: vi.fn(),
-      logout: vi.fn(),
-      forgotPassword: vi.fn(),
-      resetPassword: vi.fn(),
-      getAuthorizationUrl: vi.fn(),
-      handleOAuthCallback: vi.fn(),
+      register: vi.fn<(dto: RegisterDto) => Promise<AuthResponseDto>>(),
+      login: vi.fn<(dto: LoginDto, clientIp: string) => Promise<AuthResponseDto>>(),
+      refreshTokens: vi.fn<(dto: RefreshTokenDto) => Promise<AuthResponseDto>>(),
+      session: vi.fn<(userId: string) => Promise<SessionResponseDto>>(),
+      logout: vi.fn<(refreshToken: string | undefined) => Promise<LogoutResponseDto>>(),
+      forgotPassword: vi.fn<(email: string) => Promise<void>>(),
+      resetPassword: vi.fn<(token: string, newPassword: string) => Promise<void>>(),
+      getAuthorizationUrl: vi.fn<(provider: string, state?: string) => Promise<string>>(),
+      handleOAuthCallback: vi.fn<(provider: string, code: string, state?: string) => Promise<OAuthTokens>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -91,13 +97,10 @@ describe('AuthController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -117,15 +120,14 @@ describe('AuthController', () => {
         tokens: { accessToken: 'access-token', refreshToken: 'refresh-token' },
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: 'test@example.com', password: 'SecurePass123!', name: 'Test User', username: 'testuser' })
         .expect(201);
 
       expect(res.body).toHaveProperty('user');
       expect(res.body).toHaveProperty('tokens');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(res.body.user.email).toBe('test@example.com');
+      expect(res.body).toHaveProperty('user.email', 'test@example.com');
       expect(authService.register).toHaveBeenCalled();
     });
   });
@@ -143,7 +145,7 @@ describe('AuthController', () => {
         tokens: { accessToken: 'access-token', refreshToken: 'refresh-token' },
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({ email: 'test@example.com', password: 'SecurePass123!' })
         .expect(200);
@@ -154,7 +156,7 @@ describe('AuthController', () => {
   });
 
   describe('POST /auth/refresh', () => {
-    const payload = {
+    const payload: AuthResponseDto = {
       user: {
         id: 'user-1',
         email: 'test@example.com',
@@ -168,7 +170,7 @@ describe('AuthController', () => {
     it('should refresh tokens', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(httpServer).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
 
       expect(res.body).toHaveProperty('tokens');
       expect(authService.refreshTokens).toHaveBeenCalled();
@@ -177,7 +179,7 @@ describe('AuthController', () => {
     it('refreshes from the httpOnly cookie when the client sent no body token', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'access_token=stale-access; refresh_token=refresh-from-cookie')
         .send({})
@@ -190,7 +192,7 @@ describe('AuthController', () => {
     it('still accepts a body-only refresh, so non-browser clients keep working', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      await request(httpServer).post('/auth/refresh').send({ refreshToken: 'refresh-from-body' }).expect(200);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'refresh-from-body' }).expect(200);
 
       expect(authService.refreshTokens).toHaveBeenCalledWith({ refreshToken: 'refresh-from-body' });
     });
@@ -198,7 +200,7 @@ describe('AuthController', () => {
     it('prefers the cookie and uses the body only as a fallback', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'refresh_token=refresh-from-cookie')
         .send({ refreshToken: 'refresh-from-body' })
@@ -210,7 +212,7 @@ describe('AuthController', () => {
     it('falls through to the body when the browser sent a cookie it had already cleared', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'refresh_token=')
         .send({ refreshToken: 'refresh-from-body' })
@@ -222,7 +224,7 @@ describe('AuthController', () => {
     it('rotates both cookies on a cookie-only refresh', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'refresh_token=refresh-from-cookie')
         .send({})
@@ -236,7 +238,7 @@ describe('AuthController', () => {
     it('refuses a refresh that carries neither a cookie nor a body token', async () => {
       vi.mocked(authService.refreshTokens).mockRejectedValue(new UnauthorizedException('Refresh token is required'));
 
-      await request(httpServer).post('/auth/refresh').send({}).expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({}).expect(401);
 
       expect(authService.refreshTokens).toHaveBeenCalledWith({ refreshToken: undefined });
     });
@@ -244,7 +246,7 @@ describe('AuthController', () => {
     it('refuses a refresh whose only source is a cleared cookie', async () => {
       vi.mocked(authService.refreshTokens).mockRejectedValue(new UnauthorizedException('Refresh token is required'));
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'access_token=; refresh_token=')
         .send({})
@@ -256,7 +258,7 @@ describe('AuthController', () => {
     it('clears the auth cookies when the refresh is rejected', async () => {
       vi.mocked(authService.refreshTokens).mockRejectedValue(new UnauthorizedException('Invalid refresh token'));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'refresh_token=expired-refresh-token')
         .send({})
@@ -270,7 +272,7 @@ describe('AuthController', () => {
     it('keeps the cookies on a server fault, because the session is not what went wrong', async () => {
       vi.mocked(authService.refreshTokens).mockRejectedValue(new Error('valkey is down'));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', 'refresh_token=still-good-token')
         .send({})
@@ -295,7 +297,7 @@ describe('AuthController', () => {
         expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       });
 
-      const res = await request(httpServer).get('/auth/session').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await request(app.getHttpServer()).get('/auth/session').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('user');
       expect(authService.session).toHaveBeenCalledWith('user-1');
@@ -306,7 +308,7 @@ describe('AuthController', () => {
     it('should logout', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      const res = await request(httpServer).post('/auth/logout').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken: 'refresh-token' }).expect(200);
 
       expect(res.body).toEqual({ message: 'Logged out successfully' });
       expect(authService.logout).toHaveBeenCalled();
@@ -315,7 +317,7 @@ describe('AuthController', () => {
     it('revokes the refresh token held in the httpOnly cookie, not the body', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Cookie', 'access_token=access-from-cookie; refresh_token=refresh-from-cookie')
         .send({ refreshToken: 'refresh-from-body' })
@@ -327,7 +329,7 @@ describe('AuthController', () => {
     it('falls back to the request body when the browser sent no cookie', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      await request(httpServer).post('/auth/logout').send({ refreshToken: 'refresh-from-body' }).expect(200);
+      await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken: 'refresh-from-body' }).expect(200);
 
       expect(authService.logout).toHaveBeenCalledWith('refresh-from-body');
     });
@@ -335,7 +337,7 @@ describe('AuthController', () => {
     it('falls back to the request body when the browser sent a cleared cookie', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Cookie', 'refresh_token=')
         .send({ refreshToken: 'refresh-from-body' })
@@ -347,7 +349,7 @@ describe('AuthController', () => {
     it('succeeds and clears the cookies when the client holds no session at all', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      const res = await request(httpServer).post('/auth/logout').expect(200);
+      const res = await request(app.getHttpServer()).post('/auth/logout').expect(200);
 
       expect(res.body).toEqual({ message: 'Logged out successfully' });
       expect(authService.logout).toHaveBeenCalledWith(undefined);
@@ -358,14 +360,14 @@ describe('AuthController', () => {
     it('still clears the cookies when the refresh token is rejected', async () => {
       vi.mocked(authService.logout).mockRejectedValue(new UnauthorizedException('Invalid refresh token'));
 
-      await request(httpServer).post('/auth/logout').set('Cookie', 'refresh_token=stale-refresh-token').expect(401);
+      await request(app.getHttpServer()).post('/auth/logout').set('Cookie', 'refresh_token=stale-refresh-token').expect(401);
 
       expect(authService.logout).toHaveBeenCalledWith('stale-refresh-token');
     });
   });
 
   describe('auth cookie contract', () => {
-    const payload = {
+    const payload: AuthResponseDto = {
       user: { id: 'user-1', email: 'test@example.com', name: 'Test User', username: 'testuser', accountType: 'reader' },
       tokens: { accessToken: 'access-token', refreshToken: 'refresh-token' },
     };
@@ -384,7 +386,7 @@ describe('AuthController', () => {
     it('sets the documented cookies when a user registers', async () => {
       vi.mocked(authService.register).mockResolvedValue(payload);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: 'test@example.com', password: 'SecurePass123!', name: 'Test User', username: 'testuser' })
         .expect(201);
@@ -395,7 +397,7 @@ describe('AuthController', () => {
     it('sets the documented cookies when a user logs in', async () => {
       vi.mocked(authService.login).mockResolvedValue(payload);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({ email: 'test@example.com', password: 'SecurePass123!' })
         .expect(200);
@@ -406,7 +408,7 @@ describe('AuthController', () => {
     it('sets the documented cookies when a session is refreshed', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(httpServer).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
 
       await expectDocumentedCookies(res);
     });
@@ -417,7 +419,7 @@ describe('AuthController', () => {
         refreshToken: 'refresh-token',
       });
 
-      const res = await request(httpServer).get('/auth/oauth/google/callback?code=abc&state=xyz').expect(302);
+      const res = await request(app.getHttpServer()).get('/auth/oauth/google/callback?code=abc&state=xyz').expect(302);
 
       await expectDocumentedCookies(res);
     });
@@ -427,7 +429,7 @@ describe('AuthController', () => {
     it('should request password reset', async () => {
       vi.mocked(authService.forgotPassword).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/forgot-password')
         .send({ email: 'test@example.com' })
         .expect(200);
@@ -441,7 +443,7 @@ describe('AuthController', () => {
     it('should reset password', async () => {
       vi.mocked(authService.resetPassword).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/auth/reset-password')
         .send({ token: 'reset-token', password: 'NewPass123!' })
         .expect(200);

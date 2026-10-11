@@ -1,16 +1,20 @@
+import type { Server } from 'node:http';
+
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+
 import { AppModule } from './../src/app.module.ts';
+import type { HealthResponse } from './../src/app.controller.ts';
 import { WinstonLoggerService } from './../src/common/services/winston-logger.service.ts';
 import { ValkeyService } from './../src/common/services/valkey.service.ts';
 import { UsersRepository } from './../src/modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from './../src/modules/users/interfaces/users-repository.interface.ts';
 
 describe('AppController (e2e)', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -47,7 +51,10 @@ describe('AppController (e2e)', () => {
       database: 'connected',
       valkey: 'connected',
     });
-    expect(['healthy', 'degraded']).toContain(res.body.status);
+
+    const body = res.body as HealthResponse;
+
+    expect(['healthy', 'degraded']).toContain(body.status);
   });
 
   it('/ (GET) requires no authentication', async () => {

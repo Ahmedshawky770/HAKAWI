@@ -3,10 +3,7 @@ import request from 'supertest';
 import { AdminRole } from '../../../common/constants/roles.ts';
 import { createTestContext } from '../../../test/helpers/test-context.ts';
 import type { TestContext } from '../../../test/helpers/test-context.ts';
-
-// Supertest response bodies are typed as `any` by the library.
-// Accepted external-library typing limitation — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+import type { TagResponse } from '../../../test/helpers/test-response-types.ts';
 
 /**
  * WHY THIS FILE USES THE SHARED HARNESS INSTEAD OF BUILDING ITS OWN APP.
@@ -64,7 +61,7 @@ describe('Tags E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.name).toBe('E2E Romance');
+      expect((res.body as TagResponse).name).toBe('E2E Romance');
     });
 
     /**
@@ -91,7 +88,7 @@ describe('Tags E2E', () => {
         .send({ name: 'E2E Romance Update', slug: `e2e-romance-update-${Date.now()}` })
         .expect(201);
 
-      const tagId = createRes.body.id as string;
+      const tagId = (createRes.body as TagResponse).id;
 
       const res = await request(context.httpServer)
         .patch(`/tags/${tagId}`)
@@ -99,7 +96,7 @@ describe('Tags E2E', () => {
         .send({ name: 'E2E Romance Updated' })
         .expect(200);
 
-      expect(res.body.name).toBe('E2E Romance Updated');
+      expect((res.body as TagResponse).name).toBe('E2E Romance Updated');
     });
 
     it('should refuse an ordinary reader', async () => {
@@ -109,8 +106,10 @@ describe('Tags E2E', () => {
         .send({ name: 'E2E Romance Guard', slug: `e2e-romance-guard-${Date.now()}` })
         .expect(201);
 
+      const guardTagId = (createRes.body as TagResponse).id;
+
       await request(context.httpServer)
-        .patch(`/tags/${createRes.body.id as string}`)
+        .patch(`/tags/${guardTagId}`)
         .set('Authorization', `Bearer ${readerToken}`)
         .send({ name: 'Hijacked Romance' })
         .expect(403);

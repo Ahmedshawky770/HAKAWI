@@ -3,7 +3,7 @@ import { desc, eq, type SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 
 import { messages } from '../../../db/schema/social.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { MessagesRepository } from './messages.repository.ts';
 
@@ -50,7 +50,7 @@ describe('MessagesRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   /**
    * The statement Postgres would receive for the nth `where` clause.
@@ -83,7 +83,7 @@ describe('MessagesRepository', () => {
       await repository.findById(MESSAGE_ID);
 
       expect(whereOf()).toEqual(eq(messages.id, MESSAGE_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -137,8 +137,8 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -146,8 +146,8 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 4, 25);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([25]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([75]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([25]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([75]);
     });
 
     it('orders newest first and reads from the messages table', async () => {
@@ -155,8 +155,8 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(messages.createdAt)]);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([messages]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(messages.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([messages]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -175,7 +175,7 @@ describe('MessagesRepository', () => {
 
       expect(created).toMatchObject({ id: MESSAGE_ID });
       expect(db.insert).toHaveBeenCalledWith(messages);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([input]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([input]);
     });
   });
 
@@ -186,7 +186,7 @@ describe('MessagesRepository', () => {
       const updated = await repository.markAsRead(MESSAGE_ID);
 
       expect(updated).toMatchObject({ isRead: true });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.isRead).toBe(true);
       expect(patch.readAt).toBeInstanceOf(Date);
     });
@@ -207,7 +207,7 @@ describe('MessagesRepository', () => {
 
       await repository.markAllAsRead(CONVERSATION_ID, SENDER_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.isRead).toBe(true);
       expect(patch.readAt).toBeInstanceOf(Date);
     });
@@ -325,7 +325,7 @@ describe('MessagesRepository', () => {
       expect(sql).toContain('"messages"."conversation_id"');
       expect(sql).toContain('"messages"."sender_id"');
       expect(sql).toContain('"messages"."is_read"');
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([messages.conversationId]);
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([messages.conversationId]);
       expect(params).toEqual([CONVERSATION_ID, OTHER_CONVERSATION_ID, OTHER_USER_ID, false]);
     });
 

@@ -3,6 +3,7 @@ import { NotFoundException, ForbiddenException } from '@nestjs/common';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
 import { ReadingProgressService } from './reading-progress.service.ts';
 import type {
@@ -381,11 +382,13 @@ describe('ReadingProgressService', () => {
 
       await service.update('progress-1', 'user-1', updateInput({ currentPage: 200, progressPercentage: 100 }));
 
-      expect(repository.update).toHaveBeenCalledWith('progress-1', {
-        currentPage: 200,
-        progressPercentage: 100,
-        completedAt: expect.any(Date),
-      });
+      expect(repository.update).toHaveBeenCalledTimes(1);
+      const [id, patch] = requireValue(repository.update.mock.calls[0], 'update call');
+      expect(id).toBe('progress-1');
+      expect(patch.currentPage).toBe(200);
+      expect(patch.progressPercentage).toBe(100);
+      expect(Object.keys(patch).sort()).toEqual(['completedAt', 'currentPage', 'progressPercentage']);
+      expect(patch.completedAt).toBeInstanceOf(Date);
     });
 
     it('should leave completedAt undefined below one hundred percent', async () => {

@@ -30,10 +30,6 @@ import { WinstonLoggerService } from '../../../common/services/winston-logger.se
  */
 type PaymentsTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// drizzle-ORM db and sql template tags are typed as `any` by the library.
-// Accepted external-library typing limitation — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
-
 @Injectable()
 export class PaymentsRepository implements IPaymentsRepository {
   constructor(@Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService) {}

@@ -23,6 +23,18 @@ import {
 
 export const WAF_CONFIG = 'WAF_CONFIG';
 
+/**
+ * The two geo questions the middleware asks, stated separately from `GeoIpService`.
+ *
+ * The service also owns the country database, the private-range check and the config flag,
+ * none of which this layer touches. Depending on the two methods rather than on the class
+ * keeps the dependency honest — and lets a spec drive the branches with a plain object.
+ */
+export interface WafGeoIpChecker {
+  isBlocked(ip: string): boolean;
+  lookupCountryCode(ip: string): string | null;
+}
+
 export interface WafViolation {
   readonly ruleId: string;
   readonly ruleName: string;
@@ -278,7 +290,7 @@ export class WafMiddleware implements NestMiddleware {
   constructor(
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(IpBlocklistService) private readonly blocklist: IpBlocklistService,
-    @Inject(GeoIpService) private readonly geoIp: GeoIpService,
+    @Inject(GeoIpService) private readonly geoIp: WafGeoIpChecker,
     @Optional() @Inject(WAF_CONFIG) config: WafConfig | null,
   ) {
     this.config = config ?? DEFAULT_WAF_CONFIG;

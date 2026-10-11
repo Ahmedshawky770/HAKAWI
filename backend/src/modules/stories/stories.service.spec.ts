@@ -7,18 +7,14 @@ import { WinstonLoggerService } from '../../common/services/winston-logger.servi
 import { AdminRole } from '../../common/constants/roles.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-import { MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
 import { SEARCH_CACHE_TAG } from '../search/cache-keys.ts';
-import { STORIES_CACHE_TAG, STORY_CACHE_NAMESPACE } from './stories.service.ts';
 
+import { MAX_SLUG_COLLISION_ATTEMPTS } from './dto/story-slug.ts';
+import { STORIES_CACHE_TAG } from './stories.service.ts';
 import { StoriesService } from './stories.service.ts';
 import type { StoryViewer } from './story-visibility.ts';
 import { UNPUBLISHED_STORY_STATUSES } from './types.ts';
 import type { Story, CreateStoryInput, UpdateStoryInput } from './types.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockStoriesRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Story | null>>>;

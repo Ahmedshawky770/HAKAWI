@@ -3,22 +3,14 @@ import request from 'supertest';
 
 import { db } from '../../../db/index.ts';
 import { stories } from '../../../db/schema/stories.schema.ts';
-
 import { StoriesService } from '../stories.service.ts';
 import { createTestContext } from '../../../test/helpers/test-context.ts';
 import type { StoryResponseBody, TestContext, TestUser } from '../../../test/helpers/test-context.ts';
-
-interface StoryWireResponseBody {
-  id: string;
-  title: string;
-  views: number;
-  reactions: number;
-  category: string | null;
-  tags: string[];
-  author: { id: string; name: string };
-  createdAt: string;
-  updatedAt: string;
-}
+import type {
+  SearchResponse,
+  StoriesListResponse,
+  StoryWireResponse,
+} from '../../../test/helpers/test-response-types.ts';
 
 describe('Stories E2E (Phase 2 Week 5)', () => {
   let context: TestContext;
@@ -199,7 +191,8 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('stories');
-      const stories = res.body.stories as StoryResponseBody[];
+      const body = res.body as StoriesListResponse;
+      const stories = body.stories;
       expect(stories.some((entry) => entry.title === `Zephyr ${marker}`)).toBe(true);
     });
 
@@ -214,7 +207,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
       for (const query of ['', '?status=draft', '?status=archived']) {
         const res = await request(context.httpServer).get(`/stories${query}`).expect(200);
 
-        const listed = res.body.stories as StoryResponseBody[];
+        const listed = (res.body as StoriesListResponse).stories;
         expect(listed.some((entry) => entry.id === draft.id)).toBe(false);
       }
     });
@@ -244,8 +237,10 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const listed = res.body.stories as StoryResponseBody[];
-      expect(res.body.total).toBeGreaterThanOrEqual(1);
+      const body = res.body as StoriesListResponse;
+
+      const listed = body.stories;
+      expect(body.total).toBeGreaterThanOrEqual(1);
       expect(listed.some((entry) => entry.id === draft.id)).toBe(true);
       // Every row on this route is invisible to `GET /stories`; a published one appearing here would
       // mean the status filter stopped being a filter.
@@ -262,7 +257,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const listed = res.body.stories as StoryResponseBody[];
+      const listed = (res.body as StoriesListResponse).stories;
       expect(listed.some((entry) => entry.id === otherDraft.id)).toBe(false);
       expect(JSON.stringify(res.body)).not.toContain(`Not Mine ${context.namespace}`);
     });
@@ -290,7 +285,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const listed = res.body.stories as StoryResponseBody[];
+      const listed = (res.body as StoriesListResponse).stories;
       expect(listed.some((entry) => entry.id === archived.id)).toBe(true);
     });
 
@@ -303,7 +298,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      const listed = narrowed.body.stories as StoryResponseBody[];
+      const listed = (narrowed.body as StoriesListResponse).stories;
       expect(listed.every((entry) => entry.status === 'archived')).toBe(true);
       expect(listed.some((entry) => entry.id === archived.id)).toBe(true);
 
@@ -392,7 +387,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .get(`/search?query=${encodeURIComponent(marker)}`)
         .expect(200);
 
-      const results = res.body.results as { id: string; title: string }[];
+      const results = (res.body as SearchResponse).results;
       expect(results.some((entry) => entry.id === story.id)).toBe(true);
     });
 
@@ -412,7 +407,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
 
       const res = await readOwnStory(story.id).expect(200);
 
-      expect((res.body as StoryWireResponseBody).views).toBe(0);
+      expect((res.body as StoryWireResponse).views).toBe(0);
       expect(await readPersistedViewCount(story.id)).toBe(0);
     });
 
@@ -420,7 +415,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
       const story = await context.createStory(author.accessToken, { title: 'Wire Contract' });
 
       const res = await readOwnStory(story.id).expect(200);
-      const body = res.body as StoryWireResponseBody;
+      const body = res.body as StoryWireResponse;
 
       expect(body.id).toBe(story.id);
       expect(body.author).toEqual({ id: author.id, name: 'Story Author' });
@@ -446,12 +441,12 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
       const storiesService = context.app.get(StoriesService);
 
       const before = await readOwnStory(story.id).expect(200);
-      expect((before.body as StoryWireResponseBody).views).toBe(0);
+      expect((before.body as StoryWireResponse).views).toBe(0);
 
       await storiesService.incrementViewCount(story.id, { sub: author.id });
 
       const after = await readOwnStory(story.id).expect(200);
-      expect((after.body as StoryWireResponseBody).views).toBe(1);
+      expect((after.body as StoryWireResponse).views).toBe(1);
     });
 
     /**
@@ -479,7 +474,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .get(`/stories/${story.id}`)
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
-      expect((read.body as StoryWireResponseBody).views).toBe(1);
+      expect((read.body as StoryWireResponse).views).toBe(1);
     });
 
     /**
@@ -501,7 +496,9 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
         .set('Authorization', `Bearer ${stranger.accessToken}`)
         .expect(404);
 
-      expect(view.body.message).toBe('Story not found');
+      const viewBody = view.body as { message: string };
+
+      expect(viewBody.message).toBe('Story not found');
       expect(view.body).toEqual(detail.body);
       expect(await readPersistedViewCount(draft.id)).toBe(0);
     });
@@ -553,7 +550,7 @@ describe('Stories E2E (Phase 2 Week 5)', () => {
       await request(context.httpServer).get(`/stories/${story.id}`).expect(404);
 
       const list = await request(context.httpServer).get('/stories').expect(200);
-      const stories = list.body.stories as StoryResponseBody[];
+      const stories = (list.body as StoriesListResponse).stories;
       expect(stories.some((entry) => entry.id === story.id)).toBe(false);
     });
 

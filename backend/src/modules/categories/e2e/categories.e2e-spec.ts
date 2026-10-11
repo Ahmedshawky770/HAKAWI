@@ -2,11 +2,7 @@ import request from 'supertest';
 
 import { AdminRole } from '../../../common/constants/roles.ts';
 import { createTestContext } from '../../../test/helpers/test-context.ts';
-import type { TestContext } from '../../../test/helpers/test-context.ts';
-
-// Supertest response bodies are typed as `any` by the library.
-// Accepted external-library typing limitation — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+import type { CategoryResponseBody, TestContext } from '../../../test/helpers/test-context.ts';
 
 /**
  * WHY THIS FILE USES THE SHARED HARNESS INSTEAD OF BUILDING ITS OWN APP.
@@ -64,7 +60,7 @@ describe('Categories E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.name).toBe('E2E Fiction');
+      expect((res.body as CategoryResponseBody).name).toBe('E2E Fiction');
     });
 
     /**
@@ -95,7 +91,7 @@ describe('Categories E2E', () => {
         })
         .expect(201);
 
-      const categoryId = createRes.body.id as string;
+      const categoryId = (createRes.body as CategoryResponseBody).id;
 
       const res = await request(context.httpServer)
         .patch(`/categories/${categoryId}`)
@@ -103,7 +99,7 @@ describe('Categories E2E', () => {
         .send({ name: 'E2E Fiction Updated' })
         .expect(200);
 
-      expect(res.body.name).toBe('E2E Fiction Updated');
+      expect((res.body as CategoryResponseBody).name).toBe('E2E Fiction Updated');
     });
 
     it('should refuse an ordinary reader', async () => {
@@ -113,8 +109,10 @@ describe('Categories E2E', () => {
         .send({ name: 'E2E Fiction Guard', slug: `e2e-fiction-guard-${Date.now()}` })
         .expect(201);
 
+      const guardCategoryId = (createRes.body as CategoryResponseBody).id;
+
       await request(context.httpServer)
-        .patch(`/categories/${createRes.body.id as string}`)
+        .patch(`/categories/${guardCategoryId}`)
         .set('Authorization', `Bearer ${readerToken}`)
         .send({ name: 'Hijacked Fiction' })
         .expect(403);

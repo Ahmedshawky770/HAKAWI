@@ -4,8 +4,6 @@ import { ValkeyService } from '../services/valkey.service.ts';
 
 import { DLQService } from './dlq.service.ts';
 
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 type MockValkeyService = {
   set: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
@@ -59,14 +57,14 @@ describe('DLQService', () => {
         timestamp: new Date(),
         retryCount: 0,
       };
-      vi.mocked(valkeyService.get!).mockResolvedValue(JSON.stringify(event));
+      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(event));
 
       const result = await dlqService.get('dlq-1');
       expect(result).toEqual(event);
     });
 
     it('should return null if event not found', async () => {
-      vi.mocked(valkeyService.get!).mockResolvedValue(null);
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
       const result = await dlqService.get('dlq-1');
       expect(result).toBeNull();
     });
@@ -82,7 +80,7 @@ describe('DLQService', () => {
         timestamp: new Date().toISOString(),
         retryCount: 0,
       };
-      vi.mocked(valkeyService.get!).mockResolvedValue(JSON.stringify(event));
+      vi.mocked(valkeyService.get).mockResolvedValue(JSON.stringify(event));
 
       await dlqService.retry('dlq-1');
       expect(valkeyService.set).toHaveBeenCalled();
@@ -90,7 +88,7 @@ describe('DLQService', () => {
     });
 
     it('should not fail if event not found', async () => {
-      vi.mocked(valkeyService.get!).mockResolvedValue(null);
+      vi.mocked(valkeyService.get).mockResolvedValue(null);
       await expect(dlqService.retry('dlq-1')).resolves.toBeUndefined();
     });
   });
@@ -121,8 +119,8 @@ describe('DLQService', () => {
         timestamp: new Date().toISOString(),
         retryCount: 1,
       };
-      vi.mocked(valkeyService.smembers!).mockResolvedValue(['dlq-1', 'dlq-2']);
-      vi.mocked(valkeyService.get!).mockImplementation((key: string) => {
+      vi.mocked(valkeyService.smembers).mockResolvedValue(['dlq-1', 'dlq-2']);
+      vi.mocked(valkeyService.get).mockImplementation((key: string) => {
         if (key === 'dlq:dlq-1') return Promise.resolve(JSON.stringify(olderEvent));
         if (key === 'dlq:dlq-2') return Promise.resolve(JSON.stringify(newerEvent));
         return Promise.resolve(null);
@@ -137,7 +135,7 @@ describe('DLQService', () => {
 
   describe('clear', () => {
     it('should clear all DLQ events', async () => {
-      vi.mocked(valkeyService.smembers!).mockResolvedValue(['dlq-1', 'dlq-2']);
+      vi.mocked(valkeyService.smembers).mockResolvedValue(['dlq-1', 'dlq-2']);
 
       await dlqService.clear();
       expect(valkeyService.del).toHaveBeenCalledTimes(3);
@@ -152,8 +150,8 @@ describe('DLQService', () => {
         { id: 'dlq-2', eventName: 'user.registered', payload: {}, error: 'err2', timestamp: new Date(), retryCount: 1 },
         { id: 'dlq-3', eventName: 'story.created', payload: {}, error: 'err3', timestamp: new Date(), retryCount: 0 },
       ];
-      vi.mocked(valkeyService.smembers!).mockResolvedValue(['dlq-1', 'dlq-2', 'dlq-3']);
-      vi.mocked(valkeyService.get!).mockImplementation((key: string) => {
+      vi.mocked(valkeyService.smembers).mockResolvedValue(['dlq-1', 'dlq-2', 'dlq-3']);
+      vi.mocked(valkeyService.get).mockImplementation((key: string) => {
         const id = key.replace('dlq:', '');
         const event = events.find((e) => e.id === id);
         return Promise.resolve(event ? JSON.stringify(event) : null);

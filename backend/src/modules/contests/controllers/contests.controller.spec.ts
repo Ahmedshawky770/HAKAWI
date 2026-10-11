@@ -1,41 +1,35 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication, NotFoundException } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { ContestsService } from '../contests.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import type { Contest } from '../types.ts';
+import type {
+  Contest,
+  ContestPrize,
+  ContestPrizeResponse,
+  ContestResponse,
+  ContestSubmission,
+  ContestSubmissionResponse,
+  ContestVote,
+  ContestVoteResponse,
+  ContestsListResponse,
+  CreateContestInput,
+  PublisherStatsResponse,
+  PublisherSubmissionOverview,
+  PublisherVoteOverview,
+  UpdateContestInput,
+} from '../types.ts';
 
 import { ContestsController } from './contests.controller.ts';
-
-type MockContestsService = {
-  findAll: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
-  start: ReturnType<typeof vi.fn>;
-  cancel: ReturnType<typeof vi.fn>;
-  complete: ReturnType<typeof vi.fn>;
-  submitStory: ReturnType<typeof vi.fn>;
-  getSubmissions: ReturnType<typeof vi.fn>;
-  castVote: ReturnType<typeof vi.fn>;
-  getVotes: ReturnType<typeof vi.fn>;
-  selectWinner: ReturnType<typeof vi.fn>;
-  approveSubmission: ReturnType<typeof vi.fn>;
-  rejectSubmission: ReturnType<typeof vi.fn>;
-  distributePrize: ReturnType<typeof vi.fn>;
-  getPrizes: ReturnType<typeof vi.fn>;
-  getPublisherStats: ReturnType<typeof vi.fn>;
-  getPublisherSubmissionsOverview: ReturnType<typeof vi.fn>;
-  getPublisherVotesOverview: ReturnType<typeof vi.fn>;
-};
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -43,32 +37,154 @@ async function generateToken(sub = 'user-1', email = 'test@example.com', account
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type ContestsFindAllParams = {
+  page?: number;
+  limit?: number;
+  categoryId?: string;
+  status?: string;
+  search?: string;
+};
+
+type SubmissionsListResponse = {
+  submissions: ContestSubmissionResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type VotesListResponse = {
+  votes: ContestVoteResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type MockContestsService = {
+  findAll: ReturnType<typeof vi.fn<(params: ContestsFindAllParams) => Promise<ContestsListResponse>>>;
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<ContestResponse>>>;
+  create: ReturnType<typeof vi.fn<(createdBy: string, input: CreateContestInput) => Promise<Contest>>>;
+  update: ReturnType<typeof vi.fn<(id: string, input: UpdateContestInput, userId: string) => Promise<Contest>>>;
+  start: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Contest>>>;
+  cancel: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Contest>>>;
+  complete: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Contest>>>;
+  submitStory: ReturnType<
+    typeof vi.fn<(contestId: string, authorId: string, storyId: string, userId: string) => Promise<ContestSubmission>>
+  >;
+  getSubmissions: ReturnType<typeof vi.fn<(contestId: string, page: number, limit: number) => Promise<SubmissionsListResponse>>>;
+  castVote: ReturnType<typeof vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote>>>;
+  getVotes: ReturnType<
+    typeof vi.fn<
+      (contestId: string, submissionId: string | undefined, page: number, limit: number) => Promise<VotesListResponse>
+    >
+  >;
+  selectWinner: ReturnType<
+    typeof vi.fn<(contestId: string, submissionId: string, winnerId: string, userId: string) => Promise<Contest>>
+  >;
+  approveSubmission: ReturnType<
+    typeof vi.fn<(submissionId: string, contestId: string, userId: string) => Promise<ContestSubmission>>
+  >;
+  rejectSubmission: ReturnType<
+    typeof vi.fn<(submissionId: string, contestId: string, userId: string) => Promise<ContestSubmission>>
+  >;
+  distributePrize: ReturnType<
+    typeof vi.fn<
+      (
+        contestId: string,
+        submissionId: string,
+        winnerId: string,
+        prizeType: string,
+        prizeDescription: string | null | undefined,
+        userId: string,
+        amount?: number | null,
+        currency?: string | null,
+      ) => Promise<ContestPrize>
+    >
+  >;
+  getPrizes: ReturnType<typeof vi.fn<(contestId: string) => Promise<ContestPrizeResponse[]>>>;
+  getPublisherStats: ReturnType<typeof vi.fn<(publisherId: string) => Promise<PublisherStatsResponse>>>;
+  getPublisherSubmissionsOverview: ReturnType<
+    typeof vi.fn<(contestId: string, publisherId: string) => Promise<PublisherSubmissionOverview[]>>
+  >;
+  getPublisherVotesOverview: ReturnType<
+    typeof vi.fn<(contestId: string, publisherId: string) => Promise<PublisherVoteOverview[]>>
+  >;
+};
+
+function makeContest(overrides: Partial<Contest> = {}): Contest {
+  return {
+    id: 'contest-1',
+    title: 'Test Contest',
+    description: null,
+    categoryId: null,
+    startDate: new Date(),
+    endDate: new Date(),
+    submissionDeadline: new Date(),
+    status: 'draft',
+    createdBy: 'user-1',
+    winnerId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+const PUBLISHER_STATS: PublisherStatsResponse = {
+  totalContests: 0,
+  activeContests: 0,
+  completedContests: 0,
+  totalSubmissions: 0,
+  pendingSubmissions: 0,
+  approvedSubmissions: 0,
+  rejectedSubmissions: 0,
+  totalVotes: 0,
+  totalPrizes: 0,
+};
+
 describe('ContestsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let contestsService: MockContestsService;
 
   beforeAll(async () => {
     contestsService = {
-      findAll: vi.fn(),
-      findById: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      start: vi.fn(),
-      cancel: vi.fn(),
-      complete: vi.fn(),
-      submitStory: vi.fn(),
-      getSubmissions: vi.fn(),
-      castVote: vi.fn(),
-      getVotes: vi.fn(),
-      selectWinner: vi.fn(),
-      approveSubmission: vi.fn(),
-      rejectSubmission: vi.fn(),
-      distributePrize: vi.fn(),
-      getPrizes: vi.fn(),
-      getPublisherStats: vi.fn(),
-      getPublisherSubmissionsOverview: vi.fn(),
-      getPublisherVotesOverview: vi.fn(),
+      findAll: vi.fn<(params: ContestsFindAllParams) => Promise<ContestsListResponse>>(),
+      findById: vi.fn<(id: string) => Promise<ContestResponse>>(),
+      create: vi.fn<(createdBy: string, input: CreateContestInput) => Promise<Contest>>(),
+      update: vi.fn<(id: string, input: UpdateContestInput, userId: string) => Promise<Contest>>(),
+      start: vi.fn<(id: string, userId: string) => Promise<Contest>>(),
+      cancel: vi.fn<(id: string, userId: string) => Promise<Contest>>(),
+      complete: vi.fn<(id: string, userId: string) => Promise<Contest>>(),
+      submitStory:
+        vi.fn<(contestId: string, authorId: string, storyId: string, userId: string) => Promise<ContestSubmission>>(),
+      getSubmissions: vi.fn<(contestId: string, page: number, limit: number) => Promise<SubmissionsListResponse>>(),
+      castVote: vi.fn<(contestId: string, submissionId: string, userId: string) => Promise<ContestVote>>(),
+      getVotes:
+        vi.fn<
+          (contestId: string, submissionId: string | undefined, page: number, limit: number) => Promise<VotesListResponse>
+        >(),
+      selectWinner:
+        vi.fn<(contestId: string, submissionId: string, winnerId: string, userId: string) => Promise<Contest>>(),
+      approveSubmission:
+        vi.fn<(submissionId: string, contestId: string, userId: string) => Promise<ContestSubmission>>(),
+      rejectSubmission:
+        vi.fn<(submissionId: string, contestId: string, userId: string) => Promise<ContestSubmission>>(),
+      distributePrize:
+        vi.fn<
+          (
+            contestId: string,
+            submissionId: string,
+            winnerId: string,
+            prizeType: string,
+            prizeDescription: string | null | undefined,
+            userId: string,
+            amount?: number | null,
+            currency?: string | null,
+          ) => Promise<ContestPrize>
+        >(),
+      getPrizes: vi.fn<(contestId: string) => Promise<ContestPrizeResponse[]>>(),
+      getPublisherStats: vi.fn<(publisherId: string) => Promise<PublisherStatsResponse>>(),
+      getPublisherSubmissionsOverview:
+        vi.fn<(contestId: string, publisherId: string) => Promise<PublisherSubmissionOverview[]>>(),
+      getPublisherVotesOverview: vi.fn<(contestId: string, publisherId: string) => Promise<PublisherVoteOverview[]>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -97,13 +213,10 @@ describe('ContestsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -119,7 +232,7 @@ describe('ContestsController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer).get('/contests').expect(200);
+      const res = await request(app.getHttpServer()).get('/contests').expect(200);
 
       expect(res.body).toHaveProperty('contests');
       expect(res.body).toHaveProperty('total', 0);
@@ -147,7 +260,7 @@ describe('ContestsController', () => {
         updatedAt: '2024-01-01T00:00:00.000Z',
       });
 
-      const res = await request(httpServer).get('/contests/contest-1').expect(200);
+      const res = await request(app.getHttpServer()).get('/contests/contest-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'contest-1');
       expect(res.body).toHaveProperty('category', 'Speculative');
@@ -159,16 +272,9 @@ describe('ContestsController', () => {
     it('should create a contest', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(contestsService.create).mockResolvedValue({
-        id: 'contest-1',
-        title: 'Test Contest',
-        status: 'draft',
-        createdBy: 'user-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Contest);
+      vi.mocked(contestsService.create).mockResolvedValue(makeContest());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/contests')
         .set('Authorization', `Bearer ${token}`)
         .send({ title: 'Test Contest' })
@@ -183,16 +289,9 @@ describe('ContestsController', () => {
     it('should update a contest', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(contestsService.update).mockResolvedValue({
-        id: 'contest-1',
-        title: 'Updated Contest',
-        status: 'draft',
-        createdBy: 'user-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Contest);
+      vi.mocked(contestsService.update).mockResolvedValue(makeContest({ title: 'Updated Contest' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/contests/contest-1')
         .set('Authorization', `Bearer ${token}`)
         .send({ title: 'Updated Contest' })
@@ -207,16 +306,9 @@ describe('ContestsController', () => {
     it('should start a contest', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
 
-      vi.mocked(contestsService.start).mockResolvedValue({
-        id: 'contest-1',
-        title: 'Test Contest',
-        status: 'active',
-        createdBy: 'user-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Contest);
+      vi.mocked(contestsService.start).mockResolvedValue(makeContest({ status: 'active' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/contests/contest-1/start')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -241,7 +333,7 @@ describe('ContestsController', () => {
         reviewedBy: null,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/contests/contest-1/submissions')
         .set('Authorization', `Bearer ${token}`)
         .send({ storyId: 'story-1' })
@@ -257,9 +349,11 @@ describe('ContestsController', () => {
       vi.mocked(contestsService.getSubmissions).mockResolvedValue({
         submissions: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer).get('/contests/contest-1/submissions').expect(200);
+      const res = await request(app.getHttpServer()).get('/contests/contest-1/submissions').expect(200);
 
       expect(res.body).toHaveProperty('submissions');
       expect(contestsService.getSubmissions).toHaveBeenCalled();
@@ -277,19 +371,9 @@ describe('ContestsController', () => {
   describe('route ordering between static segments and :id', () => {
     it('routes GET /contests/publisher/stats to the publisher handler, not to findById', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
-      vi.mocked(contestsService.getPublisherStats).mockResolvedValue({
-        totalContests: 0,
-        activeContests: 0,
-        completedContests: 0,
-        totalSubmissions: 0,
-        pendingSubmissions: 0,
-        approvedSubmissions: 0,
-        rejectedSubmissions: 0,
-        totalVotes: 0,
-        totalPrizes: 0,
-      });
+      vi.mocked(contestsService.getPublisherStats).mockResolvedValue(PUBLISHER_STATS);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/contests/publisher/stats')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -303,7 +387,7 @@ describe('ContestsController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin');
       vi.mocked(contestsService.getPublisherVotesOverview).mockResolvedValue([]);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/contests/publisher/contest-1/votes')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -319,7 +403,7 @@ describe('ContestsController', () => {
       // than a 500. The routing spec above is the real guard; this one pins the failure mode.
       vi.mocked(contestsService.findById).mockRejectedValue(new NotFoundException('Contest not found'));
 
-      await request(httpServer).get('/contests/not-a-uuid').expect(404);
+      await request(app.getHttpServer()).get('/contests/not-a-uuid').expect(404);
 
       expect(contestsService.findById).toHaveBeenCalledWith('not-a-uuid');
     });

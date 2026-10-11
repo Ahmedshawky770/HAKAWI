@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, like } from 'drizzle-orm';
 
 import { books } from '../../../db/schema/books.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -51,7 +52,7 @@ describe('BooksRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,7 +94,7 @@ describe('BooksRepository', () => {
       control.queue([{ id: BOOK_ID, isbn: ISBN }]);
 
       await expect(repository.findByIsbn(ISBN)).resolves.toMatchObject({ isbn: ISBN });
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([books]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([books]);
     });
 
     it('matches the isbn column rather than a cast of it', async () => {
@@ -102,7 +103,7 @@ describe('BooksRepository', () => {
       await repository.findByIsbn(ISBN);
 
       expect(whereOf()).toEqual(eq(books.isbn, ISBN));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when no book carries that isbn', async () => {
@@ -133,8 +134,8 @@ describe('BooksRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates with a zero-based offset', async () => {
@@ -142,8 +143,8 @@ describe('BooksRepository', () => {
 
       await repository.findAll({ page: 3, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders newest first', async () => {
@@ -151,7 +152,7 @@ describe('BooksRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(books.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(books.createdAt)]);
     });
 
     it('hides soft-deleted books even when no filter is supplied', async () => {
@@ -207,8 +208,8 @@ describe('BooksRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([books]);
-      expect(firstArgsOf(chains[1]!, 'from')).toEqual([books]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([books]);
+      expect(firstArgsOf(chainAt(chains, 1), 'from')).toEqual([books]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -241,7 +242,7 @@ describe('BooksRepository', () => {
       };
       await repository.create(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -252,7 +253,7 @@ describe('BooksRepository', () => {
       const updated = await repository.update(BOOK_ID, { status: 'archived' });
 
       expect(updated).toMatchObject({ status: 'archived' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'archived' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -262,7 +263,7 @@ describe('BooksRepository', () => {
 
       await repository.update(BOOK_ID, { status: 'published' });
 
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(whereOf()).toEqual(eq(books.id, BOOK_ID));
       expect(db.update).toHaveBeenCalledWith(books);
     });
@@ -274,7 +275,7 @@ describe('BooksRepository', () => {
 
       await repository.softDelete(BOOK_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'archived' });
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(db.delete).not.toHaveBeenCalled();
@@ -287,7 +288,7 @@ describe('BooksRepository', () => {
 
       await repository.incrementViewCount(BOOK_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toHaveProperty('viewCount');
       expect(patch).not.toHaveProperty('downloadCount');
       expect(whereOf()).toEqual(eq(books.id, BOOK_ID));
@@ -300,7 +301,7 @@ describe('BooksRepository', () => {
 
       await repository.incrementDownloadCount(BOOK_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toHaveProperty('downloadCount');
       expect(patch).not.toHaveProperty('viewCount');
       expect(whereOf()).toEqual(eq(books.id, BOOK_ID));
@@ -333,7 +334,7 @@ describe('BooksRepository', () => {
 
       await repository.findByCategory(CATEGORY_ID);
 
-      expect(callsOf(chains[0]!, 'orderBy')).toHaveLength(0);
+      expect(callsOf(chainAt(chains, 0), 'orderBy')).toHaveLength(0);
     });
   });
 });

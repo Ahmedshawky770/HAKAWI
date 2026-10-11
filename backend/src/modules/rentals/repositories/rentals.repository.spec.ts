@@ -3,7 +3,7 @@ import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 
 import type { CreateRentalInput } from '../interfaces/rentals-repository.interface.ts';
 import { rentals, rentalExtensions } from '../../../db/schema/rentals.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { RentalsRepository } from './rentals.repository.ts';
 
@@ -60,10 +60,10 @@ describe('RentalsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   /** The row literal the insert of the only query built in this test was given. */
-  const valuesOf = (): Record<string, unknown> => (firstArgsOf(chains[0]!, 'values') as [Record<string, unknown>])[0];
+  const valuesOf = (): Record<string, unknown> => (firstArgsOf(chainAt(chains, 0), 'values') as [Record<string, unknown>])[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,7 +90,7 @@ describe('RentalsRepository', () => {
       await repository.findById(RENTAL_ID);
 
       expect(whereOf()).toEqual(eq(rentals.id, RENTAL_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -207,7 +207,7 @@ describe('RentalsRepository', () => {
 
       // If the page and the count disagreed, `total` would not match the rows returned.
       expect(whereOf(1)).toBe(whereOf(0));
-      expect(firstArgsOf(chains[1]!, 'from')).toEqual([rentals]);
+      expect(firstArgsOf(chainAt(chains, 1), 'from')).toEqual([rentals]);
     });
 
     it('defaults to the first page of twenty with a zero offset', async () => {
@@ -215,8 +215,8 @@ describe('RentalsRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -224,8 +224,8 @@ describe('RentalsRepository', () => {
 
       await repository.findAll({ page: 3, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders newest first and reads from the rentals table', async () => {
@@ -233,8 +233,8 @@ describe('RentalsRepository', () => {
 
       await repository.findAll({});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([rentals]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(rentals.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([rentals]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(rentals.createdAt)]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -301,7 +301,7 @@ describe('RentalsRepository', () => {
       const updated = await repository.update(RENTAL_ID, { status: 'returned' });
 
       expect(updated).toMatchObject({ status: 'returned' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'returned' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -322,7 +322,7 @@ describe('RentalsRepository', () => {
 
       await repository.softDelete(RENTAL_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(db.delete).not.toHaveBeenCalled();
     });
@@ -343,7 +343,7 @@ describe('RentalsRepository', () => {
 
       expect(extension).toMatchObject({ extensionDays: 7 });
       expect(db.insert).toHaveBeenCalledWith(rentalExtensions);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { rentalId: RENTAL_ID, previousEndDate, newEndDate, extensionDays: 7 },
       ]);
     });
@@ -357,7 +357,7 @@ describe('RentalsRepository', () => {
         { id: RENTAL_ID, extensionDays: 7 },
       ]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([rentalExtensions]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([rentalExtensions]);
       expect(whereOf()).toEqual(eq(rentalExtensions.rentalId, RENTAL_ID));
     });
 

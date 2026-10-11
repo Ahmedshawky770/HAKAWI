@@ -28,14 +28,7 @@ import { db } from '../../../db/index.ts';
  *
  * Using one vocabulary for both stores is the fix: the table and the cache can no longer disagree
  * about what an action means, and the guard only has to understand two values.
- */
-const RESTRICTING_ACTIONS: ReadonlySet<string> = new Set(['ban', 'mute']);
-
-/** A ban expires in a day; every other restriction is treated as a month. */
-const BAN_TTL_SECONDS = 24 * 60 * 60;
-const OTHER_RESTRICTION_TTL_SECONDS = 30 * 24 * 60 * 60;
-
-/**
+ *
  * The stored vocabulary. Kept as an explicit map rather than a cast so that an action name added to
  * `ModerationActionDto` without a decision here shows up as `undefined` at runtime — a value no
  * consumer treats as a restriction — instead of being written through unchanged.
@@ -44,6 +37,10 @@ const STORED_RESTRICTION_TYPE: Readonly<Record<string, string>> = {
   ban: 'ban',
   mute: 'mute',
 };
+
+/** A ban expires in a day; every other restriction is treated as a month. */
+const BAN_TTL_SECONDS = 24 * 60 * 60;
+const OTHER_RESTRICTION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 @Injectable()
 export class ModerationEventHandler {
@@ -69,7 +66,7 @@ export class ModerationEventHandler {
         `Moderation action '${event.action}' on user ${event.targetUserId} is not an account restriction; restriction cache untouched`,
         'ModerationEventHandler',
       );
-      this.recordAuditRow(event);
+      await this.recordAuditRow(event);
       return;
     }
 
@@ -88,7 +85,7 @@ export class ModerationEventHandler {
 
     await this.valkeyService.expire(`restriction:${event.targetUserId}:details`, ttlSeconds);
 
-    this.recordAuditRow(event, storedType, ttlSeconds);
+    await this.recordAuditRow(event, storedType, ttlSeconds);
   }
 
   /**

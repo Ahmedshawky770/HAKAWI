@@ -1,15 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import type { IUsersRepository, User, CreateUserInput } from '../../common/users/users-repository.interface.ts';
+import type { User, CreateUserInput } from '../../common/users/users-repository.interface.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 
 import { EmailVerificationService } from './email-verification.service.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockUsersRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<User | null>>>;
@@ -64,6 +60,9 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
   emailVerified: false,
   emailVerificationToken: null,
   passwordResetToken: null,
+  totpSecretEncrypted: null,
+  mfaEnabled: false,
+  mfaEnforcedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,

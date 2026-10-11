@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import type { ValkeyService } from '../services/valkey.service.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
 import { FallbackService } from './fallback.service.ts';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 type MockValkeyService = Partial<ValkeyService>;
 
@@ -44,7 +45,8 @@ describe('FallbackService', () => {
 
     it('should return cached value when available and primary fails', async () => {
       const fn = vi.fn().mockRejectedValue(new Error('failure'));
-      vi.mocked(valkeyService.get!).mockResolvedValueOnce(JSON.stringify({ data: 'cached' }));
+      const valkeyGet = requireValue(valkeyService.get, 'valkeyService.get');
+      vi.mocked(valkeyGet).mockResolvedValueOnce(JSON.stringify({ data: 'cached' }));
 
       const result = await fallbackService.executeWithFallback(
         fn,
@@ -74,7 +76,8 @@ describe('FallbackService', () => {
 
   describe('returnCached', () => {
     it('should return cached value from Valkey', async () => {
-      vi.mocked(valkeyService.get!).mockResolvedValueOnce(JSON.stringify({ cached: true }));
+      const valkeyGet = requireValue(valkeyService.get, 'valkeyService.get');
+      vi.mocked(valkeyGet).mockResolvedValueOnce(JSON.stringify({ cached: true }));
 
       const result = await fallbackService.returnCached<{ cached: boolean }>('cache-key');
 
@@ -82,7 +85,8 @@ describe('FallbackService', () => {
     });
 
     it('should return null when cache is empty', async () => {
-      vi.mocked(valkeyService.get!).mockResolvedValueOnce(null);
+      const valkeyGet = requireValue(valkeyService.get, 'valkeyService.get');
+      vi.mocked(valkeyGet).mockResolvedValueOnce(null);
 
       const result = await fallbackService.returnCached<{ cached: boolean }>('cache-key');
 

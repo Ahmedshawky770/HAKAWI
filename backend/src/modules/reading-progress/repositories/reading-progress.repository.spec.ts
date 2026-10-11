@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { and, desc, eq } from 'drizzle-orm';
 
 import { readingProgress } from '../../../db/schema/books.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { ReadingProgressRepository } from './reading-progress.repository.ts';
 
@@ -27,7 +27,7 @@ describe('ReadingProgressRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,9 +49,9 @@ describe('ReadingProgressRepository', () => {
 
       await repository.findById(PROGRESS_ID);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([readingProgress]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([readingProgress]);
       expect(whereOf()).toEqual(eq(readingProgress.id, PROGRESS_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -74,7 +74,7 @@ describe('ReadingProgressRepository', () => {
       await repository.findByUserAndBook(USER_ID, BOOK_ID);
 
       expect(whereOf()).toEqual(and(eq(readingProgress.userId, USER_ID), eq(readingProgress.bookId, BOOK_ID)));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the reader has not started that book', async () => {
@@ -99,8 +99,8 @@ describe('ReadingProgressRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('offsets by whole pages for any later page', async () => {
@@ -108,8 +108,8 @@ describe('ReadingProgressRepository', () => {
 
       await repository.findByUser(USER_ID, { page: 3, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('scopes the page and the count to the reader', async () => {
@@ -136,7 +136,7 @@ describe('ReadingProgressRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(readingProgress.lastReadAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(readingProgress.lastReadAt)]);
     });
 
     it('reads the page from the reading_progress table', async () => {
@@ -144,7 +144,7 @@ describe('ReadingProgressRepository', () => {
 
       await repository.findByUser(USER_ID, {});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([readingProgress]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([readingProgress]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -177,7 +177,7 @@ describe('ReadingProgressRepository', () => {
 
       // `totalPages` has no useful database default here, so the repository has to write
       // the null explicitly rather than leave the column unset.
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { userId: USER_ID, bookId: BOOK_ID, currentPage: 0, totalPages: null, progressPercentage: 0 },
       ]);
     });
@@ -193,7 +193,7 @@ describe('ReadingProgressRepository', () => {
         progressPercentage: 35,
       });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { userId: USER_ID, bookId: BOOK_ID, currentPage: 120, totalPages: 340, progressPercentage: 35 },
       ]);
     });
@@ -206,7 +206,7 @@ describe('ReadingProgressRepository', () => {
       const updated = await repository.update(PROGRESS_ID, { currentPage: 200, progressPercentage: 58 });
 
       expect(updated).toMatchObject({ currentPage: 200, progressPercentage: 58 });
-      expect(firstArgsOf(chains[0]!, 'set')).toEqual([{ currentPage: 200, progressPercentage: 58 }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'set')).toEqual([{ currentPage: 200, progressPercentage: 58 }]);
     });
 
     it('narrows the write to the requested row', async () => {

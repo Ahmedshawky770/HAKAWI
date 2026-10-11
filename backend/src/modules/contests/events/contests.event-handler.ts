@@ -13,9 +13,9 @@ import type {
   WinnerSelectedEvent,
   PrizeDistributedEvent,
 } from '../../../common/events/contests.events.ts';
-import type { IContestsRepository } from '../interfaces/contests-repository.interface.ts';
 import { CONTESTS_REPOSITORY } from '../interfaces/contests-repository.interface.ts';
 import type { ContestSubmission } from '../types.ts';
+import type { CreateNotificationInput, Notification } from '../../notifications/types.ts';
 import { NotificationsService } from '../../notifications/notifications.service.ts';
 
 /**
@@ -32,12 +32,36 @@ import { NotificationsService } from '../../notifications/notifications.service.
  * is the one person who knows, and a notification telling you about something you just did is noise.
  * The event is still consumed, and still logged.
  */
+interface ContestSubmissionsReader {
+  findSubmissionById(id: string): Promise<ContestSubmission | null>;
+  /**
+   * One page of a contest's entries. The page parameters are left out of the signature
+   * because the handler always reads with the repository's default page, and leaving them
+   * out is what lets a spec drive this dependency with a two-method object.
+   */
+  findSubmissionsByContest(
+    contestId: string,
+    page?: number,
+    limit?: number,
+  ): Promise<{ submissions: ContestSubmission[]; total: number }>;
+}
+
+interface ContestNotifier {
+  create(input: CreateNotificationInput): Promise<Notification | null>;
+}
+
+interface ContestSubscriptionsLogger {
+  info(message: string, context?: string): void;
+  /** Mirrors `WinstonLoggerService.error`, which takes the trace as its second argument. */
+  error(message: string, trace?: string, context?: string): void;
+}
+
 @Injectable()
 export class ContestsEventHandler {
   constructor(
-    @Inject(CONTESTS_REPOSITORY) private readonly contestsRepository: IContestsRepository,
-    @Inject(NotificationsService) private readonly notifications: NotificationsService,
-    @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    @Inject(CONTESTS_REPOSITORY) private readonly contestsRepository: ContestSubmissionsReader,
+    @Inject(NotificationsService) private readonly notifications: ContestNotifier,
+    @Inject(WinstonLoggerService) private readonly logger: ContestSubscriptionsLogger,
   ) {}
 
   @OnEvent('contest.created')

@@ -1,51 +1,80 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { CommentsService } from '../comments.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { OWNERSHIP_RESOLVER, OwnershipGuard } from '../../../common/guards/ownership.guard.ts';
 import type { OwnershipResolver } from '../../../common/guards/ownership.guard.ts';
-import type { CommentResponse } from '../types.ts';
+import type { Comment, CommentResponse, CreateCommentInput, UpdateCommentInput } from '../types.ts';
 
 import { CommentsController } from './comments.controller.ts';
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JwtService accepts strict JwtModuleOptions; test secret is a plain string
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
-type MockCommentsService = {
-  findByStory: ReturnType<typeof vi.fn>;
-  findReplies: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
+type CommentListResponse = {
+  comments: CommentResponse[];
+  total: number;
+  page: number;
+  limit: number;
 };
 
+type ReplyListResponse = {
+  replies: CommentResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type MockCommentsService = {
+  findByStory: ReturnType<typeof vi.fn<(storyId: string, page: number, limit: number) => Promise<CommentListResponse>>>;
+  findReplies: ReturnType<typeof vi.fn<(parentId: string, page: number, limit: number) => Promise<ReplyListResponse>>>;
+  create: ReturnType<typeof vi.fn<(input: CreateCommentInput) => Promise<Comment>>>;
+  update: ReturnType<typeof vi.fn<(id: string, authorId: string, input: UpdateCommentInput) => Promise<Comment>>>;
+  delete: ReturnType<typeof vi.fn<(id: string, authorId: string) => Promise<void>>>;
+};
+
+function makeComment(overrides: Partial<Comment> = {}): Comment {
+  return {
+    id: 'comment-1',
+    storyId: '00000000-0000-0000-0000-000000000001',
+    authorId: 'user-1',
+    parentId: null,
+    content: 'Great story!',
+    likeCount: 0,
+    replyCount: 0,
+    isDeleted: false,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
 describe('CommentsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let commentsService: MockCommentsService;
   let resolveOwnerId: Mock<OwnershipResolver['resolveOwnerId']>;
 
   beforeAll(async () => {
     commentsService = {
-      findByStory: vi.fn(),
-      findReplies: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+      findByStory: vi.fn<(storyId: string, page: number, limit: number) => Promise<CommentListResponse>>(),
+      findReplies: vi.fn<(parentId: string, page: number, limit: number) => Promise<ReplyListResponse>>(),
+      create: vi.fn<(input: CreateCommentInput) => Promise<Comment>>(),
+      update: vi.fn<(id: string, authorId: string, input: UpdateCommentInput) => Promise<Comment>>(),
+      delete: vi.fn<(id: string, authorId: string) => Promise<void>>(),
     };
     resolveOwnerId = vi.fn<OwnershipResolver['resolveOwnerId']>().mockResolvedValue('user-1');
 
@@ -80,13 +109,10 @@ describe('CommentsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -101,9 +127,11 @@ describe('CommentsController', () => {
       vi.mocked(commentsService.findByStory).mockResolvedValue({
         comments: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer).get('/comments/story/123e4567-e89b-12d3-a456-426614174000').expect(200);
+      const res = await request(app.getHttpServer()).get('/comments/story/123e4567-e89b-12d3-a456-426614174000').expect(200);
 
       expect(res.body).toHaveProperty('comments');
       expect(res.body).toHaveProperty('total', 0);
@@ -116,9 +144,11 @@ describe('CommentsController', () => {
       vi.mocked(commentsService.findReplies).mockResolvedValue({
         replies: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer).get('/comments/123e4567-e89b-12d3-a456-426614174000/replies').expect(200);
+      const res = await request(app.getHttpServer()).get('/comments/123e4567-e89b-12d3-a456-426614174000/replies').expect(200);
 
       expect(res.body).toHaveProperty('replies');
       expect(res.body).toHaveProperty('total', 0);
@@ -130,21 +160,9 @@ describe('CommentsController', () => {
     it('should create a new comment', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(commentsService.create).mockResolvedValue({
-        id: 'comment-1',
-        storyId: '00000000-0000-0000-0000-000000000001',
-        authorId: 'user-1',
-        authorName: 'Test User',
-        parentId: null,
-        content: 'Great story!',
-        likeCount: 0,
-        replyCount: 0,
-        isDeleted: false,
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      } as unknown as CommentResponse);
+      vi.mocked(commentsService.create).mockResolvedValue(makeComment());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/comments')
         .set('Authorization', `Bearer ${token}`)
         .send({ storyId: '123e4567-e89b-12d3-a456-426614174000', content: 'Great story!' })
@@ -166,21 +184,9 @@ describe('CommentsController', () => {
     it('should update a comment', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(commentsService.update).mockResolvedValue({
-        id: 'comment-1',
-        storyId: '00000000-0000-0000-0000-000000000001',
-        authorId: 'user-1',
-        authorName: 'Test User',
-        parentId: null,
-        content: 'Updated comment',
-        likeCount: 0,
-        replyCount: 0,
-        isDeleted: false,
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      } as unknown as CommentResponse);
+      vi.mocked(commentsService.update).mockResolvedValue(makeComment({ content: 'Updated comment' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/comments/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .send({ content: 'Updated comment' })
@@ -201,7 +207,7 @@ describe('CommentsController', () => {
       const token = await generateToken('user-2', 'test@example.com', 'reader');
       resolveOwnerId.mockResolvedValue('user-1');
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/comments/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .send({ content: 'Hijacked' })
@@ -215,7 +221,7 @@ describe('CommentsController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
       resolveOwnerId.mockResolvedValue(null);
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .patch('/comments/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .send({ content: 'Unknown owner' })
@@ -231,7 +237,7 @@ describe('CommentsController', () => {
 
       vi.mocked(commentsService.delete).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .delete('/comments/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -244,7 +250,7 @@ describe('CommentsController', () => {
       const token = await generateToken('user-2', 'test@example.com', 'reader');
       resolveOwnerId.mockResolvedValue('user-1');
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .delete('/comments/123e4567-e89b-12d3-a456-426614174000')
         .set('Authorization', `Bearer ${token}`)
         .expect(403);

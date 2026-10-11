@@ -1,22 +1,29 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Server } from 'http';
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
 import { EmailVerificationController } from './email-verification.controller.ts';
 import { EmailVerificationService } from './email-verification.service.ts';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+
+type MockEmailVerificationService = {
+  verifyToken: ReturnType<typeof vi.fn<(token: string) => Promise<{ verified: boolean }>>>;
+};
 
 describe('EmailVerificationController', () => {
   let app: INestApplication;
-  let service: any;
+  let service: MockEmailVerificationService;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     service = {
-      verifyToken: vi.fn().mockResolvedValue({ verified: true }),
-      resend: vi.fn().mockResolvedValue({}),
+      verifyToken: vi.fn<(token: string) => Promise<{ verified: boolean }>>(),
     };
+    service.verifyToken.mockResolvedValue({ verified: true });
 
     const moduleRef = await Test.createTestingModule({
       controllers: [EmailVerificationController],
@@ -30,14 +37,17 @@ describe('EmailVerificationController', () => {
     await app.init();
   });
 
-  afterEach(async () => { await app?.close(); });
+  afterEach(async () => {
+    await app?.close();
+  });
 
   it('should verify email token', async () => {
     service.verifyToken.mockResolvedValue({ verified: true });
-    const res = await request(app.getHttpServer())
+    const httpServer = app.getHttpServer() as Server;
+    const res = await request(httpServer)
       .post('/auth/verify-email')
       .send({ token: 'a'.repeat(48) })
       .expect(200);
-    expect(res.body.verified).toBe(true);
+    expect(res.body).toHaveProperty('verified', true);
   });
 });

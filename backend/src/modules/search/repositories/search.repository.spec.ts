@@ -5,6 +5,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { stories, categories, tags, storyTags } from '../../../db/schema/stories.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -46,7 +47,6 @@ vi.mock('../../../common/services/winston-logger.service.ts', () => ({
 const STORY_ID = '11111111-1111-4111-8111-111111111111';
 const AUTHOR_ID = '22222222-2222-4222-8222-222222222222';
 const CATEGORY_ID = '33333333-3333-4333-8333-333333333333';
-const TAG_ID = '44444444-4444-4444-8444-444444444444';
 const CREATED_AT = new Date('2026-02-03T04:05:06.000Z');
 
 /** One row as the story select projects it, with the joined fields filled in. */
@@ -71,7 +71,7 @@ describe('SearchRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   /**
    * Renders the nth `where` clause to the statement Postgres would receive.
@@ -89,7 +89,7 @@ describe('SearchRepository', () => {
    * to be asserted as text: a Drizzle object comparison would not show whether the clause ranks at
    * all, and would happily accept a bare `desc(created_at)` dressed up as the same shape.
    */
-  const orderBySql = (index = 0): string => dialect.sqlToQuery(firstArgsOf(chains[index]!, 'orderBy')?.[0] as SQL).sql;
+  const orderBySql = (index = 0): string => dialect.sqlToQuery(firstArgsOf(chainAt(chains, index), 'orderBy')?.[0] as SQL).sql;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -230,7 +230,7 @@ describe('SearchRepository', () => {
 
       const joined = [categories, users, storyTags, tags];
       for (const index of [0, 1]) {
-        expect(callsOf(chains[index]!, 'leftJoin').map((call) => call.args[0])).toEqual(joined);
+        expect(callsOf(chainAt(chains, index), 'leftJoin').map((call) => call.args[0])).toEqual(joined);
       }
     });
 
@@ -239,8 +239,8 @@ describe('SearchRepository', () => {
 
       await repository.searchStories({ page: 1, limit: 20, sortBy: 'relevance' });
 
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([stories.id, categories.id, users.id]);
-      expect(firstArgsOf(chains[1]!, 'groupBy')).toBeUndefined();
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([stories.id, categories.id, users.id]);
+      expect(firstArgsOf(chainAt(chains, 1), 'groupBy')).toBeUndefined();
     });
 
     it('paginates the first page from offset zero', async () => {
@@ -248,8 +248,8 @@ describe('SearchRepository', () => {
 
       await repository.searchStories({ page: 1, limit: 20, sortBy: 'relevance' });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -257,8 +257,8 @@ describe('SearchRepository', () => {
 
       await repository.searchStories({ page: 5, limit: 10, sortBy: 'relevance' });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([40]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([40]);
     });
 
     it('ranks the matches by ts_rank_cd instead of falling through to creation date', async () => {
@@ -307,7 +307,7 @@ describe('SearchRepository', () => {
 
       // `GET /search?category=fiction` is a legitimate browse with no tsquery. Ranking on a constant
       // would be a no-op that looks like an answer, so recency is the honest reading.
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(stories.createdAt)]);
       expect(orderBySql()).not.toContain('ts_rank_cd');
     });
 
@@ -326,7 +326,7 @@ describe('SearchRepository', () => {
 
       await repository.searchStories({ page: 1, limit: 20, sortBy: 'views' });
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.viewCount)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(stories.viewCount)]);
       expect(orderBySql()).toBe('"stories"."view_count" desc');
     });
 
@@ -335,7 +335,7 @@ describe('SearchRepository', () => {
 
       await repository.searchStories({ page: 1, limit: 20, sortBy: 'reactions' });
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(stories.likeCount)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(stories.likeCount)]);
       expect(orderBySql()).toBe('"stories"."like_count" desc');
     });
 
@@ -426,9 +426,9 @@ describe('SearchRepository', () => {
 
       await repository.searchAuthors('nour', 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'leftJoin')).toEqual([stories, eq(stories.authorId, users.id)]);
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([users.id, users.name]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(sql<number>`count(${stories.id})`)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'leftJoin')).toEqual([stories, eq(stories.authorId, users.id)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([users.id, users.name]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(sql<number>`count(${stories.id})`)]);
     });
 
     it('paginates the first page from offset zero', async () => {
@@ -436,8 +436,8 @@ describe('SearchRepository', () => {
 
       await repository.searchAuthors('nour', 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -445,8 +445,8 @@ describe('SearchRepository', () => {
 
       await repository.searchAuthors('nour', 3, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('coerces a total delivered as text to a number', async () => {
@@ -494,11 +494,11 @@ describe('SearchRepository', () => {
 
       await repository.searchCategories('clas');
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([categories]);
-      expect(firstArgsOf(chains[0]!, 'leftJoin')).toEqual([stories, eq(stories.categoryId, categories.id)]);
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([categories.id, categories.name, categories.slug]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(sql<number>`count(${stories.id})`)]);
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([categories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'leftJoin')).toEqual([stories, eq(stories.categoryId, categories.id)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([categories.id, categories.name, categories.slug]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(sql<number>`count(${stories.id})`)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
     });
 
     it('rethrows a database error', async () => {

@@ -3,6 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 
 import { comments } from '../../../db/schema/social.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -52,7 +53,7 @@ describe('CommentsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -124,8 +125,8 @@ describe('CommentsRepository', () => {
 
       await repository.findByStory(STORY_ID, 3, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([20]);
     });
 
     it('orders newest first', async () => {
@@ -133,7 +134,7 @@ describe('CommentsRepository', () => {
 
       await repository.findByStory(STORY_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(comments.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(comments.createdAt)]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -147,7 +148,7 @@ describe('CommentsRepository', () => {
 
       await repository.findByStory(STORY_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([comments]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([comments]);
     });
   });
 
@@ -182,8 +183,8 @@ describe('CommentsRepository', () => {
 
       await repository.findReplies(PARENT_ID, 2, 5);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([5]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([5]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([5]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([5]);
     });
   });
 
@@ -202,7 +203,7 @@ describe('CommentsRepository', () => {
 
       await repository.create({ storyId: STORY_ID, authorId: AUTHOR_ID, content: 'r', parentId: PARENT_ID });
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { storyId: STORY_ID, authorId: AUTHOR_ID, content: 'r', parentId: PARENT_ID },
       ]);
     });
@@ -215,7 +216,7 @@ describe('CommentsRepository', () => {
       const updated = await repository.update(COMMENT_ID, { content: 'edited' });
 
       expect(updated).toMatchObject({ content: 'edited' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ content: 'edited' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -225,7 +226,7 @@ describe('CommentsRepository', () => {
 
       await repository.update(COMMENT_ID, { content: 'edited' });
 
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(db.update).toHaveBeenCalledWith(comments);
     });
   });
@@ -236,7 +237,7 @@ describe('CommentsRepository', () => {
 
       await repository.softDelete(COMMENT_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ isDeleted: true });
       expect(patch.deletedAt).toBeInstanceOf(Date);
       expect(db.delete).not.toHaveBeenCalled();
@@ -249,7 +250,7 @@ describe('CommentsRepository', () => {
 
       await repository.incrementReplyCount(PARENT_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toHaveProperty('replyCount');
       expect(whereOf()).toEqual(eq(comments.id, PARENT_ID));
     });

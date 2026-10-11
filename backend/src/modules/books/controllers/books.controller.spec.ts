@@ -1,58 +1,91 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { BooksService } from '../books.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import type { Book } from '../types.ts';
+import type { Book, BooksListResponse, CreateBookInput, UpdateBookInput } from '../types.ts';
 
 import { BooksController } from './books.controller.ts';
 
-type MockBooksService = {
-  findAll: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  findByIsbn: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
-  publish: ReturnType<typeof vi.fn>;
-  archive: ReturnType<typeof vi.fn>;
-  incrementDownloadCount: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
-};
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
+
+type BooksFindAllParams = {
+  page?: number;
+  limit?: number;
+  categoryId?: string;
+  status?: string;
+  search?: string;
+  author?: string;
+};
 
 async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type MockBooksService = {
+  findAll: ReturnType<typeof vi.fn<(params: BooksFindAllParams) => Promise<BooksListResponse>>>;
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Book>>>;
+  findByIsbn: ReturnType<typeof vi.fn<(isbn: string) => Promise<Book>>>;
+  create: ReturnType<typeof vi.fn<(userId: string, input: CreateBookInput) => Promise<Book>>>;
+  update: ReturnType<typeof vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>>;
+  publish: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
+  archive: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
+  incrementDownloadCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  delete: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<void>>>;
+};
+
+function makeBook(overrides: Partial<Book> = {}): Book {
+  return {
+    id: 'book-1',
+    title: 'Test Book',
+    author: 'Test Author',
+    ownerId: 'user-1',
+    description: null,
+    coverImage: null,
+    isbn: null,
+    publisher: null,
+    publishDate: null,
+    language: null,
+    pageCount: null,
+    fileUrl: null,
+    fileType: null,
+    price: null,
+    isFree: false,
+    status: 'published',
+    categoryId: null,
+    viewCount: 0,
+    likeCount: 0,
+    downloadCount: 0,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
 describe('BooksController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let booksService: MockBooksService;
 
   beforeAll(async () => {
     booksService = {
-      findAll: vi.fn(),
-      findById: vi.fn(),
-      findByIsbn: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      publish: vi.fn(),
-      archive: vi.fn(),
-      incrementDownloadCount: vi.fn(),
-      delete: vi.fn(),
+      findAll: vi.fn<(params: BooksFindAllParams) => Promise<BooksListResponse>>(),
+      findById: vi.fn<(id: string) => Promise<Book>>(),
+      findByIsbn: vi.fn<(isbn: string) => Promise<Book>>(),
+      create: vi.fn<(userId: string, input: CreateBookInput) => Promise<Book>>(),
+      update: vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>(),
+      publish: vi.fn<(id: string, userId: string) => Promise<Book>>(),
+      archive: vi.fn<(id: string, userId: string) => Promise<Book>>(),
+      incrementDownloadCount: vi.fn<(id: string) => Promise<void>>(),
+      delete: vi.fn<(id: string, userId: string) => Promise<void>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -81,13 +114,10 @@ describe('BooksController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -103,7 +133,7 @@ describe('BooksController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer).get('/books').expect(200);
+      const res = await request(app.getHttpServer()).get('/books').expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total', 0);
@@ -113,20 +143,9 @@ describe('BooksController', () => {
 
   describe('GET /books/:id', () => {
     it('should return a book by id', async () => {
-      vi.mocked(booksService.findById).mockResolvedValue({
-        id: 'book-1',
-        title: 'Test Book',
-        author: 'Test Author',
-        status: 'published',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 0,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.findById).mockResolvedValue(makeBook());
 
-      const res = await request(httpServer).get('/books/book-1').expect(200);
+      const res = await request(app.getHttpServer()).get('/books/book-1').expect(200);
 
       expect(res.body).toHaveProperty('id', 'book-1');
       expect(booksService.findById).toHaveBeenCalledWith('book-1');
@@ -135,20 +154,9 @@ describe('BooksController', () => {
 
   describe('GET /books/isbn/:isbn', () => {
     it('should return a book by isbn', async () => {
-      vi.mocked(booksService.findByIsbn).mockResolvedValue({
-        id: 'book-1',
-        title: 'Test Book',
-        isbn: '9781234567890',
-        status: 'published',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 0,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.findByIsbn).mockResolvedValue(makeBook({ isbn: '9781234567890' }));
 
-      const res = await request(httpServer).get('/books/isbn/9781234567890').expect(200);
+      const res = await request(app.getHttpServer()).get('/books/isbn/9781234567890').expect(200);
 
       expect(res.body).toHaveProperty('isbn', '9781234567890');
       expect(booksService.findByIsbn).toHaveBeenCalledWith('9781234567890');
@@ -159,20 +167,9 @@ describe('BooksController', () => {
     it('should create a book', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'author');
 
-      vi.mocked(booksService.create).mockResolvedValue({
-        id: 'book-1',
-        title: 'Test Book',
-        author: 'Test Author',
-        status: 'draft',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 0,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.create).mockResolvedValue(makeBook({ status: 'draft' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/books')
         .set('Authorization', `Bearer ${token}`)
         .send({ title: 'Test Book', author: 'Test Author' })
@@ -187,20 +184,9 @@ describe('BooksController', () => {
     it('should update a book', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'author');
 
-      vi.mocked(booksService.update).mockResolvedValue({
-        id: 'book-1',
-        title: 'Updated Book',
-        author: 'Test Author',
-        status: 'draft',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 0,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.update).mockResolvedValue(makeBook({ status: 'draft', title: 'Updated Book' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/books/book-1')
         .set('Authorization', `Bearer ${token}`)
         .send({ title: 'Updated Book' })
@@ -215,19 +201,9 @@ describe('BooksController', () => {
     it('should publish a book', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'author');
 
-      vi.mocked(booksService.publish).mockResolvedValue({
-        id: 'book-1',
-        title: 'Test Book',
-        status: 'published',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 0,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.publish).mockResolvedValue(makeBook({ status: 'published' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/books/book-1/publish')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -242,20 +218,11 @@ describe('BooksController', () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       vi.mocked(booksService.incrementDownloadCount).mockResolvedValue(undefined);
-      vi.mocked(booksService.findById).mockResolvedValue({
-        id: 'book-1',
-        title: 'Test Book',
-        fileUrl: 'https://s3.amazonaws.com/bucket/book.pdf',
-        status: 'published',
-        viewCount: 0,
-        likeCount: 0,
-        downloadCount: 1,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Book);
+      vi.mocked(booksService.findById).mockResolvedValue(
+        makeBook({ fileUrl: 'https://s3.amazonaws.com/bucket/book.pdf', downloadCount: 1 }),
+      );
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/books/book-1/download')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -271,7 +238,7 @@ describe('BooksController', () => {
 
       vi.mocked(booksService.delete).mockResolvedValue(undefined);
 
-      await request(httpServer).delete('/books/book-1').set('Authorization', `Bearer ${token}`).expect(204);
+      await request(app.getHttpServer()).delete('/books/book-1').set('Authorization', `Bearer ${token}`).expect(204);
 
       expect(booksService.delete).toHaveBeenCalledWith('book-1', 'user-1');
     });

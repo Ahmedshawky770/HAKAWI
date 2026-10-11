@@ -1,7 +1,7 @@
-import { type Server } from 'http';
+import type { Server } from 'node:http';
 
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -19,10 +19,17 @@ import { UsersEventHandler } from '../../users/events/users.event-handler.ts';
 import { PAYMOB_CLIENT } from '../clients/paymob.client.ts';
 import type { PaymobGateway } from '../clients/paymob.client.ts';
 import { payments } from '../../../db/schema/payments.schema.ts';
+import type { JsonResponse, LoginResponseBody } from '../../../test/helpers/test-response-types.ts';
 
-// drizzle-ORM db and sql template tags, plus supertest response chains, are typed as `any` by their libraries.
-// Accepted external-library typing limitations — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+/** The subset of `PaymentResponse` (`payments/types.ts`) this suite asserts on. */
+interface PaymentResponseBody {
+  id: string;
+  amount: number;
+  status: string;
+  paymobOrderId: string | null;
+  paymobPaymentKey: string | null;
+  paymobIframeUrl: string | null;
+}
 
 /**
  * `POST /payments` registers a real Paymob order, so the suite must not depend on the network.
@@ -42,7 +49,7 @@ const paymobGateway: PaymobGateway = {
 };
 
 describe('Payments E2E', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let httpServer: Server;
   let accessToken: string;
 
@@ -87,7 +94,7 @@ describe('Payments E2E', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
+    httpServer = app.getHttpServer();
 
     await request(httpServer).post('/auth/register').send({
       email: 'e2e-payments@example.com',
@@ -96,10 +103,10 @@ describe('Payments E2E', () => {
       username: 'e2epayments',
     });
 
-    const loginRes = await request(httpServer).post('/auth/login').send({
+    const loginRes = (await request(httpServer).post('/auth/login').send({
       email: 'e2e-payments@example.com',
       password: 'SecurePass123!',
-    });
+    })) as JsonResponse<LoginResponseBody>;
 
     accessToken = loginRes.body.tokens.accessToken;
   });
@@ -119,7 +126,7 @@ describe('Payments E2E', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('id');
-      expect(res.body.amount).toBe(1000);
+      expect((res.body as PaymentResponseBody).amount).toBe(1000);
     });
 
     it('registers a Paymob order so the payment can actually be paid', async () => {
@@ -129,12 +136,14 @@ describe('Payments E2E', () => {
         .send({ amount: 2500, paymentMethod: 'paymob' })
         .expect(201);
 
+      const body = res.body as PaymentResponseBody;
+
       // A payment left in `pending` with no paymobOrderId and no checkout URL can never be paid:
       // no webhook can match an order that was never registered upstream.
-      expect(res.body.status).toBe('processing');
-      expect(res.body.paymobOrderId).toBe('paymob-order-e2e');
-      expect(res.body.paymobPaymentKey).toBe('paymob-key-e2e');
-      expect(res.body.paymobIframeUrl).toContain('paymob-key-e2e');
+      expect(body.status).toBe('processing');
+      expect(body.paymobOrderId).toBe('paymob-order-e2e');
+      expect(body.paymobPaymentKey).toBe('paymob-key-e2e');
+      expect(body.paymobIframeUrl).toContain('paymob-key-e2e');
       expect(paymobStub.createCheckout).toHaveBeenCalledWith(
         expect.objectContaining({ amountCents: 2500, currency: 'EGP' }),
       );
@@ -142,7 +151,7 @@ describe('Payments E2E', () => {
       const [rows] = await db
         .select()
         .from(payments)
-        .where(eq(payments.id, res.body.id as string));
+        .where(eq(payments.id, body.id));
       expect(rows?.paymobOrderId).toBe('paymob-order-e2e');
     });
   });

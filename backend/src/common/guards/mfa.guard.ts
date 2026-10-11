@@ -3,7 +3,6 @@ import { Reflector } from '@nestjs/core';
 
 import { IS_PUBLIC_KEY, MFA_REQUIRED_KEY } from '../decorators/roles.decorator.ts';
 import type { AuthRequest } from '../types/auth-request.interface.ts';
-
 import { MfaService } from '../../modules/auth/mfa.service.ts';
 
 @Injectable()

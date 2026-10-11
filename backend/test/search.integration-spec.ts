@@ -6,7 +6,6 @@ import type {
   SearchResponse,
   SearchResultStory,
   SearchAuthorsResponse,
-  SearchResultUser,
 } from '../src/test/helpers/test-response-types.ts';
 
 describe('Search Integration', () => {

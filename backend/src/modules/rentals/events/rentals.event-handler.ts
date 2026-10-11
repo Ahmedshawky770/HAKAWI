@@ -1,13 +1,11 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-
 import { MAX_RENTAL_EXTENSIONS } from '@hakawi/shared-types';
 
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { PaymentCompletedEvent } from '../../../common/events/payments.events.ts';
 import type { RentalCreatedEvent, RentalExtendedEvent } from '../../../common/events/rentals.events.ts';
-
 import type { IRentalsRepository } from '../interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from '../interfaces/rentals-repository.interface.ts';
 import type { IPaymentsRepository } from '../../payments/interfaces/payments-repository.interface.ts';

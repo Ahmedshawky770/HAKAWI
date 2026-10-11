@@ -1,32 +1,50 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
-import { EncryptionService } from '../../common/utils/encryption.util.ts';
-import { MfaService } from './mfa.service.ts';
 import * as speakeasy from 'speakeasy';
+import { ConfigService } from '@nestjs/config';
+
+import type { IUsersRepository, UpdateUserInput } from '../../common/users/users-repository.interface.ts';
+import { EncryptionService } from '../../common/utils/encryption.util.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-import { ConfigService } from '@nestjs/config';
+
+import { MfaService } from './mfa.service.ts';
+
 
 vi.mock('speakeasy', () => ({
   totp: {
-    verify: vi.fn<[speakeasy.TotpOptions], boolean>(),
+    verify: vi.fn<(options: speakeasy.TotpOptions) => boolean>(),
   },
-  generateSecret: vi.fn<[], { base32: string; otpauth_url: string }>(),
+  generateSecret: vi.fn<() => { base32: string; otpauth_url: string }>(),
 }));
+
+type MockUser = {
+  id: string;
+  email: string;
+  mfaEnabled: boolean;
+  totpSecretEncrypted?: string | null;
+  adminRole: string | null;
+};
+
+type MockUsersRepository = {
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<MockUser | null>>>;
+  update: ReturnType<typeof vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<void>>>;
+};
 
 describe('MfaService', () => {
   let mfaService: MfaService;
-  let usersRepository: Partial<IUsersRepository>;
+  let usersRepository: MockUsersRepository;
   let valkeyService: {
-    get: ReturnType<typeof vi.fn>;
-    set: ReturnType<typeof vi.fn>;
-    del: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn<(key: string) => Promise<string | null>>>;
+    set: ReturnType<typeof vi.fn<(key: string, value: string, ttlSeconds?: number) => Promise<void>>>;
+    del: ReturnType<typeof vi.fn<(key: string) => Promise<void>>>;
   };
   let encryptionService: Partial<EncryptionService>;
-  let eventBus: { emit: ReturnType<typeof vi.fn> };
+  let eventBus: {
+    emit: ReturnType<typeof vi.fn<(eventName: string, payload: unknown) => Promise<void>>>;
+  };
   let logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
-  let configService: { get: ReturnType<typeof vi.fn> };
+  let configService: { get: ReturnType<typeof vi.fn<(key: string) => string>> };
 
   const mockUserId = 'user-123';
   const mockUser = {
@@ -41,23 +59,23 @@ describe('MfaService', () => {
     vi.clearAllMocks();
 
     usersRepository = {
-      findById: vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue(mockUser),
-      update: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+      findById: vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue(mockUser),
+      update: vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<void>>().mockResolvedValue(undefined),
     };
 
     valkeyService = {
-      get: vi.fn<[string], Promise<string | null>>().mockResolvedValue(null),
-      set: vi.fn<[string, string, number?], Promise<void>>().mockResolvedValue(undefined),
-      del: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
+      get: vi.fn<(key: string) => Promise<string | null>>().mockResolvedValue(null),
+      set: vi.fn<(key: string, value: string, ttlSeconds?: number) => Promise<void>>().mockResolvedValue(undefined),
+      del: vi.fn<(key: string) => Promise<void>>().mockResolvedValue(undefined),
     };
 
     encryptionService = {
-      encrypt: vi.fn<[string], Promise<string>>().mockImplementation(async (v: string) => `encrypted:${v}`),
-      decrypt: vi.fn<[string], Promise<string>>().mockImplementation(async (v: string) => v.replace('encrypted:', '')),
+      encrypt: vi.fn<(plaintext: string) => string>().mockImplementation((v: string) => `encrypted:${v}`),
+      decrypt: vi.fn<(ciphertext: string) => string>().mockImplementation((v: string) => v.replace('encrypted:', '')),
     };
 
     eventBus = {
-      emit: vi.fn<[string, unknown], Promise<void>>().mockResolvedValue(undefined),
+      emit: vi.fn<(eventName: string, payload: unknown) => Promise<void>>().mockResolvedValue(undefined),
     };
 
     logger = {
@@ -66,11 +84,11 @@ describe('MfaService', () => {
     };
 
     configService = {
-      get: vi.fn<[string], string>().mockReturnValue('Hakawi'),
+      get: vi.fn<(key: string) => string>().mockReturnValue('Hakawi'),
     };
 
     mfaService = new MfaService(
-      usersRepository as IUsersRepository,
+      usersRepository as unknown as IUsersRepository,
       valkeyService as unknown as ValkeyService,
       logger as unknown as WinstonLoggerService,
       encryptionService as EncryptionService,
@@ -98,7 +116,7 @@ describe('MfaService', () => {
     });
 
     it('should throw if MFA already enabled', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: true,
@@ -109,7 +127,7 @@ describe('MfaService', () => {
     });
 
     it('should throw if user not found', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue(null);
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue(null);
 
       await expect(mfaService.initiateSetup('user-123')).rejects.toThrow('User not found');
     });
@@ -148,7 +166,7 @@ describe('MfaService', () => {
 
   describe('verifyToken', () => {
     it('should return verified: false if MFA not enabled', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: false,
@@ -160,7 +178,7 @@ describe('MfaService', () => {
     });
 
     it('should return verified: false if user not found', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue(null);
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue(null);
 
       const result = await mfaService.verifyToken('user-123', '123456');
       expect(result).toEqual({ verified: false });
@@ -169,7 +187,7 @@ describe('MfaService', () => {
 
   describe('disableMfa', () => {
     it('should disable MFA and clean up', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: true,
@@ -188,7 +206,7 @@ describe('MfaService', () => {
     });
 
     it('should throw if MFA not enabled', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: false,
@@ -201,7 +219,7 @@ describe('MfaService', () => {
 
   describe('shouldEnforceMfa', () => {
     it('should return true for admin users', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: true,
@@ -213,7 +231,7 @@ describe('MfaService', () => {
     });
 
     it('should return false for non-admin users', async () => {
-      usersRepository.findById = vi.fn<[], Promise<typeof mockUser | null>>().mockResolvedValue({
+      usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
         mfaEnabled: true,

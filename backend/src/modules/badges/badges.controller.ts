@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 
 import { RequireAdminRole, RequirePermissions } from '../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../common/decorators/secured.decorator.ts';

@@ -5,7 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, Module } from '@nestjs/common';
 import request from 'supertest';
 
-import { AppController } from './app.controller.ts';
+import { AppController, type ApiIndexResponse, type HealthResponse } from './app.controller.ts';
 import { ValkeyService } from './common/services/valkey.service.ts';
 import { checkDatabaseHealth } from './db/router.ts';
 
@@ -67,14 +67,14 @@ describe('AppController', () => {
         name: 'Hakawi API',
         version: '1.0.0',
         prefix: 'api/v1',
-        documentation: expect.stringContaining('api/docs'),
       });
+      expect((res.body as ApiIndexResponse).documentation).toContain('api/docs');
     });
 
     it('should embed the health report so one round trip answers everything', async () => {
       const res = await request(httpServer).get('/').expect(200);
 
-      expect(res.body.health).toMatchObject({ status: 'healthy' });
+      expect((res.body as ApiIndexResponse).health).toMatchObject({ status: 'healthy' });
     });
 
     it('should report degraded inline while still answering 200', async () => {
@@ -87,7 +87,7 @@ describe('AppController', () => {
 
       const res = await request(httpServer).get('/').expect(200);
 
-      expect(res.body.health).toMatchObject({ status: 'degraded', database: 'disconnected' });
+      expect((res.body as ApiIndexResponse).health).toMatchObject({ status: 'degraded', database: 'disconnected' });
     });
 
     it('should require no authentication', async () => {
@@ -110,8 +110,9 @@ describe('AppController', () => {
         database: 'connected',
         replicas: ['connected', 'connected'],
         valkey: 'connected',
-        timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        timestamp: (res.body as HealthResponse).timestamp,
       });
+      expect((res.body as HealthResponse).timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('should probe the database via checkDatabaseHealth', async () => {
@@ -178,7 +179,7 @@ describe('AppController', () => {
 
       const res = await request(httpServer).get('/health').expect(200);
 
-      expect(new Date(res.body.timestamp).toString()).not.toBe('Invalid Date');
+      expect(new Date((res.body as HealthResponse).timestamp).toString()).not.toBe('Invalid Date');
     });
   });
 });

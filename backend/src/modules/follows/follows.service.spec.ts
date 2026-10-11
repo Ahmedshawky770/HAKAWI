@@ -33,15 +33,12 @@ type MockEventValidatorService = {
   validateEvent: ReturnType<typeof vi.fn>;
 };
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
-const FOLLOW: Follow = {
+const FOLLOW: FollowWithUser = {
   id: 'follow-123',
   followerId: 'user-1',
   followingId: 'user-2',
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  user: { id: 'user-2', name: 'Following User' },
 };
 
 describe('FollowsService', () => {

@@ -1,8 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-import type { EmailTransporter } from './transporter.interface.ts';
+
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+import type { EmailTransporter } from './transporter.interface.ts';
 
 @Injectable()
 export class SmtpEmailTransporter implements EmailTransporter {

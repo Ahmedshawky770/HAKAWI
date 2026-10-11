@@ -1,11 +1,13 @@
 import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
-import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
+import type { StoryResponseBody, TestContext, TestUser } from '../src/test/helpers/test-context.ts';
 import { AdminRole } from '../src/common/constants/roles.ts';
 import type {
+  ApiErrorResponse,
   StoryListItemResponse,
   StoryDetail,
+  StoryWireResponse,
   MyStoriesListResponse,
 } from '../src/test/helpers/test-response-types.ts';
 
@@ -296,7 +298,8 @@ describe('Stories Integration', () => {
 
       // Identical to the answer for an id that was never used, so the status code carries no
       // information: "not for you" and "not there" must not be distinguishable.
-      expect(res.body.message).toBe('Story not found');
+      const body = res.body as ApiErrorResponse;
+      expect(body.message).toBe('Story not found');
       expect(JSON.stringify(res.body)).not.toContain(originalTitle);
     });
 
@@ -308,7 +311,8 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${stranger.accessToken}`)
         .expect(404);
 
-      expect(res.body.message).toBe('Story not found');
+      const body = res.body as ApiErrorResponse;
+      expect(body.message).toBe('Story not found');
     });
 
     it('should let a content moderator read an unpublished story they did not write', async () => {
@@ -371,7 +375,8 @@ describe('Stories Integration', () => {
     it('should not disclose an unpublished story to an anonymous caller', async () => {
       const res = await request(context.httpServer).get(`/stories/slug/${storySlug}`).expect(404);
 
-      expect(res.body.message).toBe('Story not found');
+      const body = res.body as ApiErrorResponse;
+      expect(body.message).toBe('Story not found');
       expect(JSON.stringify(res.body)).not.toContain(originalTitle);
     });
 
@@ -383,7 +388,8 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${stranger.accessToken}`)
         .expect(404);
 
-      expect(res.body.message).toBe('Story not found');
+      const body = res.body as ApiErrorResponse;
+      expect(body.message).toBe('Story not found');
     });
 
     it('should still resolve a published story by slug for an anonymous caller', async () => {
@@ -413,7 +419,9 @@ describe('Stories Integration', () => {
         .send({ title: 'Updated Title' })
         .expect(200);
 
-      expect(res.body.title).toBe('Updated Title');
+      const body = res.body as StoryResponseBody;
+
+      expect(body.title).toBe('Updated Title');
     });
 
     it('should refuse updates from a different user', async () => {
@@ -465,7 +473,9 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${stranger.accessToken}`)
         .expect(404);
 
-      expect(view.body.message).toBe('Story not found');
+      const viewBody = view.body as ApiErrorResponse;
+
+      expect(viewBody.message).toBe('Story not found');
       expect(view.body).toEqual(detail.body);
     });
 
@@ -483,7 +493,7 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      expect((res.body as StoryDetail).views).toBe(0);
+      expect((res.body as StoryWireResponse).views).toBe(0);
     });
 
     /**
@@ -495,7 +505,7 @@ describe('Stories Integration', () => {
       const stranger = await context.registerAndLogin({ prefix: 'viewreader' });
 
       const before = await request(context.httpServer).get(`/stories/${publishedStoryId}`).expect(200);
-      const viewsBefore = (before.body as StoryDetail).views;
+      const viewsBefore = (before.body as StoryWireResponse).views;
 
       const res = await request(context.httpServer)
         .post(`/stories/${publishedStoryId}/view`)
@@ -505,7 +515,7 @@ describe('Stories Integration', () => {
       expect(res.body).toEqual({});
 
       const after = await request(context.httpServer).get(`/stories/${publishedStoryId}`).expect(200);
-      expect((after.body as StoryDetail).views).toBe(viewsBefore + 1);
+      expect((after.body as StoryWireResponse).views).toBe(viewsBefore + 1);
     });
 
     it('should let the author count a view on their own draft, which they may read', async () => {
@@ -521,7 +531,7 @@ describe('Stories Integration', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .expect(200);
 
-      expect((res.body as StoryDetail).views).toBe(1);
+      expect((res.body as StoryWireResponse).views).toBe(1);
     });
 
     it('should still refuse an anonymous caller', async () => {

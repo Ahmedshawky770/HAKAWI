@@ -4,6 +4,7 @@ import { and, desc, eq, like, sql } from 'drizzle-orm';
 import { contests, contestPrizes, contestSubmissions, contestVotes } from '../../../db/schema/contests.schema.ts';
 import { categories } from '../../../db/schema/stories.schema.ts';
 import {
+  chainAt,
   installMockDb,
   callsOf,
   firstArgsOf,
@@ -57,7 +58,7 @@ describe('ContestsRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,8 +116,8 @@ describe('ContestsRepository', () => {
 
       await repository.findAllContests({});
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([20]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([0]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
     });
 
     it('paginates with a zero-based offset', async () => {
@@ -124,8 +125,8 @@ describe('ContestsRepository', () => {
 
       await repository.findAllContests({ page: 4, limit: 10 });
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([30]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([30]);
     });
 
     it('orders newest first', async () => {
@@ -133,7 +134,7 @@ describe('ContestsRepository', () => {
 
       await repository.findAllContests({});
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(contests.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(contests.createdAt)]);
     });
 
     it('leaves the filter unset when no filter is supplied', async () => {
@@ -143,8 +144,8 @@ describe('ContestsRepository', () => {
 
       // An unfiltered listing must reach every contest, so the clause is `undefined`
       // rather than an `and()` over an empty list that would compile to `true`.
-      expect(firstArgsOf(chains[0]!, 'where')).toEqual([undefined]);
-      expect(firstArgsOf(chains[1]!, 'where')).toEqual([undefined]);
+      expect(firstArgsOf(chainAt(chains, 0), 'where')).toEqual([undefined]);
+      expect(firstArgsOf(chainAt(chains, 1), 'where')).toEqual([undefined]);
     });
 
     it('adds one condition per supplied filter', async () => {
@@ -179,8 +180,8 @@ describe('ContestsRepository', () => {
 
       await repository.findAllContests({});
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contests]);
-      expect(firstArgsOf(chains[1]!, 'from')).toEqual([contests]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contests]);
+      expect(firstArgsOf(chainAt(chains, 1), 'from')).toEqual([contests]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -220,7 +221,7 @@ describe('ContestsRepository', () => {
       };
       await repository.createContest(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -231,7 +232,7 @@ describe('ContestsRepository', () => {
       const updated = await repository.updateContest(CONTEST_ID, { status: 'completed' });
 
       expect(updated).toMatchObject({ status: 'completed' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'completed' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
     });
@@ -241,7 +242,7 @@ describe('ContestsRepository', () => {
 
       await repository.updateContest(CONTEST_ID, { winnerId: AUTHOR_ID });
 
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
       expect(whereOf()).toEqual(eq(contests.id, CONTEST_ID));
       expect(db.update).toHaveBeenCalledWith(contests);
     });
@@ -262,8 +263,8 @@ describe('ContestsRepository', () => {
       await repository.findCategoriesByIds([CATEGORY_ID]);
 
       // A contest row carries a `category_id` UUID, which is not displayable. Only the name is.
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([categories]);
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([categories]);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
     });
 
     it('issues no query for an empty id list, because IN () is not valid SQL', async () => {
@@ -278,7 +279,7 @@ describe('ContestsRepository', () => {
       control.queue([{ id: SUBMISSION_ID, contestId: CONTEST_ID }]);
 
       await expect(repository.findSubmissionById(SUBMISSION_ID)).resolves.toMatchObject({ id: SUBMISSION_ID });
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contestSubmissions]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contestSubmissions]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -316,8 +317,8 @@ describe('ContestsRepository', () => {
 
       await repository.findSubmissionsByContest(CONTEST_ID, 2, 10);
 
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([10]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([10]);
     });
 
     it('orders most recently submitted first', async () => {
@@ -325,7 +326,7 @@ describe('ContestsRepository', () => {
 
       await repository.findSubmissionsByContest(CONTEST_ID, 1, 20);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(contestSubmissions.submittedAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(contestSubmissions.submittedAt)]);
     });
 
     it('applies the same contest predicate to the page and the count', async () => {
@@ -363,7 +364,7 @@ describe('ContestsRepository', () => {
       expect(whereOf()).toEqual(
         and(eq(contestSubmissions.contestId, CONTEST_ID), eq(contestSubmissions.authorId, AUTHOR_ID)),
       );
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the author has not submitted to that contest', async () => {
@@ -393,7 +394,7 @@ describe('ContestsRepository', () => {
       const data = { contestId: CONTEST_ID, storyId: STORY_ID, authorId: AUTHOR_ID };
       await repository.createSubmission(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -404,7 +405,7 @@ describe('ContestsRepository', () => {
       const reviewed = await repository.reviewSubmission(SUBMISSION_ID, 'approved', REVIEWER_ID);
 
       expect(reviewed).toMatchObject({ status: 'approved' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ status: 'approved', reviewedBy: REVIEWER_ID });
       expect(patch.reviewedAt).toBeInstanceOf(Date);
     });
@@ -424,7 +425,7 @@ describe('ContestsRepository', () => {
       control.queue([{ id: SUBMISSION_ID, userId: VOTER_ID }]);
 
       await expect(repository.findVoteById(SUBMISSION_ID)).resolves.toMatchObject({ userId: VOTER_ID });
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contestVotes]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contestVotes]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -470,7 +471,7 @@ describe('ContestsRepository', () => {
           eq(contestVotes.userId, VOTER_ID),
         ),
       );
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the user has not voted on that submission', async () => {
@@ -494,8 +495,8 @@ describe('ContestsRepository', () => {
 
       await repository.countVotesBySubmission(SUBMISSION_ID);
 
-      expect(callsOf(chains[0]!, 'where')).toHaveLength(1);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contestVotes]);
+      expect(callsOf(chainAt(chains, 0), 'where')).toHaveLength(1);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contestVotes]);
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -530,7 +531,7 @@ describe('ContestsRepository', () => {
       await expect(repository.findVotesBySubmission(SUBMISSION_ID)).resolves.toHaveLength(2);
 
       expect(whereOf()).toEqual(eq(contestVotes.submissionId, SUBMISSION_ID));
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(contestVotes.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(contestVotes.createdAt)]);
     });
 
     it('returns an empty array when the submission has no votes', async () => {
@@ -547,8 +548,8 @@ describe('ContestsRepository', () => {
       await expect(repository.findVotesByContest(CONTEST_ID, 5, 10)).resolves.toHaveLength(1);
 
       // This method takes an offset, not a page: the service owns the page arithmetic.
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([5]);
-      expect(firstArgsOf(chains[0]!, 'offset')).toEqual([10]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([5]);
+      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([10]);
       expect(whereOf()).toEqual(eq(contestVotes.contestId, CONTEST_ID));
     });
 
@@ -557,7 +558,7 @@ describe('ContestsRepository', () => {
 
       await repository.findVotesByContest(CONTEST_ID, 20, 0);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(contestVotes.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(contestVotes.createdAt)]);
     });
   });
 
@@ -577,7 +578,7 @@ describe('ContestsRepository', () => {
       const data = { contestId: CONTEST_ID, submissionId: SUBMISSION_ID, userId: VOTER_ID };
       await repository.castVote(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -586,7 +587,7 @@ describe('ContestsRepository', () => {
       control.queue([{ id: PRIZE_ID, prizeType: 'book' }]);
 
       await expect(repository.findPrizeById(PRIZE_ID)).resolves.toMatchObject({ id: PRIZE_ID });
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contestPrizes]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contestPrizes]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -636,7 +637,7 @@ describe('ContestsRepository', () => {
       };
       await repository.createPrize(data);
 
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([data]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([data]);
     });
   });
 
@@ -646,9 +647,9 @@ describe('ContestsRepository', () => {
 
       await expect(repository.findPrizesByContest(CONTEST_ID)).resolves.toEqual([{ id: PRIZE_ID }]);
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([contestPrizes]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([contestPrizes]);
       expect(whereOf()).toEqual(eq(contestPrizes.contestId, CONTEST_ID));
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([desc(contestPrizes.createdAt)]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(contestPrizes.createdAt)]);
     });
 
     it('returns an empty array when the contest has distributed nothing', async () => {
@@ -676,8 +677,8 @@ describe('ContestsRepository', () => {
 
       await repository.findWinningSubmission(CONTEST_ID);
 
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([sql`count(${contestVotes.id}) DESC`]);
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([sql`count(${contestVotes.id}) DESC`]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('left-joins the votes onto the submissions so an unvoted entry still counts as zero', async () => {
@@ -685,7 +686,7 @@ describe('ContestsRepository', () => {
 
       await repository.findWinningSubmission(CONTEST_ID);
 
-      expect(firstArgsOf(chains[0]!, 'leftJoin')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'leftJoin')).toEqual([
         contestVotes,
         eq(contestVotes.submissionId, contestSubmissions.id),
       ]);
@@ -699,8 +700,8 @@ describe('ContestsRepository', () => {
 
       // Postgres rejects a grouped query that leaves a selected column out of the
       // GROUP BY, so the projection and this list have to move together.
-      expect(callsOf(chains[0]!, 'groupBy')).toHaveLength(1);
-      expect(firstArgsOf(chains[0]!, 'groupBy')).toEqual([
+      expect(callsOf(chainAt(chains, 0), 'groupBy')).toHaveLength(1);
+      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([
         contestSubmissions.id,
         contestSubmissions.contestId,
         contestSubmissions.storyId,

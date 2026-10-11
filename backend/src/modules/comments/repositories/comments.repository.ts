@@ -13,10 +13,6 @@ import { comments } from '../../../db/schema/social.schema.ts';
 import { users } from '../../../db/schema/users.schema.ts';
 import { db } from '../../../db/index.ts';
 
-// drizzle-ORM db and sql template tags are typed as `any` by the library.
-// Accepted external-library typing limitation — no production code change.
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
-
 @Injectable()
 export class CommentsRepository implements ICommentsRepository {
   constructor(@Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService) {}

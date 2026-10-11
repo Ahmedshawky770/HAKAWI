@@ -9,7 +9,6 @@ import {
   index,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { PgTableWithColumns, TableConfig } from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
 import { stories } from './stories.schema.ts';

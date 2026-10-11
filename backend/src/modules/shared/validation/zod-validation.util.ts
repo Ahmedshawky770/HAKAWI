@@ -16,15 +16,31 @@ function formatIssues(error: z.ZodError): string {
 }
 
 /**
+ * The parse half of a schema, stated structurally so the parsed type flows in from
+ * the schema the caller passes.
+ *
+ * `z.ZodTypeAny` cannot be used for that: it fixes the schema's generic parameters to
+ * `any`, so `safeParse` hands back `data: any` and every parsed payload would be untyped
+ * at the call site — which is exactly what this file exists to prevent.
+ */
+type SafeParser<TParsed> = {
+  safeParse(
+    value: unknown,
+  ):
+    | { success: true; data: TParsed }
+    | { success: false; error: z.ZodError };
+};
+
+/**
  * Parses untrusted input at a service boundary and converts a schema failure into
  * the HTTP 400 the caller expects. `ValidationPipe` cannot do this for Zod schemas:
  * `tsc` emits `Object` for a type alias, so there is no runtime class for the pipe
  * to read out of `design:paramtypes`.
  */
-export function parseOrThrow<TSchema extends z.ZodTypeAny>(schema: TSchema, value: unknown): z.output<TSchema> {
+export function parseOrThrow<TParsed>(schema: SafeParser<TParsed>, value: unknown): TParsed {
   const result = schema.safeParse(value);
-  if (!result.success) {
-    throw new BadRequestException(formatIssues(result.error));
+  if (result.success) {
+    return result.data;
   }
-  return result.data as z.output<TSchema>;
+  throw new BadRequestException(formatIssues(result.error));
 }

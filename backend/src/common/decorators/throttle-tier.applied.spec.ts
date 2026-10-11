@@ -117,7 +117,8 @@ describe('throttle tiers applied to the real controllers', () => {
       .expect(429);
 
     expect(authService.login).toHaveBeenCalledTimes(THROTTLE_TIERS.auth.limit);
-    expect(blocked.body.message).toContain('ThrottlerException');
+    expect(blocked.body).toMatchObject({ statusCode: 429 });
+    expect(JSON.stringify(blocked.body)).toContain('ThrottlerException');
   });
 
   it('advertises the auth tier limit and the retry window on an allowed login', async () => {

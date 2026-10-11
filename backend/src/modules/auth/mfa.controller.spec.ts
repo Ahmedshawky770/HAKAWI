@@ -1,32 +1,53 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { INestApplication } from '@nestjs/common';
+import type { Server } from 'node:http';
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
-import { MfaService } from './mfa.service.ts';
-import { MfaController } from './mfa.controller.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
+import { MfaService, type MfaSetupResult, type MfaVerificationResult } from './mfa.service.ts';
+import { MfaController } from './mfa.controller.ts';
+
+type MfaServiceMock = {
+  initiateSetup: ReturnType<typeof vi.fn<(userId: string) => Promise<MfaSetupResult>>>;
+  completeSetup: ReturnType<
+    typeof vi.fn<(userId: string, token: string) => Promise<{ backupCodes: string[] }>>
+  >;
+  verifyToken: ReturnType<typeof vi.fn<(userId: string, token: string) => Promise<MfaVerificationResult>>>;
+  disableMfa: ReturnType<typeof vi.fn<(userId: string) => Promise<void>>>;
+  isMfaEnabled: ReturnType<typeof vi.fn<(userId: string) => Promise<boolean>>>;
+  shouldEnforceMfa: ReturnType<typeof vi.fn<(userId: string) => Promise<boolean>>>;
+  getBackupCodesCount: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
+  regenerateBackupCodes: ReturnType<typeof vi.fn<(userId: string) => Promise<string[]>>>;
+  usersRepository: {
+    findById: ReturnType<typeof vi.fn<(userId: string) => Promise<{ mfaEnforcedAt: Date | null } | null>>>;
+  };
+};
+
 describe('MfaController', () => {
-  let app: INestApplication;
-  let mfaService: any;
+  let app: INestApplication<Server>;
+  let mfaService: MfaServiceMock;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     mfaService = {
-      initiateSetup: vi.fn(),
-      completeSetup: vi.fn(),
-      verifyToken: vi.fn(),
-      disableMfa: vi.fn(),
-      isMfaEnabled: vi.fn().mockResolvedValue(false),
-      shouldEnforceMfa: vi.fn().mockResolvedValue(false),
-      getBackupCodesCount: vi.fn().mockResolvedValue(0),
-      regenerateBackupCodes: vi.fn(),
+      initiateSetup: vi.fn<(userId: string) => Promise<MfaSetupResult>>(),
+      completeSetup: vi.fn<(userId: string, token: string) => Promise<{ backupCodes: string[] }>>(),
+      verifyToken: vi.fn<(userId: string, token: string) => Promise<MfaVerificationResult>>(),
+      disableMfa: vi.fn<(userId: string) => Promise<void>>(),
+      isMfaEnabled: vi.fn<(userId: string) => Promise<boolean>>().mockResolvedValue(false),
+      shouldEnforceMfa: vi.fn<(userId: string) => Promise<boolean>>().mockResolvedValue(false),
+      getBackupCodesCount: vi.fn<(userId: string) => Promise<number>>().mockResolvedValue(0),
+      regenerateBackupCodes: vi.fn<(userId: string) => Promise<string[]>>(),
       usersRepository: {
-        findById: vi.fn().mockResolvedValue(null),
+        findById: vi
+          .fn<(userId: string) => Promise<{ mfaEnforcedAt: Date | null } | null>>()
+          .mockResolvedValue(null),
       },
     };
 
@@ -38,11 +59,13 @@ describe('MfaController', () => {
       ],
     })
       .overrideGuard(JwtAuthGuard)
-      .useValue({ canActivate: (ctx: any) => {
-        const req = ctx.switchToHttp().getRequest();
-        req.user = { sub: 'user-123', email: 'test@example.com', accountType: 'reader' };
-        return true;
-      }})
+      .useValue({
+        canActivate: (ctx: ExecutionContext) => {
+          const req = ctx.switchToHttp().getRequest<{ user?: unknown }>();
+          req.user = { sub: 'user-123', email: 'test@example.com', accountType: 'reader' };
+          return true;
+        },
+      })
       .overrideGuard(PermissionsGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -122,7 +145,7 @@ describe('MfaController', () => {
         .send({ password: 'password' })
         .expect(200);
 
-      expect(res.body.message).toContain('MFA disabled');
+      expect((res.body as { message: string }).message).toContain('MFA disabled');
     });
   });
 });

@@ -9,7 +9,6 @@ import type { UserFollowedEvent } from '../../../common/events/social.events.ts'
 import type { ModerationActionTakenEvent } from '../../../common/events/moderation.events.ts';
 import { stories } from '../../../db/schema/stories.schema.ts';
 import { db } from '../../../db/index.ts';
-
 import { BadgesService } from '../badges.service.ts';
 
 /**

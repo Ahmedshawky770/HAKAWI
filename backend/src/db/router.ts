@@ -1,5 +1,7 @@
 import { drizzle, type NodePgDatabase, type NodePgTransaction } from 'drizzle-orm/node-postgres';
+import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import { Pool, PoolConfig } from 'pg';
+
 import * as schema from '../db/schema/index.ts';
 
 /**
@@ -17,7 +19,7 @@ type DrizzleDb = NodePgDatabase<typeof schema> & {
   $client: Pool;
 };
 
-type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Transaction = NodePgTransaction<typeof schema, ExtractTablesWithRelations<typeof schema>>;
 
 let primaryDb: DrizzleDb | null = null;
 let primaryPool: Pool | null = null;
@@ -86,16 +88,20 @@ function getNextReplica(): DrizzleDb | null {
   return db;
 }
 
-function isReadOperation(prop: string | symbol): boolean {
+function isReadOperation(prop: string | symbol): prop is 'select' {
   return typeof prop === 'string' && prop === 'select';
 }
 
-function isWriteOperation(prop: string | symbol): boolean {
+function isWriteOperation(prop: string | symbol): prop is 'insert' | 'update' | 'delete' {
   return typeof prop === 'string' && (prop === 'insert' || prop === 'update' || prop === 'delete');
 }
 
-function isTransactionOperation(prop: string | symbol): boolean {
+function isTransactionOperation(prop: string | symbol): prop is 'transaction' {
   return typeof prop === 'string' && prop === 'transaction';
+}
+
+function readProperty(target: DrizzleDb, prop: string | symbol): unknown {
+  return Reflect.get(target, prop);
 }
 
 /**
@@ -109,33 +115,34 @@ function isTransactionOperation(prop: string | symbol): boolean {
  *   - All other methods → primary
  */
 export const db = new Proxy({} as DrizzleDb, {
-  get(_target, prop) {
-    const primary = getPrimaryDb();
-    const replica = getNextReplica();
+  get(_target: DrizzleDb, prop: string | symbol): unknown {
+    const primary: DrizzleDb = getPrimaryDb();
+    const replica: DrizzleDb | null = getNextReplica();
 
     // SELECT → replica (fallback to primary if no replicas)
     if (isReadOperation(prop)) {
-      const target = replica ?? getPrimaryDb();
-      const key = prop as string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (...args: unknown[]) => (target as any)[key](...args);
+      const target: DrizzleDb = replica ?? primary;
+      return (...args: Parameters<typeof target.select>) => target.select(...args);
     }
 
     // INSERT/UPDATE/DELETE → primary
     if (isWriteOperation(prop)) {
-      const key = prop as string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (...args: unknown[]) => (getPrimaryDb() as any)[key](...args);
+      if (prop === 'insert') {
+        return (...args: Parameters<typeof primary.insert>) => primary.insert(...args);
+      }
+      if (prop === 'update') {
+        return (...args: Parameters<typeof primary.update>) => primary.update(...args);
+      }
+      return (...args: Parameters<typeof primary.delete>) => primary.delete(...args);
     }
 
     // transaction() → primary (never route write transactions to replicas)
     if (isTransactionOperation(prop)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (callback: (tx: Transaction) => Promise<unknown>) => getPrimaryDb().transaction(callback as any);
+      return (callback: (tx: Transaction) => Promise<unknown>) => primary.transaction(callback);
     }
 
     // All other properties (schema, $client, etc.) → primary
-    return (getPrimaryDb() as any)[prop];
+    return readProperty(primary, prop);
   },
 }) as DrizzleDb;
 
@@ -144,10 +151,8 @@ export const db = new Proxy({} as DrizzleDb, {
  * (e.g., post-write read-your-writes, auth checks, financial queries)
  */
 export const dbPrimary = new Proxy({} as DrizzleDb, {
-  get(_target, prop) {
-    const primary = getPrimaryDb();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (primary as any)[prop];
+  get(_target: DrizzleDb, prop: string | symbol): unknown {
+    return readProperty(getPrimaryDb(), prop);
   },
 }) as DrizzleDb;
 
@@ -156,14 +161,8 @@ export const dbPrimary = new Proxy({} as DrizzleDb, {
  * where stale data is acceptable.
  */
 export const dbReplica = new Proxy({} as DrizzleDb, {
-  get(_target, prop) {
-    const replica = getNextReplica();
-    if (replica) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (replica as any)[prop];
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getPrimaryDb() as any)[prop];
+  get(_target: DrizzleDb, prop: string | symbol): unknown {
+    return readProperty(getNextReplica() ?? getPrimaryDb(), prop);
   },
 }) as DrizzleDb;
 

@@ -7,6 +7,13 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
+import {
+  RENTAL_CURRENCY,
+  RENTAL_DURATION_DAYS,
+  isRentalDurationDays,
+  rentalPriceForDays,
+  type BookCheckoutResponse,
+} from '@hakawi/shared-types';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -21,17 +28,8 @@ import type {
 import { PaymentsService } from '../payments/payments.service.ts';
 import type { PaymobCheckoutResponse } from '../payments/types.ts';
 import { RentalsService } from '../rentals/rentals.service.ts';
-import {
-  RENTAL_CURRENCY,
-  RENTAL_DURATION_DAYS,
-  isRentalDurationDays,
-  rentalPriceForDays,
-  type BookCheckoutResponse,
-} from '@hakawi/shared-types';
 import type { ILibraryRepository } from '../library/interfaces/library-repository.interface.ts';
 import { LIBRARY_REPOSITORY } from '../library/interfaces/library-repository.interface.ts';
-import type { Payment } from '../payments/interfaces/payments-repository.interface.ts';
-import type { Rental } from '../rentals/types.ts';
 
 import type { Book, CreateBookInput, UpdateBookInput, BooksListResponse } from './types.ts';
 import { reviveBookDates, toBookResponse } from './types.ts';

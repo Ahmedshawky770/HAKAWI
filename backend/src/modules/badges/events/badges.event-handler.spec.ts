@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { stories } from '../../../db/schema/stories.schema.ts';
-
 import { BadgesService } from '../badges.service.ts';
 
 import { BadgesEventHandler } from './badges.event-handler.ts';

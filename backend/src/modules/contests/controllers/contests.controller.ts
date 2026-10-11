@@ -29,7 +29,6 @@ import {
   ContestPageQueryDto,
   type ContestVotesQuery,
 } from '../dto/contests.dto.ts';
-import type { CreateContestInput } from '../types.ts';
 
 @Controller('contests')
 export class ContestsController {

@@ -1,25 +1,31 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication, ServiceUnavailableException, BadRequestException, NotFoundException } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { PaymentsService } from '../payments.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import type { Payment, Refund } from '../interfaces/payments-repository.interface.ts';
+import type { CreatePaymentInput, Payment, Refund } from '../interfaces/payments-repository.interface.ts';
+import type { CreatePaymentOptions } from '../payments.service.ts';
+import type { PaymentsListResponse, RefundResponse } from '../types.ts';
 
 import { PaymentsController } from './payments.controller.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
+
+type TokenPayload = {
+  sub: string;
+  email: string;
+  accountType: string;
+  adminRole?: string;
+};
 
 async function generateToken(
   sub = 'user-1',
@@ -27,7 +33,7 @@ async function generateToken(
   accountType = 'reader',
   adminRole?: string,
 ): Promise<string> {
-  const payload: Record<string, unknown> = { sub, email, accountType };
+  const payload: TokenPayload = { sub, email, accountType };
   if (adminRole) {
     payload.adminRole = adminRole;
   }
@@ -35,27 +41,71 @@ async function generateToken(
 }
 
 type MockPaymentsService = {
-  createPayment: ReturnType<typeof vi.fn>;
-  findById: ReturnType<typeof vi.fn>;
-  findAll: ReturnType<typeof vi.fn>;
-  updateStatus: ReturnType<typeof vi.fn>;
-  createRefund: ReturnType<typeof vi.fn>;
-  getRefunds: ReturnType<typeof vi.fn>;
+  createPayment: ReturnType<typeof vi.fn<(input: CreatePaymentInput, options: CreatePaymentOptions) => Promise<Payment>>>;
+  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Payment>>>;
+  findAll: ReturnType<
+    typeof vi.fn<
+      (params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<PaymentsListResponse>
+    >
+  >;
+  updateStatus: ReturnType<typeof vi.fn<(id: string, status: string) => Promise<Payment>>>;
+  createRefund: ReturnType<typeof vi.fn<(paymentId: string, amount: number, reason?: string) => Promise<Refund>>>;
+  getRefunds: ReturnType<typeof vi.fn<(paymentId: string) => Promise<RefundResponse[]>>>;
 };
 
+function makePayment(overrides: Partial<Payment> = {}): Payment {
+  return {
+    id: 'payment-1',
+    userId: 'user-1',
+    amount: 100,
+    currency: 'EGP',
+    status: 'processing',
+    paymentMethod: 'paymob',
+    paymobOrderId: null,
+    paymobPaymentId: null,
+    paymobTransactionId: null,
+    paymobPaymentKey: null,
+    paymobIframeUrl: 'https://accept.paymob.com/acceptance/iframes/key-1?merchant_id=merchant-1',
+    paymobAcceptUrl: null,
+    metadata: null,
+    description: null,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function makeRefund(overrides: Partial<Refund> = {}): Refund {
+  return {
+    id: 'refund-1',
+    paymentId: 'payment-1',
+    amount: 100,
+    currency: 'EGP',
+    reason: null,
+    status: 'pending',
+    paymobRefundId: null,
+    metadata: null,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
 describe('PaymentsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let paymentsService: MockPaymentsService;
 
   beforeAll(async () => {
     paymentsService = {
-      createPayment: vi.fn(),
-      findById: vi.fn(),
-      findAll: vi.fn(),
-      updateStatus: vi.fn(),
-      createRefund: vi.fn(),
-      getRefunds: vi.fn(),
+      createPayment: vi.fn<(input: CreatePaymentInput, options: CreatePaymentOptions) => Promise<Payment>>(),
+      findById: vi.fn<(id: string) => Promise<Payment>>(),
+      findAll:
+        vi.fn<
+          (params: { userId?: string; status?: string; page?: number; limit?: number }) => Promise<PaymentsListResponse>
+        >(),
+      updateStatus: vi.fn<(id: string, status: string) => Promise<Payment>>(),
+      createRefund: vi.fn<(paymentId: string, amount: number, reason?: string) => Promise<Refund>>(),
+      getRefunds: vi.fn<(paymentId: string) => Promise<RefundResponse[]>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -84,13 +134,10 @@ describe('PaymentsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -101,19 +148,9 @@ describe('PaymentsController', () => {
     it('should create a payment', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(paymentsService.createPayment).mockResolvedValue({
-        id: 'payment-1',
-        userId: 'user-1',
-        amount: 100,
-        currency: 'EGP',
-        status: 'processing',
-        paymentMethod: 'paymob',
-        paymobIframeUrl: 'https://accept.paymob.com/acceptance/iframes/key-1?merchant_id=merchant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Payment);
+      vi.mocked(paymentsService.createPayment).mockResolvedValue(makePayment());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
         .send({ amount: 100, paymentMethod: 'paymob' })
@@ -125,9 +162,9 @@ describe('PaymentsController', () => {
 
     it('initialises the gateway so the returned payment can actually be paid', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
-      vi.mocked(paymentsService.createPayment).mockResolvedValue({} as Payment);
+      vi.mocked(paymentsService.createPayment).mockResolvedValue(makePayment());
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
         .send({ amount: 100, paymentMethod: 'paymob' })
@@ -143,18 +180,15 @@ describe('PaymentsController', () => {
 
     it('derives the owner from the token and not from the body', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
-      vi.mocked(paymentsService.createPayment).mockResolvedValue({} as Payment);
+      vi.mocked(paymentsService.createPayment).mockResolvedValue(makePayment());
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
         .send({ amount: 100, paymentMethod: 'paymob' })
         .expect(201);
 
-      const calls = vi.mocked(paymentsService.createPayment).mock.calls as unknown as [
-        Record<string, unknown>,
-        unknown,
-      ][];
+      const calls = vi.mocked(paymentsService.createPayment).mock.calls;
       expect(calls[0]?.[0]).toMatchObject({ userId: 'user-1' });
       // The owner comes from the JWT subject; nothing in the body can name somebody else's account.
       expect(calls[0]?.[0]).not.toHaveProperty('userId', 'someone-else');
@@ -165,18 +199,9 @@ describe('PaymentsController', () => {
     it('should return a payment by id', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(paymentsService.findById).mockResolvedValue({
-        id: 'payment-1',
-        userId: 'user-1',
-        amount: 100,
-        currency: 'EGP',
-        status: 'pending',
-        paymentMethod: 'paymob',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Payment);
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment({ status: 'pending' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/payments/payment-1')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -197,7 +222,7 @@ describe('PaymentsController', () => {
         limit: 20,
       });
 
-      const res = await request(httpServer).get('/payments').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await request(app.getHttpServer()).get('/payments').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('payments');
       expect(res.body).toHaveProperty('total', 0);
@@ -209,14 +234,9 @@ describe('PaymentsController', () => {
     it('should update payment status as admin', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'admin', 'super_admin');
 
-      vi.mocked(paymentsService.updateStatus).mockResolvedValue({
-        id: 'payment-1',
-        status: 'completed',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as unknown as Payment);
+      vi.mocked(paymentsService.updateStatus).mockResolvedValue(makePayment({ status: 'completed' }));
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/payments/payment-1/status')
         .set('Authorization', `Bearer ${token}`)
         .send({ status: 'completed' })
@@ -230,22 +250,14 @@ describe('PaymentsController', () => {
   describe('POST /payments/:id/refund', () => {
     const adminToken = (): Promise<string> => generateToken('user-1', 'test@example.com', 'admin', 'super_admin');
 
-    const ownedPayment = { id: 'payment-1', userId: 'user-1' } as Payment;
-
     beforeEach(() => {
-      vi.mocked(paymentsService.findById).mockResolvedValue(ownedPayment);
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment());
     });
 
     it('should create a refund as admin', async () => {
-      vi.mocked(paymentsService.createRefund).mockResolvedValue({
-        id: 'refund-1',
-        paymentId: 'payment-1',
-        amount: 100,
-        status: 'pending',
-        createdAt: new Date(),
-      } as unknown as Refund);
+      vi.mocked(paymentsService.createRefund).mockResolvedValue(makeRefund());
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .send({ amount: 100 })
@@ -263,7 +275,7 @@ describe('PaymentsController', () => {
         new ServiceUnavailableException('The payment gateway refused the refund, so it was not submitted: HTTP 422'),
       );
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .send({ amount: 100 })
@@ -279,7 +291,7 @@ describe('PaymentsController', () => {
         ),
       );
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .send({ amount: 700 })
@@ -293,7 +305,7 @@ describe('PaymentsController', () => {
         new BadRequestException('The payment cannot be refunded because it has no Paymob transaction id'),
       );
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .send({ amount: 100 })
@@ -303,7 +315,7 @@ describe('PaymentsController', () => {
     it('answers 404 for a payment that does not exist', async () => {
       vi.mocked(paymentsService.findById).mockRejectedValue(new NotFoundException('Payment not found'));
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .send({ amount: 100 })
@@ -311,9 +323,9 @@ describe('PaymentsController', () => {
     });
 
     it('answers 403 for a payment owned by somebody else', async () => {
-      vi.mocked(paymentsService.findById).mockResolvedValue({ id: 'payment-1', userId: 'someone-else' } as Payment);
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment({ userId: 'someone-else' }));
 
-      await request(httpServer)
+      await request(app.getHttpServer())
         .post('/payments/payment-1/refund')
         .set('Authorization', `Bearer ${await generateToken('user-1', 'test@example.com', 'reader')}`)
         .send({ amount: 100 })
@@ -329,7 +341,7 @@ describe('PaymentsController', () => {
 
       vi.mocked(paymentsService.getRefunds).mockResolvedValue([]);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/payments/payment-1/refunds')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);

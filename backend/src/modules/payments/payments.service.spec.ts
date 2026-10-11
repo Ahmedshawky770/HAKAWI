@@ -25,10 +25,6 @@ import {
   RefundablePaymentNotFoundError,
 } from './interfaces/payments-repository.interface.ts';
 
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-
 /**
  * `crypto.timingSafeEqual` cannot be spied on directly: an ES module namespace is frozen, so
  * `vi.spyOn` throws. It is wrapped at the module boundary instead, delegating to the real

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+
 import { DLQService, type DLQEvent } from './dlq.service.ts';
 import { EventSchemaRegistry, type ValidationResult } from './event-schema-registry.ts';
 import { EventValidatorService } from './event-validator.service.ts';

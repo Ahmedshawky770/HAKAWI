@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import type { ValkeyService } from '../services/valkey.service.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
 import { CircuitBreakerService, CircuitBreakerState } from './circuit-breaker.service.ts';
-
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockValkeyService = Partial<ValkeyService>;
 
@@ -90,7 +89,8 @@ describe('CircuitBreakerService', () => {
         totalSuccesses: 0,
         rejectedCalls: 0,
       };
-      vi.mocked(valkeyService.get!).mockResolvedValueOnce(JSON.stringify(mockState));
+      const valkeyGet = requireValue(valkeyService.get, 'valkeyService.get');
+      vi.mocked(valkeyGet).mockResolvedValueOnce(JSON.stringify(mockState));
 
       const successFn = vi.fn().mockResolvedValue('recovered');
       await circuitBreaker.execute('test-recovery-half', successFn);

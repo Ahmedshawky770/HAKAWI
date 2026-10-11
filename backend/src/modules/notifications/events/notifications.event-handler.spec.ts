@@ -19,6 +19,7 @@ import { COMMENTS_REPOSITORY } from '../../comments/interfaces/comments-reposito
 import type { IStoriesRepository, Story } from '../../stories/interfaces/stories-repository.interface.ts';
 import { STORIES_REPOSITORY } from '../../stories/interfaces/stories-repository.interface.ts';
 import { NotificationsService } from '../notifications.service.ts';
+import { requireValue } from '../../../test/helpers/require-value.ts';
 
 import { NotificationsEventHandler } from './notifications.event-handler.ts';
 
@@ -31,8 +32,6 @@ import { NotificationsEventHandler } from './notifications.event-handler.ts';
  * observable through the preference gate inside `create`. A mocked service would assert the input it
  * was handed and nothing else — which is precisely what hid the defects.
  */
-
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type CreatedRow = { userId: string; type: string; title: string; message: string; data?: string };
 
@@ -211,8 +210,8 @@ describe('NotificationsEventHandler', () => {
       await handler.handleCommentReacted({ userId: ACTOR_ID, commentId: COMMENT_ID, reactionType: 'like' });
 
       expect(created).toHaveLength(1);
-      expect(created[0]!.userId).toBe(AUTHOR_ID);
-      expect(created[0]!.type).toBe('comment_reaction');
+      expect(requireValue(created[0], 'created notification').userId).toBe(AUTHOR_ID);
+      expect(requireValue(created[0], 'created notification').type).toBe('comment_reaction');
     });
 
     // The C3 regression. With `story_reaction` here the gate consulted `storyReactions`, so a user who

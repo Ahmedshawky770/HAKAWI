@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
-import { ModerationService } from './moderation.service.ts';
 
+import { ModerationService } from './moderation.service.ts';
 import {
   DEFAULT_ESCALATION_SWEEP_INTERVAL_MS,
   EscalationScheduler,

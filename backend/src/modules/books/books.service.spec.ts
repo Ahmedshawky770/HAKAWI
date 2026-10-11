@@ -1,21 +1,17 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { PaymentsService } from '../payments/payments.service.ts';
-import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
 import type { ILibraryRepository } from '../library/interfaces/library-repository.interface.ts';
 import { RentalsService } from '../rentals/rentals.service.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 
 import type { Book, CreateBookInput, UpdateBookInput } from './types.ts';
 import { BooksService } from './books.service.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 type MockBooksRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Book | null>>>;
@@ -681,20 +677,6 @@ describe('BooksService', () => {
   describe('rent', () => {
     it('should rent a book successfully', async () => {
       const rentableBook = { ...mockBook, isFree: false, ownerId: 'other-author' };
-      const createdRental = {
-        id: 'rental-123',
-        userId: 'user-123',
-        bookId: 'book-123',
-        status: 'active',
-        startDate: new Date(),
-        endDate: new Date(),
-        extendedCount: 0,
-        maxExtensions: 3,
-        returnedAt: null,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
 
       vi.mocked(booksRepository.findById).mockResolvedValue(rentableBook);
       vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);
@@ -712,7 +694,10 @@ describe('BooksService', () => {
       const result = await booksService.rent('user-123', 'book-123', 7);
 
       expect(paymentsService.paymobInitializePayment).toHaveBeenCalledTimes(1);
-      const [, amount, currency, metadata] = vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0]!;
+      const [, amount, currency, metadata] = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
 
       // 7 days at the one shared daily rate, from `@hakawi/shared-types` (Principle #9).
       expect(amount).toBe(rentalPriceForDays(7));

@@ -2,7 +2,6 @@ import request from 'supertest';
 
 import { createTestContext } from '../src/test/helpers/test-context.ts';
 import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts';
-import type { NotificationsListResponse, CreatedResource } from '../src/test/helpers/test-response-types.ts';
 
 /**
  * THE PHASE-3 NOTIFICATION WRITE PATH, END TO END, OVER HTTP.
@@ -178,8 +177,8 @@ describe('Phase 3 Notification Write Path', () => {
       .get('/notifications')
       .set('Authorization', `Bearer ${user.accessToken}`)
       .expect(200);
-    const body = response.body as NotificationsListResponse;
-    return body.notifications as NotificationRow[];
+    const body = response.body as { notifications: NotificationRow[] };
+    return body.notifications;
   };
 
   const awaitNotification = async (user: TestUser, type: string): Promise<NotificationRow> => {

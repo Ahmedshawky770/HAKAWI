@@ -14,8 +14,6 @@ import { JwtHelper } from '../../../common/utils/jwt.util.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { MessagesService } from '../messages.service.ts';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-non-null-assertion */
-/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
 interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
@@ -41,8 +39,9 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   async handleConnection(client: AuthenticatedSocket): Promise<void> {
     try {
+      const handshakeAuth: Record<string, string | undefined> = client.handshake.auth;
       const token =
-        client.handshake.auth.token || (client.handshake.headers.authorization as string | undefined)?.split(' ')[1];
+        handshakeAuth.token || (client.handshake.headers.authorization as string | undefined)?.split(' ')[1];
       if (!token) {
         this.logger.warn('WebSocket connection rejected: missing token', 'MessagesGateway');
         client.disconnect();
@@ -52,10 +51,14 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       const payload = this.jwtHelper.verifyAccessToken(token);
       client.userId = payload.sub;
 
-      if (!this.connectedUsers.has(payload.sub)) {
-        this.connectedUsers.set(payload.sub, new Set<string>());
+      // The set is created here rather than read back out of the map, so the socket id is added to
+      // the set that is stored for this user without an assertion that the entry exists.
+      let userSockets = this.connectedUsers.get(payload.sub);
+      if (!userSockets) {
+        userSockets = new Set<string>();
+        this.connectedUsers.set(payload.sub, userSockets);
       }
-      this.connectedUsers.get(payload.sub)!.add(client.id);
+      userSockets.add(client.id);
 
       if (this.server) {
         this.server.emit('user.online', { userId: payload.sub });

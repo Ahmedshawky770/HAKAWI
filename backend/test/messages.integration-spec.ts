@@ -5,7 +5,6 @@ import type { TestContext, TestUser } from '../src/test/helpers/test-context.ts'
 import type {
   ConversationResponse,
   ConversationsListResponse,
-  MessageResponse,
   MessagesListResponse,
 } from '../src/test/helpers/test-response-types.ts';
 
@@ -83,7 +82,7 @@ describe('Messages Integration', () => {
         .send({ participantIds: [recipient.id] })
         .expect(201);
 
-      const conversationId: string = conversationRes.body.id;
+      const conversationId = (conversationRes.body as ConversationResponse).id;
 
       const empty = await request(context.httpServer)
         .get(`/messages/conversations/${conversationId}/messages`)

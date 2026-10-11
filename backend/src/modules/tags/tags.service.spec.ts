@@ -4,11 +4,7 @@ import { NotFoundException, ConflictException } from '@nestjs/common';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 import { TagsService } from './tags.service.ts';
-import type { ITagsRepository, Tag, CreateTagInput, UpdateTagInput } from './interfaces/tags-repository.interface.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
+import type { Tag, CreateTagInput, UpdateTagInput } from './interfaces/tags-repository.interface.ts';
 
 type MockTagsRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Tag | null>>>;

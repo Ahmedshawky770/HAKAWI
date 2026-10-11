@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import geoip from 'geoip-lite';
 
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+
 import { GeoIpService } from './geo-ip.service.ts';
 
 vi.mock('geoip-lite', () => ({

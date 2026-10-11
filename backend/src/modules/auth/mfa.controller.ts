@@ -15,14 +15,13 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
 import type { AuthRequest } from '../../common/types/auth-request.interface.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 import { MfaService } from './mfa.service.ts';
-import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import {
   MfaSetupResponseDto,
   MfaVerifyDto,
   MfaVerifyResponseDto,
-  MfaDisableDto,
   MfaStatusDto,
   MfaBackupCodesResponseDto,
 } from './dto/mfa.dto.ts';
@@ -77,7 +76,7 @@ export class MfaController {
     @Req() req: AuthRequest,
     @Body() dto: MfaVerifyDto,
   ): Promise<MfaVerifyResponseDto> {
-    const result = await this.mfaService.completeSetup(req.user.sub, dto.token);
+    await this.mfaService.completeSetup(req.user.sub, dto.token);
     return { verified: true, backupCodeUsed: false };
   }
 
@@ -105,12 +104,11 @@ export class MfaController {
 
   @Delete()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Disable MFA (requires password confirmation in body)' })
+  @ApiOperation({ summary: 'Disable MFA for the authenticated user' })
   @ApiResponse({ status: 200, description: 'MFA disabled' })
   @ApiResponse({ status: 400, description: 'MFA not enabled' })
   async disableMfa(
     @Req() req: AuthRequest,
-    @Body() dto: MfaDisableDto,
   ): Promise<{ message: string }> {
     await this.mfaService.disableMfa(req.user.sub);
     return { message: 'MFA disabled successfully' };

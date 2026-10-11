@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 
 import { categories } from '../../../db/schema/stories.schema.ts';
-import { installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
+import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { CategoriesRepository } from './categories.repository.ts';
 
@@ -45,7 +45,7 @@ describe('CategoriesRepository', () => {
   let control: MockDbControl;
 
   /** The `where` clause the nth query built in this test was given. */
-  const whereOf = (index = 0): unknown => firstArgsOf(chains[index]!, 'where')?.[0];
+  const whereOf = (index = 0): unknown => firstArgsOf(chainAt(chains, index), 'where')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,9 +60,9 @@ describe('CategoriesRepository', () => {
 
       await expect(repository.findById(CATEGORY_ID)).resolves.toMatchObject({ id: CATEGORY_ID, name: NAME });
 
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([categories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([categories]);
       expect(whereOf()).toEqual(eq(categories.id, CATEGORY_ID));
-      expect(firstArgsOf(chains[0]!, 'limit')).toEqual([1]);
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
     });
 
     it('returns null when the select yields no row', async () => {
@@ -94,8 +94,8 @@ describe('CategoriesRepository', () => {
       control.queue([{ id: CATEGORY_ID, name: NAME, sortOrder: 2 }]);
 
       await expect(repository.findAll()).resolves.toEqual([{ id: CATEGORY_ID, name: NAME, sortOrder: 2 }]);
-      expect(firstArgsOf(chains[0]!, 'from')).toEqual([categories]);
-      expect(firstArgsOf(chains[0]!, 'orderBy')).toEqual([categories.sortOrder]);
+      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([categories]);
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([categories.sortOrder]);
     });
   });
 
@@ -107,7 +107,7 @@ describe('CategoriesRepository', () => {
 
       expect(created).toMatchObject({ id: CATEGORY_ID });
       expect(db.insert).toHaveBeenCalledWith(categories);
-      expect(firstArgsOf(chains[0]!, 'values')).toEqual([
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([
         { name: NAME, slug: SLUG, description: 'Old tales', sortOrder: 3 },
       ]);
     });
@@ -120,7 +120,7 @@ describe('CategoriesRepository', () => {
       const updated = await repository.update(CATEGORY_ID, { name: 'Folk Tales' });
 
       expect(updated).toMatchObject({ name: 'Folk Tales' });
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toMatchObject({ name: 'Folk Tales' });
       expect(patch.updatedAt).toBeInstanceOf(Date);
       expect(whereOf()).toEqual(eq(categories.id, CATEGORY_ID));
@@ -134,7 +134,7 @@ describe('CategoriesRepository', () => {
 
       await repository.softDelete(CATEGORY_ID);
 
-      const [patch] = firstArgsOf(chains[0]!, 'set') as [Record<string, unknown>];
+      const [patch] = firstArgsOf(chainAt(chains, 0), 'set') as [Record<string, unknown>];
       expect(patch).toEqual({ isActive: false });
       expect(whereOf()).toEqual(eq(categories.id, CATEGORY_ID));
       expect(db.delete).not.toHaveBeenCalled();

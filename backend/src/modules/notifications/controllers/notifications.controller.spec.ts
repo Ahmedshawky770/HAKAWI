@@ -1,22 +1,21 @@
-import type { Server } from 'http';
+import type { Server } from 'node:http';
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ValkeyService } from '../../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { NotificationsService } from '../notifications.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import type { NotificationPreferencesResponseDto } from '../interfaces/notifications-repository.interface.ts';
+import type { NotificationPreferencesDto } from '../dto/preferences.dto.ts';
+import type { Notification, NotificationResponse } from '../types.ts';
 
 import { NotificationsController } from './notifications.controller.ts';
-
-// vi.mocked() returns `any` when the mock property is typed ReturnType<typeof vi.fn> (= any).
-// This is a vitest typing limitation — mocks are correctly typed and tests pass.
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
 
@@ -24,32 +23,52 @@ async function generateToken(sub = 'user-1', email = 'test@example.com', account
   return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
 }
 
+type NotificationListResponse = {
+  notifications: NotificationResponse[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+const ALL_PREFERENCES: NotificationPreferencesResponseDto = {
+  emailEnabled: true,
+  pushEnabled: true,
+  storyReactions: true,
+  comments: true,
+  follows: true,
+  mentions: true,
+  messages: true,
+  system: true,
+};
+
 type MockNotificationsService = {
-  findByUser: ReturnType<typeof vi.fn>;
-  findUnread: ReturnType<typeof vi.fn>;
-  countUnread: ReturnType<typeof vi.fn>;
-  markAsRead: ReturnType<typeof vi.fn>;
-  markAllAsRead: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
-  getPreferences: ReturnType<typeof vi.fn>;
-  updatePreferences: ReturnType<typeof vi.fn>;
+  findByUser: ReturnType<typeof vi.fn<(userId: string, page: number, limit: number) => Promise<NotificationListResponse>>>;
+  findUnread: ReturnType<typeof vi.fn<(userId: string, limit: number) => Promise<NotificationResponse[]>>>;
+  countUnread: ReturnType<typeof vi.fn<(userId: string) => Promise<number>>>;
+  markAsRead: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Notification>>>;
+  markAllAsRead: ReturnType<typeof vi.fn<(userId: string) => Promise<void>>>;
+  delete: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<void>>>;
+  getPreferences: ReturnType<typeof vi.fn<(userId: string) => Promise<NotificationPreferencesResponseDto>>>;
+  updatePreferences: ReturnType<
+    typeof vi.fn<(userId: string, dto: NotificationPreferencesDto) => Promise<NotificationPreferencesResponseDto>>
+  >;
 };
 
 describe('NotificationsController', () => {
-  let app: INestApplication;
-  let httpServer: Server;
+  let app: INestApplication<Server>;
   let notificationsService: MockNotificationsService;
 
   beforeAll(async () => {
     notificationsService = {
-      findByUser: vi.fn(),
-      findUnread: vi.fn(),
-      countUnread: vi.fn(),
-      markAsRead: vi.fn(),
-      markAllAsRead: vi.fn(),
-      delete: vi.fn(),
-      getPreferences: vi.fn(),
-      updatePreferences: vi.fn(),
+      findByUser: vi.fn<(userId: string, page: number, limit: number) => Promise<NotificationListResponse>>(),
+      findUnread: vi.fn<(userId: string, limit: number) => Promise<NotificationResponse[]>>(),
+      countUnread: vi.fn<(userId: string) => Promise<number>>(),
+      markAsRead: vi.fn<(id: string, userId: string) => Promise<Notification>>(),
+      markAllAsRead: vi.fn<(userId: string) => Promise<void>>(),
+      delete: vi.fn<(id: string, userId: string) => Promise<void>>(),
+      getPreferences: vi.fn<(userId: string) => Promise<NotificationPreferencesResponseDto>>(),
+      updatePreferences:
+        vi.fn<(userId: string, dto: NotificationPreferencesDto) => Promise<NotificationPreferencesResponseDto>>(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -78,13 +97,10 @@ describe('NotificationsController', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    httpServer = app.getHttpServer() as Server;
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
   afterEach(() => {
@@ -98,9 +114,11 @@ describe('NotificationsController', () => {
       vi.mocked(notificationsService.findByUser).mockResolvedValue({
         notifications: [],
         total: 0,
+        page: 1,
+        limit: 20,
       });
 
-      const res = await request(httpServer).get('/notifications').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await request(app.getHttpServer()).get('/notifications').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toHaveProperty('notifications');
       expect(res.body).toHaveProperty('total', 0);
@@ -114,7 +132,7 @@ describe('NotificationsController', () => {
 
       vi.mocked(notificationsService.findUnread).mockResolvedValue([]);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/notifications/unread')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -133,7 +151,7 @@ describe('NotificationsController', () => {
 
       vi.mocked(notificationsService.countUnread).mockResolvedValue(3);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/notifications/unread-count')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -145,7 +163,7 @@ describe('NotificationsController', () => {
     it('should no longer resolve the removed unread/count spelling', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      await request(httpServer).get('/notifications/unread/count').set('Authorization', `Bearer ${token}`).expect(404);
+      await request(app.getHttpServer()).get('/notifications/unread/count').set('Authorization', `Bearer ${token}`).expect(404);
 
       expect(notificationsService.countUnread).not.toHaveBeenCalled();
     });
@@ -155,18 +173,9 @@ describe('NotificationsController', () => {
     it('should return notification preferences', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(notificationsService.getPreferences).mockResolvedValue({
-        emailEnabled: true,
-        pushEnabled: true,
-        storyReactions: true,
-        comments: true,
-        follows: true,
-        mentions: true,
-        messages: true,
-        system: true,
-      });
+      vi.mocked(notificationsService.getPreferences).mockResolvedValue(ALL_PREFERENCES);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .get('/notifications/preferences')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -181,29 +190,15 @@ describe('NotificationsController', () => {
     it('should update notification preferences', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(notificationsService.getPreferences).mockResolvedValue({
-        emailEnabled: true,
-        pushEnabled: true,
-        storyReactions: true,
-        comments: true,
-        follows: true,
-        mentions: true,
-        messages: true,
-        system: true,
-      });
+      vi.mocked(notificationsService.getPreferences).mockResolvedValue(ALL_PREFERENCES);
 
       vi.mocked(notificationsService.updatePreferences).mockResolvedValue({
+        ...ALL_PREFERENCES,
         emailEnabled: false,
-        pushEnabled: true,
-        storyReactions: true,
         comments: false,
-        follows: true,
-        mentions: true,
-        messages: true,
-        system: true,
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/notifications/preferences')
         .set('Authorization', `Bearer ${token}`)
         .send({ emailEnabled: false, comments: false })
@@ -234,7 +229,7 @@ describe('NotificationsController', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/notifications/notification-1/read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -253,7 +248,7 @@ describe('NotificationsController', () => {
 
       vi.mocked(notificationsService.markAllAsRead).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .patch('/notifications/read-all')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
@@ -265,7 +260,7 @@ describe('NotificationsController', () => {
     it('should no longer answer the same path under PUT', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      await request(httpServer).put('/notifications/read-all').set('Authorization', `Bearer ${token}`).expect(404);
+      await request(app.getHttpServer()).put('/notifications/read-all').set('Authorization', `Bearer ${token}`).expect(404);
 
       expect(notificationsService.markAllAsRead).not.toHaveBeenCalled();
     });
@@ -277,7 +272,7 @@ describe('NotificationsController', () => {
 
       vi.mocked(notificationsService.delete).mockResolvedValue(undefined);
 
-      const res = await request(httpServer)
+      const res = await request(app.getHttpServer())
         .delete('/notifications/notification-1')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
