@@ -114,24 +114,80 @@ redeploying.
 | **Event DLQ depth** | ⚠️ A DLQ exists (`dlq.service.ts`) but there is no metric or alert on its size |
 
 ### Metrics that exist in total
-- `GET /api/v1/metrics/cache` — cache hits, misses, hit rate
+- `GET /api/v1/metrics` — the Prometheus text exposition body; the only route that returns one
+- `GET /api/v1/metrics/cache` — cache hits, misses, hit rate (super-admin guarded)
+- `GET /api/v1/metrics/degradation` — rate-limiter and WAF-blocklist fallback health (super-admin guarded)
 - `X-RateLimit-*` and `X-Waf-*` response headers
 - Structured Winston logs with correlation IDs
 - Sentry for unhandled errors
 
-The metric surface is exactly two endpoints, both mounted behind `JwtAuthGuard` + `RolesGuard` for
-the super-admin role (`backend/src/common/observability/metrics.controller.ts`):
-`GET /api/v1/metrics/cache` (cache hits, misses, hit rate) and `GET /api/v1/metrics/degradation`
-(rate-limiter and WAF-blocklist fallback health, so a fail-open episode is alertable). There is no
-Prometheus `/metrics` endpoint, no metrics registry and no exporter — the payloads are JSON.
+The observability surface is **three routes**, and only one of them is a Prometheus endpoint.
+`GET /api/v1/metrics` is public and unauthenticated and serves the exposition format
+(`text/plain; version=0.0.4`) from `backend/src/common/observability/prometheus.controller.ts`. The
+other two are JSON, both behind `JwtAuthGuard` + `RolesGuard` for the super-admin role
+(`backend/src/common/observability/metrics.controller.ts:73,80`): `GET /api/v1/metrics/cache` (cache
+hits, misses, hit rate) and `GET /api/v1/metrics/degradation` (rate-limiter and WAF-blocklist
+fallback health, so a fail-open episode is alertable).
+
+**Why the scrape route is public and the other two are not.** A scrape is an unauthenticated `GET`
+from the collector with no bearer token, so a credential-gated scrape would be a scrape that never
+happened. That is a deliberate trade, recorded in `prometheus.controller.ts`: the body discloses
+traffic shape, process uptime and heap size, and deliberately contains nothing request-scoped —
+the counter records the route TEMPLATE, not the URL (`common/interceptors/metrics.interceptor.ts`),
+so its cardinality is bounded by the number of routes.
+
+> **This section previously said "There is no Prometheus /metrics endpoint, no metrics registry and
+> no exporter", and that was false.** The zero-dependency registry
+> `backend/src/common/observability/prometheus-registry.ts` exists precisely because `prom-client`
+> is not installed and cannot be (the npm registry is unreachable); the file's own header records
+> that as the reason it is hand-written. The sample interval timer is
+> `default-metrics.collector.ts`, the counter is recorded by the global `MetricsInterceptor`, all
+> three are provided by `common.module.ts`, and `monitoring/prometheus/prometheus.yml` scrapes the
+> path with `job_name: 'hakawi-backend'`. A claim of "no metrics" written from the absence of a
+> dependency is a claim about a framework rather than about the code (Principle #4 — the problem
+> and the fix both have to be written down where the next reader looks).
+
+### What the exposition body actually contains
+
+Six series, all verified against the registry declarations:
+
+| Metric | Type | Labels | Recorded by |
+| --- | --- | --- | --- |
+| `http_requests_total` | counter | `method`, `route`, `status` | `common/interceptors/metrics.interceptor.ts` |
+| `process_uptime_seconds` | gauge | — | `default-metrics.collector.ts` |
+| `process_resident_memory_bytes` | gauge | — | `default-metrics.collector.ts` |
+| `process_heap_used_bytes` | gauge | — | `default-metrics.collector.ts` |
+| `process_heap_total_bytes` | gauge | — | `default-metrics.collector.ts` |
+| `nodejs_eventloop_lag_seconds` | gauge | — | `default-metrics.collector.ts` (sampled every 5s) |
+
+`http_requests_total` is the series that makes an error-rate alert possible at all, and it is the
+one the app itself owns. Everything else in the rules file reads exporter series (`pg_*`,
+`redis_*`, `node_*`) or the scrape target's `up`. In production the same path and port are scraped
+through the Helm pod annotations (`prometheus.io/path: /api/v1/metrics`,
+`prometheus.io/port: "3001"`), so a rule written for the dev stack is true in the other.
 
 ⚠️ **Alerting is defined, not deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` holds
-**20 rules** (BackendDown, BackendHighErrorRate, BackendHighLatency, PostgreSQLDown,
-PostgreSQLConnectionsHigh, PostgreSQLReplicationLag, ValkeyDown, ValkeyMemoryHigh,
-ValkeyHitRateLow, WAFHighViolationRate, AuthFailureSpike, PaymentFailureRateHigh, …), alongside
-`monitoring/prometheus/prometheus.yml`, `monitoring/alertmanager/alertmanager.yml` and the Grafana
-dashboard `monitoring/grafana/dashboards/hakawi-overview.json`. ⛔ Nothing deploys them — there is no
-cluster, so no rule is ever evaluated.
+**14 rules** across three groups — `hakawi-backend` (BackendDown, BackendHighErrorRate,
+BackendEventLoopLagHigh, PostgreSQLDown, PostgreSQLConnectionsHigh, PostgreSQLReplicationLag,
+ValkeyDown, ValkeyMemoryHigh, ValkeyHitRateLow), `hakawi-infrastructure` (HostCPUHigh,
+HostMemoryHigh, HostDiskHigh, HostNetworkReceiveErrors) and `hakawi-deployment` (DeploymentStale) —
+alongside `monitoring/prometheus/prometheus.yml`, `monitoring/alertmanager/alertmanager.yml` and the
+Grafana dashboard `monitoring/grafana/dashboards/hakawi-overview.json`. ⛔ Nothing deploys them —
+there is no cluster, so no rule is ever evaluated.
+
+> **Why the count is 14 and not 20, and why the removed names are not listed here.** Seven rules
+> were deleted because the series they named are not emitted by anything:
+> `WAFHighViolationRate` (`waf_violations_total`), `WAFIPBlockedSurge` (`waf_blocked_ips_total`),
+> `AuthFailureSpike` (`auth_failures_total`), `RateLimitExhausted` (`rate_limit_exceeded_total`),
+> `PaymentFailureRateHigh` (`payments_failed_total`, `payments_total`), `EmailQueueBacklog`
+> (`email_queue_size`) and `PaymentWebhookFailures` (`payments_webhook_failures_total`).
+> `BackendHighLatency` was replaced by `BackendEventLoopLagHigh`, which reads a gauge the process
+> really publishes. The rejected alternative was to keep them as documentation of intent — a rule
+> on a series that is never created is not weak coverage, it is none, because the expression
+> evaluates to empty and stays empty: the condition could be true for weeks with nothing to show,
+> and the file reads as guarding paths it does not guard (Principle #15). The full rationale, with
+> the grep that proves each series is absent, is the comment block at the top of the rules file
+> itself, which is where it is true; this row only carries the count.
 
 ---
 

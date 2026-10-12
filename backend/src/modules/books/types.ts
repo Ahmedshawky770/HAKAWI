@@ -19,9 +19,11 @@ export type Book = {
    * Every write guard reads this and NOT `author`. It is `null` rather than absent so "unowned" is a
    * state the code must handle rather than a value it can trip over — see `BooksService.assertOwnership`.
    *
-   * IT IS DELIBERATELY ABSENT FROM `BookResponse` AND `BookRecord`. Those are the public and admin
-   * shapes, and `ownerId` is an ACCOUNT id: publishing it would tell any reader which account owns
-   * which book on a platform with many authors. It is an internal authorization fact, not content.
+   * IT IS SURFACED ON `BookResponse` AND STILL ABSENT FROM `BookRecord`. `toBookResponse` used to
+   * omit it, which left the client with no owner id to compare and forced the book page to gate its
+   * controls on the display name — dead for every caller. `BookResponse` now carries it so the
+   * client can ask "is this mine" against a real id. `BookRecord` is the write/admin shape; no
+   * client decision reads an id from it, so it stays without one.
    */
   ownerId: string | null;
   description: string | null;
@@ -83,6 +85,12 @@ export function toBookResponse(book: Book): BookResponse {
     id: book.id,
     title: book.title,
     author: book.author,
+    // The owner id the client compares against the signed-in user. `?? ""` is the bridge from the
+    // repository's `string | null` (the Drizzle column is still declared nullable) to the shared
+    // contract's non-null `string`; migration 0028 made it NOT NULL, so a null here is a pre-0021
+    // row that was never backfilled. An empty owner matches no real user, so such a book hides the
+    // owner controls instead of showing them to the wrong account — the safe direction.
+    ownerId: book.ownerId ?? "",
     description: book.description,
     coverImage: book.coverImage,
     isbn: book.isbn,

@@ -145,5 +145,48 @@ describe('GeoIpService', () => {
       const service = new GeoIpService(logger as unknown as WinstonLoggerService, ['US']);
       expect(service.lookupCountryCode('172.17.0.1')).toBeNull();
     });
+
+    // WHY THESE FOUR EXIST. `isPrivateIp` is a branch-per-range guard, and the per-path coverage
+    // ratchet for `src/common/waf/**` (backend/vitest.config.ts, branches 94) is the difference
+    // between the ranges the spec actually exercises and the ranges the code checks. The suite
+    // covered the positive arm of 172.16/12, `127.`, `169.254.` and `fe80:` and never the
+    // negative one, so a refactor that dropped a range — or widened 172.16/12 to the whole 172/8
+    // — would have passed every existing test. Each case below pins one arm of one branch.
+    it('should treat 172.200.0.1 as PUBLIC, because 16-31 is the whole 172.16/12 block', () => {
+      mockGeoip.lookup.mockReturnValue({ country: 'US' });
+      const service = new GeoIpService(logger as unknown as WinstonLoggerService, ['US']);
+      mockGeoip.lookup.mockClear();
+
+      expect(service.lookupCountryCode('172.200.0.1')).toBe('US');
+      expect(mockGeoip.lookup).toHaveBeenCalledWith('172.200.0.1');
+    });
+
+    it('should treat 127.0.0.1 itself as private, not only 127.0.0.2+', () => {
+      const service = new GeoIpService(logger as unknown as WinstonLoggerService, ['US']);
+      mockGeoip.lookup.mockClear();
+
+      expect(service.lookupCountryCode('127.0.0.1')).toBeNull();
+      expect(mockGeoip.lookup).not.toHaveBeenCalled();
+      // isBlocked must not consult GeoIP for it either: a loopback caller is never geo-blocked.
+      expect(service.isBlocked('127.0.0.1')).toBe(false);
+    });
+
+    it('should treat 169.254.x (link-local) as private', () => {
+      const service = new GeoIpService(logger as unknown as WinstonLoggerService, ['US']);
+      mockGeoip.lookup.mockClear();
+
+      expect(service.lookupCountryCode('169.254.1.1')).toBeNull();
+      expect(service.isBlocked('169.254.1.1')).toBe(false);
+      expect(mockGeoip.lookup).not.toHaveBeenCalled();
+    });
+
+    it('should treat fe80:: (IPv6 link-local) as private', () => {
+      const service = new GeoIpService(logger as unknown as WinstonLoggerService, ['US']);
+      mockGeoip.lookup.mockClear();
+
+      expect(service.lookupCountryCode('fe80::1')).toBeNull();
+      expect(service.isBlocked('fe80::1')).toBe(false);
+      expect(mockGeoip.lookup).not.toHaveBeenCalled();
+    });
   });
 });

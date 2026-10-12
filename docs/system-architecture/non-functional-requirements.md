@@ -777,7 +777,7 @@ is replaced by a status-per-claim table.
 | Response time < 200ms p95 | ⛔ **Still unverified by a release run** | `benchmarks/benchmark.js` and the CI k6 job exist; no measured p95 is recorded. No APM |
 | Throughput targets | ⛔ Never measured | — |
 | Cache hit rate > 90% | 🔄 **Instrumented, not verified** | `GET /api/v1/metrics/cache` reports `hits`/`misses`/`hitRate`. No threshold is enforced and no value has been recorded |
-| Resource utilisation targets | ⛔ No metrics pipeline | No Prometheus endpoint, no metrics registry |
+| Resource utilisation targets | 🔄 **Instrumented, not verified** | `GET /api/v1/metrics` exposes `process_resident_memory_bytes`, `process_heap_used_bytes`, `process_heap_total_bytes`, `process_uptime_seconds` and `nodejs_eventloop_lag_seconds` (sampled every 5s by `default-metrics.collector.ts`), scraped by `monitoring/prometheus/prometheus.yml`; ⛔ no threshold is enforced, no value is recorded, and the rules that would read them are not deployed |
 | Rate limiting implemented | ✅ **Real** | **5** tiers over `ValkeyThrottlerStorage`; real 429 tests |
 | Rate limit values | ⚠️ **Corrected** | 100/10/5/50, not the 8-row table the previous version listed |
 | Resource quotas per user/tenant | ⛔ **Not implemented** | No tiers, no balances, no counters. Rate limits ≠ quotas |

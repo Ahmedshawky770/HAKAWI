@@ -36,6 +36,7 @@ import {
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { sanitizeHtml } from '../../common/utils/sanitize-html.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type {
   StoryCreatedEvent,
@@ -79,6 +80,26 @@ interface StoryRelationsIndex {
 
 const EMPTY_RELATIONS: StoryRelationsIndex = { authors: new Map(), categories: new Map(), tags: new Map() };
 
+/**
+ * Sanitizes a story's `content` on the way in, and only on the way in.
+ *
+ * `undefined` in, `undefined` out: the caller did not mention `content`, so nothing about it changed,
+ * and turning that into `null` would silently clear a story's body on a PATCH that only edits the
+ * title. `null` in is `null` out, because "clear the content" is a value an author is allowed to send.
+ *
+ * WHY THIS WRAPS `sanitizeHtml` RATHER THAN THE CALLERS CALLING IT DIRECTLY. Both write paths need the
+ * same three-way distinction above, and the same rule "nothing else on a story is HTML". `excerpt` is
+ * plain text bounded at 500 characters and `title` is a plain-text title; making them HTML-safe would
+ * mean re-deciding what a title is allowed to contain, which is a different question from the one this
+ * helper answers.
+ */
+function sanitizeStoryContent(content: string | null | undefined): string | null | undefined {
+  if (content === null || content === undefined) {
+    return content;
+  }
+  return sanitizeHtml(content);
+}
+
 @Injectable()
 export class StoriesService {
   constructor(
@@ -106,6 +127,14 @@ export class StoriesService {
    * The empty-slug case is rejected here as well as in the DTO. `@MinLength` cannot cover it,
    * because `@IsOptional()` skips validation for `null`, and `{ slug: null }` would otherwise reach
    * `.trim()` and throw a `TypeError` -> 500 instead of a 400.
+   *
+   * WHY `content` IS SANITIZED HERE AND NOT AT THE ROUTE. It is the one field stored as HTML and
+   * rendered by a reader's browser, so the write is the last place a `<script>` can be refused.
+   * Sanitizing in the DTO or the controller would cover this route only, while any other caller of
+   * `create` — a future import, a moderation tool, a seed script — would write raw HTML and the
+   * database would hold a payload nobody chose to store. One call on the layer that owns the insert
+   * makes "stored content is clean" a property of the module rather than of one route (Principle #9).
+   * See `common/utils/sanitize-html.ts`.
    */
   async create(authorId: string, input: CreateStoryInput): Promise<Story> {
     const data: CreateStoryInput = {
@@ -116,6 +145,14 @@ export class StoriesService {
       likeCount: 0,
       commentCount: 0,
     };
+
+    // Assigned rather than spread so an omitted `content` stays an OMITTED KEY. `content: undefined`
+    // is not the same absence to Drizzle, and a create that sends no content must not become an
+    // explicit `NULL` in the insert.
+    const sanitizedContent = sanitizeStoryContent(input.content);
+    if (sanitizedContent !== undefined) {
+      data.content = sanitizedContent;
+    }
 
     const story = await this.insertWithResolvedSlug(data);
 
@@ -308,7 +345,17 @@ export class StoriesService {
       }
     }
 
-    const story = await this.storiesRepository.update(id, input);
+    // WHY THIS BUILDS A NEW OBJECT INSTEAD OF MUTATING `input`. `input` is the caller's DTO object and
+    // it is also what the `story.updated` event reports as `updatedFields`; mutating it in place would
+    // make the event claim the author sent the sanitized markup, which they did not. The event carries
+    // the sanitized view below, so a consumer reading `updatedFields` sees what was actually written.
+    const updates: UpdateStoryInput = { ...input };
+    const sanitizedContent = sanitizeStoryContent(input.content);
+    if (sanitizedContent !== undefined) {
+      updates.content = sanitizedContent;
+    }
+
+    const story = await this.storiesRepository.update(id, updates);
 
     if (input.tags !== undefined) {
       // Omitting `tags` leaves the current set alone, exactly as omitting `slug` leaves the
@@ -321,7 +368,7 @@ export class StoriesService {
 
     await this.eventBus.emit('story.updated', {
       storyId: id,
-      updatedFields: input,
+      updatedFields: updates,
       story: toStorySnapshot(story),
     } as StoryUpdatedEvent);
     return story;

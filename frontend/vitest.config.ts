@@ -33,7 +33,7 @@ export default defineConfig({
       // WHAT THESE FLOORS WERE: statements 42, branches 85, functions 51, lines 42. None of
       // them had ever been met. The gate had never verified anything, because `main` failed
       // earlier in the pipeline — at `npm audit` and `Lint Backend` — and never reached this
-      // step. A threshold nobody has ever satisfied is not a gate; it is a wish.
+      // step. A threshold nobody has satisfied is not a gate; it is a wish.
       //
       // WHY COVERAGE IS ONLY ~40%: almost every page component is at 0%. The 340 tests cover
       // the API client, the schemas, the auth guard, the sidebar and the auth pages, but the
@@ -44,11 +44,28 @@ export default defineConfig({
       // Raising these is real work that has NOT been done here. The direction is set by the
       // number now being reachable: any commit that adds an untested component will fail,
       // which is the property the previous floors lacked.
+      //
+      // ⛔ RAISED 2026-10-12, MEASURED 3 POINTS BELOW THE RUN, NOT ASPIRING TO A TARGET.
+      // The suite has since grown to ~58 files / 480 tests (api client, schemas, auth guard,
+      // providers, the social/rental/library/UI components, sanitize-html) and now measures
+      // 72.13 statements / 67.54 branches / 69.13 functions / 72.90 lines. These floors move
+      // from 38/33/33/38 to 69/64/66/69 — measured minus three — because the old ones had
+      // ~30 points of headroom, which means they could not detect a regression and existed
+      // only to hold a number.
+      //
+      // THE PLAN TO 80 IS NOT THIS COMMIT'S WORK, AND IT IS NOT YET DONE. 80 statements,
+      // branches, functions and lines is the project target; the gap is concentrated in the
+      // route components under `src/app/(app)/`, which stay at 0% because rendering them means
+      // standing up the router, the providers and the fetch layer. Each floor below is
+      // measured-minus-3 so ordinary churn does not trip it, and the route to 80 is one spec
+      // per route group at a time: page tests are additive, so every one of them lifts every
+      // column. This comment is the record of the intent so the next reader does not mistake
+      // 69 for the target — the target is 80 and the number here is the floor.
       thresholds: {
-        statements: 38,
-        branches: 33,
-        functions: 33,
-        lines: 38,
+        statements: 69,
+        branches: 64,
+        functions: 66,
+        lines: 69,
       },
     },
   },

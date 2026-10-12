@@ -349,7 +349,7 @@ Status markers: ✅ completed · 🔄 partial · ⛔ not built.
 - [ ] Performance meets targets — ⛔ never measured
 - [ ] Security audit passed — 🔄 CI `npm audit` only; no pentest
 - [ ] Production deployed — ⛔
-- [ ] Monitoring configured — 🔄 Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`** (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 20 rules, `alertmanager/alertmanager.yml`), but nothing deploys them
+- [ ] Monitoring configured — 🔄 Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`** (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 14 rules, `alertmanager/alertmanager.yml`), but nothing deploys them
 
 ### Owner
 - Backend: Backend Team

@@ -1,13 +1,37 @@
+# WHY THIS FILE CONTAINS NO `${...}` PLACEHOLDERS.
+#
+# Alertmanager does not expand environment variables in its configuration file — it parses the text
+# exactly as written. That is a verified failure mode, not a style preference: with
+# prom/alertmanager v0.26.0 the `${SMTP_HOST:-smtp.example.com}:587` smarthost that used to be in
+# this file is refused at load time with
+#
+#     level=error component=configuration msg="Loading configuration file failed"
+#       err="address ${SMTP_HOST:-smtp.example.com}:587: too many colons in address"
+#
+# and the process exits. An alertmanager that cannot start routes nothing at all, which is the state
+# this file replaces: Prometheus had an `alertmanagers` target pointed at it and nothing was behind
+# that target. Its own `templates:` key pointed at `/etc/alertmanager/templates/*.tmpl`, a directory
+# the container never mounted, so it is dropped rather than left as decoration.
+#
+# WHERE THE PLACEHOLDERS WOULD BE LEGITIMATE. `infrastructure/terraform/modules/monitoring/values/
+# prometheus.yaml.tpl` is a terraform `templatefile()`: terraform expands `${...}` while rendering
+# the values, and Alertmanager only ever sees the finished text. That is the one place the production
+# SMTP settings belong, and it is the reason this dev file is written with literal values instead.
+#
+# WHAT RECEIVES A DEV ALERT. `mailhog`, the SMTP sink in `monitoring/docker-compose.monitoring.yml`.
+# It accepts every message, shows it in a web UI on :8025 and delivers nothing anywhere real, so a dev
+# checkout has an alert path that can be followed end to end with no credential and without emailing
+# a real inbox.
+
 global:
   resolve_timeout: 5m
-  smtp_smarthost: '${SMTP_HOST:-smtp.example.com}:587'
-  smtp_from: 'alertmanager@hakawi.com'
-  smtp_auth_username: '${SMTP_USER:-alertmanager}'
-  smtp_auth_password: '${SMTP_PASSWORD:-changeme}'
-  smtp_require_tls: true
-
-templates:
-  - '/etc/alertmanager/templates/*.tmpl'
+  # A literal address on the compose network — the header explains why a placeholder here would
+  # prevent the process from starting at all.
+  smtp_smarthost: 'mailhog:1025'
+  smtp_from: 'alertmanager@hakawi.local'
+  # Mailhog speaks plaintext SMTP. The previous value, `smtp_require_tls: true`, made every delivery
+  # fail against it even when a smarthost was reachable.
+  smtp_require_tls: false
 
 route:
   group_by: ['alertname', 'cluster', 'service']
@@ -30,49 +54,35 @@ route:
       repeat_interval: 4h
 
 receivers:
+  # The three receivers and the two severity routes are unchanged; only the destinations are dev
+  # addresses that Mailhog will accept rather than production mailboxes a dev stack must not email.
   - name: 'default'
     email_configs:
-      - to: '${ALERT_EMAIL:-ops@hakawi.com}'
+      - to: 'ops@hakawi.local'
         send_resolved: true
         headers:
           subject: '[Hakawi] {{ .GroupLabels.alertname }}'
-    slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#hakawi-alerts'
-        send_resolved: true
-        title: 'Hakawi Alert: {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
 
   - name: 'critical-alerts'
     email_configs:
-      - to: '${CRITICAL_ALERT_EMAIL:-oncall@hakawi.com}'
+      - to: 'oncall@hakawi.local'
         send_resolved: true
         headers:
           subject: '[CRITICAL] Hakawi: {{ .GroupLabels.alertname }}'
-    slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#hakawi-critical'
-        send_resolved: true
-        title: '[CRITICAL] Hakawi Alert: {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-    pagerduty_configs:
-      - service_key: '${PAGERDUTY_KEY}'
-        severity: critical
-        details:
-          alertname: '{{ .GroupLabels.alertname }}'
-          instance: '{{ .GroupLabels.instance }}'
 
   - name: 'warning-alerts'
     email_configs:
-      - to: '${WARNING_ALERT_EMAIL:-ops@hakawi.com}'
+      - to: 'ops@hakawi.local'
         send_resolved: true
         headers:
           subject: '[WARNING] Hakawi: {{ .GroupLabels.alertname }}'
-    slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#hakawi-warnings'
-        send_resolved: true
-        title: '[WARNING] Hakawi Alert: {{ .GroupLabels.alertname }}'
+
+  # WHY THERE ARE NO SLACK OR PAGERDUTY RECEIVERS HERE. Both need a credential (`SLACK_WEBHOOK_URL`,
+  # `PAGERDUTY_KEY`) that a dev checkout does not have and that must never be committed, and
+  # Alertmanager rejects a receiver whose required integration field is empty — so they would have
+  # broken the whole file for the same reason the placeholders did. They belong to the production
+  # config (`infrastructure/terraform/modules/monitoring/values/prometheus.yaml.tpl`), where the
+  # credentials are secrets and the recipients are real people.
 
 inhibit_rules:
   - source_match:

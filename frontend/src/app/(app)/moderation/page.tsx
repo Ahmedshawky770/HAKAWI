@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Loading";
+import { useToast } from "@/components/providers/ToastProvider";
 import type { Report } from "@/types/api";
 
 /**
@@ -18,47 +19,62 @@ import type { Report } from "@/types/api";
  * have to navigate three pages.
  */
 export default function ModerationDashboardPage() {
+  const { notify } = useToast();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
   const [activeTab, setActiveTab] = useState<"queue" | "actions" | "stats">("queue");
+  // Bumped by `retry` to re-arm the load effect. The queue load owns its own loading/error
+  // transitions, so there is no longer an out-of-band flag to reset (see the load below).
+  const [attempt, setAttempt] = useState(0);
 
-  const loadQueue = useCallback(async () => {
-    try {
-      const data = await api.getModerationQueue();
-      setReports(data.reports);
-    } catch {
-      // Queue failures are non-fatal; the dashboard still renders the other tabs.
-    }
-  }, []);
-
+  /**
+   * WHY THE LOAD OWNS ITS OWN STATE.
+   *
+   * This was `loadQueue`, a `useCallback` that swallowed every failure in a bare `catch {}` and
+   * never touched `loading`. `retry` called it directly, so on failure `loading` stayed `true`
+   * forever (the button spins, the error branch is never reachable) and the queue simply never
+   * populated. The load now sets `loading` and `error` around the request the same way the book
+   * detail page does, and `retry` re-arms it through the `attempt` counter rather than reaching
+   * around it.
+   */
   useEffect(() => {
     let active = true;
 
     async function load() {
       try {
-        await loadQueue();
-      } catch {
-        if (active) setError("فشل تحميل لوحة الاعتدال");
+        const data = await api.getModerationQueue();
+        if (active) setReports(data.reports);
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "فشل تحميل لوحة الاعتدال");
       } finally {
         if (active) setLoading(false);
       }
     }
 
-    void load();
+    load();
     return () => {
       active = false;
     };
-  }, [loadQueue]);
+  }, [attempt]);
 
+  /**
+   * A moderation action failure is surfaced twice, on purpose: inline where the moderator is
+   * looking, and as a toast, because the control they pressed scrolls with the queue. A silent
+   * revert of the status chip is indistinguishable from a bug.
+   */
   const handleModerate = async (reportId: string, status: "open" | "in_review" | "resolved" | "dismissed") => {
     setActionLoading(true);
+    setActionError("");
     try {
       await api.moderateItem(reportId, { status });
       setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status } : r)));
-    } catch {
-      // Individual action failures are shown inline; the queue stays mounted.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "تعذّر تحديث البلاغ";
+      setActionError(message);
+      notify(message, "error");
     } finally {
       setActionLoading(false);
     }
@@ -67,7 +83,7 @@ export default function ModerationDashboardPage() {
   const retry = () => {
     setLoading(true);
     setError("");
-    void loadQueue();
+    setAttempt((n) => n + 1);
   };
 
   if (loading) {
@@ -119,6 +135,7 @@ export default function ModerationDashboardPage() {
 
       {activeTab === "queue" && (
         <div className="space-y-3">
+          {actionError && <ErrorMessage error={actionError} title="تعذّر تحديث البلاغ" />}
           {reports.length === 0 ? (
             <p className="text-sm text-ink-muted">لا توجد بلاغات معلّقة.</p>
           ) : (

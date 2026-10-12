@@ -498,7 +498,7 @@ graph LR
 
 - **Logging:** Winston with structured JSON output
 - **Error Tracking:** Sentry
-- **Metrics:** Prometheus scrape config + 20 alert rules + alertmanager + Grafana dashboard exist in `monitoring/`; ⛔ not deployed (no cluster yet)
+- **Metrics:** Prometheus scrape config + 14 alert rules + alertmanager + Grafana dashboard exist in `monitoring/`, and the app exposes a public scrape endpoint (`GET /api/v1/metrics` → `http_requests_total{method,route,status}` plus five process gauges); ⛔ not deployed (no cluster yet)
 - **Tracing:** Correlation IDs across services
 
 ---

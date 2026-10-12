@@ -74,16 +74,55 @@ resource "aws_subnet" "private" {
   })
 }
 
-# Database Subnets (subset of private subnets for RDS)
+# Database Subnets (dedicated CIDR range for RDS)
+# WHY an explicit `var.database_subnets` and not cidrsubnet() off the private ranges:
+# `cidrsubnet(var.private_subnets[i], 4, i + 10)` produced /28 blocks INSIDE the private
+# /24s, and AWS rejects a VPC with overlapping subnet CIDRs, so every apply failed. The
+# ranges now come from the environment tfvars and are disjoint from the public, private
+# and cache tiers by construction.
+#
+# WHY THE FIRST APPLY AFTER THIS CHANGE NEEDS A HUMAN (one-time, do not let a deploy do it):
+# `cidr_block` is ForceNew on `aws_subnet`, so an environment whose state still holds the
+# OLD `/28` slices cannot move to the new `/24`s by apply — Terraform plans a DESTROY+CREATE
+# of every database subnet, and the destroy fails while RDS still holds ENIs in them
+# ("The subnet is in use / DependencyViolation"). A deploy would then be red until someone
+# does it out of band:
+#   1. move the DB subnet group to the new tier (create `aws_db_subnet_group` entries for
+#      the new subnet IDs, or `terraform state mv`/import the new subnets so state and AWS
+#      agree — never a live destroy of a subnet that holds an ENI),
+#   2. confirm the RDS instance reports the new subnet IDs,
+#   3. then apply.
+# Each deploy workflow guards this with a "Preflight: subnet replacement" step that plans
+# first and fails fast when any `aws_subnet` would be replaced or destroyed, so the apply
+# is never the thing that discovers it. Do NOT "fix" it by reverting to the overlapping
+# `/28` slices: AWS rejects those, which is why they were replaced in the first place.
 resource "aws_subnet" "database" {
-  count             = length(var.private_subnets)
+  count             = length(var.database_subnets)
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.private_subnets[count.index], 4, count.index + 10)
+  cidr_block        = var.database_subnets[count.index]
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.tags, {
     Name = "${var.environment}-hakawi-db-${var.availability_zones[count.index]}"
     Type = "database"
+  })
+}
+
+# Cache Subnets (dedicated CIDR range for ElastiCache/Valkey)
+# WHY a dedicated tier: the ElastiCache replication group previously ran in the private
+# subnets, so the cache tier had no address boundary of its own and the database overlap
+# fix above had to reason about "every subnet" to stay safe. Valkey now has its own
+# hundred-block, which keeps each tier's blast radius (route table, future NACLs, peering
+# filters) expressible on its own.
+resource "aws_subnet" "cache" {
+  count             = length(var.cache_subnets)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.cache_subnets[count.index]
+  availability_zone = var.availability_zones[count.index]
+
+  tags = merge(var.tags, {
+    Name = "${var.environment}-hakawi-cache-${var.availability_zones[count.index]}"
+    Type = "cache"
   })
 }
 
@@ -129,8 +168,10 @@ resource "aws_route_table_association" "private" {
 }
 
 # Database Route Tables (no internet access)
+# `count` follows the database subnets (not the AZ list) so an environment that declares
+# fewer database subnets than AZs still renders one table per subnet it actually created.
 resource "aws_route_table" "database" {
-  count  = length(var.availability_zones)
+  count  = length(var.database_subnets)
   vpc_id = aws_vpc.main.id
 
   tags = merge(var.tags, {
@@ -142,6 +183,18 @@ resource "aws_route_table_association" "database" {
   count          = length(aws_subnet.database)
   subnet_id      = aws_subnet.database[count.index].id
   route_table_id = aws_route_table.database[count.index].id
+}
+
+# Cache Route Table Associations
+# WHY the cache tier reuses the private route tables instead of getting its own: the
+# ElastiCache nodes never initiate internet traffic, but they DO need the NAT + S3 gateway
+# routes for control-plane-side operations (snapshot transfer, log delivery), and the
+# private tables already carry exactly those. Owning a second identical table would only
+# be a second thing to keep in sync (Principle #9).
+resource "aws_route_table_association" "cache" {
+  count          = length(aws_subnet.cache)
+  subnet_id      = aws_subnet.cache[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
 }
 
 # Security Groups
@@ -313,6 +366,27 @@ resource "aws_vpc_endpoint" "sts" {
   })
 }
 
+# WHY a Secrets Manager interface endpoint: every application secret (database, Valkey,
+# JWT, Paymob — see modules/secrets, modules/rds, modules/elasticache) is read from AWS
+# Secrets Manager at runtime by the External Secrets operator inside this VPC. Without
+# the endpoint that traffic hairpins through the NAT gateways, which means the secret
+# sync path — and therefore the whole boot path — depends on NAT availability and pays
+# NAT data-processing costs. Private DNS keeps the standard AWS hostnames resolving to
+# the endpoint, so no application-side configuration changes are needed. It follows the
+# ecr.api/ecr.dkr/logs/sts pattern already in this module.
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.secretsmanager"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.cluster.id]
+  private_dns_enabled = true
+
+  tags = merge(var.tags, {
+    Name = "${var.environment}-hakawi-secretsmanager-endpoint"
+  })
+}
+
 # DB Subnet Group for RDS
 resource "aws_db_subnet_group" "main" {
   name       = "${var.environment}-hakawi-db-subnet-group"
@@ -323,67 +397,73 @@ resource "aws_db_subnet_group" "main" {
   })
 }
 
-# ElastiCache Subnet Group
-resource "aws_elasticache_subnet_group" "main" {
-  name       = "${var.environment}-hakawi-cache-subnet-group"
-  subnet_ids = aws_subnet.private[*].id
+# VPC Flow Logs
+# WHY: without flow logs, network-level incidents (a security group that stopped
+# accepting 5432, a NAT that dropped return traffic, an exfiltration pattern) are
+# invisible until the application reports symptoms. Flow logs to CloudWatch give the
+# accept/reject record for every flow in the VPC. Retention follows the pattern used by
+# the RDS/ElastiCache modules (longer in production).
+resource "aws_cloudwatch_log_group" "vpc_flow" {
+  name              = "/aws/vpc/${var.environment}-hakawi/flow-logs"
+  retention_in_days = var.environment == "production" ? 90 : 30
 
   tags = merge(var.tags, {
-    Name = "${var.environment}-hakawi-cache-subnet-group"
+    Name = "${var.environment}-hakawi-vpc-flow-logs"
   })
 }
 
-output "vpc_id" {
-  description = "VPC ID"
-  value       = aws_vpc.main.id
+resource "aws_iam_role" "vpc_flow" {
+  name = "${var.environment}-hakawi-vpc-flow-logs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "vpc-flow-logs.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = merge(var.tags, {
+    Name = "${var.environment}-hakawi-vpc-flow-logs-role"
+  })
 }
 
-output "vpc_cidr" {
-  description = "VPC CIDR block"
-  value       = aws_vpc.main.cidr_block
+resource "aws_iam_role_policy" "vpc_flow" {
+  name = "${var.environment}-hakawi-vpc-flow-logs-policy"
+  role = aws_iam_role.vpc_flow.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ]
+      Effect = "Allow"
+      # The ":*" suffix (log streams) is required: PutLogEvents writes to streams
+      # inside the group, and a resource of just the group ARN denies the write.
+      Resource = "${aws_cloudwatch_log_group.vpc_flow.arn}:*"
+    }]
+  })
 }
 
-output "private_subnet_ids" {
-  description = "Private subnet IDs"
-  value       = aws_subnet.private[*].id
-}
+resource "aws_flow_log" "main" {
+  vpc_id               = aws_vpc.main.id
+  traffic_type         = "ALL"
+  log_destination_type = "cloudwatch-logs"
+  log_group_name       = aws_cloudwatch_log_group.vpc_flow.name
+  iam_role_arn         = aws_iam_role.vpc_flow.arn
 
-output "public_subnet_ids" {
-  description = "Public subnet IDs"
-  value       = aws_subnet.public[*].id
-}
+  # 600s is the longest aggregation window AWS offers: fewer, larger records means
+  # lower CloudWatch ingest cost for the same information.
+  max_aggregation_interval = 600
 
-output "database_subnet_ids" {
-  description = "Database subnet IDs"
-  value       = aws_subnet.database[*].id
-}
-
-output "database_security_group_id" {
-  description = "Database security group ID"
-  value       = aws_security_group.database.id
-}
-
-output "cache_security_group_id" {
-  description = "Cache security group ID"
-  value       = aws_security_group.cache.id
-}
-
-output "cluster_security_group_id" {
-  description = "Cluster security group ID"
-  value       = aws_security_group.cluster.id
-}
-
-output "alb_security_group_id" {
-  description = "ALB security group ID"
-  value       = aws_security_group.alb.id
-}
-
-output "db_subnet_group_name" {
-  description = "DB subnet group name"
-  value       = aws_db_subnet_group.main.name
-}
-
-output "cache_subnet_group_name" {
-  description = "ElastiCache subnet group name"
-  value       = aws_elasticache_subnet_group.main.name
+  tags = merge(var.tags, {
+    Name = "${var.environment}-hakawi-vpc-flow-logs"
+  })
 }

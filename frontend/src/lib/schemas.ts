@@ -190,6 +190,9 @@ const bookWireSchema = z.object({
   id: z.string(),
   title: z.string(),
   author: z.string(),
+  // The owner's account id — the only value the client can compare against the signed-in user to
+  // decide ownership. `author` is a display name and cannot. See `Book.ownerId` in shared-types.
+  ownerId: z.string(),
   description: nullableString,
   coverImage: nullableString,
   isbn: nullableString,
@@ -239,6 +242,10 @@ const toWireBook = (record: BookRecord): Book => ({
   id: record.id,
   title: record.title,
   author: record.author,
+  // `BookRecord` carries no owner id, so a book derived from the record shape is treated as
+  // unowned: an empty owner matches no signed-in user and the controls stay hidden. The read the
+  // detail page uses comes back through the wire branch above, which carries the real owner.
+  ownerId: "",
   description: record.description,
   coverImage: record.coverImage,
   isbn: record.isbn,

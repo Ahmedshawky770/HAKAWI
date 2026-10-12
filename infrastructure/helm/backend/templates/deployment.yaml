@@ -1,6 +1,17 @@
-{{- if not .Values.env.db.host -}}
-{{ fail "env.db.host is required. Set it in values.yaml or via --set env.db.host=<value>" }}
-{{- end -}}
+{{/*
+  WHY THE GUARD READS `primaryHost` AND NOT `host`. This guard existed and pointed at
+  `.Values.env.db.host`, a key NO values file and NO deploy command ever sets: they all set
+  `env.db.primaryHost` (see `--set env.db.primaryHost=...` in .github/workflows/deploy-*.yml
+  and the `env.db.primaryHost: ""` default in every values file). A fail-fast guard on a key
+  nobody provides does not fail fast — it fails on EVERY render, which is exactly why
+  `helm template`/`helm lint` on this chart errored out. The deployment below wires
+  `DB_PRIMARY_HOST` from `env.db.primaryHost`, so the guard now watches the key that is
+  actually consumed, and fails only when it is genuinely missing.
+*/}}
+{{- include "backend.helpers.checkRequiredField" (dict
+  "field" .Values.env.db.primaryHost
+  "error" (printf "env.db.primaryHost is required. Set it in values.yaml or via --set env.db.primaryHost=<rds-writer-endpoint> (env.db.host is not used by this chart)")
+) -}}
 
 ---
 apiVersion: v1
@@ -183,6 +194,24 @@ spec:
                 secretKeyRef:
                   name: {{ include "backend.fullname" . }}-secrets
                   key: s3.secret-key
+          {{/*
+            WHY THREE PROBES AND WHY THEY POINT AT DIFFERENT ROUTES.
+            - startupProbe  -> /api/v1/health       : "is the process serving at all yet?"
+            - livenessProbe -> /api/v1/health       : "is it wedged?" restarts the container.
+            - readinessProbe-> /api/v1/health/ready : "should it receive traffic?" gates the Service.
+
+            `/api/v1/health` deliberately returns 200 even when PostgreSQL and Valkey are
+            unreachable (backend/src/app.controller.ts carries the cost of that choice in its
+            doc comment), so using it as a readiness probe made readiness a no-op: pods stayed
+            in Service with no database behind them and every request failed. Only
+            `/api/v1/health/ready` answers with 503 when a dependency is down.
+
+            The startupProbe absorbs slow boots (migrations, cold JIT, first-time image pull)
+            so the livenessProbe does not kill a pod that was merely still starting: while a
+            startupProbe is running, liveness and readiness checks are suspended.
+          */}}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

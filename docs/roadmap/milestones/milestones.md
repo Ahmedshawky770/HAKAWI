@@ -596,7 +596,7 @@ Complete testing, optimisation, and deploy to production.
    `POST clear-counters` and `POST clear-blocks`
 4. **Deployment** ⛔ — the IaC and charts exist (Terraform modules, `infrastructure/helm/*`, `deploy-*.yml`), but no environment has been provisioned or deployed
 5. **Monitoring** 🔄 — Sentry wired; ⚠️ dashboards and alert rules are **defined in `monitoring/`**
-   (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 20 rules,
+   (`grafana/dashboards/hakawi-overview.json`, `prometheus/rules/hakawi-alerts.yml` with 14 rules,
    `alertmanager/alertmanager.yml`), but nothing deploys them
 
 ### Verification Steps — the real ones

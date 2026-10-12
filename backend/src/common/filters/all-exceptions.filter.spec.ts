@@ -6,7 +6,7 @@ import type { Request, Response } from 'express';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { captureSentryException } from '../observability/sentry.config.ts';
 
-import { AllExceptionsFilter } from './all-exceptions.filter.ts';
+import { AllExceptionsFilter, statusFromException } from './all-exceptions.filter.ts';
 
 vi.mock('../observability/sentry.config.ts', () => ({
   captureSentryException: vi.fn(),
@@ -161,6 +161,39 @@ describe('AllExceptionsFilter', () => {
       expect(statusOf(host)).toBe(400);
       expect(body.message).toBe('title must be a string');
       expect(body.error).toBe('Bad Request');
+    });
+  });
+
+  /**
+   * The shared mapping, asserted on its own because its second consumer is somewhere else entirely.
+   *
+   * `MetricsInterceptor` imports this function to decide the `status` label on
+   * `http_requests_total`, and it runs BEFORE this filter writes anything — so the counter and the
+   * response are two different measurements of one decision. Asserting the decision here, where the
+   * response is also asserted, is what keeps them from drifting apart in a refactor: a change to this
+   * mapping that the metric did not follow would fail the interceptor's own spec, and a change to the
+   * interceptor that stopped calling this would fail here.
+   */
+  describe('statusFromException', () => {
+    it('uses the status an HttpException carries', () => {
+      expect(statusFromException(new NotFoundException('Story not found'), 500)).toBe(404);
+      expect(statusFromException(new ForbiddenException('nope'), 500)).toBe(403);
+      expect(
+        statusFromException(new BadRequestException({ message: 'bad', error: 'Bad Request' }), 500),
+      ).toBe(400);
+    });
+
+    it('uses the fallback for anything that carries no status of its own', () => {
+      expect(statusFromException(new Error('column "stories" does not exist'), 500)).toBe(500);
+      expect(statusFromException('thrown string', 429)).toBe(429);
+      expect(statusFromException(undefined, 503)).toBe(503);
+    });
+
+    it('prefers the exception over the fallback, which is what stops a 404 counting as a 500', () => {
+      // The interceptor's response still holds the 200 express initialised it with at the moment it
+      // records. If the exception lost to the fallback, every 404 in the deployment would be counted
+      // as a server error and the error-rate alert would fire on nothing.
+      expect(statusFromException(new NotFoundException('nope'), 500)).toBe(404);
     });
   });
 

@@ -5,9 +5,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# WHY `cancel-in-progress: false` HERE AND NOT `true`. `cancel-in-progress: true` means a second
+# push to main kills a deploy that is already half through a rollout: the in-flight `helm upgrade
+# --wait` is terminated mid-way, the release is left in a pending-upgrade or partially-updated
+# state, and the rollback step (`if: failure()`) never runs because the job was cancelled rather
+# than failed. The result is a cluster nobody can reason about, from a pipeline that reported
+# "cancelled" instead of "broken".
+#
+# With `false`, the new run QUEUES behind the old one and starts from the newest commit when the
+# current deploy finishes. That is the correct trade for a deploy, and it is why the group is
+# scoped to the ref: two pushes to the same branch are the same deployment, one after the other,
+# not two deployments racing. The cost is a queued run that is stale by the time it starts; the
+# alternative is an interrupted rollout with no rollback.
+#
+# CONFLICTING SIGNAL, KEPT DELIBERATELY. `ci.yml` still uses `cancel-in-progress: true` for its
+# own group. That is right for CI — a superseded test run on the same commit is worthless — and
+# wrong for a deploy, so the two files now say different things on purpose.
 concurrency:
   group: deploy-production-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -17,11 +33,41 @@ env:
   NODE_VERSION: '22'
   AWS_REGION: us-east-1
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  # WHY the cluster name is a workflow-level variable: `modules/eks` names the cluster
+  # `${var.environment}-hakawi` (terraform's own `eks_cluster_name` output), while the
+  # workflows, docs and infrastructure/scripts/setup-iam.sh all say `hakawi-<env>-eks`. The
+  # preflight below uses this constant to say which cluster it checked; the post-apply
+  # kubeconfig uses the authoritative terraform output instead of any constant.
+  EKS_CLUSTER_NAME: hakawi-production-eks
+  # Paymob credentials. WHY as TF_VAR_* and not in tfvars: `environments/production/terraform.tfvars`
+  # leaves them empty, and modules/secrets makes an empty Paymob credential FAIL THE APPLY for
+  # every environment except dev (preconditions on the aws_secretsmanager_secret.paymob_*
+  # resources) because backend/src/config/paymob.config.ts refuses to boot on an empty key —
+  # i.e. an empty value here used to ship a CrashLoopBackOff release into production. They are
+  # `sensitive`, so neither GitHub nor terraform prints them.
+  TF_VAR_paymob_api_key: ${{ secrets.PAYMOB_API_KEY }}
+  TF_VAR_paymob_merchant_id: ${{ secrets.PAYMOB_MERCHANT_ID }}
+  TF_VAR_paymob_integration_id: ${{ secrets.PAYMOB_INTEGRATION_ID }}
+  TF_VAR_paymob_webhook_secret: ${{ secrets.PAYMOB_HMAC_SECRET }}
 
 jobs:
+  # WHY THIS JOB EXISTS. Deploys used to run straight off a push with nothing in front of them, so
+  # a commit that failed lint, tests, coverage or the migration smoke test was deployed anyway.
+  # `uses: ./.github/workflows/ci.yml` runs the whole CI file as a required job of this one, and
+  # every job below names it in `needs:`.
+  #
+  # No `secrets: inherit`: `ci.yml` reads no secrets — no AWS credentials, no ECR login, no
+  # database credentials. Everything it does is a checkout, an `npm ci` from the lockfile and
+  # throwaway service containers. Passing `secrets: inherit` would hand the called workflow
+  # credentials it has no use for, which is the opposite of least privilege.
+  ci:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
     name: Build and Push Images
     runs-on: ubuntu-latest
+    needs: [ci]
     outputs:
       backend-image: ${{ steps.backend-image.outputs.image }}
       frontend-image: ${{ steps.frontend-image.outputs.image }}
@@ -54,7 +100,7 @@ jobs:
 
   deploy-production:
     name: Deploy to Production
-    needs: [build-and-push]
+    needs: [ci, build-and-push]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: production
@@ -76,14 +122,38 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-github-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Save pre-deploy state for rollback
-        run: |
-          mkdir -p /tmp/rollback
-          helm get manifest hakawi-production-backend -n hakawi > /tmp/rollback/backend-prev.yaml 2>/dev/null || true
-          helm get manifest hakawi-production-frontend -n hakawi > /tmp/rollback/frontend-prev.yaml 2>/dev/null || true
+      # ---------------------------------------------------------------------------------------
+      # PREFLIGHTS — everything that can fail, fails here, before an apply or a rollout exists.
+      #
+      # WHY THESE STEPS SIT BEFORE THE APPLY. This environment sets
+      # `eks_cluster_endpoint_public_access_cidrs = []`
+      # (infrastructure/terraform/environments/production/terraform.tfvars) and this workflow
+      # runs on `ubuntu-latest` — a GitHub-hosted runner OUTSIDE the VPC. Two problems used to be
+      # discovered at the worst possible moment:
+      #   1. the Kubernetes API answers nobody from here, so `update-kubeconfig` / `helm` timed
+      #      out AFTER `terraform apply` had already closed the endpoint, mid-rollout — with a
+      #      half-applied release and a rollback step that could not reach the cluster either;
+      #   2. `aws_subnet.cidr_block` is ForceNew (infrastructure/terraform/modules/vpc/main.tf),
+      #      so an apply against state holding the old overlapping `/28` database subnets plans a
+      #      subnet destroy that fails while RDS still holds ENIs — a production pipeline red at
+      #      "Deploy infrastructure" with an AWS error nobody can act on.
+      # ---------------------------------------------------------------------------------------
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name hakawi-production-eks --alias production
+      # WHY `kubectl auth can-i` and not `kubectl version` or `aws eks describe-cluster`: the
+      # public access CIDRs are enforced by the API SERVER endpoint, and only an authenticated
+      # Kubernetes API call proves this runner can reach it. `describe-cluster` goes to the EKS
+      # control plane and succeeds even when the endpoint is closed, which is exactly why it is
+      # not the test.
+      #
+      # `--allow-missing`: only right on the FIRST deploy of the environment, where the cluster
+      # is created by the apply that follows and there is nothing to reach yet.
+      - name: "Preflight: cluster reachability"
+        run: node scripts/preflight-cluster-reachability.mjs --cluster "${{ env.EKS_CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}" --env production --allow-missing
+
+      # WHY BEFORE THE APPLY: planning first turns "apply fails with DependencyViolation half way
+      # through" into "this deploy is blocked, here is the one-time migration".
+      - name: "Preflight: subnet replacement guard"
+        run: scripts/preflight-vpc-subnet-replacement.sh production infrastructure/terraform
 
       - name: Deploy infrastructure to production
         id: tf-apply
@@ -97,9 +167,215 @@ jobs:
         run: |
           cd infrastructure/terraform
           echo "rds_primary_endpoint=$(terraform output -raw rds_primary_endpoint)" >> $GITHUB_OUTPUT
-          echo "rds_replica_endpoints=$(terraform output -json rds_replica_endpoints | jq -r 'join(",")')" >> $GITHUB_OUTPUT
+          echo "rds_primary_address=$(terraform output -raw rds_primary_address)" >> $GITHUB_OUTPUT
+          echo "rds_replica_addresses=$(terraform output -json rds_replica_addresses | jq -r 'join(",")')" >> $GITHUB_OUTPUT
           echo "elasticache_primary_endpoint=$(terraform output -raw elasticache_primary_endpoint)" >> $GITHUB_OUTPUT
           echo "s3_bucket_name=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+          # SSOT for the two values this deploy used to hardcode: the cluster name (the module
+          # names it `${var.environment}-hakawi`, and a wrong name here is a cluster-not-found
+          # at update-kubeconfig) and the Secrets Manager prefix, which must equal the charts'
+          # `externalSecrets.secretPrefix` or every ExternalSecret fails to sync.
+          echo "eks_cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "secret_prefix=$(terraform output -raw secret_prefix)" >> $GITHUB_OUTPUT
+
+      # WHY the name comes from terraform: modules/eks names the cluster
+      # `${var.environment}-hakawi`, while this workflow said `hakawi-production-eks`. Both
+      # spellings exist in the repository, so the state is the tie-breaker.
+      #
+      # WHY THIS AND THE ROLLBACK SNAPSHOT MOVED HERE, AFTER THE OUTPUTS: both need a working
+      # kubeconfig, and the kubeconfig now takes its cluster name from the state, so it comes
+      # after the apply. It is still before either `helm upgrade`, which is what the snapshot
+      # exists for — the pre-rollout manifest, not a pre-plan one.
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ steps.tf-output.outputs.eks_cluster_name }} --alias production
+
+      - name: Save pre-deploy state for rollback
+        run: |
+          mkdir -p /tmp/rollback
+          helm get manifest hakawi-production-backend -n hakawi > /tmp/rollback/backend-prev.yaml 2>/dev/null || true
+          helm get manifest hakawi-production-frontend -n hakawi > /tmp/rollback/frontend-prev.yaml 2>/dev/null || true
+
+      # ---------------------------------------------------------------------------------------
+      # MIGRATION LEDGER PREFLIGHT. WHY before the migration Job AND before the two helm
+      # upgrades: drizzle-kit used to apply this schema (`npx drizzle-kit migrate`, which stopped
+      # at `0018_add_report_source` — 18 of 29 files) and keeps its own journal in
+      # `__drizzle_migrations`, while the repository's runner keeps its ledger in
+      # `drizzle_migrations` and ignores drizzle-kit's journal entirely. On an environment
+      # previously migrated by drizzle-kit the runner's ledger is short, so it re-applies
+      # `0019`–`0029` and dies on the unguarded `ALTER TABLE "reports" ADD CONSTRAINT` in
+      # `migrations/0018_add_report_source.sql` — after the rollout has started.
+      - name: "Preflight: migration ledger agreement"
+        run: |
+          set -euo pipefail
+          # WHY jq and not `-o jsonpath`: the keys this preflight needs contain dots
+          # (`db.user`, `db.password`), which a jsonpath expression can only reach through
+          # escaping; `jq` indexes the map literally. WHY the ConfigMap and the
+          # ExternalSecret-synced secret rather than tf outputs: those are exactly the values the
+          # migration Job reads below, so the preflight checks the same database with the same
+          # identity the job will use. Nothing is printed.
+          CONFIG="$(kubectl get configmap hakawi-backend-config -n hakawi -o json)"
+          SECRET="$(kubectl get secret hakawi-backend-secrets -n hakawi -o json)"
+
+          export DB_PRIMARY_HOST="$(jq -r '.data.DB_PRIMARY_HOST // ""' <<<"$CONFIG")"
+          export DB_PRIMARY_PORT="$(jq -r '.data.DB_PORT // "5432"' <<<"$CONFIG")"
+          export DB_PRIMARY_NAME="$(jq -r '.data.DB_NAME // "hakawi"' <<<"$CONFIG")"
+          export DB_USER="$(jq -r '.data["db.user"] // "" | @base64d' <<<"$SECRET")"
+          export DB_PASSWORD="$(jq -r '.data["db.password"] // "" | @base64d' <<<"$SECRET")"
+
+          if [ -z "$DB_PRIMARY_HOST" ]; then
+            echo "::error::the release ConfigMap hakawi-backend-config carries no DB_PRIMARY_HOST, so the migration ledger preflight cannot reach the same primary the migration Job will use. Deploy the backend release once (or apply the chart) and re-run."
+            exit 1
+          fi
+          if [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+            echo "::error::the ExternalSecret-synced secret hakawi-backend-secrets has no db.user/db.password yet, so the migration ledger preflight cannot authenticate. Deploy the backend release once (or apply the chart) and re-run."
+            exit 1
+          fi
+          node scripts/preflight-migration-ledger.mjs
+
+      # ---------------------------------------------------------------------------------------
+      # MIGRATIONS. What used to be here: `kubectl exec -n hakawi "$POD" -- npx drizzle-kit
+      # migrate`. That line was broken three ways over, and the failure was silent.
+      #
+      #   1. It read the drizzle journal, which listed 18 of the 29 `.sql` files in `migrations/`
+      #      (last entry `0018_add_report_source`). MFA support (0029) and the books-owner
+      #      backfills (0019, 0025) were never applied to any environment. `migrations/meta/README.md`
+      #      records the whole story; `scripts/check-migration-journal.mjs` now fails a pull request
+      #      when the index stops matching the files, and the journal has been completed.
+      #   2. `drizzle-kit` is a devDependency (backend/package.json), and the backend runtime image
+      #      installs with `--omit=dev` (backend/Dockerfile), so the binary does not exist in the
+      #      pod. `npx` would have tried to fetch it at deploy time, into a container running with
+      #      `readOnlyRootFilesystem: true` and no writable npm cache.
+      #   3. The pod selector `-l app.kubernetes.io/name=hakawi-production-backend` matches nothing:
+      #      the chart sets that label to the CHART name (`values.yaml:12` nameOverride: backend),
+      #      and `fullnameOverride: hakawi-backend` (values.yaml:11, not overridden by
+      #      values-production.yaml) makes the Deployment `hakawi-backend` in every environment.
+      #      `$POD` was empty, so the exec had no target.
+      #
+      # What is here now: the repository's own runner, which applies all 29 files under its sha256
+      # ledger, advisory lock and one-transaction-per-file guarantee. It runs in a DISPOSABLE JOB
+      # because that is the only place it can run:
+      #   - RDS is `publicly_accessible = false` (infrastructure/terraform/modules/rds/main.tf:94),
+      #     so a GitHub-hosted runner cannot reach the database at all;
+      #   - the runtime image ships `dist/` only, so `tsx src/db/migrations/migration-runner.ts` has
+      #     no source to run, and the migration `.sql` files are not in the image either.
+      #
+      # So the job mounts `migrations/` from a ConfigMap into `HAKAWI_MIGRATIONS_DIR` and runs the
+      # COMPILED entry point that the image already contains. Verified locally against the compose
+      # `postgres-primary`: `NODE_ENV=production node backend/dist/db/migrations/migration-runner.js
+      # up --allow-production` reports "No pending migrations. 29 migration(s) already applied."
+      # after `npm run migration:run` applied all 29, and refuses to run at all without the flag.
+      #
+      # Credentials come from the release's own ExternalSecret (`db.user`, `db.password`) and the
+      # host from the release's own ConfigMap, so this job uses exactly the database identity the
+      # application uses. Neither the host nor a password is written into this file.
+      #
+      # WHY IT RUNS BEFORE THE TWO `helm upgrade` STEPS: it used to run after them, so the new
+      # image went live BEFORE the schema it needs existed. A migration only the new code needs
+      # (`0029_add_mfa_support`, the `0019`/`0025` backfills) then failed against an
+      # already-rolled-out release — a broken release with the old image gone. The schema first,
+      # the code second. Its failure aborts the rollout because it is a plain step with no
+      # `continue-on-error`, and the rollback step below then has a cluster that still serves the
+      # previous release.
+      - name: Apply migrations from the repository's own runner
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          CM="hakawi-migrations-${SHA}"
+          JOB="hakawi-migrations-${SHA}"
+
+          kubectl config use-context production
+
+          # `--dry-run=client -o yaml | kubectl apply` is the idempotent way to create or refresh a
+          # ConfigMap: `create` alone fails on the second deploy of the same commit, and `replace`
+          # fails on the first. 29 shell files are a few hundred KB, well inside the 1 MiB limit.
+          kubectl create configmap "${CM}" --from-file=migrations/ -n hakawi --dry-run=client -o yaml \
+            | kubectl apply -f -
+
+          cat <<EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${JOB}
+            namespace: hakawi
+            labels:
+              app.kubernetes.io/name: hakawi-migrations
+              app.kubernetes.io/part-of: hakawi
+              app.kubernetes.io/component: migration
+          spec:
+            backoffLimit: 0
+            ttlSecondsAfterFinished: 300
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: hakawi-migrations
+                  app.kubernetes.io/part-of: hakawi
+                  app.kubernetes.io/component: migration
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: migrate
+                    image: ${{ env.ECR_REGISTRY }}/hakawi/backend:${{ github.sha }}
+                    imagePullPolicy: Always
+                    # WHY THE COMPILED ENTRY POINT. The image contains `dist/`, not `src/`, and
+                    # its module specifiers are already rewritten to `.js` (verified in
+                    # `backend/dist/db/migrations/migration-runner.js`), so `node` runs it as
+                    # native ESM with nothing to transpile.
+                    #
+                    # WHY TWO COMMANDS. `up --allow-production` is the explicit-decision form the
+                    # runner demands under `NODE_ENV=production` (migration-runner.ts:535-539).
+                    # The ConfigMap below provides `NODE_ENV=production`, and `verify` REFUSES
+                    # `--allow-production` by CLI design (`parseMigrationArgv` rejects the flag
+                    # for any command but `up`), so the read-only ledger check has to drop the
+                    # variable instead of passing the flag. `verify` reads `process.env.NODE_ENV`
+                    # nowhere else.
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        set -e
+                        node dist/db/migrations/migration-runner.js up --allow-production
+                        env -u NODE_ENV node dist/db/migrations/migration-runner.js verify
+                    # The whole connection configuration the backend uses: NODE_ENV, PORT,
+                    # DB_NAME, DB_PRIMARY_HOST (set by the deploy above), the Valkey endpoints.
+                    # Mirrors the backend Deployment's `envFrom`.
+                    envFrom:
+                      - configMapRef:
+                          name: hakawi-backend-config
+                    env:
+                      - name: HAKAWI_MIGRATIONS_DIR
+                        value: /migrations
+                      # The db router prefers DB_PRIMARY_* and falls back to DB_*
+                      # (src/db/router.ts), which is why these two are enough.
+                      - name: DB_USER
+                        valueFrom:
+                          secretKeyRef:
+                            name: hakawi-backend-secrets
+                            key: db.user
+                      - name: DB_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: hakawi-backend-secrets
+                            key: db.password
+                    volumeMounts:
+                      - name: migrations
+                        mountPath: /migrations
+                        readOnly: true
+                volumes:
+                  - name: migrations
+                    configMap:
+                      name: ${CM}
+          EOF
+
+          # `kubectl wait` on the Job, not on a pod: `--for=condition=complete` is true only when the
+          # job's pod succeeded, and `backoffLimit: 0` means a failed pod is the end of it rather
+          # than the start of a retry storm. The timeout matches the `timeout-minutes` budget of
+          # the 0024 enum migration, which is the slowest file in the chain.
+          if ! kubectl wait --for=condition=complete "job/${JOB}" -n hakawi --timeout=600s; then
+            kubectl logs "job/${JOB}" -n hakawi --all-containers --tail=200 || true
+            echo "::error::the migration job failed; see its log above"
+            exit 1
+          fi
+          kubectl logs "job/${JOB}" -n hakawi --tail=50
 
       - name: Deploy backend to production
         run: |
@@ -111,11 +387,12 @@ jobs:
             --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/backend \
             --set image.tag=${{ github.sha }} \
             --set image.pullPolicy=Always \
-            --set env.db.primaryHost=${{ steps.tf-output.outputs.rds_primary_endpoint }} \
-            --set env.db.replicaHosts=${{ steps.tf-output.outputs.rds_replica_endpoints }} \
+            --set env.db.primaryHost=${{ steps.tf-output.outputs.rds_primary_address }} \
+            --set env.db.replicaHosts=${{ steps.tf-output.outputs.rds_replica_addresses }} \
             --set env.valkey.host=${{ steps.tf-output.outputs.elasticache_primary_endpoint }} \
             --set env.s3.bucket=${{ steps.tf-output.outputs.s3_bucket_name }} \
             --set env.aws.region=us-east-1 \
+            --set externalSecrets.secretPrefix=${{ steps.tf-output.outputs.secret_prefix }} \
             --set serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/hakawi-production-hakawi-backend-irsa \
             --wait --timeout=600s
 
@@ -129,24 +406,34 @@ jobs:
             --set image.repository=${{ env.ECR_REGISTRY }}/hakawi/frontend \
             --set image.tag=${{ github.sha }} \
             --set image.pullPolicy=Always \
-            --set env.db.host=${{ steps.tf-output.outputs.rds_primary_endpoint }} \
+            --set env.db.host=${{ steps.tf-output.outputs.rds_primary_address }} \
+            --set externalSecrets.secretPrefix=${{ steps.tf-output.outputs.secret_prefix }} \
             --wait --timeout=600s
-
-      - name: Run migrations
-        run: |
-          POD=$(kubectl get pods -n hakawi -l app.kubernetes.io/name=hakawi-production-backend -o jsonpath='{.items[0].metadata.name}')
-          kubectl exec -n hakawi "$POD" -- npx drizzle-kit migrate
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/hakawi-production-backend -n hakawi --timeout=300s
-          kubectl rollout status deployment/hakawi-production-frontend -n hakawi --timeout=300s
+          kubectl config use-context production
+          # `hakawi-backend` and NOT `hakawi-production-backend`: `fullnameOverride: hakawi-backend`
+          # in infrastructure/helm/backend/values.yaml is not overridden by values-production.yaml,
+          # so every environment's Deployment is named `hakawi-backend`. The old name made every
+          # `rollout status` and `kubectl wait` in this file fail with "deployment not found".
+          kubectl rollout status deployment/hakawi-backend -n hakawi --timeout=300s
+          kubectl rollout status deployment/hakawi-frontend -n hakawi --timeout=300s
 
       - name: Run health checks
         run: |
-          kubectl wait --for=condition=available deployment/hakawi-production-backend -n hakawi --timeout=120s
-          curl -sf https://api.hakawi.io/api/v1/health || exit 1
-          curl -sf https://app.hakawi.io/ || exit 1
+          kubectl config use-context production
+          kubectl wait --for=condition=available deployment/hakawi-backend -n hakawi --timeout=120s
+          # WHY THESE HOSTS. They were `api.hakawi.io` and `app.hakawi.io`, which are nobody's
+          # domains — the deployed ingress is `api.hakawi.com` and `app.hakawi.com`
+          # (infrastructure/helm/backend/values-production.yaml:53 and the matching frontend
+          # values-production.yaml:54, with corsOrigin "https://app.hakawi.com,https://hakawi.com"
+          # at values-production.yaml:114). A smoke test against a domain that does not resolve
+          # fails for a reason that has nothing to do with the deploy, or — if the zone happens to
+          # be parked — passes for a reason that has nothing to do with it either.
+          curl -sf https://api.hakawi.com/api/v1/health || exit 1
+          curl -sf https://app.hakawi.com/ || exit 1
+          curl -sf https://hakawi.com/ || exit 1
 
       - name: Rollback on failure
         if: failure()
@@ -161,10 +448,12 @@ jobs:
           fi
           helm rollback hakawi-production-backend -n hakawi 2>/dev/null || true
           helm rollback hakawi-production-frontend -n hakawi 2>/dev/null || true
-          kubectl rollout status deployment/hakawi-production-backend -n hakawi --timeout=300s
+          kubectl rollout status deployment/hakawi-backend -n hakawi --timeout=300s
           echo "Rollback completed"
           exit 1
 
       - name: Notify (on failure)
         if: failure()
-        run: echo "Production deployment failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          echo "Production deployment failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Failed run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"

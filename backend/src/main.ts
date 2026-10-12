@@ -136,6 +136,21 @@ async function bootstrap() {
 
   const cacheInterceptor = app.get(CacheInterceptor);
   app.useGlobalInterceptors(cacheInterceptor);
+
+  // WHY THIS IS REGISTERED HERE RATHER THAN ON `AppModule`'s PROVIDERS. `useGlobalInterceptors` reads
+  // the instance out of the module container, so the interceptor shares the ONE `PrometheusRegistry`
+  // that `PrometheusController` renders — the property that makes `GET /api/v1/metrics` worth scraping.
+  // Registering it as a plain provider instead would leave it instantiated per module and the endpoint
+  // would render a body with no traffic in it.
+  //
+  // WHY THE ORDER MATTERS AND WHY IT IS LAST. Interceptors run in registration order on the way in and
+  // in reverse on the way out. This one does no observable work on the response path — it appends one
+  // sample to a counter — so its position costs nothing either way, and registering it last means the
+  // `LoggingInterceptor` and `CacheInterceptor` already around it are unaffected. It is after both
+  // because a metric that missed a request is a wrong metric, not a slow one.
+  const { MetricsInterceptor } = await import('./common/interceptors/metrics.interceptor.ts');
+  app.useGlobalInterceptors(app.get(MetricsInterceptor));
+
   // `GET /api/v1/metrics/cache` and `GET /api/v1/metrics/degradation` are served by
   // `CacheMetricsController`, declared on `CommonModule` — see
   // `common/observability/metrics.controller.ts`. The cache route used to be registered
@@ -143,7 +158,15 @@ async function bootstrap() {
   // therefore outside `JwtAuthGuard`, `RolesGuard`, the global validation pipe, the
   // global exception filter and the global prefix: an unauthenticated caller could read
   // the cache counters. Both routes now go through the same chain as every other route
-  // and require a super-admin token.
+  // and require a super-admin token. The Prometheus exposition endpoint,
+  // `GET /api/v1/metrics`, is deliberately NOT one of them — see
+  // `common/observability/prometheus.controller.ts`.
+
+  // The process gauges are samples of state, so something has to sample them. `DefaultMetricsCollector`
+  // owns that timer and `onModuleDestroy` clears it; instantiating it here rather than leaving it to the
+  // container means the timer starts only once the application is otherwise fully configured.
+  const { DefaultMetricsCollector } = await import('./common/observability/default-metrics.collector.ts');
+  app.get(DefaultMetricsCollector).start();
 
   app.useGlobalPipes(
     new (await import('@nestjs/common')).ValidationPipe({

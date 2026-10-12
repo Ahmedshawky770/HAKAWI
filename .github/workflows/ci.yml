@@ -1,10 +1,20 @@
 name: CI/CD Pipeline
 
+# WHY `workflow_call` ALONGSIDE THE TWO EXISTING TRIGGERS. The deploy workflows used to run
+# straight from a push with nothing in front of them, so a red commit deployed. `workflow_call`
+# is what lets `deploy-{dev,staging,production}.yml` name this file as their FIRST job
+# (`uses: ./.github/workflows/ci.yml`) and chain everything else behind `needs: ci`. The push and
+# pull_request triggers keep working exactly as before — adding a trigger is additive, and the
+# `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` gates below key off the
+# event NAME, which a `workflow_call` event does not have (it surfaces as `github.event_name`
+# `workflow_call`), so a deploy-triggered run simply runs the ungated jobs rather than
+# duplicating the main-only ones.
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -426,6 +436,36 @@ jobs:
       - name: Check migration files
         run: npm run db:check --workspace=backend
 
+  # WHY THIS JOB EXISTS. `migrations/meta/_journal.json` is a drizzle-kit index, not the ledger —
+  # the runner orders by filename prefix and never reads it (migrations/meta/README.md). For eleven
+  # migrations nothing had any reason to notice that the index had stopped describing the
+  # directory: it held 18 entries against 29 `.sql` files. That stayed invisible because no tool
+  # read it. Then someone pointed a deploy at it: `deploy-{dev,staging,production}.yml` ran
+  # `kubectl exec … npx drizzle-kit migrate`, which applies exactly the journal's entries — so
+  # every deploy applied 18 of 29 migrations, and `0029_add_mfa_support` never reached a database.
+  #
+  # The deploys now run the repo's own runner, which applies all 29. This guard is the second half
+  # of the fix: it fails when the index stops matching the files again, so the next drift is a red
+  # pull request rather than a silently skipped migration.
+  migration-journal:
+    name: Migration Journal Index
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # No `npm ci`: the guard is plain node over the repository's own files, so it costs a
+      # checkout and nothing else. A guard that pays for a full install is a guard someone later
+      # deletes to make the pipeline faster.
+      - name: Assert the drizzle journal still indexes every migration file
+        run: node scripts/check-migration-journal.mjs
+
   # From-scratch apply of the whole chain against an empty database. This is a real gate, not a
   # checksum check: it proves every migration is self-contained, runs in order on a virgin schema,
   # and is re-runnable. It deliberately does NOT claim to validate any deployed environment — it
@@ -437,7 +477,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [migration-premerge]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # `github.event_name == 'workflow_call'` is added so the gate also runs when a deploy workflow
+    # calls this one: a deploy is precisely the moment a broken migration chain matters, and a
+    # `workflow_call` event carries no event name of its own, so gating on 'push' alone would
+    # silently skip the from-scratch apply for every deploy-triggered run.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_call'
     services:
       postgres:
         image: postgres:15-alpine
@@ -711,7 +755,10 @@ jobs:
     #   - `migration-roundtrip` is INCLUDED because it has no such gate: it runs on every pull request,
     #     costs about two seconds of migration work, and is the assertion that catches a migration
     #     which cannot be rolled back — the failure an operator meets during an incident.
-    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, security, backup-verify]
+    #   - `migration-journal` is INCLUDED for the same reason: no `if:` gate, no database, and it is
+    #     the assertion that keeps the drizzle index from describing a directory that no longer
+    #     exists. The 18-of-29 deploys it now prevents are recorded in migrations/meta/README.md.
+    needs: [lint, test-unit, test-frontend, test-coverage, test-e2e, test-browser, migration-premerge, migration-roundtrip, migration-journal, security, backup-verify]
     steps:
       - uses: actions/checkout@v4
 
@@ -739,6 +786,21 @@ jobs:
     timeout-minutes: 20
     needs: [build]
     if: github.ref == 'refs/heads/main'
+    # WHY THESE FOUR. The job starts the compose datastores, which come up with the
+    # docker-compose.yml defaults: user `postgres`, database `hakawi`, password
+    # `dev-postgres-change-in-production` (docker-compose.yml:55-57). The backend and the
+    # migration runner default the password to the EMPTY STRING (src/db/router.ts), so without
+    # this block the migration step would fail on authentication and the backend would never
+    # boot — which the broken wait loop below used to hide. Same values as `backup-verify`, for
+    # the same reason: they are what this repository's compose file actually starts.
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_NAME: ${{ vars.DB_NAME || 'hakawi' }}
+      DB_USER: ${{ vars.DB_USER || 'postgres' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'dev-postgres-change-in-production' }}
+      VALKEY_HOST: localhost
+      VALKEY_PORT: '6379'
     steps:
       - uses: actions/checkout@v4
 
@@ -751,17 +813,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # WHY THE SERVICE IS `postgres-primary` AND NOT `postgres`. Commit 3e5958fb introduced the
+      # read-replica architecture and renamed the single service to `postgres-primary`
+      # (docker-compose.yml:52). This job still said `docker compose up -d postgres`, which fails
+      # outright with `no such service: postgres` (reproduced locally), so the job — and `build`,
+      # which needs it — has never run. `valkey` is here because the backend connects to it on
+      # boot, not because this test reads from it.
       - name: Start datastores
-        run: docker compose up -d postgres valkey
+        run: docker compose up -d postgres-primary valkey
 
       - name: Wait for PostgreSQL
         run: |
           for i in $(seq 1 30); do
-            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
-              break
+            if docker compose exec -T postgres-primary pg_isready -U "$DB_USER" >/dev/null 2>&1; then
+              echo "postgres-primary is ready"
+              exit 0
             fi
             sleep 1
           done
+          # A wait loop that falls through on timeout is not a wait: it hands a broken datastore to
+          # the next step and lets the verdict come from somewhere else. Fail here instead.
+          echo "::error::postgres-primary never became ready within 30s"
+          exit 1
 
       - name: Run migrations
         run: npm run migration:run --workspace=backend
@@ -770,21 +843,34 @@ jobs:
         run: npm run start:dev --workspace=backend &
         env:
           NODE_ENV: test
-
+      # WHY PORT 3001 AND `/api/v1/health`. The backend listens on 3001 (the `PORT` default in
+      # docker-compose.yml:208, `EXPOSE 3001` in backend/Dockerfile) and `main.ts:102` sets the
+      # global prefix `api/v1`, so the reachable route is `/api/v1/health`. This loop curled
+      # `http://localhost:3000/health`, which is nothing — 3000 is the FRONTEND's port and a bare
+      # `/health` 404s behind the prefix — so it always exhausted its 60 attempts and then kept
+      # going, letting k6 run against a server that was never up.
+      # `load-tests/k6.conf.js` defaults BASE_URL to the same `http://localhost:3001/api/v1`.
       - name: Wait for backend
         run: |
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
-              break
+            if curl -sf http://localhost:3001/api/v1/health >/dev/null 2>&1; then
+              echo "backend answered on http://localhost:3001/api/v1/health"
+              exit 0
             fi
             sleep 1
           done
+          echo "::error::backend did not answer on http://localhost:3001/api/v1/health within 60s"
+          exit 1
 
       - name: Run k6 load test
         uses: grafana/k6-action@v0.3.0
         with:
           filename: load-tests/k6.conf.js
-          flags: --out json=k6-report.json
+          # BASE_URL spelled out rather than left to the script's default. `load-tests/k6.conf.js`
+          # already defaults to `http://localhost:3001/api/v1`, so this is the same URL — but the
+          # wait step above is the thing that proves the server is up on it, and a reader looking
+          # for "which host does the load test hit" should find it here and not in a JS constant.
+          flags: -e BASE_URL=http://localhost:3001/api/v1 --out json=k6-report.json
 
       - name: Upload k6 report
         if: always()
@@ -798,42 +884,129 @@ jobs:
     name: Backup Verification
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # WHY THESE THREE VARIABLES AND NOT INVENTED ONES. `docker-compose.yml` defaults
+    # `DB_USER=postgres`, `DB_PASSWORD=dev-postgres-change-in-production` and `DB_NAME=hakawi`
+    # (lines 55-57), and this job runs that compose file, so these are the credentials the
+    # service is actually started with. The old job passed `PGPASSWORD=postgres`, which matches
+    # nothing in this stack — it only ever worked because it never reached a database with data in
+    # it. `${...:-default}` keeps the value overridable by a runner-level env of the same name.
+    env:
+      DB_USER: ${{ vars.DB_USER || 'postgres' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'dev-postgres-change-in-production' }}
+      DB_NAME: ${{ vars.DB_NAME || 'hakawi' }}
+      DB_HOST: localhost
+      DB_PORT: '5432'
     steps:
       - uses: actions/checkout@v4
 
+      # The job now runs the migration runner, so it needs node and the lockfile install the way
+      # every other job in this file does. Without these two steps `npm run migration:run` was
+      # not merely unexecuted, it was unexecutable.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # WHY `postgres-primary`. Commit 3e5958fb renamed the service (docker-compose.yml:52); the
+      # old `docker compose up -d postgres` died with `no such service: postgres` (reproduced
+      # locally: exit 1), which is why this job has never actually verified anything.
       - name: Start PostgreSQL
-        run: docker compose up -d postgres
+        run: docker compose up -d postgres-primary
 
       - name: Wait for PostgreSQL
         run: |
           for i in $(seq 1 30); do
-            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
-              break
+            if docker compose exec -T postgres-primary pg_isready -U "$DB_USER" >/dev/null 2>&1; then
+              echo "postgres-primary is ready"
+              exit 0
             fi
             sleep 1
           done
+          echo "::error::postgres-primary never became ready within 30s"
+          exit 1
 
+      # WHY THIS STEP IS THE WHOLE POINT OF THE JOB. It used to start an EMPTY database, dump it,
+      # restore the dump and count tables. The count was 0, the assertion was "it printed a
+      # number", and the job passed: a backup-and-restore drill on a schema that does not exist
+      # certifies nothing about the backup of anything real. Applying the migration chain first
+      # means the dump contains the schema the application actually runs on, which is what
+      # `scripts/backup.sh` takes of production. Measured locally: the empty-database version
+      # restores 0 tables and still reports success; this version restores 35.
+      #
+      # The runner is the repo's own (`backend/src/db/migrations/migration-runner.ts`), applied
+      # with the compose service's credentials, because a restore drill that migrates through a
+      # different path than the one production uses would verify a different schema.
+      - name: Apply migrations
+        run: npm run migration:run --workspace=backend
+        env:
+          DB_HOST: ${{ env.DB_HOST }}
+          DB_PORT: ${{ env.DB_PORT }}
+          DB_NAME: ${{ env.DB_NAME }}
+          DB_USER: ${{ env.DB_USER }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+
+      # WHY THE CLIENT RUNS INSIDE THE CONTAINER. `pg_dump` refuses to talk to a server newer
+      # than itself (`server version: 15.19; pg_dump version: 14.24` — reproduced locally, which
+      # produced a 371-byte dump of nothing). Running the container's own client removes the
+      # runner/ server version skew from the drill, and the container's `postgres` superuser is
+      # already the compose service's own credentials, so no password crosses the host at all.
       - name: Create test backup
         run: |
+          set -euo pipefail
           mkdir -p backups
-          PGPASSWORD=postgres pg_dump -h localhost -U postgres -d hakawi --format=plain --no-owner --no-acl | gzip > backups/hakawi-test-$(date +%Y%m%d-%H%M%S).sql.gz
+          docker compose exec -T postgres-primary \
+            pg_dump -U "$DB_USER" -d "$DB_NAME" --format=plain --no-owner --no-acl \
+            | gzip > "backups/hakawi-test-$(date +%Y%m%d-%H%M%S).sql.gz"
 
       - name: Verify backup integrity
         run: |
+          set -euo pipefail
           LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
           gunzip -t "$LATEST"
-          echo "Backup integrity: OK"
+          SIZE=$(wc -c < "$LATEST")
+          echo "Backup integrity: OK ($SIZE bytes)"
+
+          # WHY A SIZE FLOOR. A gzip stream of an empty database is 371 bytes and passes
+          # `gunzip -t` exactly as a real dump does. Integrity is not the same as utility: if the
+          # chain ever regresses to "no migrations applied", this is the line that notices.
+          if [ "$SIZE" -lt 2048 ]; then
+            echo "::error::the dump is $SIZE bytes, which is an empty database, not a schema"
+            exit 1
+          fi
 
       - name: Test restore
         run: |
+          set -euo pipefail
           LATEST=$(ls -1t backups/hakawi-test-*.sql.gz | head -1)
           TEST_DB="hakawi_restore_test_$(date +%s)"
-          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
-          psql -h localhost -U postgres -d postgres -c "CREATE DATABASE $TEST_DB;"
-          gunzip -c "$LATEST" | psql -h localhost -U postgres -d "$TEST_DB"
-          TABLE_COUNT=$(psql -h localhost -U postgres -d "$TEST_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
-          echo "Restored $TABLE_COUNT tables"
-          psql -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+          docker compose exec -T postgres-primary psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
+          docker compose exec -T postgres-primary psql -U "$DB_USER" -d postgres -c "CREATE DATABASE $TEST_DB;"
+          gunzip -c "$LATEST" | docker compose exec -T postgres-primary psql -U "$DB_USER" -d "$TEST_DB" >/dev/null
+
+          TABLE_COUNT=$(docker compose exec -T postgres-primary psql -U "$DB_USER" -d "$TEST_DB" -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+          SOURCE_COUNT=$(docker compose exec -T postgres-primary psql -U "$DB_USER" -d "$DB_NAME" -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+          echo "Restored $TABLE_COUNT tables; the dumped database has $SOURCE_COUNT"
+
+          # THE ASSERTION THE JOB NEVER HAD. It used to print the count and stop, so 0 was a
+          # pass. Now a restore that does not reproduce the source schema is a failure, and the
+          # comparison is against the database that was dumped rather than a hard-coded number,
+          # which would have to be edited every time a migration adds a table.
+          if [ "$TABLE_COUNT" -eq 0 ]; then
+            echo "::error::the restored database has no tables; the dump or the restore is broken"
+            exit 1
+          fi
+          if [ "$TABLE_COUNT" != "$SOURCE_COUNT" ]; then
+            echo "::error::the restored schema has $TABLE_COUNT tables and the source has $SOURCE_COUNT"
+            exit 1
+          fi
+          echo "Restore verification: OK"
+          docker compose exec -T postgres-primary psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;"
 
       - name: Cleanup
         if: always()

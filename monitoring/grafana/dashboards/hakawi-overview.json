@@ -1,192 +1,113 @@
 {
-  "dashboard": {
-    "title": "Hakawi Platform Overview",
-    "tags": ["hakawi", "overview"],
-    "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "API Request Rate",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "sum(rate(http_server_requests_seconds_count{job=\"hakawi-backend\"}[5m])) by (status)",
-            "legendFormat": "{{status}}"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "reqps"}, {"format": "short"}]
-      },
-      {
-        "id": 2,
-        "title": "API Latency (p50, p95, p99)",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
-            "legendFormat": "p50"
-          },
-          {
-            "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
-            "legendFormat": "p95"
-          },
-          {
-            "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"hakawi-backend\"}[5m])) by (le))",
-            "legendFormat": "p99"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "s"}, {"format": "short"}]
-      },
-      {
-        "id": 3,
-        "title": "Error Rate by Endpoint",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "sum(rate(http_server_requests_seconds_count{job=\"hakawi-backend\",status=~\"5..\"}[5m])) by (handler)",
-            "legendFormat": "{{handler}}"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "reqps"}, {"format": "short"}]
-      },
-      {
-        "id": 4,
-        "title": "Active Users (Last 5 min)",
-        "type": "stat",
-        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 4},
-        "targets": [
-          {
-            "expr": "sum(increase(auth_success_total[5m]))",
-            "legendFormat": "Active Users"
-          }
-        ]
-      },
-      {
-        "id": 5,
-        "title": "WAF Blocked IPs",
-        "type": "stat",
-        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 4},
-        "targets": [
-          {
-            "expr": "waf_blocked_ips",
-            "legendFormat": "Blocked IPs"
-          }
-        ]
-      },
-      {
-        "id": 6,
-        "title": "Rate Limit Exceeded",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "sum(rate(rate_limit_exceeded_total[5m])) by (tier)",
-            "legendFormat": "{{tier}}"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "reqps"}, {"format": "short"}]
-      },
-      {
-        "id": 7,
-        "title": "PostgreSQL Connections",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "pg_stat_database_numbackends",
-            "legendFormat": "Active Connections"
-          },
-          {
-            "expr": "pg_settings_max_connections",
-            "legendFormat": "Max Connections"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "short"}, {"format": "short"}]
-      },
-      {
-        "id": 8,
-        "title": "Valkey Memory Usage",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "redis_memory_used_bytes / 1024 / 1024",
-            "legendFormat": "Used (MB)"
-          },
-          {
-            "expr": "redis_memory_max_bytes / 1024 / 1024",
-            "legendFormat": "Max (MB)"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "MB"}, {"format": "short"}]
-      },
-      {
-        "id": 9,
-        "title": "Valkey Hit Rate",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100",
-            "legendFormat": "Hit Rate %"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "percentunit", "max": 100}, {"format": "short"}]
-      },
-      {
-        "id": 10,
-        "title": "Payment Success/Failure Rate",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "sum(rate(payments_success_total[5m]))",
-            "legendFormat": "Success"
-          },
-          {
-            "expr": "sum(rate(payments_failed_total[5m]))",
-            "legendFormat": "Failed"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "reqps"}, {"format": "short"}]
-      },
-      {
-        "id": 11,
-        "title": "Cache Metrics",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8},
-        "targets": [
-          {
-            "expr": "cache_hits_total",
-            "legendFormat": "Hits"
-          },
-          {
-            "expr": "cache_misses_total",
-            "legendFormat": "Misses"
-          },
-          {
-            "expr": "cache_hit_rate * 100",
-            "legendFormat": "Hit Rate %"
-          }
-        ],
-        "xaxis": {"mode": "time"},
-        "yaxes": [{"format": "short"}, {"format": "percentunit", "max": 100}]
-      }
-    ],
-    "time": {
-      "from": "now-1h",
-      "to": "now"
+  "uid": "hakawi-overview",
+  "schemaVersion": 39,
+  "title": "Hakawi Platform Overview",
+  "tags": ["hakawi", "overview"],
+  "timezone": "browser",
+  "description": "Overview of the Hakawi platform. Panels read the job `hakawi-backend`, the exporters, and PostgreSQL/Valkey through the default Prometheus datasource. WHY THIS DASHBOARD SHOWS LESS THAN IT USED TO. The panels on `auth_success_total`, `waf_blocked_ips`, `rate_limit_exceeded_total`, `payments_success_total`, `payments_failed_total`, `cache_hits_total`, `cache_misses_total` and `cache_hit_rate` were removed in the same pass that deleted the seven rules in `monitoring/prometheus/rules/hakawi-alerts.yml` which read them. `grep` over `backend/src` returns nothing for any of those names: the registry in `backend/src/common/observability/prometheus-registry.ts` declares six metrics in total — five process gauges plus the `http_requests_total{method,route,status}` counter recorded by `common/interceptors/metrics.interceptor.ts` — and none of the removed names is among them. So every one of those panels rendered a permanently empty graph. The failure mode is not a visible error; it is a panel that looks like coverage and answers nothing, which trains whoever opens this dashboard to skip past the gap. The rejected alternative was to keep the panels as placeholders until the metrics arrive, on the grounds that a hole in a dashboard is ugly — but a placeholder panel has no way to say it is a placeholder, so it is indistinguishable from a broken query and nobody can tell which metrics are missing. What remains here is a series this process actually exposes (`http_requests_total`, `nodejs_eventloop_lag_seconds`) or an exporter metric whose name was verified against the exporter the job in `monitoring/prometheus/prometheus.yml` runs. Each removed panel comes back the day its metric is emitted; the rules file records the same list from the alerting side.",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "graph",
+      "description": "`http_requests_total{job=\"hakawi-backend\"}` — the one counter the registry declares, incremented per request by `common/interceptors/metrics.interceptor.ts`.",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"hakawi-backend\"}[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "reqps"}, {"format": "short"}]
     },
-    "refresh": "30s"
-  }
+    {
+      "id": 2,
+      "title": "Event Loop Lag",
+      "type": "graph",
+      "description": "`nodejs_eventloop_lag_seconds` — sampled every 5s by `common/observability/default-metrics.collector.ts`. The same series `BackendEventLoopLagHigh` alerts on.",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "nodejs_eventloop_lag_seconds{job=\"hakawi-backend\"} * 1000",
+          "legendFormat": "event loop lag (ms)"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "ms", "min": 0}, {"format": "short"}]
+    },
+    {
+      "id": 3,
+      "title": "Error Rate by Endpoint",
+      "type": "graph",
+      "description": "`http_requests_total{status=~\"5..\"}` by route template. The numerator of the expression `BackendHighErrorRate` evaluates.",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"hakawi-backend\",status=~\"5..\"}[5m])) by (route)",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "reqps"}, {"format": "short"}]
+    },
+    {
+      "id": 4,
+      "title": "PostgreSQL Connections",
+      "type": "graph",
+      "description": "Exporter metrics from the `postgresql` job (prometheuscommunity/postgres-exporter v0.13.2), the same two series `PostgreSQLConnectionsHigh` divides.",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "pg_stat_database_numbackends",
+          "legendFormat": "Active Connections"
+        },
+        {
+          "expr": "pg_settings_max_connections",
+          "legendFormat": "Max Connections"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "short"}, {"format": "short"}]
+    },
+    {
+      "id": 5,
+      "title": "Valkey Memory Usage",
+      "type": "graph",
+      "description": "Exporter metrics from the `valkey` job (oliver006/redis_exporter). `redis_memory_max_bytes` is 0 when no `maxmemory` is configured, which is the default — see the guard on `ValkeyMemoryHigh`.",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes / 1024 / 1024",
+          "legendFormat": "Used (MB)"
+        },
+        {
+          "expr": "redis_memory_max_bytes / 1024 / 1024",
+          "legendFormat": "Max (MB)"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "MB"}, {"format": "short"}]
+    },
+    {
+      "id": 6,
+      "title": "Valkey Hit Rate",
+      "type": "graph",
+      "description": "The hit-rate ratio `ValkeyHitRateLow` alerts on, scaled to percent.",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100",
+          "legendFormat": "Hit Rate %"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"format": "percentunit", "max": 100}, {"format": "short"}]
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s"
 }

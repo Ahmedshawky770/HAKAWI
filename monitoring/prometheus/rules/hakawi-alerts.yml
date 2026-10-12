@@ -1,4 +1,40 @@
 groups:
+# WHY THERE IS ONE RULES FILE AND NOT TWO, AND WHY `groups:` IS THE FIRST LINE.
+#
+# `monitoring/prometheus/prometheus.yml` loads `/etc/prometheus/rules/*.yml` and nothing else, so
+# the rules directory is the one place an alert can be read from. `monitoring/alert-rules.yml` sat at
+# the repository root, outside that glob, and was therefore loaded by nothing: five rules no
+# process ever evaluated, including a `DatabaseDown` alert whose expression matched no job
+# (Principle #9 — a second copy of the truth is not a backup, it is a second answer). Its rules are
+# merged into this file, the root file is deleted, and `rule_files` needs no change because there is
+# now only one place to load.
+#
+# WHY THE DOCUMENT ROOT IS ON LINE 1. The production kube-prometheus-stack values
+# (`infrastructure/terraform/modules/monitoring/values/prometheus.yaml.tpl`) embed THIS file verbatim
+# through `templatefile` — no copy, no second spelling, so the alert you edit is the alert that
+# ships (Principle #9). The embed indents the file as-is under a list item, which only parses if the
+# document root really is the root, so the comment block lives below it rather than above it.
+#
+# WHAT THE MERGE CHANGED, RULE BY RULE:
+#   HighErrorRate          (root) -> BackendHighErrorRate (here). Identical expression and threshold
+#                            under a different name; two alerts on one condition are two
+#                            notifications for one incident. The name already present in the loaded
+#                            file is the one that stays.
+#   HighLatency            (root) -> deleted. See WHY A LATENCY ALERT IS NOT POSSIBLE below.
+#   DatabaseDown           (root) -> PostgreSQLDown (here). The root copy read `up{job="postgres"}`
+#                            while the job in `prometheus.yml` is named `postgresql`, so its
+#                            expression could never return a series and the alert could never fire.
+#                            The copy that already matched the job name stays, and the job name is
+#                            now spelled the same way in every file.
+#   ValkeyDown             (root) -> ValkeyDown (here). An exact duplicate; one copy kept.
+#   PaymentWebhookFailures (root) -> deleted. See WHY ALERTS ON UNINSTRUMENTED METRICS ARE GONE below.
+#
+# WHY THE SEVERITY VOCABULARY IS THREE VALUES. Alertmanager's route
+# (`monitoring/alertmanager/alertmanager.yml`) matches `critical` and `warning`, and every other
+# severity falls through to the root `default` receiver. The root rules file used `severity: page`,
+# which matched no route and so routed to `default` — a fourth routing policy that no route declares.
+# Every rule here uses `critical`, `warning` or `info`, and each of those maps to exactly one receiver.
+
   - name: hakawi-backend
     interval: 30s
     rules:
@@ -13,11 +49,19 @@ groups:
           description: "Backend API has been down for more than 1 minute"
 
       - alert: BackendHighErrorRate
+        # WHY `http_requests_total` AND NOT `http_server_requests_seconds_count`. That name is the
+        # Spring Boot / prom-client HTTP histogram, and it appears nowhere in this codebase. The
+        # registry in `backend/src/common/observability/prometheus-registry.ts` declares exactly six
+        # metrics, and the request counter it records is
+        # `http_requests_total{method,route,status}` — see `common/interceptors/metrics.interceptor.ts`
+        # and the metric table in `common/observability/README.md`. An expression whose selector names
+        # a series that is never created returns nothing, forever, so the high-error-rate page did not
+        # exist: the condition could have been true for days and the alert would have stayed silent.
         expr: |
           (
-            sum(rate(http_server_requests_seconds_count{job="hakawi-backend",status=~"5.."}[5m]))
+            sum(rate(http_requests_total{job="hakawi-backend",status=~"5.."}[5m]))
             /
-            sum(rate(http_server_requests_seconds_count{job="hakawi-backend"}[5m]))
+            sum(rate(http_requests_total{job="hakawi-backend"}[5m]))
           ) > 0.05
         for: 5m
         labels:
@@ -26,18 +70,31 @@ groups:
           summary: "High 5xx error rate on backend"
           description: "5xx error rate is above 5% for 5 minutes"
 
-      - alert: BackendHighLatency
-        expr: |
-          histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job="hakawi-backend"}[5m])) by (le)) > 2
+      - alert: BackendEventLoopLagHigh
+        # WHY THIS REPLACED `BackendHighLatency` (and the root file's `HighLatency`). Both read
+        # `histogram_quantile(0.95, ... _bucket ...)`, and there is no histogram to read: the registry
+        # declares `http_requests_total` as a COUNTER with no buckets, and `prom-client` is not
+        # installed and cannot be (the npm registry is unreachable), so no route in this service
+        # exposes a `_bucket` series at all. A quantile of a distribution that is never recorded is a
+        # permanently empty result. What the process does publish is one real latency-shaped gauge —
+        # `nodejs_eventloop_lag_seconds`, sampled every 5s by `default-metrics.collector.ts` — and a
+        # stuck tick is the failure a p95 was being used to detect: one blocked iteration queues every
+        # response behind it, which shows up as a slow API with no single slow route. If a request
+        # duration histogram is ever added to the registry, this is the alert to replace with it.
+        expr: nodejs_eventloop_lag_seconds{job="hakawi-backend"} > 1
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High API latency (p95)"
-          description: "95th percentile latency exceeds 2 seconds"
+          summary: "Backend event loop is lagging"
+          description: "Event loop lag exceeds 1 second for 5 minutes - every request is queued behind a blocked tick"
 
       # Database
       - alert: PostgreSQLDown
+        # `postgresql` is the job name in `monitoring/prometheus/prometheus.yml`, and it is the one
+        # name the scrape config, this rule and the dashboard agree on. The root rules file's
+        # `DatabaseDown` spelled it `postgres` and therefore never fired; this is the surviving rule
+        # and the join key is spelled the same way everywhere (Principle #9).
         expr: up{job="postgresql"} == 0
         for: 1m
         labels:
@@ -47,6 +104,9 @@ groups:
           description: "PostgreSQL exporter reports database is down"
 
       - alert: PostgreSQLConnectionsHigh
+        # Both metric names were verified against the output of the exporter this job actually runs
+        # (prometheuscommunity/postgres-exporter v0.13.2): `pg_stat_database_numbackends` and
+        # `pg_settings_max_connections` are both present.
         expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
         for: 5m
         labels:
@@ -56,6 +116,8 @@ groups:
           description: "Connection usage exceeds 80% of max_connections"
 
       - alert: PostgreSQLReplicationLag
+        # The exporter exposes this as `pg_replication_lag_seconds` — the `replay_lag` column of
+        # `pg_stat_replication`, converted to seconds.
         expr: pg_replication_lag_seconds > 30
         for: 5m
         labels:
@@ -75,7 +137,13 @@ groups:
           description: "Valkey exporter reports instance is down"
 
       - alert: ValkeyMemoryHigh
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        # WHY THE GUARD. `redis_memory_max_bytes` is 0 whenever Valkey runs with no `maxmemory` — and
+        # unlimited is the default, which is what the `valkey` service in `docker-compose.yml` uses.
+        # `used / max_bytes` with a zero denominator is +Inf, and +Inf > 0.85 is true, so the
+        # unguarded alert fired forever on a Valkey that was healthy and merely unbounded. An alert
+        # that is permanently firing tells nobody anything. The conjunct fires only when a limit
+        # exists to approach.
+        expr: redis_memory_max_bytes > 0 and (redis_memory_used_bytes / redis_memory_max_bytes > 0.85)
         for: 5m
         labels:
           severity: warning
@@ -93,76 +161,36 @@ groups:
           summary: "Valkey cache hit rate low"
           description: "Cache hit rate below 50% for 10 minutes"
 
-      # WAF & Security
-      - alert: WAFHighViolationRate
-        expr: |
-          rate(waf_violations_total[5m]) > 100
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High WAF violation rate"
-          description: "WAF violations exceed 100 per second"
-
-      - alert: WAFIPBlockedSurge
-        expr: |
-          increase(waf_blocked_ips_total[5m]) > 50
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Surge in WAF IP blocks"
-          description: "More than 50 IPs blocked in 5 minutes - possible attack"
-
-      - alert: AuthFailureSpike
-        expr: |
-          rate(auth_failures_total[5m]) > 20
-        for: 3m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Authentication failure spike"
-          description: "Auth failures exceed 20 per second - possible brute force"
-
-      # Rate Limiting
-      - alert: RateLimitExhausted
-        expr: |
-          rate(rate_limit_exceeded_total[5m]) > 50
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High rate limit exhaustion"
-          description: "Rate limit exceeded events exceed 50 per second"
-
-      # Business Metrics
-      - alert: PaymentFailureRateHigh
-        expr: |
-          (
-            sum(rate(payments_failed_total[5m]))
-            /
-            sum(rate(payments_total[5m]))
-          ) > 0.1
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Payment failure rate high"
-          description: "Payment failure rate exceeds 10%"
-
-      - alert: EmailQueueBacklog
-        expr: |
-          email_queue_size > 1000
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Email delivery queue backlog"
-          description: "Email queue has more than 1000 pending messages"
+      # WHY ALERTS ON UNINSTRUMENTED METRICS ARE GONE. Five rules below were removed because they
+      # declared alerts on metrics that no scrape target in `monitoring/prometheus/prometheus.yml`
+      # emits. `grep -r "waf_violations_total\|waf_blocked_ips_total\|auth_failures_total\|
+      # rate_limit_exceeded_total\|payments_failed_total\|payments_total\|email_queue_size"` over
+      # `backend/src` returns nothing: the registry declares six metrics in total (five gauges plus
+      # `http_requests_total`) and none of these names is among them.
+      #
+      #   WAFHighViolationRate    -> waf_violations_total
+      #   WAFIPBlockedSurge       -> waf_blocked_ips_total
+      #   AuthFailureSpike        -> auth_failures_total
+      #   RateLimitExhausted      -> rate_limit_exceeded_total
+      #   PaymentFailureRateHigh  -> payments_failed_total, payments_total
+      #   EmailQueueBacklog       -> email_queue_size
+      #   PaymentWebhookFailures  -> payments_webhook_failures_total (from the deleted root file)
+      #
+      # An alert on a series that is never created is not a weak alert, it is no alert: the
+      # expression evaluates to an empty result and stays empty, so the condition could be true for
+      # weeks with nothing to show. That is worse than having no rule, because it reads as coverage —
+      # the file looked like it guarded the WAF, the auth path, the payment path and the email queue,
+      # and it guarded none of them (Principle #15 — a defense that cannot fire is not a defense).
+      # The unmet need is recorded here rather than deleted without a trace: each of these becomes a
+      # rule again the day its metric is emitted, and until then the absence is visible.
 
   - name: hakawi-infrastructure
     interval: 30s
     rules:
+      # Every metric name below was verified against the output of the exporter the job actually runs
+      # (prom/node-exporter v1.7.0): `node_cpu_seconds_total`, `node_memory_MemAvailable_bytes`,
+      # `node_memory_MemTotal_bytes`, `node_filesystem_avail_bytes`, `node_filesystem_size_bytes` and
+      # `node_network_receive_errs_total` are all present in its own `/metrics` body.
       - alert: HostCPUHigh
         expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
         for: 10m
@@ -203,10 +231,16 @@ groups:
     interval: 60s
     rules:
       - alert: DeploymentStale
+        # WHAT THIS EXPRESSION ACTUALLY DETECTS. `time() * up` is the current epoch for a target that
+        # is up and 0 for a target that is down, so `max by(job) (...)` is "now" while any target of
+        # the job answers and 0 once all of them have stopped. The rule therefore fires when a job has
+        # had every target unreachable for an hour — it is not a staleness check on the scraped
+        # metrics, which is what the previous description claimed. A job that is up but emits nothing
+        # does not trip it; that is the gap, and it is recorded here rather than asserted otherwise.
         expr: time() - max by(job) (time() * up) > 3600
         for: 15m
         labels:
           severity: info
         annotations:
-          summary: "Service not reporting metrics"
-          description: "Service {{ $labels.job }} has not reported metrics for over 1 hour"
+          summary: "Scrape target has been unreachable"
+          description: "Every target of job {{ $labels.job }} has been unreachable for over 1 hour"

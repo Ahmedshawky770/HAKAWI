@@ -16,15 +16,19 @@ A Helm chart for deploying the Hakawi backend (NestJS) API to Kubernetes.
 helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
   --namespace hakawi \
   --set image.tag=v1.0.0 \
-  --set env.db.host=<rds-endpoint>
+  --set env.db.primaryHost=<rds-writer-endpoint>
 
 # Install with production values
 helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
   --namespace hakawi \
   --values values.yaml \
   --values values-production.yaml \
-  --set image.tag=v1.0.0
+  --set image.tag=v1.0.0 \
+  --set env.db.primaryHost=<rds-writer-endpoint>
 ```
+
+The chart fails fast if `env.db.primaryHost` is empty, because that key is the one `deployment.yaml`
+actually consumes for `DB_PRIMARY_HOST` (`env.db.host` is not read by this chart).
 
 ## Required Values
 
@@ -32,7 +36,7 @@ helm upgrade --install hakawi-backend ./infrastructure/helm/backend \
 |-----------|-------------|
 | `image.repository` | Container image repository |
 | `image.tag` | Container image tag |
-| `env.db.host` | Primary RDS endpoint |
+| `env.db.primaryHost` | Primary (writer) RDS endpoint |
 | `serviceAccount.annotations.eks\.amazonaws\.com/role-arn` | IRSA role ARN for Secrets Manager access |
 
 ## Optional Values
@@ -62,8 +66,28 @@ permissions on the following secret ARNs:
 
 ## Health Checks
 
-- Liveness: `GET /api/v1/health`
-- Readiness: `GET /api/v1/health`
+Three probes, three different jobs:
+
+| Probe | Route | Purpose |
+|-------|-------|---------|
+| `startupProbe` | `GET /api/v1/health` | Absorbs a slow first boot (migrations, cold JIT, image pull) so the liveness probe does not kill a pod that was merely still starting. |
+| `livenessProbe` | `GET /api/v1/health` | Always-200 route: restarts the container only when the process itself is wedged, never for a database outage. |
+| `readinessProbe` | `GET /api/v1/health/ready` | Returns 503 unless the PRIMARY database **and** Valkey are reachable; this is what removes a pod from the Service endpoints. |
+
+`GET /api/v1/health` intentionally stays 200 when a dependency is down, so it must never be
+used as a readiness probe.
+
+## Metrics
+
+Pods are scraped through the standard `prometheus.io/*` pod annotations consumed by
+kube-prometheus-stack's `role: pod` discovery:
+
+```yaml
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3001"          # container port, not the Service port
+  prometheus.io/path: "/api/v1/metrics"  # Prometheus text exposition, NOT /api/v1/health
+```
 
 ## Resource Recommendations
 

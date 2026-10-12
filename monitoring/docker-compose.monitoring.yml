@@ -1,5 +1,27 @@
 # Monitoring Stack for Hakawi
+#
 # Run with: docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+#
+# WHY THIS OVERLAY USES NO NETWORKS OF ITS OWN. It used to put every service on a network declared
+#
+#     networks:
+#       hakawi-monitoring:
+#         external: true
+#
+# and that network is never created anywhere in this repository — `grep -rn hakawi-monitoring` outside
+# this file returns nothing. An `external: true` network is a promise that the operator created it by
+# hand, so the stack did not start at all: docker reports
+# `network hakawi-monitoring declared as external, but could not be found` and every service in this
+# file is unstartable. Worse, a monitoring-only network was the wrong shape from the beginning: the
+# exporters have to reach `postgres-primary` and `valkey` ON THE APPLICATION NETWORK, and Prometheus
+# has to reach `backend`. Isolating the monitoring stack from the network holding the things it
+# monitors produces a stack that is up, reachable on its own ports, and scraping nothing.
+#
+# So every service here joins the compose project's default network — the one `docker-compose.yml`
+# puts `postgres-primary`, `valkey` and `backend` on — simply by not declaring a `networks:` key.
+# `docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml config` then
+# renders a single, consistent project and the exporter/backend targets in
+# `monitoring/prometheus/prometheus.yml` resolve by service name.
 
 services:
   prometheus:
@@ -17,8 +39,6 @@ services:
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
-    networks:
-      - hakawi-monitoring
     restart: unless-stopped
 
   alertmanager:
@@ -31,10 +51,12 @@ services:
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
+    # WHY NO `environment:` BLOCK. Alertmanager does not expand environment variables in its config
+    # file, so there is nothing here for this service to pass through — the SMTP target is a literal
+    # `mailhog:1025` address in monitoring/alertmanager/alertmanager.yml. See the header of that file
+    # for the experiment that proved it.
     ports:
       - "9093:9093"
-    networks:
-      - hakawi-monitoring
     restart: unless-stopped
 
   grafana:
@@ -44,15 +66,37 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3002}
     volumes:
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "3001:3000"
-    networks:
-      - hakawi-monitoring
+      # WHY 3002 AND NOT 3001. Port 3001 is the backend's published port in docker-compose.yml
+      # (`"${PORT:-3001}:3001"`). Publishing Grafana on the same port makes the second file fail
+      # with `Bind for 0.0.0.0:3001 failed: port is already allocated` — a conflict that has nothing
+      # to do with Grafana and that no amount of Stack naming explains. 3002 is unused by every
+      # service in either file, and GF_SERVER_ROOT_URL above follows it.
+      - "${GRAFANA_PORT:-3002}:3000"
+    restart: unless-stopped
+
+  # WHY MAILHOG EXISTS. The dev alert route ends in an email receiver, and an email receiver is only
+  # a receiver if there is an SMTP server to talk to. `${SMTP_HOST}`-style placeholders do not work
+  # here — Alertmanager parses its config verbatim, so the old placeholder was a smarthost named
+  # literally "${SMTP_HOST:-smtp.example.com}" and the process refused to start at all. MailHog is the
+  # dev SMTP sink: it accepts every message, lists it in a web UI on :8025, and delivers nothing, so
+  # nothing is ever emailed to a real inbox from a local checkout.
+  # Production's SMTP comes from the kube-prometheus-stack values in
+  # infrastructure/terraform/modules/monitoring/values/prometheus.yaml.tpl, where terraform's
+  # `templatefile()` expands the placeholders before Alertmanager ever reads them.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hakawi-mailhog
+    ports:
+      # 1025 is the SMTP listener alertmanager.yml connects to; 8025 is the UI where dev alerts are
+      # read. Published so a browser can reach the UI.
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${MAILHOG_UI_PORT:-8025}:8025"
     restart: unless-stopped
 
   # Exporters
@@ -64,8 +108,6 @@ services:
       - REDIS_PASSWORD=${VALKEY_PASSWORD:-}
     ports:
       - "9121:9121"
-    networks:
-      - hakawi-monitoring
     depends_on:
       - valkey
     restart: unless-stopped
@@ -74,13 +116,21 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.13.2
     container_name: hakawi-postgres-exporter
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hakawi}?sslmode=disable
+      # WHY `postgres-primary` AND NOT `postgres`. The service in docker-compose.yml is named
+      # `postgres-primary` (CI depends on that name), so `postgres` resolves to nothing and this
+      # exporter can never connect — a scrape that returns an empty body rather than an error, which
+      # is the quieter of the two failures. The password default mirrors docker-compose.yml's
+      # (`${DB_PASSWORD:-dev-postgres-change-in-production}`) so a bare `docker compose up` with no
+      # .env connects with the same credentials the application uses. The port is the CONTAINER port
+      # 5432, unlike the published `${DB_PRIMARY_PORT:-5432}` the host uses.
+      - DATA_SOURCE_NAME=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-dev-postgres-change-in-production}@postgres-primary:5432/${DB_NAME:-hakawi}?sslmode=disable
     ports:
       - "9187:9187"
-    networks:
-      - hakawi-monitoring
     depends_on:
-      - postgres
+      postgres-primary:
+        # Same condition the application services use: the exporter must not start, and fail to
+        # connect, against a postgres that is still initializing its data directory.
+        condition: service_healthy
     restart: unless-stopped
 
   node-exporter:
@@ -88,8 +138,12 @@ services:
     container_name: hakawi-node-exporter
     command:
       - '--path.rootfs=/host'
-    pid: host
-    network_mode: host
+    # WHY `network_mode: host` WAS REMOVED. With `network_mode: host` the container leaves the
+    # compose network, so `node-exporter:9100` in monitoring/prometheus/prometheus.yml resolves to no
+    # address — the `node` job could not be scraped at all. It was also the wrong tool for the job:
+    # this exporter reports HOST metrics by reading the host filesystem through `--path.rootfs=/host`
+    # and the `/:ro` mount below, which works identically on a bridge network. The host READ remains
+    # through the bind mount; only the shared network namespace is gone.
     volumes:
       - '/:/host:ro,rslave'
     ports:
@@ -107,15 +161,9 @@ services:
       - '/dev/disk/:/dev/disk:ro'
     ports:
       - "8080:8080"
-    networks:
-      - hakawi-monitoring
     restart: unless-stopped
 
 volumes:
   prometheus-data:
   alertmanager-data:
   grafana-data:
-
-networks:
-  hakawi-monitoring:
-    external: true

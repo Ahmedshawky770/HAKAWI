@@ -1,0 +1,86 @@
+# THE BUILD CONTEXT IS NOT THE REPOSITORY.
+#
+# Every Dockerfile here is invoked with the repo root as context (`docker build -f
+# ./backend/Dockerfile .`, which is what `.github/workflows/deploy-{dev,staging,production}.yml`
+# run). Without this file Docker tars the ENTIRE tree and uploads it before the first layer is
+# created. In this repository that is a 1.2 GB upload whose composition is, in order of size,
+# `node_modules` (1.2 GB), `frontend/.next` (126 MB), `.git` (19 MB), `backend/coverage` (15 MB),
+# `backend/dist` (6 MB) — none of which is an input to any image. Three concrete failures follow
+# from sending them anyway, and the first two already happened in this repository:
+#
+#   1. `COPY backend/ ./` lays the HOST `node_modules` on top of the image's fresh `npm ci`
+#      output. The image then runs whatever the developer happened to have installed locally
+#      instead of what the committed lockfile resolves to, and no build error reports it. The
+#      image is not reproducible by construction.
+#   2. The same `COPY backend/ ./` lays `backend/.env` and `backend/.env.production.template`
+#      into image layers. A layer is not removed by `rm` in a later layer — the secret is in
+#      the image, readable by anyone who can pull it, forever. Principle #15 (proactive defense
+#      first) says the exclusion IS the defense; deleting after baking is not a control.
+#   3. Minutes of tar and upload per build, on every build, for content that is never used.
+#
+# RULE FOR EDITING THIS FILE: every `COPY` in every Dockerfile must still resolve after a new
+# exclusion is added, and nothing that carries a secret may be re-included. The current COPY
+# sources are, exhaustively: root `package.json`, root `package-lock.json`,
+# `packages/shared-types/package.json`, `packages/shared-types/` (source + tsconfig),
+# `backend/package.json`, `backend/` (source + tsconfig + nest-cli.json + .swcrc),
+# `frontend/package.json`, `frontend/` (source + next.config.ts + postcss config + public).
+
+# --- Dependencies ------------------------------------------------------------------------------
+# The image installs its own from the lockfile inside its own stage. The host tree is never an
+# input to an image; including it is what breaks reproducibility (failure 1 above).
+**/node_modules
+
+# --- Build output ------------------------------------------------------------------------------
+# Every image rebuilds its own output inside its own stage, deliberately:
+#   packages/shared-types/dist  built by `npm run build --workspace=packages/shared-types`
+#   backend/dist                built by `nest build`
+#   frontend/.next              built by `next build`
+# Shipping the host's stale output would either be overwritten anyway, or worse, mask a build
+# failure — an image that appears to build while carrying the previous machine's result.
+**/dist
+**/.next
+**/build
+
+# --- Test, coverage and tool output ------------------------------------------------------------
+**/coverage
+**/playwright-report
+**/test-results
+**/.playwright
+**/e2e-results.json
+**/*.tsbuildinfo
+**/.turbo
+**/.eslintcache
+
+# --- Version control and CI metadata ------------------------------------------------------------
+# Never an input to an image. `.git` alone is ~19 MB of context, and `.github` is CI behaviour,
+# not build input. (`.gitignore` is NOT matched by the `.git` pattern — the names differ.)
+**/.git
+**/.github
+
+# --- Secrets ------------------------------------------------------------------------------------
+# WHY `.env` AND `.env.*` BOTH: `.env` alone would still admit `backend/.env.production` and
+# `frontend/.env.production.template`, which are exactly the files that carry production-shaped
+# values. No Dockerfile in this repository references an env file — each is written to be
+# configured from the container environment (Compose `environment:`, or the Helm chart's
+# values/secret), so there is nothing here to keep.
+#
+# `**/.env.example` is deliberately NOT excepted back in. A build that needs it has no business
+# existing (an example file is documentation, not build input), and the cost of being wrong in
+# that direction is zero, while the cost of a mistaken `!` exception on the secret side is a
+# rotation. If a future Dockerfile genuinely needs a template, that is a `COPY` of a named,
+# reviewed file — not a blanket re-inclusion of `*.env.*`.
+**/.env
+**/.env.*
+
+# --- Logs ----------------------------------------------------------------------------------------
+**/*.log
+**/npm-debug.log*
+**/logs
+
+# --- Editor and OS junk --------------------------------------------------------------------------
+**/.DS_Store
+**/Thumbs.db
+**/.idea
+**/.vscode
+**/*.swp
+**/*~

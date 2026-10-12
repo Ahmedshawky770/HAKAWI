@@ -70,6 +70,9 @@ export const BOOK: Book = {
   id: "book-1",
   title: "ألفاظ",
   author: "إبراهيم الكوني",
+  // The owner's account id, distinct from the display `author`. The signed-in fixture user is
+  // "user-1", so the detail-page ownership gate matches for this book.
+  ownerId: "user-1",
   description: "رواية",
   coverImage: null,
   isbn: "9780000000001",

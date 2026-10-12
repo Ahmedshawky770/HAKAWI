@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, getStoredUser } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -71,18 +71,12 @@ export default function ConversationPage() {
     }
   };
 
-  const getCurrentUserId = (): string => {
-    if (typeof window === "undefined") return "";
-    const tokens = localStorage.getItem("hakawi_tokens");
-    if (!tokens) return "";
-    try {
-      return JSON.parse(tokens).userId || "";
-    } catch {
-      return "";
-    }
-  };
-
-  const currentUserId = getCurrentUserId();
+  // The signed-in reader's id, from the one accessor the rest of the app reads. It used to parse
+  // `localStorage["hakawi_tokens"]` for a `userId` that is never written there — the token blob
+  // holds only a refresh token, so this always returned "" and EVERY bubble rendered as the other
+  // person's. `getStoredUser` reads the `hakawi_user` entry `setStoredUser` writes on sign-in, the
+  // same source `stories/[id]` and `books/[id]` use, so "is this mine" answers consistently.
+  const currentUserId = getStoredUser()?.id ?? "";
 
   if (loading) {
     return (

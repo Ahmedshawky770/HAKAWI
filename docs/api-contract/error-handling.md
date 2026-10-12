@@ -309,19 +309,64 @@ marked `failed`** — rather than fabricating a checkout URL.
 
 ## Alerting — ⚠️ DEFINED, NOT DEPLOYED
 
-- ⚠️ 5xx-rate alerting: `BackendHighErrorRate` exists in `monitoring/prometheus/rules/hakawi-alerts.yml`, but no cluster applies it. A metrics pipeline exists on paper — `GET /api/v1/metrics/cache` / `/metrics/degradation` plus a Prometheus scrape job for `hakawi-backend` (`monitoring/prometheus/prometheus.yml`, `metrics_path: '/api/v1/metrics'`) — ⛔ but the backend exports no Prometheus series (no `prom-client`), so the expression has no data source
+- ✅ 5xx-rate alerting has a data source: `BackendHighErrorRate` exists in
+  `monitoring/prometheus/rules/hakawi-alerts.yml` and reads `http_requests_total{status=~"5.."}` over
+  `http_requests_total`, a counter the backend really exports — see the metric note below. ⛔ Still
+  not deployed: no cluster applies the rule, so the page nobody would receive today
 - ⛔ 4xx-rate alerting: no rule — the rules file contains no 4xx expression
-- ⚠️ Payment-error alerting: `PaymentFailureRateHigh` exists in the same rules file; ⛔ not deployed, and `payments_failed_total` is not exported
+- ⛔ Payment-error alerting: no rule. `PaymentFailureRateHigh` was removed because
+  `payments_failed_total` and `payments_total` are exported by nothing; its expression was
+  permanently empty. Payment failures are visible per response (the Paymob path returns 503 with the
+  local row marked `failed`) and in Sentry, but not as a rate
 - ⚠️ `this.metrics.increment(...)` — **the error filter has no metrics object**, so no counter is
-  incremented on a 5xx. A `CacheMetrics` object *does* exist and is injected in
+  incremented on a 5xx by the filter itself. A `CacheMetrics` object *does* exist and is injected in
   `cache.interceptor.ts`, but it only records cache events (`recordHit`/`recordMiss`/
-  `recordError`/`recordWrite`/`recordInvalidation`) and has no `increment()`
+  `recordError`/`recordWrite`/`recordInvalidation`) and has no `increment()`. The 5xx count that
+  *does* exist is recorded one level up: the global `MetricsInterceptor`
+  (`backend/src/common/interceptors/metrics.interceptor.ts`) derives the status from the exception
+  when a handler threw, and increments `http_requests_total{method,route,status}` with it. The
+  interceptor's error callback runs before `AllExceptionsFilter` writes the status, which is why the
+  status is resolved from the error rather than read off the response — and that ordering is the
+  difference between an error rate and a divide-by-nothing
+
+> **Why this section no longer says "the backend exports no Prometheus series".** It used to, and it
+> was false. `GET /api/v1/metrics` is a real, public, scraped endpoint:
+> `backend/src/common/observability/prometheus.controller.ts` renders the exposition body from
+> `prometheus-registry.ts` (a hand-written, zero-dependency registry — hand-written *because*
+> `prom-client` is not installed and cannot be, the npm registry being unreachable), the counter is
+> incremented by the global `MetricsInterceptor`, the process gauges are sampled by
+> `default-metrics.collector.ts`, all three are provided by `common.module.ts`, and
+> `monitoring/prometheus/prometheus.yml` scrapes the path with `job_name: 'hakawi-backend'`,
+> `metrics_path: '/api/v1/metrics'` — the same path and port the production Helm pod annotations
+> declare, so a rule written against one stack is true in the other. The series it exports are
+> `http_requests_total{method,route,status}` (counter) and the gauges `process_uptime_seconds`,
+> `process_resident_memory_bytes`, `process_heap_used_bytes`, `process_heap_total_bytes`,
+> `nodejs_eventloop_lag_seconds`. The claim had survived because it was written from the absence of
+> a dependency rather than from the presence of an endpoint (Principle #4). What remains genuinely
+> true is narrower than "no series": there is no error *rate* series, because the registry exposes
+> no histogram and no separate error counter — the rate has to be computed by the query, which is
+> what `BackendHighErrorRate` does.
 
 ### What is observable
 - ✅ Sentry receives every unhandled (non-`HttpException`) error, with `{ method, url }` context
 - ✅ Winston logs every response as `${method} ${url} - ${status} - ${message}`
-- ✅ `GET /api/v1/metrics/cache` exposes cache hits/misses/hit rate
-- ⛔ There is no error-rate metric endpoint
+- ✅ `GET /api/v1/metrics` exposes `http_requests_total{method,route,status}` — the error-rate metric
+  endpoint, and the series `BackendHighErrorRate` reads. Public and unauthenticated (see below), and
+  ⛔ its rule is not deployed, so nothing alerts on it yet
+- ✅ `GET /api/v1/metrics/cache` exposes cache hits/misses/hit rate (super-admin guarded)
+
+**Why the scrape endpoint is public and the two JSON routes are not.** `GET /api/v1/metrics` is
+served by `backend/src/common/observability/prometheus.controller.ts` and marked `@Public()`; the
+other two, `cache` and `degradation`, come from
+`backend/src/common/observability/metrics.controller.ts` behind `JwtAuthGuard` + `RolesGuard` for
+super-admin. A scrape is an unauthenticated `GET` from the collector and carries no bearer token, so
+a credential-gated scrape would never happen and the endpoint would exist only in the code. The
+trade is recorded at the route: the body discloses traffic shape, uptime and heap size, and contains
+nothing request-scoped — the counter records the route TEMPLATE, not the URL
+(`common/interceptors/metrics.interceptor.ts`), so its cardinality is bounded by the number of
+routes. A request that matched no route records nothing at all. In production the same path is
+scraped through the Helm pod annotations (`prometheus.io/path: /api/v1/metrics`,
+`prometheus.io/port: "3001"`).
 
 ---
 

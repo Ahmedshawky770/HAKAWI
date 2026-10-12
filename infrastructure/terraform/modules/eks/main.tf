@@ -11,7 +11,10 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [var.cluster_security_group_id]
     endpoint_private_access = var.cluster_endpoint_private_access
     endpoint_public_access  = var.cluster_endpoint_public_access
-    public_access_cidrs     = ["0.0.0.0/0"]
+    # Was hardcoded to ["0.0.0.0/0"], i.e. the Kubernetes API server open to the whole
+    # internet. Now an input (cluster_endpoint_public_access_cidrs); an empty list is
+    # private-only. dev passes 0.0.0.0/0 from its tfvars; staging/production pass [].
+    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
   }
 
   encryption_config {
@@ -90,6 +93,24 @@ resource "aws_eks_addon" "ebs_csi" {
   addon_version = "v1.28.0-eksbuild.1"
   resolve_conflicts = "OVERWRITE"
   service_account_role_arn = aws_iam_role.ebs_csi.arn
+}
+
+# WHY metrics-server exists as an addon: the backend chart configures an HPA
+# (values-*.yaml `autoscaling.enabled: true`), and an HPA cannot make a single scaling
+# decision without the metrics.k8s.io API, which EKS does NOT deploy by default. Until
+# now the HPA was configured with nothing behind it and reported `<unknown>` targets
+# forever — a control plane that looks healthy and never acts. This addon is the missing
+# dependency.
+#
+# Version `v0.7.2-eksbuild.1` is the AWS-published build compatible with this module's
+# cluster version (1.28; the same build is published for 1.24–1.31). All addon versions
+# in this module are pinned deliberately — EKS never moves an addon on its own, so an
+# unpinned addon silently stays on whatever version the cluster was created with.
+resource "aws_eks_addon" "metrics_server" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "metrics-server"
+  addon_version = "v0.7.2-eksbuild.1"
+  resolve_conflicts = "OVERWRITE"
 }
 
 resource "aws_iam_role" "ebs_csi" {
@@ -211,21 +232,25 @@ resource "aws_iam_role_policy" "node_group_s3" {
   })
 }
 
-resource "aws_iam_role_policy" "node_group_secrets" {
-  name = "${var.environment}-hakawi-node-group-secrets"
-  role = aws_iam_role.node_group.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ]
-      Effect = "Allow"
-      Resource = "arn:aws:secretsmanager:*:*:secret:hakawi/${var.environment}/*"
-    }]
-  })
-}
+# WHY THERE IS NO NODE-LEVEL SECRETS MANAGER POLICY ANY MORE. This module used to attach
+# `arn:aws:secretsmanager:*:*:secret:<prefix>/*` (wildcard region AND account) to the node
+# instance role as a "fallback". Two things are wrong with that, and neither is fixable by
+# narrowing the ARN alone:
+#
+#   1. It is not needed. The application reads its secrets through ExternalSecrets, which
+#      authenticate with the IRSA role in modules/iam (SecretStore `serviceAccountRef` on
+#      the backend ServiceAccount) and materialise them as a Kubernetes secret. Nothing in
+#      this repository — no chart, no values file, no workload, no doc — reads Secrets
+#      Manager from a node. Verified by grepping the tree for the node role and its policy:
+#      only this module referenced it.
+#   2. A node-role grant is not a pod grant, it is a CLUSTER grant. Every pod on every node
+#      inherits it: any compromised or simply curious workload could read the database
+#      password with its ambient instance credentials, whatever its own IAM identity said.
+#      The wildcard region/account widened that from "this environment" to "every
+#      environment in every region and account the credentials reach".
+#
+# If a node-level tool ever genuinely needs a secret, it should get its own IRSA role with
+# one path in its resource — not a statement attached to every node in the cluster.
 
 output "cluster_name" {
   description = "EKS cluster name"

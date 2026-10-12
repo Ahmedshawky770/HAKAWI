@@ -82,7 +82,7 @@ evidence for each absence, is in
 - 🔄 Backup automation — `scripts/backup.sh` exists and CI runs a daily backup workflow
       (`.github/workflows/backup.yml`); ⛔ there is no in-cluster cron/scheduler and no PITR
       configuration (Phase 7, Week 17)
-- ⛔ Alerting deployment — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus
+- ⛔ Alerting deployment — `monitoring/prometheus/rules/hakawi-alerts.yml` (14 rules) plus
       `monitoring/alertmanager/alertmanager.yml` and the Grafana dashboard exist, but nothing deploys
       them (M8)
 - ⛔ User-facing documentation — `docs/user/` has starter content; comprehensive help centre and

@@ -127,6 +127,83 @@
       "when": 1790738352487,
       "tag": "0018_add_report_source",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791033874000,
+      "tag": "0019_backfill_denormalised_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791033874001,
+      "tag": "0020_add_stories_slug_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791061470000,
+      "tag": "0021_add_books_owner_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791070916000,
+      "tag": "0022_add_contest_prize_amount",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791172509000,
+      "tag": "0023_add_message_notification_preference",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791386090000,
+      "tag": "0024_create_database_enums",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791386090001,
+      "tag": "0025_backfill_books_owner_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791386090002,
+      "tag": "0026_conversations_unique_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791386090003,
+      "tag": "0027_purge_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791386090004,
+      "tag": "0028_books_owner_id_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791386090005,
+      "tag": "0029_add_mfa_support",
+      "breakpoints": true
     }
   ]
 }

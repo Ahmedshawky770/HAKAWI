@@ -325,22 +325,30 @@ WAF_BLOCKED_COUNTRIES=                   # comma-separated ISO country codes; no
 - ✅ Unhandled errors forwarded to Sentry
 
 ### ⛔ Not implemented
-- ⛔ **No WAF metrics endpoint.** There is no `GET /api/v1/metrics/waf`; the application's metric
-  endpoints are `GET /api/v1/metrics/cache` and `GET /api/v1/metrics/degradation`
-  (`backend/src/common/observability/metrics.controller.ts:73,80`), both super-admin guarded and
-  neither counting WAF events.
+- ⛔ **No WAF metrics endpoint.** There is no `GET /api/v1/metrics/waf`. The application's
+  observability routes are three: the public Prometheus scrape endpoint `GET /api/v1/metrics`
+  (`backend/src/common/observability/prometheus.controller.ts`), and the super-admin guarded JSON
+  routes `GET /api/v1/metrics/cache` and `GET /api/v1/metrics/degradation`
+  (`backend/src/common/observability/metrics.controller.ts:73,80`) — the latter two still count no
+  WAF events, and the former counts requests, not WAF decisions.
 - ⛔ **No counters** for total requests, blocked requests, rate-limited requests, violations by
   type, blocked-IP count, or active blocks.
 - 🔄 **No dashboard is deployed.** `monitoring/grafana/dashboards/hakawi-overview.json` exists in the
-  repository, but no cluster applies it.
-- 🔄 **No alerting is deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` (incl.
-  `WAFHighViolationRate`, `WAFIPBlockedSurge`) and `monitoring/alertmanager/alertmanager.yml` exist,
-  but no cluster applies them, and no WAF counter is exported for the rules to read. The "block rate
-  > 10%", "rate limit spikes", "new threat patterns" and "WAF errors" alerts the previous version of
-  this document listed still do not exist.
+  repository, but no cluster applies it. Its panels were reduced to series that exist: the WAF panels
+  were deleted rather than left empty (see Task 1 of the reasoning below).
+- 🔄 **No alerting is deployed.** `monitoring/prometheus/rules/hakawi-alerts.yml` (14 rules) and
+  `monitoring/alertmanager/alertmanager.yml` exist, but no cluster applies them, and no WAF counter
+  is exported for the rules to read. The rules file used to name `WAFHighViolationRate` and
+  `WAFIPBlockedSurge`; **neither rule exists any more.** Both read series nothing emits
+  (`waf_violations_total`, `waf_blocked_ips_total`), so their expressions were permanently empty —
+  a rule that cannot fire is not partial coverage, it is none, and listing it here as if it guarded
+  the WAF was the drift this pass removes. The "block rate > 10%", "rate limit spikes", "new threat
+  patterns" and "WAF errors" alerts the previous version of this document listed still do not exist,
+  and now no document claims they do.
 
-Operators currently read structured logs, plus the two admin-gated JSON metric endpoints. That is
-the whole story.
+Operators currently read structured logs, plus the three observability routes above — two of which
+report nothing about the WAF, and the third of which reports nothing WAF-specific. That is the whole
+story.
 
 ---
 
@@ -397,7 +405,7 @@ missing. The controller exists now, and the real guard pair is `JwtAuthGuard` +
 | XML injection detection | ⛔ No rule | — |
 | Rate limiting as WAF pipeline stage 2 | Not part of the WAF; handled by the throttler guard | `backend/src/common/middleware/waf.middleware.ts:290-340` |
 | CSP `default-src 'self'` | ✅ CSP is emitted — `Content-Security-Policy` is in `SECURITY_HEADERS` (`backend/src/main.ts:25`) | `backend/src/main.ts` |
-| Metrics: counts, dashboards, alerts | ⛔ No counters and no WAF metrics endpoint — structured logs are still the whole WAF story. Alert rules and a Grafana dashboard now exist in `monitoring/` (incl. `WAFHighViolationRate`, `WAFIPBlockedSurge`), ⛔ deployed nowhere | `monitoring/prometheus/rules/hakawi-alerts.yml`, `monitoring/grafana/dashboards/hakawi-overview.json`; the app metric endpoints are `/api/v1/metrics/cache` + `/api/v1/metrics/degradation` |
+| Metrics: counts, dashboards, alerts | ⛔ No counters and no WAF metrics endpoint — structured logs are still the whole WAF story. Alert rules and a Grafana dashboard exist in `monitoring/` (14 rules; **no WAF rule is among them** — `WAFHighViolationRate` and `WAFIPBlockedSurge` were removed, not left as empty expressions), ⛔ deployed nowhere | `monitoring/prometheus/rules/hakawi-alerts.yml`, `monitoring/grafana/dashboards/hakawi-overview.json`; the app's observability routes are `/api/v1/metrics` (public, Prometheus exposition) + `/api/v1/metrics/cache` + `/api/v1/metrics/degradation` (super-admin JSON), and none of the three reports a WAF counter |
 | `WAF_BLOCKED_COUNTRIES` | Enforced via `GeoIpService.isBlocked` in `waf.middleware.ts` | `backend/src/config/waf.config.ts:164` + `backend/src/common/waf/geo-ip.service.ts` |
 
 ---

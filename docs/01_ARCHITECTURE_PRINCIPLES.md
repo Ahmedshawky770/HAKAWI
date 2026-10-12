@@ -804,7 +804,18 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
   `POST /admin/waf/unblock-ip`, `POST /admin/waf/clear-counters` and `POST /admin/waf/clear-blocks`
   are all absent. An operator blocked by the WAF has no supported way out except direct Valkey
   manipulation
-- ⛔ **No WAF metrics endpoint.** No WAF counters and no WAF dashboard. Alerting is not WAF-specific either: a `WAFHighViolationRate` rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml`, but ⛔ no cluster applies it
+- ⛔ **No WAF metrics endpoint.** No WAF counters and no WAF dashboard — the app's three
+  observability routes are the public Prometheus scrape endpoint `GET /api/v1/metrics`
+  (`backend/src/common/observability/prometheus.controller.ts`) plus the two super-admin JSON routes
+  `/api/v1/metrics/cache` and `/api/v1/metrics/degradation`, and none of them counts WAF events.
+  Alerting is not WAF-specific either: the rules file carries **no** WAF rule. A `WAFHighViolationRate`
+  rule and a `WAFIPBlockedSurge` rule used to be listed here; both were deleted because the series
+  they read (`waf_violations_total`, `waf_blocked_ips_total`) are emitted by nothing —
+  `grep -r "waf_violations_total\|waf_blocked_ips_total" backend/src` returns no hit — so each
+  expression evaluated to empty and stayed empty, which is a rule that reads as coverage and is not
+  (Principle #15). The rejected alternative was to keep them as a statement of intent; the unmet need
+  is recorded in the comment block at the top of `monitoring/prometheus/rules/hakawi-alerts.yml`
+  instead, where it costs nothing and can be checked. ⛔ Still no cluster applies any rule
 - ⛔ **No XML injection (XXE) rule**
 - ⛔ **No `Content-Security-Policy`** is emitted
 
@@ -877,7 +888,7 @@ mechanically checkable.
 | #7 Loose coupling | ⚠️ | ⚠️ | `OwnershipGuard` wired on comments and stories via per-module repository resolvers. ⛔ **Retracted by Round 3:** the same row said "Books write routes still unprotected — the table has no owner column"; migration `0021` added `books.owner_id` and `assertOwnership` now enforces it |
 | #9 SSOT | ✅ | ✅ | Valkey connection resolved once for the cache *and* the Socket.IO adapter; the published-secret rule shared by the JWT and encryption configs |
 | #14 AP as default | ⚠️ | ⚠️ | Unchanged verdict, but `default` rate limit corrected from an accidental 10× loosening to 30/min, and the `user` tracker's per-IP degradation is documented where it is configured |
-| #15 Proactive defense | ⚠️ | ⚠️ | WAF prose false-positives eliminated by tightening four patterns; SSRF host-shape rule added; body-size bypass closed; a `session` tier separates machine refresh from human login. Still ⚠️ — no admin endpoints, no metrics, no CSP, no XXE, no quotas |
+| #15 Proactive defense | ⚠️ | ⚠️ | WAF prose false-positives eliminated by tightening four patterns; SSRF host-shape rule added; body-size bypass closed; a `session` tier separates machine refresh from human login. Still ⚠️ — no admin endpoints, no WAF counters, no CSP, no XXE, no quotas |
 | #16 Hybrid consistency | ⚠️ | ⚠️ | The `parent_id = NULL` bug that made top-level comments always empty is fixed. Still ⚠️ — no violation detection, no compensation mechanism |
 
 #### Round 3 — the change set that found the application would not boot (2026-10-04)
@@ -925,7 +936,22 @@ capability inventory.
 | **Consistency-violation detection** | #16 | ⛔ **Not built.** No code compares a cache read against the database to detect divergence |
 | **Compensation mechanisms** | #16 | ⛔ **Not built.** No saga, no compensating action, no reconciliation job |
 | **Plugin architecture for optional features** | #8 (open/closed) | ⛔ **Not built** as a plugin system — but the SMTP client it lacked now exists: `SmtpEmailTransporter` (`modules/notifications/email/smtp-email-transporter.ts`, nodemailer with SendGrid/Mailgun/SES hosts), registered in `notifications.module.ts` behind the `EmailTransporter` interface |
-| **Monitoring dashboards + alerting** | #4, #15 | ⚠️ **Defined, not deployed.** Alert rules exist (`monitoring/prometheus/rules/hakawi-alerts.yml` — 20 rules across three groups: BackendDown, BackendHighErrorRate, BackendHighLatency, PostgreSQLDown, PostgreSQLConnectionsHigh, PostgreSQLReplicationLag, ValkeyDown, ValkeyMemoryHigh, ValkeyHitRateLow, WAFHighViolationRate, …), with `monitoring/alertmanager/alertmanager.yml` and a Grafana dashboard (`monitoring/grafana/dashboards/hakawi-overview.json`). ⛔ No cluster applies them, and no rule covers MFA. Sentry and `GET /api/v1/metrics/cache` are live |
+| **Monitoring dashboards + alerting** | #4, #15 | ⚠️ **Defined, not deployed.** Alert rules exist (`monitoring/prometheus/rules/hakawi-alerts.yml` — **14 rules** across three groups: `hakawi-backend` (BackendDown, BackendHighErrorRate, BackendEventLoopLagHigh, PostgreSQLDown, PostgreSQLConnectionsHigh, PostgreSQLReplicationLag, ValkeyDown, ValkeyMemoryHigh, ValkeyHitRateLow), `hakawi-infrastructure` (HostCPUHigh, HostMemoryHigh, HostDiskHigh, HostNetworkReceiveErrors), `hakawi-deployment` (DeploymentStale)), with `monitoring/alertmanager/alertmanager.yml` and a Grafana dashboard (`monitoring/grafana/dashboards/hakawi-overview.json`). ⛔ No cluster applies them, and no rule covers MFA. Sentry and `GET /api/v1/metrics/cache` are live — and so is `GET /api/v1/metrics`, the public Prometheus scrape endpoint that `monitoring/prometheus/prometheus.yml` reads at `/api/v1/metrics` (`http_requests_total{method,route,status}` plus five process gauges), so `BackendHighErrorRate` and `BackendEventLoopLagHigh` read a series the process really publishes |
+
+> **Why the rule count changed from 20 to 14, stated here because this table is where the old count
+> was quoted.** Seven rules were removed rather than kept as decoration: `WAFHighViolationRate`,
+> `WAFIPBlockedSurge`, `AuthFailureSpike`, `RateLimitExhausted`, `PaymentFailureRateHigh`,
+> `EmailQueueBacklog` and `PaymentWebhookFailures` each read a series that nothing emits. An alert on
+> a series that is never created is not weak coverage — its expression is permanently empty, so the
+> condition can hold for weeks with nothing to show, and the file reads as guarding the WAF, the auth
+> path, the payment path and the email queue when it guards none of them (Principle #15). Keeping
+> them would have been the cheaper diff and the worse answer, because nothing in the file could tell
+> a reader which rules could fire. `BackendHighLatency` was likewise replaced by
+> `BackendEventLoopLagHigh`: the former read `histogram_quantile` over buckets that do not exist,
+> the latter reads `nodejs_eventloop_lag_seconds`, which `default-metrics.collector.ts` samples every
+> 5 seconds. The same reduction was applied to
+> `monitoring/grafana/dashboards/hakawi-overview.json`, whose panels on uninstrumented metrics were
+> deleted rather than left as empty graphs.
 | **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⛔ **Not built.** No `SELECT … FOR UPDATE`, no version column. The only money-path concurrency control is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges* |
 | **User documentation** | #4, #5 | ⛔ **Not built.** No user-facing docs exist outside `docs/` |
 | ~~**CHANGELOG**~~ | #4 (explicitly listed as a documentation type) | ✅ **Built — this entry is retracted.** `CHANGELOG.md` exists at the repository root (commit `febf264`), following Keep a Changelog 1.1.0 with an `[Unreleased]` section. The previous version of this table said "⛔ Not built. No CHANGELOG file in the repository", which was false |

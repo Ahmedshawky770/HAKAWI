@@ -1,15 +1,48 @@
+# WHY THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THE DEV STACK'S SCRAPE TARGETS.
+#
+# Three facts about a target live in exactly one place each, and each is copied nowhere else:
+#
+#   1. The application's metrics path — `/api/v1/metrics`, the route
+#      `backend/src/common/observability/prometheus.controller.ts` serves and the only route in the
+#      codebase that returns a Prometheus text exposition body.
+#   2. The application's port — `3001`, the CONTAINER port the app listens on and the one
+#      `docker-compose.yml` publishes as `"${PORT:-3001}:3001"`. Not the published host port: these
+#      targets are resolved on the compose network, where the service is named `backend`.
+#   3. The job names — the join key between a scrape config and the rules that read it, so
+#      `up{job="<name>"}` in `monitoring/prometheus/rules/hakawi-alerts.yml` means something.
+#
+# The production stack scrapes the same three facts from kube-prometheus-stack's pod annotations
+# (`prometheus.io/scrape` / `prometheus.io/port` / `prometheus.io/path` in
+# `infrastructure/helm/backend/values.yaml`) through the `additionalScrapeConfigs` in
+# `infrastructure/terraform/modules/monitoring/values/prometheus.yaml.tpl`. Keeping the path and the
+# port identical between the two is what makes a rule written against one stack true in the other;
+# changing one alone splits them silently.
+
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
     cluster: 'hakawi'
-    environment: '${ENVIRONMENT:-production}'
+    # WHY A LITERAL `development` AND NOT `${ENVIRONMENT:-production}`. Prometheus does not expand
+    # environment variables in its config file — it loads the file verbatim, which
+    # `GET /api/v1/status/config` shows character for character. The old value therefore left every
+    # series in the dev stack carrying the literal string "${ENVIRONMENT:-production}" as its
+    # environment label, and an alert fired from a laptop claimed to come from production.
+    # `external_labels` is the first thing an on-call engineer reads, so it has to name the truth:
+    # this stack is dev. The production label comes from the kube-prometheus-stack values, where
+    # terraform's `templatefile()` has already expanded the placeholder before the file was written.
+    environment: 'development'
 
 alerting:
   alertmanagers:
     - static_configs:
         - targets: ['alertmanager:9093']
 
+# Only this directory is loaded, and `monitoring/docker-compose.monitoring.yml` mounts it from
+# `monitoring/prometheus/rules`. THE CONSEQUENCE: a rules file anywhere else in this repository is
+# loaded by nothing. `monitoring/alert-rules.yml` was exactly that — five rules no process ever read,
+# including a `DatabaseDown` alert whose `up{job="postgres"}` matched no job at all. Its live rules
+# are now in `monitoring/prometheus/rules/hakawi-alerts.yml`, which is the one file Prometheus reads.
 rule_files:
   - '/etc/prometheus/rules/*.yml'
 
@@ -19,7 +52,18 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Hakawi Backend API
+  # Hakawi Backend API.
+  #
+  # `metrics_path` and the target port are the contract with
+  # `backend/src/common/observability/prometheus.controller.ts`: `GET /api/v1/metrics`,
+  # unauthenticated, `text/plain; version=0.0.4`. This matches the Helm chart's pod annotations
+  # (`prometheus.io/path: /api/v1/metrics`, `prometheus.io/port: "3001"`), so the same rules and
+  # dashboards are true in both stacks.
+  #
+  # WHY THE relabel CONFIG IS HERE. Without it `instance` is `backend:3001`, which is not wrong, just
+  # uninformative — every backend series reports the address Prometheus dialled rather than the
+  # service it is. With it, every series carries `instance="hakawi-backend"`, which is what the
+  # dashboard panels and the alert templates read.
   - job_name: 'hakawi-backend'
     metrics_path: '/api/v1/metrics'
     static_configs:
@@ -30,26 +74,38 @@ scrape_configs:
         target_label: instance
         replacement: 'hakawi-backend'
 
-  # Hakawi Frontend (if exposing metrics)
-  - job_name: 'hakawi-frontend'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['frontend:3000']
-    scrape_interval: 30s
+  # WHY THE FRONTEND JOB IS GONE. It scraped `frontend:3000/metrics`, and nothing in `frontend/`
+  # serves a Prometheus body — the Next.js dev server in `docker-compose.yml` exposes `/metrics` on
+  # no route. Every scrape of this target failed with a 404, so it sat permanently DOWN in the
+  # targets page next to jobs whose value was real, and a page that is red for targets that were
+  # never going to be green teaches whoever reads it to ignore red. No rule, dashboard panel or
+  # alert referenced the job, which is what makes this dead configuration rather than missing
+  # configuration. Add the job back when the frontend exposes an exposition body to scrape.
 
-  # Valkey (Redis) Exporter
+  # Valkey (Redis) Exporter — `metrics_path` defaults to `/metrics`, which is exactly what
+  # `oliver006/redis_exporter` serves, so it is left unset rather than written twice.
   - job_name: 'valkey'
     static_configs:
       - targets: ['valkey-exporter:9121']
     scrape_interval: 30s
 
-  # PostgreSQL Exporter
+  # PostgreSQL Exporter.
+  #
+  # WHY `postgresql` IS THE ONE NAME FOR THIS JOB. The job name is the join key between a scrape
+  # config and the rule that reads it, and `up{job="postgresql"}` in
+  # `monitoring/prometheus/rules/hakawi-alerts.yml` is the only reason a database outage pages
+  # anyone. `monitoring/alert-rules.yml` used to spell the same job `postgres`, so its `DatabaseDown`
+  # alert matched no series and could never fire no matter how long the database stayed down.
+  # Rename the job here and the rules together, never one of them alone (Principle #9 — one
+  # authoritative name, one place to look it up).
   - job_name: 'postgresql'
     static_configs:
       - targets: ['postgres-exporter:9187']
     scrape_interval: 30s
 
-  # Node Exporter (host metrics)
+  # Node Exporter (host metrics). The target is the container name because the service is attached to
+  # the compose network (it reads HOST metrics through `--path.rootfs=/host`, not through a shared
+  # network namespace — see monitoring/docker-compose.monitoring.yml).
   - job_name: 'node'
     static_configs:
       - targets: ['node-exporter:9100']

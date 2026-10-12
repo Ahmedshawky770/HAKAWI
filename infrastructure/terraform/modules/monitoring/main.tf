@@ -15,6 +15,17 @@ resource "helm_release" "prometheus" {
       retention_days = var.prometheus_retention_days
       grafana_admin_password = var.grafana_admin_password
       cluster_name = var.cluster_name
+      # WHY THE RULES FILE IS READ, NOT COPIED. The dev stack loads
+      # monitoring/prometheus/rules/hakawi-alerts.yml through Prometheus' own rule_files; this
+      # stack embeds the same file so an alert edit is a one-file change (Principle #9). The file's
+      # document root is `groups:`, so indenting the whole file under the additionalPrometheusRules
+      # list item yields valid values YAML with no transformation in between.
+      hakawi_alert_rules = indent(8, file("${path.module}/../../../monitoring/prometheus/rules/hakawi-alerts.yml"))
+      smtp_host = var.smtp_smarthost
+      smtp_port = var.smtp_smarthost_port
+      smtp_from = var.smtp_from
+      smtp_user = var.smtp_username
+      smtp_password = var.smtp_password
     })
   ]
 }

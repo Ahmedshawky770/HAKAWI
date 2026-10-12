@@ -26,7 +26,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="ar" dir="rtl" data-theme="dark" suppressHydrationWarning className={`${designFonts} h-full`}>
       <head>
         {/* Resolves the stored theme and locale before the first paint. See
-            src/lib/preferences.ts for why this cannot be an effect. */}
+            src/lib/preferences.ts for why this cannot be an effect.
+
+            This is the one `dangerouslySetInnerHTML` sink that is NOT HTML-sanitized, on purpose:
+            it renders a fixed JavaScript constant (`PREFERENCE_BOOTSTRAP_SCRIPT`) whose only inputs
+            are localStorage values it validates against a closed allowlist ("dark"/"light",
+            "ar"/"en") before writing anything to the DOM — it can never emit an attacker string, so
+            there is nothing to sanitize. Running the markup sanitizer over it would strip the whole
+            script and break theme resolution. This same inline script is what the CSP
+            `script-src 'unsafe-inline'` allowance in next.config.ts exists to permit. */}
         <script dangerouslySetInnerHTML={{ __html: PREFERENCE_BOOTSTRAP_SCRIPT }} />
       </head>
       <body className="min-h-full bg-canvas text-ink antialiased">

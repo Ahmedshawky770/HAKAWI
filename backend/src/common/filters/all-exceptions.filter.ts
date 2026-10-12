@@ -4,6 +4,35 @@ import { Request, Response } from 'express';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { captureSentryException } from '../observability/sentry.config.ts';
 
+/**
+ * The ONE mapping from a thrown exception to the HTTP status that answers the request.
+ *
+ * WHY IT LIVES HERE AND NOT IN THE TWO CALLERS. `AllExceptionsFilter` writes the status a client
+ * receives and `MetricsInterceptor` records the status a caller counted, and both of them used to
+ * decide what that status was. Two rules for one number is the "one truth, two answers" shape this
+ * codebase removes everywhere else (Principle #9): the day the filter's mapping changed, every
+ * `http_requests_total{status="5xx"}` counter would have gone on reporting the old rule, and an
+ * error-rate alert built on it would have been measuring a number that no longer matched any response
+ * anyone received. It is exported so the metric is computed from the same source as the response, not
+ * from a copy of it.
+ *
+ * WHY THE FALLBACK IS A PARAMETER. The two callers know different things at the moment they ask. The
+ * filter has only the exception, so it passes 500. The interceptor runs BEFORE the filter writes its
+ * status, so it can also see a status the handler set itself on the way out — a 429 a throttled route
+ * chose before it threw — and it passes that when there is one. Everything an exception knows about is
+ * in here; everything the response knows about stays with the caller.
+ *
+ * @param exception Whatever was thrown, typed `unknown` because that is what Nest hands a filter.
+ * @param fallback The status to use when the exception itself carries none.
+ * @returns The status the response should carry for this exception.
+ */
+export function statusFromException(exception: unknown, fallback: number): number {
+  if (exception instanceof HttpException) {
+    return exception.getStatus();
+  }
+  return fallback;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -15,13 +44,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    const status = statusFromException(exception, HttpStatus.INTERNAL_SERVER_ERROR);
     let message = 'Internal server error';
     let errorCode = 'INTERNAL_ERROR';
     let details: unknown[] = [];
 
+    // The status is already set above, by `statusFromException` — the same call the metric makes. It
+    // is not re-derived here, because a second reading of `getStatus()` is a second place for the
+    // response and the counter to disagree.
     if (exception instanceof HttpException) {
-      status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
       if (typeof exceptionResponse === 'string') {

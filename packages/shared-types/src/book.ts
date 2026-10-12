@@ -9,7 +9,29 @@ export const isBookStatus = (value: string): value is BookStatus => isOneOf(BOOK
 export type Book = {
   id: string;
   title: string;
+  /**
+   * The author's DISPLAY name — a human-readable string, NOT an identity. It cannot answer
+   * "who owns this book", because a display name is neither unique nor equal to an account id:
+   * the book page used to gate its owner controls on `author === currentUserId`, which compared a
+   * display name to a user id and so never matched, leaving publish/archive/delete permanently
+   * dead. Ownership is answered by `ownerId`; the display string is rendered verbatim.
+   */
   author: string;
+  /**
+   * The id of the account that owns the book (its creator). This is the field the frontend's
+   * ownership check compares against the signed-in user's id, because `author` is a display name
+   * and cannot identify an owner (see above).
+   *
+   * WHY THIS IS NOW SURFACED. `toBookResponse` used to omit it on the grounds that an account id
+   * is an internal authorization fact. That left the client with no id to compare and the owner
+   * controls were keyed on the display name instead — dead for every caller. Surfacing the owner id
+   * is not a new privilege: the same value is written server-side from the caller on create and is
+   * the only column the write guards read, and the book already publishes the author's display
+   * name. It is an empty string only if the row somehow carries no owner (migration 0028 made the
+   * column NOT NULL, so in practice it is always a real account id); an empty owner matches no
+   * signed-in user, so the controls stay hidden for such a row rather than appearing wrongly.
+   */
+  ownerId: string;
   description: string | null;
   coverImage: string | null;
   isbn: string | null;

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { api, getStoredUser } from "@/lib/api";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -77,6 +78,20 @@ export default function StoryDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   const viewerId = useViewerId();
+
+  // The raw body, normalised to a string so the memo below has a single, primitive dependency.
+  const content = story?.content ?? "";
+
+  /**
+   * The sanitized body, computed once per story rather than once per render.
+   *
+   * `sanitizeHtml` walks the whole body on a linear pass, and this component re-renders for state
+   * that has nothing to do with the story — the delete arm, the toast, a reaction arriving — so
+   * sanitizing inline in the JSX re-ran a full parse of the body on every one of those. The
+   * dependency is the body string and nothing else, which is what makes the memo correct: the
+   * sanitized HTML is a pure function of that string, and the page never mutates a story in place.
+   */
+  const sanitizedContent = useMemo(() => sanitizeHtml(content), [content]);
 
   const load = useCallback(() => {
     api
@@ -195,7 +210,13 @@ export default function StoryDetailPage() {
 
           <div className="hk-prose mt-8">
             {story.content ? (
-              <div dangerouslySetInnerHTML={{ __html: story.content }} />
+              // `story.content` is author-supplied HTML, so it is sanitized to an allowlist before
+              // it reaches `dangerouslySetInnerHTML`. Rendering it raw let a story whose body is
+              // `<img src=x onerror=…>` execute for every reader — a stored-XSS sink. See
+              // `src/lib/sanitize-html.ts` for the allowlist; `.hk-prose` styles the survivors.
+              // The sanitize itself is memoized above: this JSX runs on every render, and re-parsing
+              // the body on a reaction or a toast was the cost that memo removes.
+              <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
             ) : (
               <p className="italic text-ink-muted">لا يوجد محتوى</p>
             )}

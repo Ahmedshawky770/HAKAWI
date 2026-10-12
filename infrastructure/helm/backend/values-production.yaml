@@ -12,7 +12,8 @@ image:
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "3001"
-  prometheus.io/path: "/api/v1/health"
+  # The Prometheus text-exposition route, NOT `/api/v1/health`. See the comment in values.yaml.
+  prometheus.io/path: "/api/v1/metrics"
 
 podSecurityContext:
   runAsNonRoot: true
@@ -107,7 +108,9 @@ env:
   swagger:
     enabled: false
   healthPath: /api/v1/health
-  readinessPath: /api/v1/health
+  # Readiness is the dependency-aware route (/api/v1/health/ready, 503 without DB+Valkey);
+  # liveness stays on the always-200 /api/v1/health. Rationale in values.yaml.
+  readinessPath: /api/v1/health/ready
   corsOrigin: "https://app.hakawi.com,https://hakawi.com"
   paymob:
     environment: live
@@ -120,6 +123,40 @@ nodeSelector:
   kubernetes.io/arch: amd64
   kubernetes.io/os: linux
   eks.amazonaws.com/capacityType: ON_DEMAND
+
+# Probe wiring, declared per environment so the boot budget is visible where the replica count
+# and resources are. Production gets a larger startup budget than staging because the image is
+# bigger and the first replica of each node pays a cold start; the timeout budget is
+# 10s + 60 x 5s = ~310s before the liveness probe takes over. Rationale in values.yaml.
+startupProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 60
+  successThreshold: 1
+
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 3001
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health/ready
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 12
+  successThreshold: 1
 
 affinity:
   nodeAffinity:

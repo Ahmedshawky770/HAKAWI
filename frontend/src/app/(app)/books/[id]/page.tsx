@@ -84,7 +84,11 @@ export default function BookDetailPage() {
   const [downloading, setDownloading] = useState(false);
 
   const currentUserId = getStoredUser()?.id ?? null;
-  const isOwner = currentUserId != null && book != null && book.author === currentUserId;
+  // Ownership is an id equality, not a display-name comparison. `book.author` is a human-readable
+  // string (Principle: an id is the only thing that identifies an account, `docs/03_ids_as_strings.md`);
+  // comparing it to the signed-in user's id never matched, so publish/archive/delete stayed dead for
+  // every owner. `ownerId` is the account id surfaced by the books response (migration 0021/0028).
+  const isOwner = currentUserId != null && book != null && book.ownerId === currentUserId;
 
   useEffect(() => {
     let active = true;

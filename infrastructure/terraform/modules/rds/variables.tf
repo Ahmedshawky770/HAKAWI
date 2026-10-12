@@ -85,9 +85,27 @@ variable "replica_count" {
 }
 
 variable "route53_zone_id" {
-  description = "Route53 zone ID for internal DNS"
+  description = "Route53 zone ID for internal DNS (empty = do not create replica CNAME records)"
   type        = string
   default     = ""
+}
+
+# WHY secret_prefix: the application reads its database credentials from AWS Secrets
+# Manager through the ExternalSecret resources in infrastructure/helm/backend (paths
+# `<prefix>/db/*`). The prefix is passed in from the root module so the secret paths this
+# module writes and the paths the chart reads are decided in exactly one place. It is
+# deliberately required rather than defaulted: a silent default that drifts from the
+# chart's `externalSecrets.secretPrefix` is a boot failure that only shows up in the
+# cluster (Principle #9).
+#
+# WHY it must also be environment-scoped (`hakawi/<environment>`): the default used to be
+# the bare `"hakawi"` at the root, so every environment wrote `<prefix>/db/password` into
+# ONE shared namespace and the backend's IAM policy was scoped to the same shared tree.
+# `aws_secretsmanager_secret.db_host` refuses a prefix without this environment as a path
+# segment, so the mistake fails the plan instead of the cluster.
+variable "secret_prefix" {
+  description = "AWS Secrets Manager path prefix for the database secrets (must match the Helm chart externalSecrets.secretPrefix and be environment-scoped: hakawi/<environment>)"
+  type        = string
 }
 
 variable "tags" {

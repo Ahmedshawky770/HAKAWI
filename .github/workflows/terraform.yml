@@ -75,11 +75,37 @@ jobs:
           terraform plan -var-file="environments/dev/terraform.tfvars" -no-color
 
       - name: Terraform plan (staging)
+        # WHY THE PAYMOB PLACEHOLDERS. `environments/staging/terraform.tfvars` deliberately
+        # leaves the Paymob credentials empty: they are real payment credentials and must never
+        # be written in this repository, so the deploy workflow supplies them at apply time
+        # as TF_VAR_paymob_* from GitHub secrets (`.github/workflows/deploy-staging.yml`).
+        # modules/secrets refuses an EMPTY one for every environment except dev — that
+        # precondition exists so a deployment cannot ship a CrashLoopBackOff release — and a
+        # precondition is evaluated by `terraform plan` too. CI holds no secrets and deploys
+        # nothing, so without these it would fail on the very check it is trying to verify.
+        #
+        # These are NOT credentials and grant nothing. They are visible on purpose, in the
+        # same spirit as dev's tfvars carrying obvious dev-only values: a reviewer should be
+        # able to see they are placeholders, and a precondition that fires in a deploy is the
+        # one that protects the environment.
+        env:
+          TF_VAR_paymob_api_key: ci-placeholder-not-a-paymob-key
+          TF_VAR_paymob_merchant_id: ci-placeholder-not-a-merchant-id
+          TF_VAR_paymob_integration_id: ci-placeholder-not-an-integration-id
+          TF_VAR_paymob_webhook_secret: ci-placeholder-not-a-paymob-webhook-secret
         run: |
           cd infrastructure/terraform
           terraform plan -var-file="environments/staging/terraform.tfvars" -no-color
 
       - name: Terraform plan (production)
+        # Same placeholder spellings, same reason (see the staging step above): CI validates
+        # the wiring of every environment and holds none of their secrets, so it names
+        # non-credentials and lets the deploy workflows pass the real ones.
+        env:
+          TF_VAR_paymob_api_key: ci-placeholder-not-a-paymob-key
+          TF_VAR_paymob_merchant_id: ci-placeholder-not-a-merchant-id
+          TF_VAR_paymob_integration_id: ci-placeholder-not-an-integration-id
+          TF_VAR_paymob_webhook_secret: ci-placeholder-not-a-paymob-webhook-secret
         run: |
           cd infrastructure/terraform
           terraform plan -var-file="environments/production/terraform.tfvars" -no-color

@@ -29,7 +29,7 @@ Status markers: ✅ closed or materially reduced · 🔄 partially mitigated · 
 | **No deployed environment** | High | High | Apply the existing Terraform + Helm charts in CI | ⛔ **Unmitigated — the IaC exists (`infrastructure/terraform/`, `infrastructure/helm/{backend,frontend}`) and `deploy-dev/staging/production.yml` + `terraform.yml` apply it, but no environment has ever been provisioned** |
 | **Backup automation not scheduled in-cluster** | Medium | High | Scheduled `pg_dump` + PITR | 🔄 **Partially mitigated — `scripts/backup.sh` exists and CI runs a daily backup workflow (`.github/workflows/backup.yml`); ⛔ no in-cluster cron/scheduler and no PITR** |
 | **No load/performance testing** | High | Medium | k6 or Artillery suite | 🔄 **Partially mitigated — `load-tests/k6.conf.js` runs in CI (the `load-test` job in `ci.yml`, via `grafana/k6-action@v0.3.0`); ⛔ every p95 target is still unmeasured, and the `benchmarks/benchmark.js` harness is wired to no npm script** |
-| **No alerting** | Medium | High | Define alert rules on the metrics that exist | 🔄 **Rules exist — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules), `monitoring/alertmanager/alertmanager.yml` and `monitoring/grafana/dashboards/hakawi-overview.json` — but nothing deploys them** |
+| **No alerting** | Medium | High | Define alert rules on the metrics that exist | 🔄 **Rules exist — `monitoring/prometheus/rules/hakawi-alerts.yml` (14 rules), `monitoring/alertmanager/alertmanager.yml` and `monitoring/grafana/dashboards/hakawi-overview.json` — but nothing deploys them** |
 
 ---
 
@@ -343,7 +343,7 @@ from the 6-milestone/16-week model that the rest of the roadmap has now abandone
       wired to no npm script and to no CI job, so the p95 targets have never been measured
 3. `scripts/backup.sh` exists and CI runs a daily backup workflow (`.github/workflows/backup.yml`);
       ⛔ no in-cluster scheduler and no PITR configuration, and the restore drill is not scheduled
-4. `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus `monitoring/alertmanager/alertmanager.yml`
+4. `monitoring/prometheus/rules/hakawi-alerts.yml` (14 rules) plus `monitoring/alertmanager/alertmanager.yml`
       exist, but nothing deploys them
 5. No WAF metrics endpoint — the WAF **admin** operations endpoints do exist
       (`backend/src/modules/admin/admin-waf.controller.ts`, registered in `admin.module.ts`:

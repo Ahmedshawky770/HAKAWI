@@ -673,7 +673,7 @@ holds today; a ⛔ means it was never satisfied.
 | **Security audit passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ✅ | 🔄 CI audit only |
 | **Performance tests passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛔ never measured — `benchmarks/benchmark.js` exists but is wired to no npm script or CI job |
 | **Load testing passed** | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | ⛭️ | 🔄 k6 config executed in CI via `load-test` job |
-| **Monitoring configured** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 Sentry live; dashboards + 20 alert rules defined in `monitoring/` but not deployed |
+| **Monitoring configured** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔄 Sentry live; dashboards + 14 alert rules defined in `monitoring/` but not deployed |
 | **Backup strategy implemented** | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔄 automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR |
 | **Circuit breakers configured** | ⛭️ | ⛭️ | ⛭️ | ✅ | ✅ | ✅ | ✅ |
 
@@ -760,7 +760,7 @@ than failing on the gap.
 - ⛔ Uptime > 99.9% — not deployed, so not applicable
 - 🔄 Backup strategy automated via GitHub Actions (daily `pg_dump`); ⛔ no PITR
 - ✅ Monitoring configured (Sentry + Winston + WAF logs + cache metrics)
-- 🔄 Alerting — `monitoring/prometheus/rules/hakawi-alerts.yml` (20 rules) plus
+- 🔄 Alerting — `monitoring/prometheus/rules/hakawi-alerts.yml` (14 rules) plus
       `monitoring/alertmanager/alertmanager.yml` and `monitoring/grafana/dashboards/hakawi-overview.json`
       exist, but nothing deploys them (no cluster, no running Prometheus/Alertmanager)
 - 🔄 Disaster recovery plan documented; ⛔ no restore drill, no backup artifact

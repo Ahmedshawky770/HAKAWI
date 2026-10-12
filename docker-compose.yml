@@ -20,6 +20,27 @@ name: hakawi-dev
 #
 # WHY node:22. CI pins Node 22 and `docs/development/setup.md` requires 20+; this file said 20.
 #
+# WHY `restart: unless-stopped` ON EVERY LONG-RUNNING SERVICE. Without a restart policy a service
+# that exits — a crashed backend, a datastore killed by the OOM reaper, a container whose host
+# rebooted — stays down until someone notices and types `docker compose up -d` again. `up -d`
+# only recreates what is not already running; it does not resurrect a container that died. The
+# default `no` policy makes a local stack silently half-dead, which is the worst state to debug
+# from because the failure looks like an application bug when it is a lifecycle one.
+# `unless-stopped` and not `always`: it still restarts on daemon start and on crash, but it does
+# not fight an operator who ran `docker compose stop` on purpose.
+#
+# WHY IMAGES ARE PINNED TO AN EXPLICIT VERSION AND NOT `:latest`. `:latest` is a moving target
+# that changes under a running stack: the same `docker compose up` on two days is two different
+# PgBouncer builds, so a stack that worked yesterday can come up with a pooling behaviour change
+# and nothing in the repository records what changed. For `pgbouncer`, which sits in the database
+# path of every request and every migration, an unannounced major is not a nuisance, it is a
+# production incident waiting for a `pull`. `postgres:15-alpine`,
+# `valkey/valkey:8-alpine` and `node:22-alpine` were already pinned by major and are left alone.
+# The pinned tags below are well-known stable major minors, recorded here because they are a
+# deliberate maintenance point, not a discovery: upgrading PgBouncer or Adminer is a change to
+# make on purpose and to test, and a `docker compose pull && docker compose up -d` after a
+# deliberate bump is the workflow that keeps it honest.
+#
 # READ REPLICA ARCHITECTURE (Principle #9 - Single Source of Truth):
 # - postgres-primary: accepts writes, streams WAL to replicas
 # - postgres-replica-1/2: hot standby, read-only, async replication
@@ -56,6 +77,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   postgres-replica-1:
     image: postgres:15-alpine
@@ -79,6 +101,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   postgres-replica-2:
     image: postgres:15-alpine
@@ -102,9 +125,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   pgbouncer-primary:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:1.23.0
     environment:
       DATABASES: "hakawi=host=postgres-primary port=5432 dbname=${DB_NAME:-hakawi}"
       POOL_MODE: transaction
@@ -128,9 +152,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   pgbouncer-replica:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:1.23.0
     environment:
       DATABASES: "hakawi=host=postgres-replica-1 port=5432 dbname=${DB_NAME:-hakawi};hakawi=host=postgres-replica-2 port=5432 dbname=${DB_NAME:-hakawi}"
       POOL_MODE: transaction
@@ -169,6 +194,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   backend:
     image: node:22-alpine
@@ -235,6 +261,10 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+    # The command is `npm ci && npm run build:shared-types && migration:run && start:dev`, so a
+    # crash inside it — a flaky `npm ci`, a migration that exits non-zero — leaves the container
+    # exited and, without this policy, permanently down.
+    restart: unless-stopped
 
   frontend:
     image: node:22-alpine
@@ -261,11 +291,15 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    # Same lifecycle reasoning as the backend above: `npm ci && build:shared-types && next dev`
+    # is a long chain, and any step of it failing leaves the container exited until it is
+    # restarted.
+    restart: unless-stopped
 
   # Behind a profile so it does not start on every `docker compose up`. It is a database GUI, not part
   # of the application, and an always-on admin console on a published port is a liability.
   adminer:
-    image: adminer:latest
+    image: adminer:4.8.1
     profiles: ["tools"]
     ports:
       - "8080:8080"
@@ -274,6 +308,9 @@ services:
     depends_on:
       postgres-primary:
         condition: service_healthy
+    # Only ever runs when the `tools` profile is requested, and only while it is wanted; a
+    # database GUI left running is one more published port to account for.
+    restart: unless-stopped
 
 volumes:
   postgres_primary_data:

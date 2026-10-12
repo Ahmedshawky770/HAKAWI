@@ -1,0 +1,56 @@
+apiVersion: 1
+
+# WHY THIS FILE EXISTS. Grafana provisions a dashboard file only when a PROVIDER file names the
+# directory to scan. The container mounts `monitoring/grafana/dashboards` at
+# `/etc/grafana/provisioning/dashboards`, but before this file that directory held nothing but
+# `hakawi-overview.json` — a dashboard with no provider, which Grafana never loads. The dashboard was
+# in the repository and missing from every Grafana that read it, which is the quietest way for
+# something to not work: nothing errors, nothing logs, the folder is simply empty.
+providers:
+  - name: 'Hakawi'
+    orgId: 1
+    folder: 'Hakawi'
+    type: file
+    disableDeletion: false
+    # Pick up dashboard edits without restarting the container.
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # The directory this same folder is mounted at, so the JSON files here are the dashboards.
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false
+
+# WHY THE DEV STACK AND THE PRODUCTION STACK DO NOT SHOW THE SAME DASHBOARD, AND WHY THAT IS A GAP
+# RATHER THAN A CHOICE. Three facts, each verified in one place:
+#
+#   1. THIS FILE, and the `hakawi-overview.json` beside it, are loaded by the DEV stack only. Grafana
+#      provisions a dashboard file only when a provider file names the directory to scan, and the
+#      `providers` block above is mounted at `/etc/grafana/provisioning/dashboards` by
+#      `monitoring/docker-compose.monitoring.yml`. A panel therefore appears locally because the JSON
+#      is read from this repository.
+#   2. PRODUCTION does not read these files. The kube-prometheus-stack values in
+#      `infrastructure/terraform/modules/monitoring/values/prometheus.yaml.tpl` enable the Grafana
+#      dashboard sidecar and declare `dashboards.hakawi-overview.gnetId: 1860, revision: 36` — a
+#      dashboard downloaded from grafana.com, with `datasource: Prometheus`. Nothing in that template
+#      mounts this directory or names `hakawi-overview.json`, so the panels edited here are dev-only.
+#   3. The sidecar is the fix that was not taken. It watches ConfigMaps labelled `grafana_dashboard`
+#      (`sidecar.dashboards.label: grafana_dashboard`) and would load these JSON files verbatim, but
+#      that requires a ConfigMap-labelled-dashboards work item that has not landed. Until it does, the
+#      gnet reference is the only production path.
+#
+# THE CONSEQUENCE, AND WHY IT IS RECORDED HERE RATHER THAN LEFT TO BE DISCOVERED. A reviewer reading
+# `hakawi-overview.json` sees the repository's own dashboard and reasonably concludes it is the one
+# running in production; it is not. Two dashboards with the same title and different panels is the
+# "one truth, two answers" failure of Principle #9, and the specific way it bites is this: a panel
+# fixed here stays broken in production, with no error anywhere to say so — the grafana.com copy is
+# simply unchanged.
+#
+# WHAT IS THE INTENDED SINGLE SOURCE. This repository's `hakawi-overview.json`. It is the copy the
+# rules in `monitoring/prometheus/rules/hakawi-alerts.yml` were written against, it is the copy whose
+# metric names were verified against
+# `backend/src/common/observability/prometheus-registry.ts` and against the exporters the jobs in
+# `monitoring/prometheus/prometheus.yml` run, and it is the copy that can be reviewed in a commit.
+# The `gnetId: 1860` reference is the known gap: the short-term production path that a ConfigMap (or a
+# chart `dashboards` block pointing at these files) is meant to replace. Changing a panel here and
+# expecting it in production, or changing one on the grafana.com copy and expecting it here, is the
+# mistake this comment exists to prevent.

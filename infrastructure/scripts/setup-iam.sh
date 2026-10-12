@@ -129,9 +129,12 @@ cat > /tmp/hakawi-deploy-policy.json << POLICY_EOF
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
       ],
       "Resource": [
+        "arn:aws:s3:::hakawi-terraform-state",
+        "arn:aws:s3:::hakawi-terraform-state/*",
         "arn:aws:s3:::hakawi-terraform-state-*",
         "arn:aws:s3:::hakawi-terraform-state-*/*"
       ]
@@ -145,7 +148,10 @@ cat > /tmp/hakawi-deploy-policy.json << POLICY_EOF
         "dynamodb:UpdateItem",
         "dynamodb:DescribeTable"
       ],
-      "Resource": "arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/hakawi-terraform-lock-*"
+      "Resource": [
+        "arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/hakawi-terraform-locks",
+        "arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/hakawi-terraform-lock-*"
+      ]
     },
     {
       "Effect": "Allow",

@@ -54,7 +54,14 @@ resource "aws_s3_bucket_policy" "main" {
         Sid    = "AllowCloudFrontOAI"
         Effect = "Allow"
         Principal = {
-          CanonicalUser = var.cloudfront_oai_id
+          # WHY this expression: the policy used `var.cloudfront_oai_id`, which the root
+          # module never sets — so the principal was an empty canonical user ID and every
+          # apply failed with a MalformedPolicy error. This module creates its own
+          # Origin Access Identity below, and the bucket policy must name THAT identity's
+          # canonical user ID. An explicit `cloudfront_oai_id` still wins when someone
+          # hands the module an externally managed OAI (Principle #9 — one source of
+          # truth: the OAI resource this module owns).
+          CanonicalUser = var.cloudfront_oai_id != "" ? var.cloudfront_oai_id : aws_cloudfront_origin_access_identity.main.s3_canonical_user_id
         }
         Action   = "s3:GetObject"
         Resource = "${aws_s3_bucket.main.arn}/*"

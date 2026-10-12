@@ -50,6 +50,15 @@ prometheus:
         app: kube-prometheus-stack
     ruleNamespaceSelector: {}
 
+    # WHY THE ALERT RULES ARE EMBEDDED RATHER THAN WRITTEN TWICE. The rules file at
+    # monitoring/prometheus/rules/hakawi-alerts.yml is the single source the dev stack loads through
+    # rule_files; the module reads the same file at plan time and interpolates it here, so an edit
+    # to one file changes both stacks (Principle #9). The alternative — a second copy inside this
+    # template — is how a rule ships with one threshold and alerts on another.
+    additionalPrometheusRules:
+      - name: hakawi-alerts
+${hakawi_alert_rules}
+
 grafana:
   enabled: true
   adminPassword: ${grafana_admin_password}
@@ -100,6 +109,22 @@ alertmanager:
   config:
     global:
       resolve_timeout: 5m
+      # WHY THESE SIX FIELDS EXIST NOW. The email receivers below had no smtp_* global at all, so
+      # every alert that reached Alertmanager failed to deliver and nothing arrived — the pipeline
+      # was green and nobody was paged. Values come from the module's variables; empty credentials
+      # mean "not configured yet", which is a visible, fixable state rather than a silent one.
+      smtp_smarthost: '${smtp_host}:${smtp_port}'
+      smtp_from: '${smtp_from}'
+      smtp_require_tls: true
+      smtp_hello: 'hakawi-alerts'
+      # WHY THE AUTH BLOCK IS CONDITIONAL. Alertmanager fails its config check when
+      # smtp_auth_username/password are set to empty strings, which is exactly the state an
+      # environment without mail credentials starts in. Omitting the block is the same as
+      # "no auth", so its absence is the correct default, not a missing feature.
+      %{~ if smtp_user != "" ~}
+      smtp_auth_username: '${smtp_user}'
+      smtp_auth_password: '${smtp_password}'
+      %{~ endif ~}
     route:
       group_by: ['alertname', 'cluster', 'service']
       group_wait: 30s

@@ -405,5 +405,67 @@ describe('IpBlocklistService', () => {
       await expect(service.isBlocked('203.0.113.15')).resolves.toBeNull();
       expect(logger.error).toHaveBeenCalled();
     });
+
+    // WHY THIS EXISTS. `parseBlockRecord` returns null three times: invalid JSON (already covered),
+    // a payload that is not an object, and an array. The second and third arms were never taken,
+    // so `isBlocked`'s `??` fallback — the thing that keeps an IP blocked when Valkey hands back
+    // something unreadable — was asserted only through the malformed-JSON path. A payload of
+    // `42` is valid JSON that parses to a number, which is the case that reaches line 45.
+    it('keeps the IP blocked when the payload is valid JSON that is not an object', async () => {
+      valkey.strings.set('waf:ip-blocked:203.0.113.16', '42');
+      const record = await service.isBlocked('203.0.113.16');
+
+      expect(record?.kind).toBe('temporary');
+      expect(record?.reason).toBe('unreadable-block-record');
+    });
+
+    it('keeps the IP blocked when the payload is a JSON array', async () => {
+      valkey.strings.set('waf:ip-blocked:203.0.113.17', JSON.stringify(['reason']));
+      const record = await service.isBlocked('203.0.113.17');
+
+      expect(record?.reason).toBe('unreadable-block-record');
+    });
+  });
+
+  describe('violation counters under a broken store', () => {
+    // WHY THIS EXISTS. `countViolations` is the number the escalation ladder compares against
+    // `violationsBeforeTemporaryBlock`, and it reports 0 both when there are no violations and
+    // when the store cannot be read. The read-failure arm was never exercised, so the method's
+    // "returns 0 rather than throwing" contract was asserted only for the happy path.
+    it('countViolations returns zero when the store is down', async () => {
+      valkey.failOn.add('get');
+      await expect(service.countViolations('203.0.113.18')).resolves.toBe(0);
+    });
+
+    it('countViolations returns zero when the stored counter is not a number', async () => {
+      valkey.strings.set('waf:ip-violations:203.0.113.18', 'not-a-number');
+      await expect(service.countViolations('203.0.113.18')).resolves.toBe(0);
+    });
+
+    // WHY THIS EXISTS. `incrWithTtl` returns 0 when the counter cannot be incremented — the
+    // runner's documented "ran but the store was unreachable" signal — and `recordViolation` has a
+    // dedicated branch for it: fail the store health, log, and return 0. Nothing took that
+    // branch, because the fake only ever returns a positive count. The WAF middleware reads a 0
+    // as "this IP will never escalate" and raises a degradation alert, so the branch is the
+    // difference between an operator being told and not.
+    it('recordViolation treats a zero count as a store failure, not a successful increment', async () => {
+      valkey.incrWithTtl = async () => 0;
+
+      await expect(service.recordViolation('203.0.113.19', 900)).resolves.toBe(0);
+      expect(logger.error).toHaveBeenCalled();
+      expect(service.health()).toMatchObject({ available: false, consecutiveFailures: 1 });
+      expect(service.health().lastFailureAtMs).not.toBeNull();
+    });
+
+    it('recordViolation reports the timestamp of the failed window', async () => {
+      valkey.incrWithTtl = async () => 0;
+      await service.recordViolation('203.0.113.20', 900, 1_700_000_000_000);
+
+      // error(message, trace?, context?) — the context is the third argument.
+      const [message, , context] = logger.error.mock.calls[0] as [string, unknown, string];
+      expect(context).toBe('IpBlocklistService');
+      expect(message).toContain('203.0.113.20');
+      expect(message).toContain('1700000000000');
+    });
   });
 });

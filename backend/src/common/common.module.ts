@@ -33,7 +33,11 @@ import { JwtHelper, AppleJwksService } from './utils/jwt.util.ts';
 import { EncryptionService } from './utils/encryption.util.ts';
 import { LoggingInterceptor } from './interceptors/logging.interceptor.ts';
 import { CacheInterceptor, CacheMetrics } from './interceptors/cache.interceptor.ts';
+import { MetricsInterceptor } from './interceptors/metrics.interceptor.ts';
 import { CacheMetricsController } from './observability/metrics.controller.ts';
+import { PrometheusController } from './observability/prometheus.controller.ts';
+import { PrometheusRegistry } from './observability/prometheus-registry.ts';
+import { DefaultMetricsCollector } from './observability/default-metrics.collector.ts';
 import { DLQController } from './events/dlq.controller.ts';
 import { WafMiddleware, WAF_CONFIG } from './middleware/waf.middleware.ts';
 import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
@@ -55,7 +59,7 @@ const appReflector = new Reflector();
 
 @Global()
 @Module({
-  controllers: [CacheMetricsController, DLQController],
+  controllers: [CacheMetricsController, PrometheusController, DLQController],
   imports: [
     DatabaseModule,
     ResilienceModule,
@@ -112,7 +116,10 @@ const appReflector = new Reflector();
     EncryptionService,
     LoggingInterceptor,
     CacheInterceptor,
+    MetricsInterceptor,
     CacheMetrics,
+    PrometheusRegistry,
+    DefaultMetricsCollector,
     IpBlocklistService,
     GeoIpService,
     WafMiddleware,
@@ -177,7 +184,10 @@ const appReflector = new Reflector();
     ResilienceModule,
     LoggingInterceptor,
     CacheInterceptor,
+    MetricsInterceptor,
     CacheMetrics,
+    PrometheusRegistry,
+    DefaultMetricsCollector,
     IpBlocklistService,
     GeoIpService,
     WafMiddleware,

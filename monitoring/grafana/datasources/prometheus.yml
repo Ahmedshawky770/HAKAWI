@@ -1,5 +1,14 @@
 apiVersion: 1
 
+# WHY THE URL IS A SERVICE NAME. Grafana reaches Prometheus over the compose network, where the
+# `prometheus` service in monitoring/docker-compose.monitoring.yml is resolvable by name — a
+# `localhost:9090` here would point Grafana at its own container and nothing else. This is the same
+# address monitoring/prometheus/prometheus.yml expects from the outside (port 9090).
+#
+# The kube-prometheus-stack values provision a different datasource for production
+# (`http://prometheus-operated.monitoring.svc.cluster.local:9090`), so the two stacks are not
+# expected to share this file; a panel written against one is expected to work against the other
+# because the job names and metric names are the same.
 datasources:
   - name: Prometheus
     type: prometheus

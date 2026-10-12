@@ -295,6 +295,87 @@ describe('StoriesService', () => {
       expect(eventValidatorService.emit).toHaveBeenCalledWith('story.created', expect.any(Object));
     });
 
+    /**
+     * These three tests replace an assumption the first `create` test used to carry: that whatever
+     * `content` arrived in the input is what reaches the repository. That was true while `content` was
+     * stored raw, and it is the reason a `<script>` used to reach the database at all. What is asserted
+     * now is the new contract — the write path sanitizes once, and the row that gets written is the
+     * clean one — and the allowlisted `<p>Content</p>` fixture above is deliberately left untouched so
+     * the two tests together show the rule is an allowlist and not a blanket rewrite.
+     */
+    describe('content sanitization', () => {
+      it('should sanitize content before the insert', async () => {
+        const createInput: CreateStoryInput = {
+          authorId: 'author-123',
+          title: 'XSS Story',
+          content: '<p>fine</p><script>alert(1)</script><img src=x onerror=alert(1)>',
+          categoryId: null,
+        };
+
+        vi.mocked(storiesRepository.findBySlug).mockResolvedValue(null);
+        vi.mocked(storiesRepository.create).mockResolvedValue({ ...mockStory, id: 'story-123' });
+
+        await storiesService.create('author-123', createInput);
+
+        const written = vi.mocked(storiesRepository.create).mock.calls[0]?.[0];
+        expect(written?.content).toBe('<p>fine</p><img src="x">');
+      });
+
+      it('should leave allowlisted markup alone', async () => {
+        const createInput: CreateStoryInput = {
+          authorId: 'author-123',
+          title: 'Rich Story',
+          content: '<h1>Title</h1><p>Body <strong>bold</strong> <a href="https://example.com">link</a></p>',
+          categoryId: null,
+        };
+
+        vi.mocked(storiesRepository.findBySlug).mockResolvedValue(null);
+        vi.mocked(storiesRepository.create).mockResolvedValue({ ...mockStory, id: 'story-123' });
+
+        await storiesService.create('author-123', createInput);
+
+        const written = vi.mocked(storiesRepository.create).mock.calls[0]?.[0];
+        expect(written?.content).toBe(createInput.content);
+      });
+
+      it('should omit the content key entirely when the author sent none', async () => {
+        // `content: undefined` is not the same absence to Drizzle. A create that carries no content
+        // must not become an explicit NULL column write.
+        const createInput: CreateStoryInput = {
+          authorId: 'author-123',
+          title: 'No Content',
+          categoryId: null,
+        };
+
+        vi.mocked(storiesRepository.findBySlug).mockResolvedValue(null);
+        vi.mocked(storiesRepository.create).mockResolvedValue({ ...mockStory, id: 'story-123' });
+
+        await storiesService.create('author-123', createInput);
+
+        const written = vi.mocked(storiesRepository.create).mock.calls[0]?.[0] as
+          | Record<string, unknown>
+          | undefined;
+        expect(written).not.toHaveProperty('content');
+      });
+
+      it('should preserve an explicit null, which clears the body', async () => {
+        const createInput: CreateStoryInput = {
+          authorId: 'author-123',
+          title: 'Cleared',
+          content: null,
+          categoryId: null,
+        };
+
+        vi.mocked(storiesRepository.findBySlug).mockResolvedValue(null);
+        vi.mocked(storiesRepository.create).mockResolvedValue({ ...mockStory, id: 'story-123' });
+
+        await storiesService.create('author-123', createInput);
+
+        const written = vi.mocked(storiesRepository.create).mock.calls[0]?.[0];
+        expect(written?.content).toBeNull();
+      });
+    });
+
     it('should throw ConflictException when slug already exists', async () => {
       const createInput: CreateStoryInput = {
         authorId: 'author-123',
@@ -893,6 +974,48 @@ describe('StoriesService', () => {
       await expect(storiesService.update('story-999', { title: 'New Title' }, 'user-123')).rejects.toThrow(
         'Story not found',
       );
+    });
+
+    /**
+     * The same contract as the create path, and the same reason the first test above needs a note: it
+     * used to assert `toHaveBeenCalledWith('story-123', expect.objectContaining(updateInput))`, which
+     * passes only because `<p>Updated content</p>` is allowlisted markup that survives a sanitize
+     * unchanged. The assertions below pin the case where it would not have.
+     */
+    describe('content sanitization', () => {
+      it('should sanitize content before the update', async () => {
+        const updateInput: UpdateStoryInput = {
+          content: '<p>fine</p><iframe src="https://evil.example"></iframe><a href="javascript:alert(1)">x</a>',
+        };
+
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+        vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory });
+
+        await storiesService.update('story-123', updateInput, 'user-123');
+
+        const written = vi.mocked(storiesRepository.update).mock.calls[0]?.[1];
+        expect(written?.content).toBe('<p>fine</p><a>x</a>');
+      });
+
+      it('should not send a content key when the PATCH does not mention content', async () => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+        vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory });
+
+        await storiesService.update('story-123', { title: 'Only the title' }, 'user-123');
+
+        const written = vi.mocked(storiesRepository.update).mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+        expect(written).not.toHaveProperty('content');
+      });
+
+      it('should report the sanitized markup on the event, not what the caller typed', async () => {
+        vi.mocked(storiesRepository.findById).mockResolvedValue(mockStory);
+        vi.mocked(storiesRepository.update).mockResolvedValue({ ...mockStory });
+
+        await storiesService.update('story-123', { content: '<p>ok</p><script>alert(1)</script>' }, 'user-123');
+
+        const payload = vi.mocked(eventValidatorService.emit).mock.calls[0]?.[1] as { updatedFields: UpdateStoryInput };
+        expect(payload.updatedFields.content).toBe('<p>ok</p>');
+      });
     });
   });
 

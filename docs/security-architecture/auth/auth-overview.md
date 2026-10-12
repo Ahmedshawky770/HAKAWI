@@ -353,18 +353,45 @@ See `docs/api-contract/error-handling.md` for the full error-handling contract.
 
 ## Monitoring
 
-### Metrics — ❌ NOT IMPLEMENTED
-No authentication metrics are exported: there is no Prometheus counter (no `prom-client` dependency)
-and no login-rate gauge, so `auth_failures_total` — the series `AuthFailureSpike` reads — is never
-produced. No auth dashboard is deployed either; `monitoring/grafana/dashboards/hakawi-overview.json`
-exists in the repository but nothing applies it. The application's own metric endpoints are
-`GET /api/v1/metrics/cache` and `GET /api/v1/metrics/degradation` — both super-admin guarded, and
-neither counts auth events.
+### Metrics — ⛔ NOT IMPLEMENTED (auth-specific)
+No authentication metrics are exported. A Prometheus registry **does** now exist and is scraped —
+see the note below — but it exports no auth series: no login counter, no login-rate gauge, no
+`auth_failures_total`, no MFA-failure counter. No auth dashboard is deployed either;
+`monitoring/grafana/dashboards/hakawi-overview.json` exists in the repository but nothing applies it.
+The application's observability routes are three: the public `GET /api/v1/metrics` (Prometheus
+exposition), and the super-admin guarded `GET /api/v1/metrics/cache` and
+`GET /api/v1/metrics/degradation` — none of the three counts an auth event.
+
+> **Why this section was rewritten rather than extended.** It used to say "there is no Prometheus
+> counter (no `prom-client` dependency)", which reads as "the application has no metrics at all".
+> That is no longer true and was the weakest kind of wrong: it was inferred from a missing
+> dependency rather than from the code. `backend/src/common/observability/prometheus-registry.ts` is a
+> hand-written, zero-dependency registry — written by hand *because* `prom-client` is not installed
+> and cannot be (the npm registry is unreachable). It declares six metrics: the counter
+> `http_requests_total{method,route,status}`, recorded globally by
+> `common/interceptors/metrics.interceptor.ts`, plus `process_uptime_seconds`,
+> `process_resident_memory_bytes`, `process_heap_used_bytes`, `process_heap_total_bytes` and
+> `nodejs_eventloop_lag_seconds`, sampled every 5 seconds by
+> `common/observability/default-metrics.collector.ts`.
+> `monitoring/prometheus/prometheus.yml` scrapes it as `job_name: 'hakawi-backend'` with
+> `metrics_path: '/api/v1/metrics'`, and in production the same path is scraped through the Helm pod
+> annotations. What this buys auth monitoring is the request counter — per-route 5xx rates,
+> including on the `/auth/*` routes — and what it does not buy is any of the series named above.
+> The distinction matters because the honest statement is "auth is unobserved", not "the application
+> is unobserved" (Principle #4).
 
 ### Alerts
-- ❌ Login failure-rate alerting: not implemented in practice — the rules file does carry `AuthFailureSpike` (`rate(auth_failures_total[5m]) > 20`, "possible brute force"), but no cluster applies those rules and the backend exports no `auth_failures_total` counter, so nothing ever fires
+- ❌ Login failure-rate alerting: not implemented in practice — the rules file **no longer carries**
+  `AuthFailureSpike`. It read `rate(auth_failures_total[5m]) > 20`, and the backend exports no
+  `auth_failures_total` counter, so the expression was permanently empty and could never fire. The
+  rule was deleted rather than left in place as documentation of intent, on the grounds that a rule
+  nothing evaluates is worse than no rule: it reads as coverage. The unmet need is recorded in the
+  comment block at the top of `monitoring/prometheus/rules/hakawi-alerts.yml` and returns the day the
+  counter is emitted. What does exist is the generic error-rate alert `BackendHighErrorRate`
+  (`http_requests_total{status=~"5.."}` over `http_requests_total`), which covers a 5xx storm on the
+  auth routes without being auth-specific — and which is itself ⛔ undeployed
 - ❌ Unusual-login-pattern alerting: not implemented — no rule for it exists in `monitoring/prometheus/rules/hakawi-alerts.yml`
-- ❌ MFA-failure alerting: not implemented — no MFA-failure rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml` (that file does exist, with 20 rules covering backend/PostgreSQL/Valkey/WAF/auth-failure health; ⛔ no cluster deploys them), so neither `mfa.enabled` / `mfa.disabled` events nor failed `POST /auth/mfa/challenge` attempts are alerted on
+- ❌ MFA-failure alerting: not implemented — no MFA-failure rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml` (that file does exist, with **14 rules** covering backend/PostgreSQL/Valkey and host health; ⛔ no cluster deploys them), so neither `mfa.enabled` / `mfa.disabled` events nor failed `POST /auth/mfa/challenge` attempts are alerted on
 - ❌ Token-abuse alerting: not implemented — the reuse-detection path logs and throws, but emits no metric or alert
 
 What *is* observable today: Sentry receives unhandled (non-`HttpException`) errors via
@@ -388,7 +415,7 @@ and the WAF logs every rate-limit rejection with a correlation ID.
 | Cookie parsing | Added: hand-written `parseCookieHeader` (no `cookie-parser` dependency) | `backend/src/common/constants/auth-cookie.constants.ts:24` |
 | Cookie `Domain` | "Configurable" → ⛔ host-only, no `Domain` attribute | `backend/src/common/constants/auth-cookie.constants.ts:14-22` |
 | Auth error codes | 6 documented codes → ⛔ none implemented | `backend/src/common/filters/all-exceptions.filter.ts:20` |
-| Monitoring / alerts | Marked ⛔ **NOT IMPLEMENTED** in this reconciliation — now **superseded**: 20 alert rules + `alertmanager.yml` + a Grafana dashboard exist in `monitoring/`, ⛔ nothing deploys them | `monitoring/prometheus/rules/hakawi-alerts.yml` (incl. `AuthFailureSpike`, `RateLimitExhausted`), `monitoring/alertmanager/alertmanager.yml`, `monitoring/grafana/dashboards/hakawi-overview.json` |
+| Monitoring / alerts | Marked ⛔ **NOT IMPLEMENTED** in this reconciliation — now **superseded**: 14 alert rules + `alertmanager.yml` + a Grafana dashboard exist in `monitoring/` and a Prometheus scrape endpoint exists on the app, ⛔ nothing deploys them, and ⛔ no rule and no metric is auth-specific | `monitoring/prometheus/rules/hakawi-alerts.yml`, `monitoring/alertmanager/alertmanager.yml`, `monitoring/grafana/dashboards/hakawi-overview.json`; app routes `GET /api/v1/metrics` (public exposition), `/api/v1/metrics/cache` and `/api/v1/metrics/degradation` (super-admin JSON). The auth-specific rules this row used to name (`AuthFailureSpike`, `RateLimitExhausted`) were removed because their series (`auth_failures_total`, `rate_limit_exceeded_total`) are emitted by nothing |
 
 ---
 

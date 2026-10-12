@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
+import { RolesGuard } from '../../common/guards/roles.guard.ts';
 import { RequireAdminRole } from '../../common/decorators/roles.decorator.ts';
 import { AdminRole } from '../../common/constants/roles.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
@@ -25,8 +26,29 @@ interface BlockRequest {
   ttlSeconds?: number;
 }
 
+/**
+ * WHY `RolesGuard` IS IN `@UseGuards` AND NOT ONLY IMPLIED.
+ *
+ * `@RequireAdminRole()` is `SetMetadata` and nothing else — it writes a key, it enforces nothing
+ * (`common/decorators/roles.decorator.ts`). The guard that reads that key is `RolesGuard`, and until
+ * this line carried it, the metadata was decorative: every route here answered a merely AUTHENTICATED
+ * caller. `POST /admin/waf/unblock-ip` therefore let any reader lift a WAF block placed on their own
+ * IP, and `POST /admin/waf/block-ip` let any reader block a target of their choosing — a
+ * self-inflicted denial of service against any account or address.
+ *
+ * WHY THE GUARDS ARE LISTED RATHER THAN `@Secured()`. `@Secured` composes
+ * `JwtAuthGuard, RestrictionGuard, RolesGuard, PermissionsGuard`
+ * (`common/decorators/secured.decorator.ts`) — three of them this controller does not need.
+ * `RestrictionGuard` costs a Valkey `EXISTS` per request to answer a question about account state
+ * that no WAF action asks, and `PermissionsGuard` evaluates the `PERMISSIONS_KEY` metadata this
+ * controller never sets (it returns `true` immediately when it finds none, so it would be pure
+ * overhead). The narrowest pair is the same one `common/events/dlq.controller.ts` and
+ * `common/observability/metrics.controller.ts` use, and both of those are the working precedent:
+ * the guard order is the contract — `JwtAuthGuard` populates `request.user`, which `RolesGuard`
+ * reads, so swapping the two would turn every admin check into a 403 rather than into an error.
+ */
 @Controller('admin/waf')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @RequireAdminRole(AdminRole.SUPER_ADMIN)
 @ThrottleTier('default')
 export class AdminWafController {

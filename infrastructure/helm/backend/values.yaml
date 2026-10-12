@@ -3,6 +3,11 @@
 
 replicaCount: 3
 
+# These two are declared ONCE. They previously appeared twice — here with real values and again
+# further down as the Helm scaffold's `""` blanks — and Helm renders with a strict YAML unmarshaller
+# that rejects a duplicated mapping key outright ("mapping key \"nameOverride\" already defined").
+# That is a render failure independent of the `env.db.primaryHost` guard, and it is fixed by keeping
+# a single, intentional declaration.
 fullnameOverride: hakawi-backend
 nameOverride: backend
 
@@ -16,13 +21,17 @@ image:
 imagePullSecrets:
   - name: ghcr-secret
 
-nameOverride: ""
-fullnameOverride: ""
-
+# WHY `prometheus.io/path` IS `/api/v1/metrics` AND NOT `/api/v1/health`. These are the
+# annotations kube-prometheus-stack discovers pods with (`role: pod` +
+# `__meta_kubernetes_pod_annotation_prometheus_io_path` -> `__metrics_path__` in the scrape
+# config). `/api/v1/health` is the liveness route and returns an HTML/JSON health document,
+# not a Prometheus text exposition, so scraping it yields an unparseable body and a failed
+# target. `/api/v1/metrics` is the exposition route. The port must be the container port the
+# app listens on (`env.port`), not the Service port.
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "3001"
-  prometheus.io/path: "/api/v1/health"
+  prometheus.io/path: "/api/v1/metrics"
 
 podSecurityContext:
   runAsNonRoot: true
@@ -139,7 +148,14 @@ env:
   swagger:
     enabled: false
   healthPath: /api/v1/health
-  readinessPath: /api/v1/health
+  # LIVENESS vs READINESS: two different routes on purpose (Principle #15 — defense in depth:
+  # a probe that cannot fail is not a defense). `/api/v1/health` stays always-200 and answers
+  # "is the process alive", so it is the liveness and startup route. `/api/v1/health/ready`
+  # answers 200 only when the PRIMARY database AND Valkey are reachable and 503 otherwise, so
+  # it is the readiness route — a pod whose database is gone must leave the Service endpoints
+  # instead of failing requests in place. Pointing readiness at `/api/v1/health` is what made
+  # the readiness probe a no-op.
+  readinessPath: /api/v1/health/ready
   corsOrigin: "https://app.hakawi.com"
   paymob:
     environment: live
@@ -148,6 +164,24 @@ env:
   emailFrom: ""
   trustProxy: "true"
 
+# STARTUP PROBE. WHY IT EXISTS: `initialDelaySeconds` + `failureThreshold` on the liveness
+# probe is a guess about boot time, and a wrong guess gets a healthy pod killed mid-migration.
+# A startupProbe runs FIRST and suspends liveness/readiness until it succeeds, so a slow first
+# boot (image pull, `migration:run`, cold JIT) cannot be mistaken for a wedged process.
+# Budget here: 10s initial + 30 failures x 5s = up to ~160s to boot, then liveness takes over.
+startupProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 3001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+  successThreshold: 1
+
+# Liveness: process-level only. `/api/v1/health` is the deliberate always-200 route, so this
+# never restarts the pod for a database outage — that is readiness's job (restarting a pod
+# whose database is down just burns the whole cluster's connection budget for nothing).
 livenessProbe:
   httpGet:
     path: /api/v1/health
@@ -158,9 +192,13 @@ livenessProbe:
   failureThreshold: 6
   successThreshold: 1
 
+# Readiness: dependency-aware. `env.readinessPath` (/api/v1/health/ready) returns 503 when the
+# PRIMARY database or Valkey is unreachable, which is what pulls a pod out of the Service.
+# failureThreshold is deliberately high (12 x 5s = 60s) so a brief Valkey reconnect does not
+# flap every replica out of the endpoints mid-traffic.
 readinessProbe:
   httpGet:
-    path: /api/v1/health
+    path: /api/v1/health/ready
     port: 3001
   initialDelaySeconds: 10
   periodSeconds: 5
@@ -177,7 +215,15 @@ deploymentStrategy:
 externalSecrets:
   enabled: true
   refreshInterval: 1h
-  secretPrefix: "hakawi"
+  # WHY `hakawi/dev` and not the bare `hakawi`: this file is the BASE values, deployed as-is
+  # by `.github/workflows/deploy-dev.yml` (dev has no values-dev.yaml), so this prefix is
+  # dev's. It used to be the shared `"hakawi"`, which is one namespace for every
+  # environment — the secrets this chart syncs (`<prefix>/db/password`, `<prefix>/jwt/secret`)
+  # then collided with staging's and production's, and the backend's IAM policy
+  # (`<prefix>/*`, infrastructure/terraform/modules/iam) could read all of them.
+  # `terraform output -raw secret_prefix` is what the deploy workflows pass back into this
+  # key, so the chart and the state agree by construction (Principle #9).
+  secretPrefix: "hakawi/dev"
   secretStore:
     name: "aws-secrets-manager"
     managedBy: "helm"
