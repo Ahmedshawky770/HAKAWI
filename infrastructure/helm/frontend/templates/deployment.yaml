@@ -1,7 +1,3 @@
-{{- if not .Values.env.db.host -}}
-{{ fail "env.db.host is required. Set it in values.yaml or via --set env.db.host=<value>" }}
-{{- end -}}
-
 ---
 apiVersion: v1
 kind: ConfigMap
