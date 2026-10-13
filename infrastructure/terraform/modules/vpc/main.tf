@@ -33,9 +33,9 @@ resource "aws_eip" "nat" {
 
 # NAT Gateways (one per AZ for HA)
 resource "aws_nat_gateway" "main" {
-  count         = length(var.availability_zones)
-  allocation_id = aws_eip.nat[count.index].id
-  subnet_id     = aws_subnet.public[count.index].id
+  count             = length(var.availability_zones)
+  allocation_id     = aws_eip.nat[count.index].id
+  subnet_id         = aws_subnet.public[count.index].id
   connectivity_type = "public"
 
   tags = merge(var.tags, {
@@ -54,8 +54,8 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(var.tags, {
-    Name = "${var.environment}-hakawi-public-${var.availability_zones[count.index]}"
-    Type = "public"
+    Name                     = "${var.environment}-hakawi-public-${var.availability_zones[count.index]}"
+    Type                     = "public"
     "kubernetes.io/role/elb" = "1"
   })
 }
@@ -68,8 +68,8 @@ resource "aws_subnet" "private" {
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.tags, {
-    Name = "${var.environment}-hakawi-private-${var.availability_zones[count.index]}"
-    Type = "private"
+    Name                              = "${var.environment}-hakawi-private-${var.availability_zones[count.index]}"
+    Type                              = "private"
     "kubernetes.io/role/internal-elb" = "1"
   })
 }
@@ -214,18 +214,18 @@ resource "aws_security_group" "database" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "PostgreSQL from EKS nodes"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
+    description     = "PostgreSQL from EKS nodes"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
     security_groups = [aws_security_group.cluster.id]
   }
 
   ingress {
-    description = "PgBouncer from EKS nodes"
-    from_port   = 6432
-    to_port     = 6432
-    protocol    = "tcp"
+    description     = "PgBouncer from EKS nodes"
+    from_port       = 6432
+    to_port         = 6432
+    protocol        = "tcp"
     security_groups = [aws_security_group.cluster.id]
   }
 
@@ -248,10 +248,10 @@ resource "aws_security_group" "cache" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "Valkey from EKS nodes"
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
+    description     = "Valkey from EKS nodes"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
     security_groups = [aws_security_group.cluster.id]
   }
 
@@ -315,11 +315,11 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.cluster.id]
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.cluster.id]
   private_dns_enabled = true
 
   tags = merge(var.tags, {
@@ -328,11 +328,11 @@ resource "aws_vpc_endpoint" "ecr_api" {
 }
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.cluster.id]
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.cluster.id]
   private_dns_enabled = true
 
   tags = merge(var.tags, {
@@ -341,11 +341,11 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
 }
 
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.cluster.id]
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.cluster.id]
   private_dns_enabled = true
 
   tags = merge(var.tags, {
@@ -354,11 +354,11 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
 }
 
 resource "aws_vpc_endpoint" "sts" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.sts"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.cluster.id]
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.sts"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.cluster.id]
   private_dns_enabled = true
 
   tags = merge(var.tags, {
@@ -375,11 +375,11 @@ resource "aws_vpc_endpoint" "sts" {
 # the endpoint, so no application-side configuration changes are needed. It follows the
 # ecr.api/ecr.dkr/logs/sts pattern already in this module.
 resource "aws_vpc_endpoint" "secretsmanager" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.secretsmanager"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.cluster.id]
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.cluster.id]
   private_dns_enabled = true
 
   tags = merge(var.tags, {
@@ -455,7 +455,7 @@ resource "aws_iam_role_policy" "vpc_flow" {
 resource "aws_flow_log" "main" {
   vpc_id               = aws_vpc.main.id
   traffic_type         = "ALL"
-  log_destination_type = "cloudwatch-logs"
+  log_destination_type = "cloud-watch-logs"
   log_group_name       = aws_cloudwatch_log_group.vpc_flow.name
   iam_role_arn         = aws_iam_role.vpc_flow.arn
 

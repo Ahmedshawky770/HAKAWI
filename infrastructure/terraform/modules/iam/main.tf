@@ -167,7 +167,7 @@ resource "aws_iam_role_policy" "external_dns_route53" {
         "route53:ListHostedZones",
         "route53:ListResourceRecordSets"
       ]
-      Effect = "Allow"
+      Effect   = "Allow"
       Resource = "*"
     }]
   })
@@ -211,7 +211,7 @@ resource "aws_iam_role_policy" "cluster_autoscaler" {
         "autoscaling:TerminateInstanceInAutoScalingGroup",
         "ec2:DescribeLaunchTemplateVersions"
       ]
-      Effect = "Allow"
+      Effect   = "Allow"
       Resource = "*"
     }]
   })
@@ -272,7 +272,7 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
           "elasticloadbalancing:DescribeTargetHealth",
           "elasticloadbalancing:DescribeTags"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "*"
       },
       {
@@ -295,7 +295,7 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
           "shield:CreateProtection",
           "shield:DeleteProtection"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "*"
       },
       {
@@ -324,7 +324,7 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
           "elasticloadbalancing:RegisterTargets",
           "elasticloadbalancing:DeregisterTargets"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "*"
         Condition = {
           StringEquals = {
@@ -338,7 +338,7 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
           "ec2:CreateTags",
           "ec2:DeleteTags"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "*"
         Condition = {
           StringEquals = {
@@ -352,7 +352,7 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
           "ec2:RevokeSecurityGroupIngress",
           "ec2:DeleteSecurityGroup"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "*"
         Condition = {
           StringEquals = {

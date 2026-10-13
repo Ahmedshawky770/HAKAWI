@@ -132,8 +132,8 @@ module "vpc" {
   # Dedicated, disjoint tiers. The database subnets used to be sliced out of the private
   # /24s with cidrsubnet(), which produced overlapping CIDRs AWS rejects on apply; both
   # are explicit per-environment lists now (see environments/*/terraform.tfvars).
-  database_subnets = var.database_subnets
-  cache_subnets    = var.cache_subnets
+  database_subnets   = var.database_subnets
+  cache_subnets      = var.cache_subnets
   availability_zones = var.availability_zones
 
   # The module defaulted to us-east-1 for its endpoint service names; passing the actual
@@ -146,8 +146,8 @@ module "vpc" {
 module "iam" {
   source = "./modules/iam"
 
-  environment = var.environment
-  cluster_name = module.eks.cluster_name
+  environment       = var.environment
+  cluster_name      = module.eks.cluster_name
   oidc_provider_arn = module.eks.oidc_provider_arn
   oidc_provider_url = module.eks.oidc_provider_url
   # Scopes the backend role's Secrets Manager policy to the exact paths the charts read.
@@ -163,24 +163,24 @@ module "iam" {
 module "rds" {
   source = "./modules/rds"
 
-  environment           = var.environment
-  vpc_id                = module.vpc.vpc_id
-  private_subnet_ids    = module.vpc.private_subnet_ids
-  db_subnet_group_name  = "${var.environment}-hakawi-db-subnet-group"
-  security_group_ids    = [module.vpc.database_security_group_id]
+  environment          = var.environment
+  vpc_id               = module.vpc.vpc_id
+  private_subnet_ids   = module.vpc.private_subnet_ids
+  db_subnet_group_name = "${var.environment}-hakawi-db-subnet-group"
+  security_group_ids   = [module.vpc.database_security_group_id]
 
-  engine_version        = "15.4"
-  instance_class        = var.db_instance_class
-  allocated_storage     = var.db_allocated_storage
-  max_allocated_storage = var.db_max_allocated_storage
-  multi_az              = var.db_multi_az
+  engine_version          = "15.4"
+  instance_class          = var.db_instance_class
+  allocated_storage       = var.db_allocated_storage
+  max_allocated_storage   = var.db_max_allocated_storage
+  multi_az                = var.db_multi_az
   backup_retention_period = var.db_backup_retention_period
 
-  database_name         = "hakawi"
-  master_username       = "postgres"
-  master_password       = var.db_master_password
+  database_name   = "hakawi"
+  master_username = "postgres"
+  master_password = var.db_master_password
 
-  replica_count         = var.db_replica_count
+  replica_count          = var.db_replica_count
   replica_instance_class = var.db_replica_instance_class
 
   # Empty (the default) means "no internal hosted zone here": the module creates zero
@@ -197,18 +197,18 @@ module "rds" {
 module "elasticache" {
   source = "./modules/elasticache"
 
-  environment        = var.environment
-  vpc_id             = module.vpc.vpc_id
+  environment = var.environment
+  vpc_id      = module.vpc.vpc_id
   # Dedicated cache subnets (they used to run in the private subnets alongside the EKS
   # nodes; see modules/vpc).
   cache_subnet_ids   = module.vpc.cache_subnet_ids
   security_group_ids = [module.vpc.cache_security_group_id]
 
-  engine_version     = "8.0"
-  node_type          = var.cache_node_type
-  num_cache_nodes    = var.cache_num_nodes
+  engine_version       = "8.0"
+  node_type            = var.cache_node_type
+  num_cache_nodes      = var.cache_num_nodes
   parameter_group_name = "default.valkey8"
-  port               = 6379
+  port                 = 6379
 
   # Empty (the default) generates a random 32-char token instead of applying with no
   # token while `auth_token_enabled = true`. Staging/production inject the real token
@@ -226,9 +226,9 @@ module "s3" {
 
   environment = var.environment
 
-  bucket_name        = "${var.environment}-hakawi-media"
-  versioning_enabled = true
-  encryption_enabled = true
+  bucket_name         = "${var.environment}-hakawi-media"
+  versioning_enabled  = true
+  encryption_enabled  = true
   public_access_block = true
 
   cors_rules = [{
@@ -240,8 +240,8 @@ module "s3" {
   }]
 
   lifecycle_rules = [{
-    id      = "expire-incomplete-multipart-uploads"
-    enabled = true
+    id                                     = "expire-incomplete-multipart-uploads"
+    enabled                                = true
     abort_incomplete_multipart_upload_days = 7
   }]
 
@@ -251,13 +251,13 @@ module "s3" {
 module "eks" {
   source = "./modules/eks"
 
-  environment          = var.environment
-  vpc_id               = module.vpc.vpc_id
-  private_subnet_ids   = module.vpc.private_subnet_ids
-  public_subnet_ids    = module.vpc.public_subnet_ids
+  environment               = var.environment
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  public_subnet_ids         = module.vpc.public_subnet_ids
   cluster_security_group_id = module.vpc.cluster_security_group_id
 
-  cluster_version      = "1.28"
+  cluster_version                 = "1.28"
   cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
   # Was hardcoded to ["0.0.0.0/0"] inside the module. dev passes 0.0.0.0/0 (developer
@@ -265,12 +265,12 @@ module "eks" {
   # endpoint answers nobody and cluster access comes from inside the VPC.
   cluster_endpoint_public_access_cidrs = var.eks_cluster_endpoint_public_access_cidrs
 
-  node_group_name          = "${var.environment}-hakawi-nodes"
+  node_group_name           = "${var.environment}-hakawi-nodes"
   node_group_instance_types = var.eks_node_instance_types
-  node_group_capacity_type = "ON_DEMAND"
-  node_group_desired_size  = var.eks_desired_size
-  node_group_min_size      = var.eks_min_size
-  node_group_max_size      = var.eks_max_size
+  node_group_capacity_type  = "ON_DEMAND"
+  node_group_desired_size   = var.eks_desired_size
+  node_group_min_size       = var.eks_min_size
+  node_group_max_size       = var.eks_max_size
 
   # WHY there is no `secret_prefix` argument here any more: modules/eks used to attach a
   # node-wide `arn:aws:secretsmanager:*:*:secret:<prefix>/*` statement to the node instance
@@ -287,8 +287,8 @@ module "eks" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  environment    = var.environment
-  vpc_id         = module.vpc.vpc_id
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
 
   # WHY this was missing: the module's prometheus.yaml.tpl reads `${cluster_name}` and
@@ -311,25 +311,25 @@ module "monitoring" {
 module "secrets" {
   source = "./modules/secrets"
 
-  environment    = var.environment
+  environment = var.environment
   # Per-environment prefix matching the chart values: `hakawi/dev` (values.yaml),
   # `hakawi/staging` (values-staging.yaml), `hakawi/production`
   # (values-production.yaml). Derived from `var.environment` by default, so no environment
   # can end up on another environment's prefix.
-  secret_prefix  = local.secret_prefix
+  secret_prefix = local.secret_prefix
 
-  jwt_secret           = var.jwt_secret
-  jwt_refresh_secret   = var.jwt_refresh_secret
-  encryption_key       = var.encryption_key
-  paymob_api_key       = var.paymob_api_key
-  paymob_merchant_id   = var.paymob_merchant_id
+  jwt_secret            = var.jwt_secret
+  jwt_refresh_secret    = var.jwt_refresh_secret
+  encryption_key        = var.encryption_key
+  paymob_api_key        = var.paymob_api_key
+  paymob_merchant_id    = var.paymob_merchant_id
   paymob_integration_id = var.paymob_integration_id
   paymob_webhook_secret = var.paymob_webhook_secret
-  sentry_dsn           = var.sentry_dsn
-  s3_access_key        = var.s3_access_key
-  s3_secret_key        = var.s3_secret_key
-  email_from           = var.email_from
-  frontend_api_url     = var.frontend_api_url
+  sentry_dsn            = var.sentry_dsn
+  s3_access_key         = var.s3_access_key
+  s3_secret_key         = var.s3_secret_key
+  email_from            = var.email_from
+  frontend_api_url      = var.frontend_api_url
 
   tags = var.common_tags
 }

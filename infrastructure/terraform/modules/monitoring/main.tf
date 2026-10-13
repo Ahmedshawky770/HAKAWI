@@ -2,37 +2,37 @@
 # Deploys Prometheus, Grafana, Alertmanager via Helm charts
 
 resource "helm_release" "prometheus" {
-  name       = "prometheus"
-  repository = "https://prometheus-community.github.io/helm-charts"
-  chart      = "kube-prometheus-stack"
-  version    = "55.5.0"
-  namespace  = "monitoring"
+  name             = "prometheus"
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "kube-prometheus-stack"
+  version          = "55.5.0"
+  namespace        = "monitoring"
   create_namespace = true
 
   values = [
     templatefile("${path.module}/values/prometheus.yaml.tpl", {
-      environment = var.environment
-      retention_days = var.prometheus_retention_days
+      environment            = var.environment
+      retention_days         = var.prometheus_retention_days
       grafana_admin_password = var.grafana_admin_password
-      cluster_name = var.cluster_name
+      cluster_name           = var.cluster_name
       # WHY THE RULES FILE IS READ, NOT COPIED. The dev stack loads
       # monitoring/prometheus/rules/hakawi-alerts.yml through Prometheus' own rule_files; this
       # stack embeds the same file so an alert edit is a one-file change (Principle #9). The file's
       # document root is `groups:`, so indenting the whole file under the additionalPrometheusRules
       # list item yields valid values YAML with no transformation in between.
-      hakawi_alert_rules = indent(8, file("${path.module}/../../../monitoring/prometheus/rules/hakawi-alerts.yml"))
-      smtp_host = var.smtp_smarthost
-      smtp_port = var.smtp_smarthost_port
-      smtp_from = var.smtp_from
-      smtp_user = var.smtp_username
-      smtp_password = var.smtp_password
+      hakawi_alert_rules = indent(8, file("${path.module}/../../../../monitoring/prometheus/rules/hakawi-alerts.yml"))
+      smtp_host          = var.smtp_smarthost
+      smtp_port          = var.smtp_smarthost_port
+      smtp_from          = var.smtp_from
+      smtp_user          = var.smtp_username
+      smtp_password      = var.smtp_password
     })
   ]
 }
 
 resource "aws_s3_bucket" "prometheus_backup" {
   bucket = "${var.environment}-hakawi-prometheus-backups"
-  tags = var.tags
+  tags   = var.tags
 }
 
 resource "aws_s3_bucket_versioning" "prometheus_backup" {
@@ -54,25 +54,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "prometheus_backup
 resource "aws_s3_bucket_lifecycle_configuration" "prometheus_backup" {
   bucket = aws_s3_bucket.prometheus_backup.id
   rule {
-    id      = "expire-old-backups"
-    enabled = true
+    id     = "expire-old-backups"
+    status = "Enabled"
+    filter {}
     expiration {
       days = 90
     }
   }
-}
-
-output "prometheus_url" {
-  description = "Prometheus URL"
-  value       = "http://prometheus-operated.monitoring.svc.cluster.local:9090"
-}
-
-output "grafana_url" {
-  description = "Grafana URL"
-  value       = "http://prometheus-grafana.monitoring.svc.cluster.local:80"
-}
-
-output "alertmanager_url" {
-  description = "Alertmanager URL"
-  value       = "http://prometheus-alertmanager.monitoring.svc.cluster.local:9093"
 }

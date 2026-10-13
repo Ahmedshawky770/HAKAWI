@@ -13,9 +13,9 @@ locals {
   # Resolution mirrors modules/rds (`master_password != "" ? ... : random_password...`),
   # and the expression is used in exactly one place per secret so the value Terraform
   # writes is the same one the application will read.
-  jwt_secret           = var.jwt_secret != "" ? var.jwt_secret : random_password.jwt_secret.result
-  jwt_refresh_secret   = var.jwt_refresh_secret != "" ? var.jwt_refresh_secret : random_password.jwt_refresh_secret.result
-  encryption_key       = var.encryption_key != "" ? var.encryption_key : random_password.encryption_key.result
+  jwt_secret         = var.jwt_secret != "" ? var.jwt_secret : random_password.jwt_secret.result
+  jwt_refresh_secret = var.jwt_refresh_secret != "" ? var.jwt_refresh_secret : random_password.jwt_refresh_secret.result
+  encryption_key     = var.encryption_key != "" ? var.encryption_key : random_password.encryption_key.result
 
   # WHY dev is exempt: dev's tfvars carries obvious, dev-only placeholders so the chart's
   # ExternalSecrets have something to sync, and the backend rejects those placeholders at

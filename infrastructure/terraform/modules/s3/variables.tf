@@ -41,8 +41,8 @@ variable "cors_rules" {
 variable "lifecycle_rules" {
   description = "Lifecycle rules"
   type = list(object({
-    id      = string
-    enabled = bool
+    id                                     = string
+    enabled                                = bool
     abort_incomplete_multipart_upload_days = optional(number)
     expiration = optional(object({
       days = number

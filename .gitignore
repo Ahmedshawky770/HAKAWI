@@ -52,3 +52,10 @@ test-results/
 # not run them. Regenerated on every run, so it must never be committed — a stale report would let
 # the guard assert against the previous run's numbers.
 backend/e2e-results.json
+
+# Terraform provider plugins and module caches. `terraform init` downloads provider
+# binaries into `.terraform/` (hundreds of MB) and rewrites them on every version
+# bump, so it is machine-local output, never source. `.terraform.lock.hcl` is the
+# opposite — it pins the exact provider versions and IS tracked on purpose, so this
+# entry names only the directory and never the lock file.
+.terraform/

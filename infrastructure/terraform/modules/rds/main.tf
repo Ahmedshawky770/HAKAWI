@@ -3,8 +3,8 @@
 # Includes automated backups, encryption, monitoring, and parameter groups
 
 resource "random_password" "db_master" {
-  length  = 32
-  special = false
+  length           = 32
+  special          = false
   override_special = "_"
 }
 
@@ -74,35 +74,35 @@ resource "aws_db_parameter_group" "main" {
 }
 
 resource "aws_db_instance" "primary" {
-  identifier                 = "${var.environment}-hakawi-primary"
-  engine                     = "postgres"
-  engine_version             = var.engine_version
-  instance_class             = var.instance_class
-  allocated_storage          = var.allocated_storage
-  max_allocated_storage      = var.max_allocated_storage
-  storage_encrypted          = true
-  storage_type               = "gp3"
-  iops                       = 3000
-  db_subnet_group_name       = var.db_subnet_group_name
-  vpc_security_group_ids     = var.security_group_ids
-  parameter_group_name       = aws_db_parameter_group.main.name
-  db_name                    = var.database_name
-  username                   = var.master_username
-  password                   = var.master_password != "" ? var.master_password : random_password.db_master.result
-  port                       = 5432
-  multi_az                   = var.multi_az
-  publicly_accessible        = false
-  backup_retention_period    = var.backup_retention_period
-  backup_window              = "03:00-04:00"
-  maintenance_window         = "mon:04:00-mon:05:00"
-  skip_final_snapshot        = var.environment == "dev"
-  deletion_protection        = var.environment == "production"
-  copy_tags_to_snapshot      = true
-  monitoring_interval        = 60
-  monitoring_role_arn        = aws_iam_role.rds_monitoring.arn
-  performance_insights_enabled = true
+  identifier                            = "${var.environment}-hakawi-primary"
+  engine                                = "postgres"
+  engine_version                        = var.engine_version
+  instance_class                        = var.instance_class
+  allocated_storage                     = var.allocated_storage
+  max_allocated_storage                 = var.max_allocated_storage
+  storage_encrypted                     = true
+  storage_type                          = "gp3"
+  iops                                  = 3000
+  db_subnet_group_name                  = var.db_subnet_group_name
+  vpc_security_group_ids                = var.security_group_ids
+  parameter_group_name                  = aws_db_parameter_group.main.name
+  db_name                               = var.database_name
+  username                              = var.master_username
+  password                              = var.master_password != "" ? var.master_password : random_password.db_master.result
+  port                                  = 5432
+  multi_az                              = var.multi_az
+  publicly_accessible                   = false
+  backup_retention_period               = var.backup_retention_period
+  backup_window                         = "03:00-04:00"
+  maintenance_window                    = "mon:04:00-mon:05:00"
+  skip_final_snapshot                   = var.environment == "dev"
+  deletion_protection                   = var.environment == "production"
+  copy_tags_to_snapshot                 = true
+  monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  enable_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 
   tags = merge(var.tags, {
     Name        = "${var.environment}-hakawi-primary"
@@ -118,21 +118,21 @@ resource "aws_db_instance" "primary" {
 }
 
 resource "aws_db_instance" "replica" {
-  count                    = var.replica_count
-  identifier               = "${var.environment}-hakawi-replica-${count.index + 1}"
-  replicate_source_db      = aws_db_instance.primary.identifier
-  instance_class           = var.replica_instance_class
-  storage_encrypted        = true
-  db_subnet_group_name     = var.db_subnet_group_name
-  vpc_security_group_ids   = var.security_group_ids
-  parameter_group_name     = aws_db_parameter_group.main.name
-  publicly_accessible      = false
-  monitoring_interval      = 60
-  monitoring_role_arn      = aws_iam_role.rds_monitoring.arn
-  performance_insights_enabled = true
+  count                                 = var.replica_count
+  identifier                            = "${var.environment}-hakawi-replica-${count.index + 1}"
+  replicate_source_db                   = aws_db_instance.primary.identifier
+  instance_class                        = var.replica_instance_class
+  storage_encrypted                     = true
+  db_subnet_group_name                  = var.db_subnet_group_name
+  vpc_security_group_ids                = var.security_group_ids
+  parameter_group_name                  = aws_db_parameter_group.main.name
+  publicly_accessible                   = false
+  monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  enable_cloudwatch_logs_exports = ["postgresql"]
-  deletion_protection      = var.environment == "production"
+  enabled_cloudwatch_logs_exports       = ["postgresql"]
+  deletion_protection                   = var.environment == "production"
 
   tags = merge(var.tags, {
     Name        = "${var.environment}-hakawi-replica-${count.index + 1}"
@@ -264,7 +264,7 @@ resource "aws_secretsmanager_secret" "db_password" {
 # uses (explicit variable, else the generated one), so the app and the instance can
 # never drift apart.
 resource "aws_secretsmanager_secret_version" "db_password" {
-  secret_id     = aws_secretsmanager_secret.db_password.id
+  secret_id = aws_secretsmanager_secret.db_password.id
   secret_string = jsonencode({
     password = var.master_password != "" ? var.master_password : random_password.db_master.result
   })
