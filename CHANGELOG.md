@@ -116,6 +116,32 @@ A 488-file change set was reviewed line by line and hardened. The full reasoning
   exist in the Drizzle schema — was deleted.
 - The frontend dashboard route `/dashboard` was a dead link; it pointed at a route that never
   existed.
+- **The Terraform configuration could not initialize at all, so no apply had ever been possible.**
+  The `eks`, `s3` and `monitoring` modules declared the same outputs twice (`main.tf` *and*
+  `outputs.tf` — 15 collisions), and removing them exposed a further layer of schema errors the
+  duplicates had masked: `taints` as a list where the AWS provider expects `taint {}` blocks on the
+  node group, `enable_cloudwatch_logs_exports` (RDS), `log_destination_type = "cloudwatch-logs"`
+  (VPC flow logs), the `cors_rule`/`rule` argument blocks (S3), `replication_group_description`,
+  `number_cache_clusters` and `auth_token_enabled` (ElastiCache), a wrong relative rules path and
+  an invalid `lifecycle { enabled }` (monitoring). `terraform init`/`validate` now exit 0, and the
+  generated lock file is tracked while `.terraform/` is now ignored.
+- **The frontend Helm chart could not load.** `Chart.yaml` carried `tags` as a YAML list where
+  Helm's schema requires a string, so `helm lint`, `helm template` and `helm upgrade` all failed at
+  exit 1 before reading a single template. The same chart's `env.db.host` required-guard was
+  removed: no rendered manifest consumes that key — a render is byte-identical with any value —
+  so the guard was copy-paste residue from the backend chart and only ever failed renders.
+- **Terraform CI never linted anything.** It installed tflint by piping a `master` install script
+  that upstream had deleted (the 404 page ran as bash: `404:: command not found`, exit 127), so
+  `fmt`, `validate` and the three environment `plan`s never executed. The install is now pinned to
+  release v0.58.0 with checksum verification.
+- **The deploy bootstrap deadlocked and could never have worked.** `infrastructure/scripts/setup-iam.sh`
+  derived the IAM OIDC provider from an EKS cluster that did not exist (`hakawi-dev-eks`, a name
+  the `eks` module never produces), made the deploy role trust that *EKS* issuer with a
+  *Kubernetes service-account* subject condition, defaulted `GITHUB_REPO` to a repository that is
+  not this one, and shipped a bogus thumbprint. The GitHub Actions issuer is a fixed public URL,
+  not a per-cluster ARN, and the trust condition is now `repo:<owner>/<repo>:*`. The script is
+  idempotent, creates the state buckets and lock tables both naming conventions in the repository
+  already reference, and computes the provider thumbprint at runtime.
 
 ### Changed
 
@@ -146,6 +172,9 @@ A 488-file change set was reviewed line by line and hardened. The full reasoning
 - Regression tests for every fix above, including the sandwiched-migration case, the SSRF encoding
   bypasses, the WAF prose corpus, Apple `id_token` verification against real RSA keys, and the
   constant-time reset-token comparison.
+- The `dev` and `staging` GitHub deployment environments the deploy workflows reference (only
+  `production` existed, so `environment: dev`/`environment: staging` resolved to nothing), and the
+  `develop` branch that `deploy-dev.yml` triggers on.
 
 ### Verification
 
