@@ -34,9 +34,29 @@ jobs:
           terraform-version: ${{ env.TERRAFORM_VERSION }}
           cli-config-url: https://raw.githubusercontent.com/hashicorp/core/main/.terraformrc
 
+      # WHY A PINNED ZIP. The tflint project deleted the `master` install script that used to
+      # live at install_linux.sh, so `curl ... | bash` returned the GitHub 404 page: bash ran it
+      # as input and died with `404:: command not found` before this workflow linted anything.
+      # We pin an actual release and verify its published checksum instead, so a bad download
+      # or a tampered asset fails the step loudly rather than leaving a broken linter on PATH.
+      # `sha256sum -c` requires the checksum in `<hash>  <file>` form, hence the printf.
       - name: Setup tflint
+        env:
+          TFLINT_VERSION: "0.58.0"
+          TFLINT_CHECKSUM: "1e8ccdf3e4b57ba154545b4343621bf46f25ca8f5cc97e36432469752f7ef0c0"
         run: |
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          set -euo pipefail
+          bin_dir="${RUNNER_TEMP}/tflint-bin"
+          mkdir -p "${bin_dir}"
+          zip="${bin_dir}/tflint.zip"
+          curl -fsSL --retry 3 --retry-delay 5 \
+            -o "${zip}" \
+            "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          printf '%s  %s\n' "${TFLINT_CHECKSUM}" "${zip}" | sha256sum -c -
+          unzip -o -q "${zip}" -d "${bin_dir}"
+          chmod +x "${bin_dir}/tflint"
+          echo "${bin_dir}" >> "${GITHUB_PATH}"
+          "${bin_dir}/tflint" --version
 
       - name: Checkout code
         uses: actions/checkout@v4
