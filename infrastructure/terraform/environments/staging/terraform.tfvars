@@ -15,7 +15,7 @@ public_subnets = ["10.1.101.0/24", "10.1.102.0/24", "10.1.103.0/24"]
 # private/public subnets above. (The database tier used to be cidrsubnet() slices of the
 # private /24s: overlapping CIDRs AWS rejects on apply.)
 database_subnets = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
-cache_subnets = ["10.1.251.0/24", "10.1.252.0/24", "10.1.253.0/24"]
+cache_subnets    = ["10.1.251.0/24", "10.1.252.0/24", "10.1.253.0/24"]
 
 # Secrets Manager prefix — MUST match infrastructure/helm/backend/values-staging.yaml
 # externalSecrets.secretPrefix ("hakawi/staging"). Environment-scoped by design: a shared
@@ -46,14 +46,14 @@ route53_zone_id = ""
 eks_cluster_endpoint_public_access_cidrs = []
 
 # Medium instances for staging
-db_instance_class = "db.r6g.large"
-db_replica_instance_class = "db.r6g.large"
-db_allocated_storage = 100
-db_max_allocated_storage = 500
-db_multi_az = true
+db_instance_class          = "db.r6g.large"
+db_replica_instance_class  = "db.r6g.large"
+db_allocated_storage       = 100
+db_max_allocated_storage   = 500
+db_multi_az                = true
 db_backup_retention_period = 14
-db_replica_count = 2
-db_master_password = "" # Set via GitHub secret or SSM parameter
+db_replica_count           = 2
+db_master_password         = "" # Set via GitHub secret or SSM parameter
 
 cache_node_type = "cache.r6g.large"
 cache_num_nodes = 2
@@ -63,9 +63,9 @@ cache_num_nodes = 2
 valkey_auth_token = ""
 
 eks_node_instance_types = ["m6i.xlarge"]
-eks_desired_size = 2
-eks_min_size = 2
-eks_max_size = 6
+eks_desired_size        = 2
+eks_min_size            = 2
+eks_max_size            = 6
 
 grafana_admin_password = "" # Set via GitHub secret
 
@@ -79,18 +79,18 @@ cors_allowed_origins = ["https://staging.hakawi.com", "https://app.staging.hakaw
 # (the backend's zod schema refuses missing/placeholder payment credentials) rather than
 # silently taking no payments.
 # ---------------------------------------------------------------------------
-jwt_secret = ""
-jwt_refresh_secret = ""
-encryption_key = ""
-paymob_api_key = ""
-paymob_merchant_id = ""
+jwt_secret            = ""
+jwt_refresh_secret    = ""
+encryption_key        = ""
+paymob_api_key        = ""
+paymob_merchant_id    = ""
 paymob_integration_id = ""
 paymob_webhook_secret = ""
-sentry_dsn = ""
+sentry_dsn            = ""
 # Not read by the app (IRSA is the credential path); kept for the chart contract.
 s3_access_key = ""
 s3_secret_key = ""
-email_from = "noreply@staging.hakawi.io"
+email_from    = "noreply@staging.hakawi.io"
 # Matches infrastructure/helm/backend/values-staging.yaml env.apiUrl.
 frontend_api_url = "https://staging-api.hakawi.io/api/v1"
 

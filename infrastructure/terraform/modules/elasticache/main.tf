@@ -52,52 +52,43 @@ resource "aws_elasticache_subnet_group" "main" {
 }
 
 resource "aws_elasticache_replication_group" "main" {
-  replication_group_id       = "${var.environment}-hakawi-valkey"
-  replication_group_description = "Hakawi Valkey cluster for ${var.environment}"
+  replication_group_id = "${var.environment}-hakawi-valkey"
+  description          = "Hakawi Valkey cluster for ${var.environment}"
 
   engine               = "valkey"
   engine_version       = var.engine_version
   port                 = var.port
   parameter_group_name = aws_elasticache_parameter_group.main.name
   node_type            = var.node_type
-  number_cache_clusters = var.num_cache_nodes
+  num_cache_clusters   = var.num_cache_nodes
 
-  subnet_group_name    = aws_elasticache_subnet_group.main.name
-  security_group_ids   = var.security_group_ids
+  subnet_group_name  = aws_elasticache_subnet_group.main.name
+  security_group_ids = var.security_group_ids
 
   automatic_failover_enabled = true
-  multi_az_enabled          = true
+  multi_az_enabled           = true
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
-  auth_token_enabled        = true
   # Resolved once and used for both the API argument and the secret below, so the value
   # the application reads can never differ from the value the cluster enforces.
-  auth_token                = var.auth_token != "" ? var.auth_token : random_password.valkey_auth.result
+  auth_token = var.auth_token != "" ? var.auth_token : random_password.valkey_auth.result
 
-  snapshot_retention_limit  = var.environment == "production" ? 30 : 7
-  snapshot_window           = "03:00-04:00"
-  maintenance_window        = "mon:04:00-mon:05:00"
+  snapshot_retention_limit = var.environment == "production" ? 30 : 7
+  snapshot_window          = "03:00-04:00"
+  maintenance_window       = "mon:04:00-mon:05:00"
 
   log_delivery_configuration {
     destination_type = "cloudwatch-logs"
+    destination      = aws_cloudwatch_log_group.valkey_slow.name
     log_format       = "json"
     log_type         = "slow-log"
-    destination_details {
-      cloudwatch_logs {
-        log_group = "/aws/elasticache/${var.environment}/hakawi-valkey/slow-log"
-      }
-    }
   }
 
   log_delivery_configuration {
     destination_type = "cloudwatch-logs"
+    destination      = aws_cloudwatch_log_group.valkey_engine.name
     log_format       = "json"
     log_type         = "engine-log"
-    destination_details {
-      cloudwatch_logs {
-        log_group = "/aws/elasticache/${var.environment}/hakawi-valkey/engine-log"
-      }
-    }
   }
 
   tags = merge(var.tags, {

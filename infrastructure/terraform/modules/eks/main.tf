@@ -14,7 +14,7 @@ resource "aws_eks_cluster" "main" {
     # Was hardcoded to ["0.0.0.0/0"], i.e. the Kubernetes API server open to the whole
     # internet. Now an input (cluster_endpoint_public_access_cidrs); an empty list is
     # private-only. dev passes 0.0.0.0/0 from its tfvars; staging/production pass [].
-    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
+    public_access_cidrs = var.cluster_endpoint_public_access_cidrs
   }
 
   encryption_config {
@@ -32,7 +32,7 @@ resource "aws_eks_cluster" "main" {
 }
 
 resource "aws_kms_key" "eks" {
-  description = "KMS key for EKS secrets encryption"
+  description             = "KMS key for EKS secrets encryption"
   deletion_window_in_days = 10
   enable_key_rotation     = true
 
@@ -67,31 +67,31 @@ resource "aws_iam_role_policy_attachment" "cluster_service" {
 }
 
 resource "aws_eks_addon" "vpc_cni" {
-  cluster_name = aws_eks_cluster.main.name
-  addon_name   = "vpc-cni"
-  addon_version = "v1.14.0-eksbuild.1"
+  cluster_name      = aws_eks_cluster.main.name
+  addon_name        = "vpc-cni"
+  addon_version     = "v1.14.0-eksbuild.1"
   resolve_conflicts = "OVERWRITE"
 }
 
 resource "aws_eks_addon" "coredns" {
-  cluster_name = aws_eks_cluster.main.name
-  addon_name   = "coredns"
-  addon_version = "v1.11.1-eksbuild.6"
+  cluster_name      = aws_eks_cluster.main.name
+  addon_name        = "coredns"
+  addon_version     = "v1.11.1-eksbuild.6"
   resolve_conflicts = "OVERWRITE"
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  cluster_name = aws_eks_cluster.main.name
-  addon_name   = "kube-proxy"
-  addon_version = "v1.28.2-eksbuild.2"
+  cluster_name      = aws_eks_cluster.main.name
+  addon_name        = "kube-proxy"
+  addon_version     = "v1.28.2-eksbuild.2"
   resolve_conflicts = "OVERWRITE"
 }
 
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name = aws_eks_cluster.main.name
-  addon_name   = "aws-ebs-csi-driver"
-  addon_version = "v1.28.0-eksbuild.1"
-  resolve_conflicts = "OVERWRITE"
+  cluster_name             = aws_eks_cluster.main.name
+  addon_name               = "aws-ebs-csi-driver"
+  addon_version            = "v1.28.0-eksbuild.1"
+  resolve_conflicts        = "OVERWRITE"
   service_account_role_arn = aws_iam_role.ebs_csi.arn
 }
 
@@ -107,9 +107,9 @@ resource "aws_eks_addon" "ebs_csi" {
 # in this module are pinned deliberately — EKS never moves an addon on its own, so an
 # unpinned addon silently stays on whatever version the cluster was created with.
 resource "aws_eks_addon" "metrics_server" {
-  cluster_name = aws_eks_cluster.main.name
-  addon_name   = "metrics-server"
-  addon_version = "v0.7.2-eksbuild.1"
+  cluster_name      = aws_eks_cluster.main.name
+  addon_name        = "metrics-server"
+  addon_version     = "v0.7.2-eksbuild.1"
   resolve_conflicts = "OVERWRITE"
 }
 
@@ -159,8 +159,8 @@ resource "aws_eks_node_group" "main" {
   instance_types = var.node_group_instance_types
   capacity_type  = var.node_group_capacity_type
 
-  ami_type       = "AL2_x86_64"
-  disk_size      = 50
+  ami_type        = "AL2_x86_64"
+  disk_size       = 50
   release_version = "1.28.20240601"
 
   labels = {
@@ -168,7 +168,14 @@ resource "aws_eks_node_group" "main" {
     Workload    = "general"
   }
 
-  taints = var.node_group_taints
+  dynamic "taint" {
+    for_each = var.node_group_taints
+    content {
+      key    = taint.value.key
+      value  = taint.value.value
+      effect = taint.value.effect
+    }
+  }
 
   tags = merge(var.tags, {
     Name = "${var.environment}-hakawi-node-group"
@@ -251,38 +258,3 @@ resource "aws_iam_role_policy" "node_group_s3" {
 #
 # If a node-level tool ever genuinely needs a secret, it should get its own IRSA role with
 # one path in its resource — not a statement attached to every node in the cluster.
-
-output "cluster_name" {
-  description = "EKS cluster name"
-  value       = aws_eks_cluster.main.name
-}
-
-output "cluster_endpoint" {
-  description = "EKS cluster endpoint"
-  value       = aws_eks_cluster.main.endpoint
-}
-
-output "cluster_arn" {
-  description = "EKS cluster ARN"
-  value       = aws_eks_cluster.main.arn
-}
-
-output "cluster_certificate_authority_data" {
-  description = "Cluster certificate authority data"
-  value       = aws_eks_cluster.main.certificate_authority[0].data
-}
-
-output "oidc_provider_arn" {
-  description = "OIDC provider ARN"
-  value       = aws_iam_openid_connect_provider.eks.arn
-}
-
-output "oidc_provider_url" {
-  description = "OIDC provider URL"
-  value       = aws_iam_openid_connect_provider.eks.url
-}
-
-output "node_group_role_arn" {
-  description = "Node group role ARN"
-  value       = aws_iam_role.node_group.arn
-}

@@ -37,12 +37,50 @@ resource "aws_s3_bucket_public_access_block" "main" {
 
 resource "aws_s3_bucket_cors_configuration" "main" {
   bucket = aws_s3_bucket.main.id
-  cors_rule = var.cors_rules
+
+  dynamic "cors_rule" {
+    for_each = var.cors_rules
+    content {
+      allowed_headers = cors_rule.value.allowed_headers
+      allowed_methods = cors_rule.value.allowed_methods
+      allowed_origins = cors_rule.value.allowed_origins
+      expose_headers  = cors_rule.value.expose_headers
+      max_age_seconds = cors_rule.value.max_age_seconds
+    }
+  }
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "main" {
   bucket = aws_s3_bucket.main.id
-  rule = var.lifecycle_rules
+
+  dynamic "rule" {
+    for_each = var.lifecycle_rules
+    content {
+      id     = rule.value.id
+      status = rule.value.enabled ? "Enabled" : "Disabled"
+
+      dynamic "abort_incomplete_multipart_upload" {
+        for_each = rule.value.abort_incomplete_multipart_upload_days != null ? [rule.value.abort_incomplete_multipart_upload_days] : []
+        content {
+          days_after_initiation = abort_incomplete_multipart_upload.value
+        }
+      }
+
+      dynamic "expiration" {
+        for_each = rule.value.expiration != null ? [rule.value.expiration] : []
+        content {
+          days = expiration.value.days
+        }
+      }
+
+      dynamic "noncurrent_version_expiration" {
+        for_each = rule.value.noncurrent_version_expiration != null ? [rule.value.noncurrent_version_expiration] : []
+        content {
+          noncurrent_days = noncurrent_version_expiration.value.noncurrent_days
+        }
+      }
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "main" {
@@ -67,10 +105,10 @@ resource "aws_s3_bucket_policy" "main" {
         Resource = "${aws_s3_bucket.main.arn}/*"
       },
       {
-        Sid    = "DenyInsecureTransport"
-        Effect = "Deny"
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
         Principal = "*"
-        Action   = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.main.arn,
           "${aws_s3_bucket.main.arn}/*"
@@ -87,29 +125,4 @@ resource "aws_s3_bucket_policy" "main" {
 
 resource "aws_cloudfront_origin_access_identity" "main" {
   comment = "Hakawi ${var.environment} CloudFront OAI"
-}
-
-output "bucket_name" {
-  description = "S3 bucket name"
-  value       = aws_s3_bucket.main.id
-}
-
-output "bucket_arn" {
-  description = "S3 bucket ARN"
-  value       = aws_s3_bucket.main.arn
-}
-
-output "bucket_domain_name" {
-  description = "S3 bucket domain name"
-  value       = aws_s3_bucket.main.bucket_domain_name
-}
-
-output "cloudfront_oai_id" {
-  description = "CloudFront Origin Access Identity ID"
-  value       = aws_cloudfront_origin_access_identity.main.id
-}
-
-output "cloudfront_oai_s3_canonical_user_id" {
-  description = "CloudFront OAI S3 canonical user ID"
-  value       = aws_cloudfront_origin_access_identity.main.s3_canonical_user_id
 }

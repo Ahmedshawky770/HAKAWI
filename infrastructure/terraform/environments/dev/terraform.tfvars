@@ -15,7 +15,7 @@ public_subnets = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 # private/public subnets above. (The database tier used to be cidrsubnet() slices of the
 # private /24s: overlapping CIDRs AWS rejects on apply.)
 database_subnets = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
-cache_subnets = ["10.0.251.0/24", "10.0.252.0/24", "10.0.253.0/24"]
+cache_subnets    = ["10.0.251.0/24", "10.0.252.0/24", "10.0.253.0/24"]
 
 # Secrets Manager prefix — MUST match infrastructure/helm/backend/values.yaml
 # externalSecrets.secretPrefix. WHY it is `hakawi/dev` and not the bare `hakawi`: the
@@ -37,14 +37,14 @@ route53_zone_id = ""
 eks_cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
 # Smaller instances for dev
-db_instance_class = "db.t3.medium"
-db_replica_instance_class = "db.t3.medium"
-db_allocated_storage = 20
-db_max_allocated_storage = 100
-db_multi_az = false
+db_instance_class          = "db.t3.medium"
+db_replica_instance_class  = "db.t3.medium"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 100
+db_multi_az                = false
 db_backup_retention_period = 7
-db_replica_count = 1
-db_master_password = "dev-password-change-me"
+db_replica_count           = 1
+db_master_password         = "dev-password-change-me"
 
 cache_node_type = "cache.t3.medium"
 cache_num_nodes = 1
@@ -54,9 +54,9 @@ cache_num_nodes = 1
 valkey_auth_token = "dev-only-valkey-token-not-for-production"
 
 eks_node_instance_types = ["t3.medium"]
-eks_desired_size = 1
-eks_min_size = 1
-eks_max_size = 3
+eks_desired_size        = 1
+eks_min_size            = 1
+eks_max_size            = 3
 
 grafana_admin_password = "admin"
 
@@ -68,18 +68,18 @@ cors_allowed_origins = ["http://localhost:3000", "https://dev.hakawi.com"]
 # written to AWS Secrets Manager, never to source. Production rejects every one of these
 # at boot (backend/src/config/*.config.ts fail closed on known placeholders).
 # ---------------------------------------------------------------------------
-jwt_secret = "dev-only-jwt-secret-not-for-production-32"
-jwt_refresh_secret = "dev-only-refresh-secret-not-for-production-32"
-encryption_key = "dev-only-encryption-key-not-for-production-32"
-paymob_api_key = "sandbox-paymob-api-key"
-paymob_merchant_id = "sandbox-merchant-id"
+jwt_secret            = "dev-only-jwt-secret-not-for-production-32"
+jwt_refresh_secret    = "dev-only-refresh-secret-not-for-production-32"
+encryption_key        = "dev-only-encryption-key-not-for-production-32"
+paymob_api_key        = "sandbox-paymob-api-key"
+paymob_merchant_id    = "sandbox-merchant-id"
 paymob_integration_id = "sandbox-integration-id"
 paymob_webhook_secret = "dev-only-paymob-webhook-secret-min-32"
-sentry_dsn = ""
+sentry_dsn            = ""
 # Not read by the app (IRSA is the credential path); kept for the chart contract.
 s3_access_key = ""
 s3_secret_key = ""
-email_from = "noreply@dev.hakawi.com"
+email_from    = "noreply@dev.hakawi.com"
 # Matches infrastructure/helm/backend/values.yaml env.apiUrl default.
 frontend_api_url = "https://api.hakawi.com/api/v1"
 
