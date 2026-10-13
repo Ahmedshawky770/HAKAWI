@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase, type NodePgTransaction } from 'drizzle-orm/node-postgres';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
-import { Pool, PoolConfig } from 'pg';
+import { Pool } from 'pg';
+import type { PoolConfig } from 'pg';
 
 import * as schema from '../db/schema/index.ts';
 
