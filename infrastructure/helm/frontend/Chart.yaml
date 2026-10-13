@@ -35,6 +35,4 @@ kubeVersion: ">=1.24-0"
 icon: https://github.com/hakawi-io/hakawi/raw/main/frontend/public/logo.png
 
 condition: frontend.enabled
-tags:
-  - hakawi
-  - frontend
+tags: "hakawi,frontend"
