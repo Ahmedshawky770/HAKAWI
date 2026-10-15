@@ -7,15 +7,14 @@ import { api } from "@/lib/api";
 import { messageOnlySchema } from "@/lib/schemas";
 import { LOGIN_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { PASSWORD_HINT } from "@/components/auth/copy";
 import { Button } from "@/components/ui/Button";
 import { ErrorMessage, SuccessMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
-
-const SUCCESS_TEXT = "تم إعادة تعيين كلمة المرور بنجاح! جاري التحويل لتسجيل الدخول...";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const strings = useStrings();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,13 +32,13 @@ export default function ResetPasswordPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("كلمتا المرور غير متطابقتين");
+      setError(strings.auth.passwordsMismatch);
       return;
     }
 
     const token = getToken();
     if (!token) {
-      setError("رابط إعادة التعيين غير صالح");
+      setError(strings.auth.resetTokenInvalid);
       return;
     }
 
@@ -55,7 +54,7 @@ export default function ResetPasswordPage() {
         router.push(LOGIN_ROUTE);
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل إعادة تعيين كلمة المرور");
+      setError(err instanceof Error ? err.message : strings.auth.resetError);
     } finally {
       setLoading(false);
     }
@@ -63,11 +62,11 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell
-      title="إعادة تعيين كلمة المرور"
-      description="اختر كلمة مرور جديدة، وسيتم تسجيلك بها عند الدخول التالي"
+      title={strings.auth.resetTitle}
+      description={strings.auth.resetDescription}
       footer={
         <Link href={LOGIN_ROUTE} className="font-medium text-chrome-ink hover:text-chrome-hover">
-          العودة لتسجيل الدخول
+          {strings.auth.resetBackToLogin}
         </Link>
       }
     >
@@ -75,30 +74,30 @@ export default function ResetPasswordPage() {
         {error && <ErrorMessage error={error} />}
 
         {success ? (
-          <SuccessMessage title="تم">{SUCCESS_TEXT}</SuccessMessage>
+          <SuccessMessage title={strings.auth.resetSuccessTitle}>{strings.auth.resetSuccessText}</SuccessMessage>
         ) : (
           <>
             <Input
-              label="كلمة المرور الجديدة"
+              label={strings.auth.resetNewPasswordLabel}
               type="password"
               required
               autoComplete="new-password"
-              hint={PASSWORD_HINT}
+              hint={strings.auth.passwordHint}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={strings.auth.passwordPlaceholder}
             />
             <Input
-              label="تأكيد كلمة المرور الجديدة"
+              label={strings.auth.resetConfirmPasswordLabel}
               type="password"
               required
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={strings.auth.confirmPasswordPlaceholder}
             />
             <Button type="submit" loading={loading} block>
-              إعادة تعيين كلمة المرور
+              {strings.auth.resetButton}
             </Button>
           </>
         )}

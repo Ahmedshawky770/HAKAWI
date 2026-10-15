@@ -32,6 +32,14 @@ COPY frontend/package.json ./frontend/
 # the previous frontend build fail.
 RUN npm ci -w frontend --include-workspace-root
 
+# WHY THIS `ENV` SITS AFTER `npm ci` AND NOT BEFORE IT: `npm ci` reads NODE_ENV=production as
+# "skip devDependencies", and this build needs them — `@tailwindcss/postcss` compiles globals.css.
+# Placed here, it fixes the config-load-time environment `next.config.ts` reads `NODE_ENV` from,
+# which makes the CSP's eval-blocked guarantee STRUCTURAL — decided by this image — instead of
+# inherited from Next's `NODE_ENV` default. `verify:csp` after the build still asserts the artifact
+# that ships, so it is belt-and-braces rather than the only check.
+ENV NODE_ENV=production
+
 # --- shared-types: BUILT HERE, NOT COPIED FROM THE HOST ------------------------------------------
 # `frontend/src` imports `@hakawi/shared-types`, and `next.config.ts` lists it in
 # `transpilePackages`, so the build resolves its entry `./dist/index.js` and transpiles that
@@ -48,6 +56,19 @@ RUN npm run build --workspace=packages/shared-types
 # nothing secret reaches a layer.
 COPY frontend/ ./frontend/
 RUN npm run build --workspace=frontend
+
+# WHY THE CSP IS ASSERTED INSIDE THE IMAGE BUILD AND NOT ONLY IN CI: the header
+# is decided when `next.config.ts` is LOADED and serialized into
+# `.next/routes-manifest.json` at build time, and `next start` serves it from
+# that manifest — so the artifact that ships is the only one worth asserting.
+# CI runs the same check on its own build (`.github/workflows/ci.yml`), but the
+# deployed image comes from THIS build, and without the assertion here the
+# shipped artifact's eval-blocked guarantee rests on Next's `NODE_ENV` default
+# alone. A policy that names `'unsafe-eval'` therefore fails the image build
+# instead of reaching a registry. `.dockerignore` keeps `frontend/scripts/` in
+# the context, and the script resolves its own path, so the `WORKDIR` here is
+# irrelevant to it.
+RUN npm run verify:csp --workspace=frontend
 
 # =================================================================================================
 # Runtime

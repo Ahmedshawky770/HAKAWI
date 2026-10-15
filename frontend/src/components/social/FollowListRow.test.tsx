@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
 import { FollowListEmpty, FollowListRow } from "@/components/social/FollowListRow";
+import { renderWithProviders } from "@/test-utils/render";
 import type { Follow } from "@/types/api";
 
 const sampleFollow: Follow = {
@@ -14,7 +15,7 @@ const sampleFollow: Follow = {
 
 describe("FollowListRow", () => {
   it("renders the follower name and date", () => {
-    render(<FollowListRow follow={sampleFollow} />);
+    renderWithProviders(<FollowListRow follow={sampleFollow} />);
 
     expect(screen.getByText("متابع")).toBeDefined();
   });
@@ -22,7 +23,7 @@ describe("FollowListRow", () => {
 
 describe("FollowListEmpty", () => {
   it("renders the empty state", () => {
-    render(<FollowListEmpty />);
+    renderWithProviders(<FollowListEmpty />);
 
     expect(screen.getByText("لا يوجد متابعون بعد.")).toBeDefined();
   });

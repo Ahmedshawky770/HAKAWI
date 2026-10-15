@@ -3,6 +3,7 @@
 import React from "react";
 
 import type { Message } from "@/types/api";
+import { formatTime } from "@/lib/i18n";
 
 /**
  * One message bubble.
@@ -42,7 +43,7 @@ export function MessageBubble({
         {isOwn && <p className="mb-1 text-xs font-medium text-on-accent/80">أنت</p>}
         <p className="whitespace-pre-wrap break-words text-sm leading-7">{message.content}</p>
         <p className={`hk-numeric mt-1 text-xs ${isOwn ? "text-on-accent/80" : "text-ink-muted"}`}>
-          {new Date(message.createdAt).toLocaleTimeString(intl)}
+          {formatTime(message.createdAt, intl)}
         </p>
       </div>
     </li>

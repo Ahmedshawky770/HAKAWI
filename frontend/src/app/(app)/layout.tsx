@@ -3,12 +3,8 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
-import {
-  AUTH_GUARD_ERROR_MESSAGE,
-  AUTH_GUARD_LOADING_TEXT,
-  AUTH_GUARD_RETRY_LABEL,
-  useAuthGuard,
-} from "@/lib/auth-guard";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { useAuthGuard } from "@/lib/auth-guard";
 
 /**
  * The authenticated frame.
@@ -22,29 +18,46 @@ import {
  * region for the probe, the semantic error surface with a retry for a probe that
  * failed for a reason other than the session, and nothing at all for a
  * signed-out visitor (the guard redirects).
+ *
+ * The probe and the failure are themselves the whole page — `AppShell` has not
+ * rendered yet — so each carries the `<main id="main-content">` landmark the
+ * root layout's skip link targets. Without it, the first tab stop on the one
+ * screen a reader can sit on indefinitely (the retry surface) goes nowhere, the
+ * same defect `AuthShell` closes on the auth routes. The two states are mutually
+ * exclusive with `AppShell`'s own `<main>`, so the id is never duplicated. The
+ * signed-out branch renders nothing at all, so there is nothing to skip to.
  */
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const { status, retry } = useAuthGuard();
+  const { auth } = useStrings();
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-canvas">
-        <Loading size="lg" text={AUTH_GUARD_LOADING_TEXT} />
-      </div>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex min-h-dvh items-center justify-center bg-canvas"
+      >
+        <Loading size="lg" text={auth.authGuardLoading} />
+      </main>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-canvas p-4">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex min-h-dvh items-center justify-center bg-canvas p-4"
+      >
         <div className="w-full max-w-md">
           <ErrorMessage
-            error={AUTH_GUARD_ERROR_MESSAGE}
+            error={auth.authGuardError}
             onRetry={retry}
-            retryLabel={AUTH_GUARD_RETRY_LABEL}
+            retryLabel={auth.authGuardRetry}
           />
         </div>
-      </div>
+      </main>
     );
   }
 

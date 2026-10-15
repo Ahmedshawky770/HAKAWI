@@ -42,7 +42,7 @@ export function LogoutButton() {
       data-testid="logout-button"
     >
       {!pending && <Icon name="logout" size="sm" />}
-      {strings.signOut}
+      {strings.shell.signOut}
     </Button>
   );
 }

@@ -12,6 +12,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Icon } from "@/components/ui/Icon";
 import { PaymentStatusBadge } from "@/components/commerce/PaymentStatusBadge";
 import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDateTime } from "@/lib/i18n";
 import type { Payment } from "@/types/api";
 
 export default function PaymentDetailPage() {
@@ -79,13 +80,11 @@ export default function PaymentDetailPage() {
     return <ErrorMessage error="تفاصيل الدفع غير موجودة" title="لا يوجد دفع بهذا المعرّف" />;
   }
 
-  const formatDate = (value: string): string => new Date(value).toLocaleString(intl);
-
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: "معرّف الدفع", value: <span className="hk-numeric break-all text-sm">{payment.id}</span> },
     { label: "معرّف المستخدم", value: <span className="hk-numeric break-all text-sm">{payment.userId}</span> },
     { label: "طريقة الدفع", value: payment.paymentMethod },
-    { label: "تاريخ الإنشاء", value: <span className="hk-numeric text-sm">{formatDate(payment.createdAt)}</span> },
+    { label: "تاريخ الإنشاء", value: <span className="hk-numeric text-sm">{formatDateTime(payment.createdAt, intl)}</span> },
   ];
 
   return (

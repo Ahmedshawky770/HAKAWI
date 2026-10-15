@@ -2,11 +2,12 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 
 import { api } from "@/lib/api";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 import StoryEditPage from "@/app/(app)/stories/[id]/edit/page";
 
 vi.mock("next/link", () => ({
@@ -72,18 +73,18 @@ describe("Story edit page", () => {
   });
 
   it("renders the story edit heading", () => {
-    render(<StoryEditPage />);
+    renderWithProviders(<StoryEditPage />);
     expect(screen.getByRole("heading", { name: "تعديل القصة" })).toBeInTheDocument();
   });
 
   it("loads the story data on mount", async () => {
-    render(<StoryEditPage />);
+    renderWithProviders(<StoryEditPage />);
     await settle();
     expect(mockedApi.getStory).toHaveBeenCalledWith("story-1");
   });
 
   it("shows loading state", () => {
-    render(<StoryEditPage />);
+    renderWithProviders(<StoryEditPage />);
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 });

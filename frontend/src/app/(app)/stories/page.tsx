@@ -8,9 +8,9 @@ import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Select } from "@/components/ui/Input";
-import { StoryCardCompact } from "@/components/story/StoryCard";
-import { STORY_CATEGORY_FILTER_OPTIONS } from "@/components/story/StoryCategoryOptions";
-import { StoryFeedSkeleton } from "@/components/story/StoryCard";
+import { StoryCardCompact, StoryFeedSkeleton } from "@/components/story/StoryCard";
+import { storyCategoryFilterOptions } from "@/components/story/StoryCategoryOptions";
+import { useLocale } from "@/components/providers/LocaleProvider";
 import type { Story } from "@/types/api";
 
 const STORY_LIST_LIMIT = 20;
@@ -32,6 +32,7 @@ const STORY_LIST_LIMIT = 20;
  * always made.
  */
 export default function StoriesPage() {
+  const { locale, strings } = useLocale();
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,50 +66,49 @@ export default function StoriesPage() {
   return (
     <div>
       <PageHeader
-        title="القصص"
-        description="كل الحكايات المنشورة، وأحدثها أولاً."
+        title={strings.shell.navStories}
+        description={strings.story.storiesPageDescription}
         action={
           <ButtonLink href="/stories/create" variant="primary">
-            اكتب قصة
+            {strings.shell.createStory}
           </ButtonLink>
         }
       />
 
       <div className="mb-6 max-w-xs">
         <Select
-          label="التصنيف"
+          label={strings.story.storiesCategoryLabel}
           value={category}
           onChange={(event) => setCategory(event.target.value)}
-          options={STORY_CATEGORY_FILTER_OPTIONS}
+          options={storyCategoryFilterOptions(locale)}
         />
       </div>
 
       {error ? (
         <ErrorMessage
           error={error}
-          title="تعذّر تحميل القصص"
+          title={strings.story.storiesLoadFailed}
           onRetry={retry}
-          retryLabel="أعد المحاولة"
         />
       ) : loading ? (
         <div aria-busy="true">
           <span role="status" className="sr-only">
-            جارٍ التحميل…
+            {strings.common.loading}
           </span>
           <StoryFeedSkeleton count={4} variant="compact" />
         </div>
       ) : stories.length === 0 ? (
         <EmptyState
           icon="book"
-          title="لا توجد قصص بعد"
+          title={strings.shell.noStories}
           description={
             category
-              ? "لا توجد قصص في هذا التصنيف. جرّب تصنيفاً آخر أو اكتب أول قصة."
-              : "لم يُنشر شيء بعد. كن أول من يروي حكاية."
+              ? strings.story.storiesEmptyInCategory
+              : strings.story.storiesEmptyHere
           }
           action={
             <ButtonLink href="/stories/create" variant="primary">
-              اكتب قصة
+              {strings.shell.createStory}
             </ButtonLink>
           }
         />

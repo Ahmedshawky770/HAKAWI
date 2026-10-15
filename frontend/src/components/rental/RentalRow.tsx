@@ -6,12 +6,14 @@ import { RENTAL_DURATION_DAYS } from "@hakawi/shared-types";
 
 import { RentalStatusBadge } from "./RentalStatusBadge";
 import { rentalStateView } from "./rentalState";
+import { useLocale } from "@/components/providers/LocaleProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Input";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { formatDate } from "@/lib/i18n";
 import type { Book, Rental } from "@/types/api";
 
 /** A rental plus the book it points at, when that book could be fetched. */
@@ -73,6 +75,7 @@ export function RentalRow({
   onExtend: () => void;
   onReturn: () => void;
 }) {
+  const { intl } = useLocale();
   const book = rental.book;
   // `active` is what the server stores; whether it is still running is derived from
   // the end date (see rentalState.ts). The extension and return actions follow the
@@ -115,7 +118,7 @@ export function RentalRow({
                 <Icon name="calendar" size="sm" />
                 <dt className="sr-only">تاريخ البدء</dt>
                 <span>تاريخ البدء:</span>
-                <dd className="hk-numeric">{new Date(rental.startDate).toLocaleDateString("ar-EG")}</dd>
+                <dd className="hk-numeric">{formatDate(rental.startDate, intl)}</dd>
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="clock" size="sm" />
@@ -124,7 +127,7 @@ export function RentalRow({
                     as ordinary; naming it says why the row is flagged. */}
                 <span>{state.overdue ? "تأخر عن موعد الانتهاء:" : "تاريخ الانتهاء:"}</span>
                 <dd className={`hk-numeric ${state.overdue ? "font-medium text-error-ink" : ""}`}>
-                  {new Date(rental.endDate).toLocaleDateString("ar-EG")}
+                  {formatDate(rental.endDate, intl)}
                 </dd>
               </div>
               <div className="flex items-center gap-2">
@@ -140,7 +143,7 @@ export function RentalRow({
                   <Icon name="check" size="sm" />
                   <dt className="sr-only">تاريخ الإرجاع</dt>
                   <span>تاريخ الإرجاع:</span>
-                  <dd className="hk-numeric">{new Date(rental.returnedAt).toLocaleDateString("ar-EG")}</dd>
+                  <dd className="hk-numeric">{formatDate(rental.returnedAt, intl)}</dd>
                 </div>
               )}
             </dl>

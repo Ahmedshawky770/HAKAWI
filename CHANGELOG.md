@@ -15,6 +15,260 @@ A 488-file change set was reviewed line by line and hardened. The full reasoning
 — including the trade-offs that were accepted rather than hidden — is in
 [`docs/adr/005-security-and-correctness-hardening.md`](docs/adr/005-security-and-correctness-hardening.md).
 
+### Frontend — bilingual chrome, accessibility, and a narrower CSP
+
+- **The shell dictionary is now the whole chrome, not just the navigation.**
+  `frontend/src/lib/i18n.ts` became `frontend/src/lib/i18n/`, namespaced `shell` / `common` /
+  `auth` / `story`, so the auth flows, the story readouts and the search surface read from one
+  table per locale instead of the navigation alone. Interfaces remain the source of truth — every
+  key exists in both Arabic and English, in identical order — and the copy moved byte-for-byte,
+  including the password-rule hint shown under the field on `register` and `reset-password` (and
+  deliberately not on `login`, which has nothing to create a password for). The one later
+  exception is that hint's Arabic-Indic `٨`, which the digit rule pinned to `8` — the entry below
+  records it.
+- **The skip link had a dead target on every authentication page.** The root layout renders the
+  link first, but only `AppShell` owned `#main-content`; on `/login`, `/register`,
+  `/forgot-password`, `/reset-password` and `/auth/error` the first Tab stop went nowhere.
+  `AuthShell` now renders the `<main>` landmark those pages were missing — which is the correct
+  shape for them regardless of the link.
+- **The skip link learned the locale.** The anchor was a hard-coded Arabic literal sitting in the
+  root layout, which cannot read `LocaleContext` without becoming a client component itself (it
+  owns `<html>`). It is now `frontend/src/components/layout/SkipLink.tsx`, a leaf client component
+  that renders `shell.skipToContent` in the active locale — and it must render *inside*
+  `<Providers>`, because it consumes `LocaleContext`; as a sibling of them it would throw on every
+  route. `frontend/src/app/layout.test.tsx` asserts the wiring, and `SkipLink.test.tsx` asserts the
+  throw for the component itself.
+- **The shared chrome became client components, and that is a rendering contract.** `Loading`,
+  `ErrorMessage` (with `SuccessMessage`), `Avatar`, `Brand` and `StoryMeta` now read their labels
+  from the dictionary through `useStrings()` / `useLocale()` instead of defaulting to Arabic, and
+  `AuthShell` renders `Brand` — so each of them **requires `LocaleProvider`**: rendered bare they
+  throw `useLocale must be used inside <LocaleProvider>` rather than rendering. Consumers and
+  suites go through `renderWithProviders`, and the string keys themselves are covered by
+  `frontend/src/lib/i18n/i18n.test.ts`.
+- **The locale provider was destroying route titles.** Its effect mirrored the document title on
+  mount, and a root provider's passive effect runs *after* the page's — so the four routes that
+  ship their own `generateMetadata` (story comments and reactions, user followers and following)
+  had their `<title>` overwritten in the client on every cold load. What replaced that effect is
+  described by the two audit entries below; the interim fix this entry first credited itself with
+  (skip the mount pass, write on a real toggle) was wrong, and is retracted where it says so.
+- **Counts are no longer one phrase.** `.hk-numeric` is an LTR isolate, and a count is digits plus
+  a noun, so the two are now split: `CountReadout` in `lib/i18n/common.ts` keeps them apart with
+  one pluralization rule, the digits render inside the isolate and the noun stays in the sentence,
+  matching the rule `lib/money.ts` already stated for amounts. (An earlier draft of this entry said
+  the migration had wrapped whole Arabic phrases in the isolate on the story page and dropped it
+  from the search count. Measured against `HEAD`, neither was true — the audit entry below records
+  what the round actually changed.)
+- **The two landmarks that shared one accessible name no longer do.** The sidebar `<nav>` and the
+  discovery `<aside>` both resolved to `secondaryNavigation`; the rail now carries its own label.
+- **`'unsafe-eval'` in the CSP is development-only.** React's development build calls `eval()`
+  for its debug hooks, and the policy was paying for that in production, where nothing calls it.
+  The flag is resolved when `next.config.ts` is *loaded* (Next transpiles and `require`s it), and
+  the header itself is serialized into `.next/routes-manifest.json` at build time — so production
+  keeps `eval` blocked. `next build --debug-prerender` was the one path that could leak the keyword,
+  and the comment on the constant names it.
+- **Half-migrated pages no longer mix languages.** An English reader was seeing Arabic error
+  headings above an English "Retry" button on the story routes, and bilingual chrome next to
+  Arabic descriptions on the stories list and the idle search state. The story pages' error
+  titles, the list's descriptions and the filter label now come from the dictionary, and the copy
+  that has no key is named as such in `shell.ts`'s own header rather than implied to be complete.
+- **Tests assert behaviour, not literals.** The new title-mirroring effect
+  (`TitleMirror.test.tsx`), the root layout's provider wiring (`frontend/src/app/layout.test.tsx`),
+  the `useStrings` alias, the `AuthShell` landmark and the `StoryCategoryOptions` identity cache
+  (`frontend/src/components/story/StoryCategoryOptions.test.tsx`) are covered, the English
+  rendering of the header is asserted through a real locale toggle rather than a `lang` attribute
+  check, and the Playwright specs derive their Arabic selectors from the application's own
+  dictionary (`frontend/e2e/copy.ts`) instead of re-typing them — the two literals that have no
+  dictionary key are commented as gaps, not hidden.
+
+### Frontend — the same change set, corrected against a line-by-line audit
+
+The eleven findings below were raised against the entry above and fixed in the same round, so the
+change set that lands is the corrected one rather than the first draft of it.
+
+- **The Arabic count tables used the wrong noun form for 100 and above.**
+  `Intl.PluralRules("ar")` selects `other` for 100, 101 and every round hundred, and Arabic counts
+  the noun in the SINGULAR there — so the reactions readout read "100 تفاعلات" and the search
+  count read "١٠٠ نتيجة" beside a views count that said "100 مشاهدة". The `other` form is now
+  singular in all three tables, the `many` form (11–99) is the accusative singular the money
+  module's `formatDayCount` already states ("مشاهدةً", "تفاعلاً", "نتيجةً"), and
+  `frontend/src/lib/i18n/i18n.test.ts` asserts both against `Intl`'s own selection so the tables
+  cannot drift from the rule again. The same suite enforces the dictionary's key parity (both
+  locales, identical order), that no string is empty, that no `record` value is undefined, and
+  that no value in either locale carries an Arabic-Indic digit — the digit rule stated above,
+  asserted where the copy lives.
+- **The skip link still had a dead target on two more surfaces.** `/auth/callback` — the OAuth
+  landing, whose failure state a reader can sit on with a live link — rendered a bare `div`, and the
+  `(app)` layout's session guard rendered its probe and its retry surface the same way, both outside
+  any landmark. Both now own `<main id="main-content" tabIndex={-1}`, in the same shape
+  `AuthShell` uses, and each carries a test asserting the landmark exists in both of its states.
+- **The focused skip link was unreadable, and axe could not see why.** `.hk-skip-link:focus-visible`
+  painted `--hk-accent` with `--hk-accent-strong`, a token no theme defines, so the `color`
+  declaration was invalid and the text fell back to the inherited ink: **1.91:1** on the dark canvas
+  and 4.04:1 on the light one. It now paints `--hk-accent-fill` with `--hk-on-accent`, the pair the
+  design system measures at 8.70:1 and 5.18:1; that pair is now a `REQUIRED_PAIRS` row in
+  `design-system.test.ts`, and a new block in the same suite reads the stylesheet and fails if the
+  skip link names a colour token no theme defines — the general form of the bug, which axe cannot
+  catch because the link is clipped out of the accessibility tree until focus.
+- **The locale provider's title mirroring was inverted.** The previous round's fix (skip the mount
+  pass) left the effect overwriting the route's own `<title>` with the site name *on every
+  toggle* — the behaviour it existed to remove — and the comment justified that by a premise that
+  is false: the root metadata is static Arabic (`app/layout.tsx` cannot read the stored locale), so
+  the server HTML is not "already in the active language". The mirror now asks the document who owns
+  the title: the chrome's own (the app title in either locale, or nothing) is mirrored into the
+  active language, and a title a route put there is left alone, because replacing it with the site
+  name is not a translation.
+- **The Arabic tab title came back after every client navigation.** Next re-applies the route's
+  metadata on each route commit, and for a route that owns none of its own that metadata is the root
+  layout's static Arabic title — so a reader who flipped to English and then clicked a nav link got
+  `حكاوي` above an English page until the next full reload. Closing that needs the mirror to listen
+  to the route, and `usePathname` in `LocaleProvider` would reach the 23 suites that mount the
+  provider while mocking `next/navigation` without exporting it — a wrong hook for a `<title>`. So
+  the mirroring moved out of the provider into `frontend/src/components/providers/TitleMirror.tsx`,
+  a leaf the **root layout** renders, which reaches none of them: the one suite that renders the
+  root layout (`frontend/src/app/layout.test.tsx`) mocks the mirror to assert the wiring instead of
+  its effect. The provider is now nothing but `lang`, `dir`, the store and the dictionaries; the
+  document is mirrored by a component whose only job is the document. The navigation regression is
+  covered by a test that moves a mocked pathname and re-renders, which is the case nothing covered
+  before.
+- **Dates kept Arabic-Indic digits on both locales.** `toLocaleDateString("ar-EG")` renders
+  Arabic-Indic digits, so the same surface showed "١٤ أكتوبر ٢٠٢٦" beside "1,234" views — the exact
+  inconsistency `money.ts` documents deciding against for amounts. Every date in the product now
+  goes through `lib/i18n`'s `formatDate` / `formatLongDate` / `formatTime` / `formatDateTime`, which
+  pin the numbering system to Latin while leaving the month and weekday names in the reader's
+  language: "14 أكتوبر 2026". `NotificationRow` had a comment claiming the row *could not* read the
+  locale context because its test rendered it bare; that test now uses `renderWithProviders`, so the
+  row follows the same rule — and its previous bare `toLocaleString()` was also a hydration hazard,
+  since the runtime's default locale differs between Node and the browser.
+- **The dashboard's counters and empty state were the last raw copy.** `(app)/page.tsx` summed
+  totals with a bare `toLocaleString()` — which produces Arabic-Indic digits in an Arabic browser
+  and a different string on the server than on the client — and rendered a second copy of
+  "لا توجد قصص بعد" without the full stop the stories list uses. Both now come from the dictionary
+  and `formatCount`. The idle search's suggestion words were a module constant above a fully
+  translated page; they are `shell.searchSuggestions` now, in both locales.
+- **`mainNavigation` still named two landmarks.** At `HEAD` the bottom bar's `<nav>` and the
+  sidebar's primary `<nav>` resolved to the same label, separated only by a `display: none`
+  breakpoint — the same shape of defect as the discovery rail's collision with
+  `secondaryNavigation`, fixed in the round above. The bottom bar now carries
+  `shell.bottomNavigation`, so the shell's three navigation landmarks each resolve to their own
+  name.
+- **Five category keys were a second path to one string.** `categoryAll`/`categoryFiction`/… were
+  declared in `StoryStrings` and reachable through `strings.story.categoryFiction`, while every
+  consumer reads the same words through `storyCategoryLabel`. They are now one per-locale table
+  read by that function, so the category copy has one source instead of two.
+- **The bidi claim did not survive auditing.** The entry above said the migration had wrapped whole
+  Arabic phrases in `.hk-numeric` on the story page and dropped the isolate from the search count.
+  Against `HEAD`, neither was true — the noun was already outside the span there, and the search
+  count already carried the isolate. What the round actually changed is grouping
+  (`toLocaleString` → `formatCount`) and pluralization; that is what the entry now says.
+- **`next build` does not "force" `NODE_ENV=production`.** Against the installed Next 16.3.8
+  (`next/dist/bin/next`), it assigns a default when the variable is unset and only *warns* when a
+  set value disagrees; `--debug-prerender` forces `development`. The environmental guarantee is
+  therefore not structural, which is why it now has the gate the previous entry said was missing:
+  `frontend/scripts/verify-csp.mjs` reads every `Content-Security-Policy` header Next serialized
+  into `.next/routes-manifest.json` and fails the build if any names `'unsafe-eval'`, if the header
+  is missing, or if the manifest cannot be read. CI runs it after both builds — the route-type
+  generation step and the deploy build.
+
+### Frontend — the same change set, corrected against the pre-commit review
+
+Six findings were raised against the entries above and fixed in the same round.
+
+- **The CSP gate asserted the wrong build.** CI's `build` job ran its `Assert the built CSP keeps
+  eval blocked` step on the CI runner's own `next build`, while the artifact that deploys comes
+  from the `next build` inside `frontend/Dockerfile` — a second, unasserted build, because the
+  deploy workflows re-run `docker build` from a fresh checkout rather than reusing the job's
+  output. The image build now runs `verify:csp` immediately after its own build, so the shipped
+  artifact is the one asserted; the CI step is kept as the fast failure, and its comment now says
+  exactly that instead of calling itself the last gate before an image ships.
+- **The root metadata was a second copy of the strings the title mirror compares against.**
+  `app/layout.tsx` hand-wrote `حكاوي` / "منصة الحكاوي…" beside the dictionary, and `TitleMirror`
+  recognizes the chrome's title by equality with `shell.appTitle`/`appDescription` — editing either
+  copy silently disabled the mirror with every suite green. The metadata now reads
+  `stringsFor("ar")`, so the dictionary is the only place the app title and description exist.
+  (The `NODE_ENV`/Helm sentence in `next.config.ts` was also corrected: the chart's per-environment
+  `nodeEnv` — `staging` in `values-staging.yaml` — is a runtime value that arrives after the header
+  is serialized and never reaches the served policy, which is what actually makes it irrelevant.)
+- **`Intl.PluralRules` was constructed per readout.** The search results count re-renders on every
+  keystroke, so the readout allocated a formatter per keystroke for a locale set that never changes.
+  The two rule sets are now module scope, the way `WESTERN_DIGITS` and the dictionaries already were.
+- **The `all` category rows were unreachable.** The filter's "everything" value is `""` and the API
+  only sends the four genre values, so both locale tables carried a second copy of the `""` row that
+  no runtime path could read and only the new suite asserted. Removed; the suite asserts the empty
+  key it actually reads.
+- **Category labels were asserted as literals in the two suites that otherwise read the dictionary.**
+  `StoryMeta.test.tsx` and `stories/[id]/page.test.tsx` now derive them through
+  `storyCategoryLabel` — the same function the components use — so a dictionary edit moves the
+  assertions with the UI instead of failing specs that never mentioned the copy. A dead ternary
+  (`DEFAULT_LOCALE === "ar" ? "user-1" : "user-1"`) and its then-unused import were removed from
+  `TitleMirror.test.tsx`.
+- **The provider test named a guarantee it did not assert.** "keeps its own concern: the locale
+  store, not the document title" only re-asserted the locale flip. It now captures the title around
+  the flip and asserts it is untouched, which is the assertion that fails if a title-writing effect
+  ever returns to the provider.
+
+Verified after this round: **frontend 958 tests in 78 files** pass, `tsc --noEmit` is clean, and
+`eslint` reports 0 errors. The pre-existing warning in the generated `frontend/coverage/` artifact
+is untouched, and no `--fix` was run anywhere.
+
+### Frontend — the same change set, hardened against the pre-commit review
+
+Seven findings were raised against the entries above in pre-commit review and fixed before the
+change set landed, so nothing here is post-hoc: the tree as committed carries the corrected code.
+
+- **`StoryCategory` was re-casing the dictionary's own label.** Both variants carried Tailwind's
+  `capitalize`, which was harmless while the label was the raw wire value (`non-fiction`) and
+  harmful the moment it became the localized one: `text-transform: capitalize` uppercases the
+  first letter of every word, so the English reader saw "Non-Fiction" where the dictionary — the
+  one place the copy lives — says "Non-fiction". The class is gone from both variants and the
+  component's header now states that casing is the dictionary's job.
+  `StoryMeta.test.tsx` asserts the English label verbatim, in the English locale, through the real
+  provider, which is the only way the corruption was visible.
+- **`verify-csp.mjs` read half the manifest and scanned too much of it.** Next serializes route
+  rules into TWO arrays and serves both — `headers` for unconditional rules and `onMatchHeaders`
+  for rules carrying `has:`/`missing:` — so a policy written only into the second was never read,
+  and the gate could pass on a build it had not looked at. The forbidden check is also
+  directive-scoped now: it walks the fallback chain that actually decides whether `eval()` may run
+  (`script-src-elem` → `script-src` → `default-src`, and the same for `script-src-attr`) instead of
+  substring-scanning the whole policy, which used to fail a correct build whose `connect-src`
+  named a host like `https://unsafe-eval.example.com`.
+- **The CSP guarantee is structural, not environmental.** The frontend builder stage now sets
+  `ENV NODE_ENV=production` immediately after `npm ci` — after it, because `npm ci` reads
+  `NODE_ENV=production` as "skip devDependencies" and this build needs them (`@tailwindcss/postcss`
+  compiles `globals.css`). Placed there, it decides the value `next.config.ts` reads at config-load
+  time inside the image, rather than inheriting it from Next's default; `verify:csp` after the
+  build still asserts the artifact that ships, so it is belt-and-braces rather than the only check.
+- **The CI step's comment claimed a job it does not have.** It described itself as the last gate
+  before an image is shipped; the deploy workflows re-run `docker build -f ./frontend/Dockerfile .`
+  from a fresh checkout and never reuse the `build` job's output, so what the step actually buys is
+  speed and precision — a ~25-minute pull request failing here instead of a policy that allows
+  `eval` reaching an image build or a registry. The comment now says that, and names the job and
+  the step. `.dockerignore` was made to match: `frontend/scripts/` is documented as build-EXECUTED
+  rather than merely copied, and the `!frontend/scripts` / `!frontend/scripts/**` guards are placed
+  after every exclusion they could contradict, because Docker matches in order and a later
+  negation only wins over an earlier match.
+- **The login button was queried by the page's heading copy.** Both Playwright specs clicked
+  `copy.auth.loginTitle` to submit the form; the button's own copy is `copy.auth.loginButton`, in
+  both locales, and the two are separate dictionary keys. The heading selectors stay on
+  `loginTitle`, where they belong. The two values coincide today, so nothing was visibly wrong —
+  but the day the heading and the button diverge, or the button is shortened to "Sign in", the
+  click would miss.
+- **The story forms were still half-migrated, and the dictionary now covers them.**
+  `stories/create` and `stories/[id]/edit` read 24 new `story` keys, with the Arabic column
+  byte-identical to the literals it replaces (verified string by string), so the two pages render
+  in the active locale with no Arabic left in either file. Alongside them: `lib/i18n/index.ts`
+  re-exports all four `*Strings` types, `passwordHint`'s Arabic-Indic `٨` became the Latin `8` —
+  the digit rule the rest of the product follows — and `i18n.test.ts` grew the two invariants that
+  keep it so (no Arabic-Indic digit in any value, no undefined record value).
+- **The category options cache finally has a suite.**
+  `frontend/src/components/story/StoryCategoryOptions.test.tsx` asserts what the module's header
+  claims: both option lists are the very same array on every call for a locale, each entry is
+  labelled through `storyCategoryLabel`, and the filter list leads with the empty key the filter
+  actually reads rather than an unreachable `"all"` row.
+
+Verified after this round: **frontend 975 tests in 79 files** pass, `tsc --noEmit` is clean, and
+`eslint` reports 0 errors. The pre-existing warning in the generated `frontend/coverage/` artifact
+is untouched, and no `--fix` was run anywhere.
+
 ### Security — fixed
 
 - **Apple `id_token` was verified with the application's own HS256 secret.** Apple sign-in could

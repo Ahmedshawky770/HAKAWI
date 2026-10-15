@@ -10,6 +10,8 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { StoryCard, StoryFeedSkeleton } from "@/components/story/StoryCard";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { formatCount } from "@/lib/i18n/common";
 import type { Story } from "@/types/api";
 
 const DASHBOARD_STORY_LIMIT = 20;
@@ -29,6 +31,7 @@ const DASHBOARD_STORY_LIMIT = 20;
  * failure, so the page does not jump under the reader when the data lands.
  */
 export default function DashboardPage() {
+  const { shell } = useStrings();
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -88,9 +91,14 @@ export default function DashboardPage() {
               </>
             ) : (
               <>
-                <StatCard label="إجمالي القصص" value={stories.length.toLocaleString()} icon="book" />
-                <StatCard label="إجمالي المشاهدات" value={views.toLocaleString()} icon="eye" />
-                <StatCard label="إجمالي التفاعلات" value={reactions.toLocaleString()} icon="heart" />
+                {/* `formatCount`, not a bare `toLocaleString()`: the runtime's
+                    default locale differs between the server and the browser, so
+                    the raw call hydrates one set of digits and renders another
+                    (and renders Arabic-Indic digits in an Arabic browser,
+                    against the convention every other figure follows). */}
+                <StatCard label="إجمالي القصص" value={formatCount(stories.length)} icon="book" />
+                <StatCard label="إجمالي المشاهدات" value={formatCount(views)} icon="eye" />
+                <StatCard label="إجمالي التفاعلات" value={formatCount(reactions)} icon="heart" />
               </>
             )}
           </div>
@@ -110,7 +118,12 @@ export default function DashboardPage() {
             ) : stories.length === 0 ? (
               <EmptyState
                 icon="book"
-                title="لا توجد قصص بعد"
+                // The one string on this page that has a dictionary key, read
+                // from it: the same sentence on the stories list page used to
+                // carry a full stop here and none there, which is how one
+                // sentence becomes two renderings. The rest of this page is
+                // still Arabic literals — see the scope note in `lib/i18n/shell.ts`.
+                title={shell.noStories}
                 description="لوحة التحكم تجمع ما تنشره هنا. اكتب أول قصة لتبدأ العدادات."
                 action={
                   <ButtonLink href="/stories/create" variant="primary">

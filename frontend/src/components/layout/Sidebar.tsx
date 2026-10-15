@@ -36,18 +36,18 @@ export function Sidebar() {
   const strings = useStrings();
 
   const primary: NavItem[] = [
-    { href: AUTHENTICATED_HOME_ROUTE, label: strings.navHome, icon: "home" },
-    { href: "/stories", label: strings.navStories, icon: "pen" },
-    { href: "/books", label: strings.navBooks, icon: "library" },
-    { href: "/library", label: strings.navLibrary, icon: "book" },
-    { href: "/contests", label: strings.navContests, icon: "trophy" },
+    { href: AUTHENTICATED_HOME_ROUTE, label: strings.shell.navHome, icon: "home" },
+    { href: "/stories", label: strings.shell.navStories, icon: "pen" },
+    { href: "/books", label: strings.shell.navBooks, icon: "library" },
+    { href: "/library", label: strings.shell.navLibrary, icon: "book" },
+    { href: "/contests", label: strings.shell.navContests, icon: "trophy" },
   ];
 
   const secondary: NavItem[] = [
-    { href: "/messages", label: strings.navMessages, icon: "message" },
-    { href: "/notifications", label: strings.navNotifications, icon: "bell" },
-    { href: "/rentals", label: strings.navRentals, icon: "clock" },
-    { href: "/payments", label: strings.navPayments, icon: "wallet" },
+    { href: "/messages", label: strings.shell.navMessages, icon: "message" },
+    { href: "/notifications", label: strings.shell.navNotifications, icon: "bell" },
+    { href: "/rentals", label: strings.shell.navRentals, icon: "clock" },
+    { href: "/payments", label: strings.shell.navPayments, icon: "wallet" },
   ];
 
   const isActive = (href: string) =>
@@ -60,11 +60,11 @@ export function Sidebar() {
 
         <ButtonLink href="/stories/create" variant="primary" block>
           <Icon name="pen" size="sm" />
-          {strings.createStory}
+          {strings.shell.createStory}
         </ButtonLink>
 
-        <Nav items={primary} isActive={isActive} label={strings.mainNavigation} />
-        <Nav items={secondary} isActive={isActive} label={strings.secondaryNavigation} />
+        <Nav items={primary} isActive={isActive} label={strings.shell.mainNavigation} />
+        <Nav items={secondary} isActive={isActive} label={strings.shell.secondaryNavigation} />
 
         <div className="mt-auto pt-4">
           <LogoutButton />

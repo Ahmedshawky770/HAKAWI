@@ -3,6 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -44,23 +45,23 @@ describe("Icon", () => {
 
 describe("Avatar", () => {
   it("falls back to the initial, because a grey circle where a name should be is unreadable", () => {
-    render(<Avatar name="أحمد محمد" />);
+    renderWithProviders(<Avatar name="أحمد محمد" />);
     expect(screen.getByText("أ")).toBeInTheDocument();
   });
 
   it("has something to show for a name that is only whitespace", () => {
-    render(<Avatar name="   " />);
+    renderWithProviders(<Avatar name="   " />);
     expect(screen.getByText("؟")).toBeInTheDocument();
   });
 
   it("hides a decorative image, because the name is always adjacent", () => {
-    const { container } = render(<Avatar name="أحمد" src="https://cdn.example.com/a.png" />);
+    const { container } = renderWithProviders(<Avatar name="أحمد" src="https://cdn.example.com/a.png" />);
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
     expect(container.querySelector("img")).toHaveAttribute("loading", "lazy");
   });
 
   it("scales through the set the product uses", () => {
-    const { container, rerender } = render(<Avatar name="أ" size="sm" />);
+    const { container, rerender } = renderWithProviders(<Avatar name="أ" size="sm" />);
     expect(container.querySelector("span")?.className).toContain("size-8");
     rerender(<Avatar name="أ" size="xl" />);
     expect(container.querySelector("span")?.className).toContain("size-24");

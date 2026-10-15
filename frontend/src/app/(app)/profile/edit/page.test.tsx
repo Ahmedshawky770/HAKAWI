@@ -2,11 +2,12 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { api, getStoredUser } from "@/lib/api";
 
 import { AUTH_USER } from "@/test-utils/fixtures";
+import { renderWithProviders } from "@/test-utils/render";
 import ProfileEditPage from "@/app/(app)/profile/edit/page";
 
 vi.mock("next/link", () => ({
@@ -52,12 +53,12 @@ describe("Profile edit page", () => {
   });
 
   it("renders the profile edit heading", async () => {
-    render(<ProfileEditPage />);
+    renderWithProviders(<ProfileEditPage />);
     expect(await screen.findByRole("heading", { name: "تعديل الملف الشخصي" })).toBeInTheDocument();
   });
 
   it("shows loading state", () => {
-    render(<ProfileEditPage />);
+    renderWithProviders(<ProfileEditPage />);
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
   });

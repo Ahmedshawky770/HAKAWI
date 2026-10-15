@@ -5,6 +5,8 @@ import React from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Reaction } from "@/types/api";
 
 interface ReactionRowProps {
@@ -21,6 +23,7 @@ const REACTION_PRESENTATION: Record<string, { label: string; glyph: string }> = 
 };
 
 export function ReactionRow({ reaction }: ReactionRowProps) {
+  const { intl } = useLocale();
   const presentation = REACTION_PRESENTATION[reaction.type] ?? { label: reaction.type, glyph: "💬" };
 
   return (
@@ -31,9 +34,7 @@ export function ReactionRow({ reaction }: ReactionRowProps) {
           <p className="truncate text-sm font-semibold text-ink">
             مستخدم
           </p>
-          <p className="text-xs text-ink-muted">
-            {new Date(reaction.createdAt).toLocaleDateString("ar-EG")}
-          </p>
+          <p className="text-xs text-ink-muted">{formatDate(reaction.createdAt, intl)}</p>
         </div>
         <Badge tone="neutral" className="shrink-0">
           <span aria-hidden>{presentation.glyph}</span>

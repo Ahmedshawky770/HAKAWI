@@ -19,6 +19,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
  *
  * It shares the feed's cache entry (see `useTrendingStories`), so a page showing
  * both this rail and the feed makes exactly one request, not two.
+ *
+ * The rail's landmark carries its own label (`shell.trendingRailLabel`) rather
+ * than the sidebar's navigation one: two landmarks that share one accessible
+ * name are indistinguishable to a screen reader, and this rail is discovery,
+ * not navigation.
  */
 export function TrendingRail() {
   const { stories, isLoading } = useTrendingStories();
@@ -26,23 +31,23 @@ export function TrendingRail() {
 
   return (
     <aside
-      aria-label={strings.secondaryNavigation}
+      aria-label={strings.shell.trendingRailLabel}
       className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-70 shrink-0 overflow-y-auto border-s border-line bg-surface/40 xl:block"
     >
       <div className="flex flex-col gap-5 p-4">
         <div className="rounded-xl border border-accent/30 bg-accent-soft p-5">
           <Icon name="pen" className="mb-3 text-accent" />
-          <h2 className="font-arabic-heading text-lg font-bold text-ink">{strings.createStory}</h2>
-          <p className="mt-1 text-sm text-ink-muted">{strings.tagline}</p>
+          <h2 className="font-arabic-heading text-lg font-bold text-ink">{strings.shell.createStory}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{strings.shell.tagline}</p>
           <ButtonLink href="/stories/create" variant="primary" block className="mt-4">
-            {strings.writeSomething}
+            {strings.shell.writeSomething}
           </ButtonLink>
         </div>
 
         <section aria-labelledby="trending-heading">
           <h2 id="trending-heading" className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
             <Icon name="trending" size="sm" className="text-chrome-ink" />
-            {strings.trendingTitle}
+            {strings.shell.trendingTitle}
           </h2>
 
           {/* aria-hidden: the loading state is announced once, by the query's own
@@ -62,7 +67,7 @@ export function TrendingRail() {
           )}
 
           {!isLoading && stories.length === 0 && (
-            <p className="text-sm text-ink-muted">{strings.trendingEmpty}</p>
+            <p className="text-sm text-ink-muted">{strings.shell.noStories}</p>
           )}
 
           {!isLoading && stories.length > 0 && (

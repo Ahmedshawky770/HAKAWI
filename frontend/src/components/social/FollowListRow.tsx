@@ -4,6 +4,8 @@ import React from "react";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Follow } from "@/types/api";
 
 interface FollowListRowProps {
@@ -11,6 +13,8 @@ interface FollowListRowProps {
 }
 
 export function FollowListRow({ follow }: FollowListRowProps) {
+  const { intl } = useLocale();
+
   return (
     <Card className="p-4">
       <div className="flex items-center gap-3">
@@ -19,9 +23,7 @@ export function FollowListRow({ follow }: FollowListRowProps) {
           <p className="truncate text-sm font-semibold text-ink">
             متابع
           </p>
-          <p className="text-xs text-ink-muted">
-            {new Date(follow.createdAt).toLocaleDateString("ar-EG")}
-          </p>
+          <p className="text-xs text-ink-muted">{formatDate(follow.createdAt, intl)}</p>
         </div>
       </div>
     </Card>

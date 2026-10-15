@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 import userEvent from "@testing-library/user-event";
 
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
@@ -48,25 +49,25 @@ describe("register page", () => {
   });
 
   it("renders the registration heading and a link back to login", () => {
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
     expect(screen.getByRole("heading", { name: "إنشاء حساب جديد" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "تسجيل الدخول" })).toHaveAttribute("href", "/login");
   });
 
   it("renders the registration title as the only level one heading", () => {
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
     expect(screen.getByRole("heading", { level: 1, name: "إنشاء حساب جديد" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("shows the wordmark without linking it to the authenticated home", () => {
-    const { container } = render(<RegisterPage />);
+    const { container } = renderWithProviders(<RegisterPage />);
     expect(container).toHaveTextContent("حكاوي");
     expect(screen.queryByRole("link", { name: /^حكاوي/ })).not.toBeInTheDocument();
   });
 
   it("renders every required field of the registration form", () => {
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
     for (const label of ["الاسم الكامل", "اسم المستخدم", "البريد الإلكتروني", "كلمة المرور", "تأكيد كلمة المرور"]) {
       expect(screen.getByLabelText(label)).toBeRequired();
     }
@@ -76,7 +77,7 @@ describe("register page", () => {
 
   it("surfaces a mismatch message inside an alert region", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user, "DifferentPass123!");
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -86,7 +87,7 @@ describe("register page", () => {
 
   it("rejects a mismatched password confirmation without calling the API", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user, "DifferentPass123!");
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -98,7 +99,7 @@ describe("register page", () => {
 
   it("keeps the mismatch error visible while the form stays filled", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user, "DifferentPass123!");
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -109,7 +110,7 @@ describe("register page", () => {
 
   it("accepts a matching confirmation and registers the account", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -126,7 +127,7 @@ describe("register page", () => {
 
   it("stores the session user and moves to the authenticated home after registering", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -139,7 +140,7 @@ describe("register page", () => {
 
   it("never navigates to the removed dashboard route", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -153,7 +154,7 @@ describe("register page", () => {
   it("renders the server rejection of a duplicate account", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.register.mockRejectedValue(new Error("Email already registered"));
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -165,7 +166,7 @@ describe("register page", () => {
   it("renders the first field validation message of a rejected payload", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.register.mockRejectedValue(new Error("password"));
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
@@ -177,7 +178,7 @@ describe("register page", () => {
     const user = userEvent.setup({ delay: null });
     const deferred = createDeferred<typeof AUTH_RESPONSE>();
     mockedApi.register.mockReturnValue(deferred.promise);
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     const submit = screen.getByRole("button", { name: "إنشاء الحساب" });
@@ -196,7 +197,7 @@ describe("register page", () => {
   it("clears a previous error when the form is submitted again", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.register.mockRejectedValueOnce(new Error("Email already registered"));
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));

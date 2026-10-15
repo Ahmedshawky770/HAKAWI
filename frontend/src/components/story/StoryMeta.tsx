@@ -1,8 +1,11 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 
-export const UNCATEGORIZED_LABEL = "بدون تصنيف";
-export const AUTHOR_PROFILE_LABEL = "ملف الكاتب";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { storyCategoryLabel } from "@/lib/i18n/story";
+import { formatLongDate } from "@/lib/i18n";
 
 interface StoryAuthor {
   id: string;
@@ -16,8 +19,9 @@ interface StoryBylineProps {
 }
 
 /**
- * The byline: "بواسطة <name>", or a link to the writer's profile when the page
- * can spare the row.
+ * The byline: "بواسطة <name>" / "By <name>" — the story dictionary's
+ * `authorByline`, never a literal — or a link to the writer's profile when the
+ * page can spare the row.
  *
  * The three rules it enforces are accessibility rules, not typography ones:
  *
@@ -30,8 +34,10 @@ interface StoryBylineProps {
  *   mode is a deeper amber than the fill hue, because a link is text.
  */
 export function StoryByline({ author, linkToProfile = false, className = "" }: StoryBylineProps) {
+  const { strings } = useLocale();
   const name = author.name?.trim() ?? "";
   const href = `/users/${author.id}`;
+  const profileLabel = strings.story.authorProfile;
 
   if (!name && !linkToProfile) return null;
 
@@ -39,10 +45,10 @@ export function StoryByline({ author, linkToProfile = false, className = "" }: S
     return (
       <Link
         href={href}
-        aria-label={AUTHOR_PROFILE_LABEL}
+        aria-label={profileLabel}
         className={`font-medium text-accent-ink underline underline-offset-4 hover:text-accent ${className}`.trim()}
       >
-        {AUTHOR_PROFILE_LABEL}
+        {profileLabel}
       </Link>
     );
   }
@@ -53,12 +59,12 @@ export function StoryByline({ author, linkToProfile = false, className = "" }: S
         href={href}
         className={`font-medium text-accent-ink underline underline-offset-4 hover:text-accent ${className}`.trim()}
       >
-        بواسطة {name}
+        {strings.story.authorByline(name)}
       </Link>
     );
   }
 
-  return <p className={className}>بواسطة {name}</p>;
+  return <p className={className}>{strings.story.authorByline(name)}</p>;
 }
 
 interface StoryCategoryProps {
@@ -71,23 +77,36 @@ interface StoryCategoryProps {
  * The category, in two forms: a chip where the category is the point (a card
  * footer, a filter summary) and inline where it is metadata (a byline row).
  *
- * "بدون تصنيف" is a dashed, italic, muted chip rather than a solid one: the
- * absence of a category is information the writer should see as such, and a solid
- * pill would claim the story has a category it does not have.
+ * The wire value is localized through the story dictionary — an English reader
+ * sees "Non-fiction", not the raw "non-fiction" the API sends — and a value the
+ * dictionary does not know is passed through untouched rather than blanked.
+ *
+ * A missing category is a dashed, italic, muted chip rather than a solid one:
+ * the absence of a category is information the writer should see as such, and a
+ * solid pill would claim the story has a category it does not have.
+ *
+ * **NO `capitalize` ON THE LABEL.** The class was there for the raw wire value,
+ * which arrived lower-cased and needed CSS to look like a word. The label is now
+ * the dictionary's authored string, and `text-transform: capitalize` uppercases
+ * the first letter of every word — so the English "Non-fiction" would render as
+ * "Non-Fiction", and what the reader sees would disagree with the one place the
+ * copy lives. Casing is the dictionary's job now; the class is gone.
  */
 export function StoryCategory({ category, variant = "chip", className = "" }: StoryCategoryProps) {
-  const label = category?.trim() ? category : UNCATEGORIZED_LABEL;
-  const uncategorized = label === UNCATEGORIZED_LABEL;
+  const { locale, strings } = useLocale();
+  const trimmed = category?.trim() ?? "";
+  const label = trimmed ? storyCategoryLabel(trimmed, locale) : strings.story.uncategorized;
+  const uncategorized = !trimmed;
 
   if (variant === "inline") {
     return (
-      <span className={`capitalize ${uncategorized ? "italic text-ink-faint" : ""} ${className}`.trim()}>{label}</span>
+      <span className={`${uncategorized ? "italic text-ink-faint" : ""} ${className}`.trim()}>{label}</span>
     );
   }
 
   return (
     <span
-      className={`inline-block rounded-full px-2.5 py-1 text-xs capitalize ${
+      className={`inline-block rounded-full px-2.5 py-1 text-xs ${
         uncategorized
           ? "border border-dashed border-line-strong text-ink-faint"
           : "bg-chrome-soft text-chrome-ink"
@@ -98,11 +117,18 @@ export function StoryCategory({ category, variant = "chip", className = "" }: St
   );
 }
 
-/** The date, formatted for the reader's locale and never ambiguous. */
+/**
+ * The date, formatted for the reader's locale and never ambiguous.
+ *
+ * `formatLongDate` — not a bare `toLocaleDateString` — because it pins the
+ * numbering system: the month name follows the reader's language while the
+ * digits stay Western, which is the convention every other figure in the
+ * product already follows (`lib/i18n/index.ts`).
+ */
 export function StoryDate({ value, intl = "ar-EG" }: { value: string; intl?: string }) {
   return (
     <time dateTime={value} className="hk-numeric text-xs text-ink-muted">
-      {new Date(value).toLocaleDateString(intl, { year: "numeric", month: "long", day: "numeric" })}
+      {formatLongDate(value, intl)}
     </time>
   );
 }

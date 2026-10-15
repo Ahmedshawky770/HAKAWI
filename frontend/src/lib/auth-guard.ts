@@ -6,10 +6,6 @@ import { useRouter } from "next/navigation";
 import { api, clearStoredUser } from "./api";
 import { LOGIN_ROUTE } from "./routes";
 
-export const AUTH_GUARD_LOADING_TEXT = "جاري التحقق من الجلسة";
-export const AUTH_GUARD_RETRY_LABEL = "إعادة المحاولة";
-export const AUTH_GUARD_ERROR_MESSAGE = "تعذر التحقق من حالة الجلسة";
-
 export type AuthGuardStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 
 export interface AuthGuardState {
@@ -17,6 +13,7 @@ export interface AuthGuardState {
   retry: () => void;
 }
 
+/** True when the session probe failed for a reason other than a bad session. */
 export function isUnauthenticatedFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -27,6 +24,14 @@ export async function probeSession(): Promise<void> {
   await api.getSession();
 }
 
+/**
+ * The session gate the authenticated layout wraps its chrome in.
+ *
+ * The strings this guard displays live in `@/lib/i18n/auth.ts` (the
+ * `authGuard*` keys), not here: a status verdict is logic and a label is copy,
+ * and keeping them apart is what lets the guard surface its labels in English
+ * when the shell is toggled without this module re-rendering.
+ */
 export function useAuthGuard(): AuthGuardState {
   const router = useRouter();
   const routerRef = useRef(router);

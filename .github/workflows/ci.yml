@@ -76,6 +76,14 @@ jobs:
         run: npx next build
         working-directory: frontend
 
+      # `next.config.ts` attaches `'unsafe-eval'` to script-src only when it is loaded with
+      # NODE_ENV=development, and Next DEFAULTS NODE_ENV rather than forcing it — so a build
+      # with NODE_ENV=development exported would bake eval into a production bundle with nothing
+      # but a warning, and `next start` serves that header from the build-time manifest. The
+      # header is serialized here, at build time, which is the one place the mistake is visible.
+      - name: Assert the built CSP keeps eval blocked
+        run: npm run verify:csp --workspace=frontend
+
       - name: Type check frontend
         run: npm run typecheck --workspace=frontend
 
@@ -779,6 +787,16 @@ jobs:
 
       - name: Build frontend
         run: npm run build --workspace=frontend
+
+      # A fast assertion on the CI runner's OWN build artifact, nothing more: the deploy
+      # workflows never reuse this job's output — `deploy-{dev,staging,production}.yml` re-run
+      # `docker build -f ./frontend/Dockerfile .` from a fresh checkout — and
+      # `frontend/Dockerfile` runs the same `verify:csp` immediately after its own `next build`,
+      # so the shipped artifact is asserted there. What this step buys is speed and precision:
+      # it fails the pull request here, in a ~25-minute job, instead of leaving a policy that
+      # allows `eval` to reach the image build or, worse, a registry.
+      - name: Assert the built CSP keeps eval blocked
+        run: npm run verify:csp --workspace=frontend
 
   load-test:
     name: Load Test (k6)

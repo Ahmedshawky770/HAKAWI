@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CardLink } from "@/components/ui/Card";
 import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Contest } from "@/types/api";
 
 import { ContestStatusBadge } from "./ContestStatusBadge";
@@ -18,9 +19,10 @@ import { ContestStatusBadge } from "./ContestStatusBadge";
  * target, which is what a phone needs, and there is exactly one interactive
  * element in the tree because the status is a `Badge` and not a control.
  *
- * The date range is `hk-numeric` because `toLocaleDateString("ar-EG")` emits
- * Arabic-Indic digits and a set of directional marks; isolating the value keeps
- * the pair from being reordered by the surrounding RTL sentence.
+ * The date range is `hk-numeric` because a date is a figure: the isolate keeps
+ * the pair from being reordered by the surrounding RTL sentence, and
+ * `formatDate` pins the digits to Western — the convention every other figure in
+ * the product follows (`lib/i18n/index.ts`).
  */
 export function ContestCard({ contest }: { contest: Contest }) {
   const { intl } = useLocale();
@@ -39,10 +41,10 @@ export function ContestCard({ contest }: { contest: Contest }) {
 
         <p className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-xs text-ink-muted">
           <Icon name="calendar" size="sm" />
-          <span className="hk-numeric">{new Date(contest.startDate).toLocaleDateString(intl)}</span>
+          <span className="hk-numeric">{formatDate(contest.startDate, intl)}</span>
           <span aria-hidden="true">—</span>
           <span className="sr-only">إلى</span>
-          <span className="hk-numeric">{new Date(contest.endDate).toLocaleDateString(intl)}</span>
+          <span className="hk-numeric">{formatDate(contest.endDate, intl)}</span>
         </p>
       </div>
     </CardLink>

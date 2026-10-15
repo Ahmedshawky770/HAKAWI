@@ -460,9 +460,13 @@
   }
 
   .hk-skip-link:focus-visible {
-    background: var(--hk-accent);
+    /* The accent FILL and its own on-accent text, not `--hk-accent` with an
+       undefined text token: the pair is the one §4.6 tabulates at 8.70:1 (dark)
+       and 5.18:1 (light), and it is asserted by `design-system.test.ts`. A skip
+       link that cannot be read when focused is a skip link nobody uses. */
+    background: var(--hk-accent-fill);
     clip-path: none;
-    color: var(--hk-accent-strong);
+    color: var(--hk-on-accent);
     height: auto;
     padding: 0.5rem 1rem;
     position: fixed;

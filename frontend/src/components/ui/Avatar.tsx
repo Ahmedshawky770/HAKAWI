@@ -1,6 +1,9 @@
+"use client";
+
 import React from "react";
 
 import { RemoteImage } from "./RemoteImage";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 /**
  * The avatar with its fallback.
@@ -10,6 +13,9 @@ import { RemoteImage } from "./RemoteImage";
  * The initial is rendered in the accent so a wall of them still looks designed,
  * and `alt` is empty on purpose — the name is always adjacent in the layout, so
  * announcing the file name again is noise.
+ *
+ * The fallback for an unnamed author is the localized question mark, so the
+ * placeholder reads as Arabic `؟` or Latin `?` depending on the active locale.
  */
 export function Avatar({
   src,
@@ -22,6 +28,8 @@ export function Avatar({
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 }) {
+  const { common } = useStrings();
+
   const sizes = {
     sm: "size-8 text-xs",
     md: "size-10 text-sm",
@@ -29,7 +37,7 @@ export function Avatar({
     xl: "size-24 text-3xl",
   } as const;
 
-  const initial = name.trim().charAt(0) || "؟";
+  const initial = name.trim().charAt(0) || common.avatarFallback;
 
   return (
     <span

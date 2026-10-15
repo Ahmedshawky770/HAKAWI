@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
@@ -15,8 +15,6 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 import type { SearchResult } from "@/types/api";
 
 type SearchPhase = "idle" | "searching" | "done";
-
-const SUGGESTED_TERMS = ["رعب", "واقعي", "أساطير"];
 
 /**
  * WHY THE PAGE IS SPLIT IN TWO.
@@ -43,16 +41,35 @@ export default function SearchPage() {
  * from jumping when the results arrive.
  */
 function SearchFrame() {
-  const strings = useStrings();
+  const { shell } = useStrings();
   return (
     <div className="animate-rise">
-      <PageHeader title={strings.navSearch} />
+      <PageHeader title={shell.navSearch} />
     </div>
   );
 }
 
+/**
+ * The results line.
+ *
+ * The digits — and only the digits — sit inside the LTR isolate `.hk-numeric`
+ * provides; the noun stays as sentence text, because isolating a whole Arabic
+ * phrase reorders the words around it. That split is what `CountReadout` in
+ * `lib/i18n/common.ts` exists for, and this component is the one place the
+ * search page renders a count.
+ */
+function ResultsCount({ count }: { count: number }) {
+  const { common } = useStrings();
+  const readout = common.resultsCount(count);
+  return (
+    <>
+      <span className="hk-numeric">{readout.count}</span> {readout.label}
+    </>
+  );
+}
+
 function SearchClient() {
-  const strings = useStrings();
+  const { shell, common } = useStrings();
   const params = useSearchParams();
   const urlQuery = (params.get("q") ?? "").trim();
 
@@ -62,20 +79,23 @@ function SearchClient() {
   const [phase, setPhase] = useState<SearchPhase>("idle");
   const [error, setError] = useState("");
 
-  const runSearch = async (term: string) => {
-    setSubmittedQuery(term);
-    setPhase("searching");
-    setError("");
-    try {
-      const data = await api.search({ query: term });
-      setResults(data.results);
-    } catch (err) {
-      setResults([]);
-      setError(err instanceof Error ? err.message : "تعذّر إتمام البحث");
-    } finally {
-      setPhase("done");
-    }
-  };
+  const runSearch = useCallback(
+    async (term: string) => {
+      setSubmittedQuery(term);
+      setPhase("searching");
+      setError("");
+      try {
+        const data = await api.search({ query: term });
+        setResults(data.results);
+      } catch (err) {
+        setResults([]);
+        setError(err instanceof Error ? err.message : shell.searchFailed);
+      } finally {
+        setPhase("done");
+      }
+    },
+    [shell.searchFailed],
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +115,7 @@ function SearchClient() {
     searchedRef.current = urlQuery;
     setQuery(urlQuery);
     void runSearch(urlQuery);
-  }, [urlQuery]);
+  }, [urlQuery, runSearch]);
 
   const retry = () => {
     if (!submittedQuery) return;
@@ -110,11 +130,11 @@ function SearchClient() {
 
   return (
     <div className="animate-rise">
-      <PageHeader title={strings.navSearch} description="ابحث في القصص والكتب والكتّاب." />
+      <PageHeader title={shell.navSearch} description={shell.searchDescription} />
 
       <form
         role="search"
-        aria-label={strings.navSearch}
+        aria-label={shell.navSearch}
         onSubmit={handleSearch}
         className="mb-6 flex items-end gap-2"
       >
@@ -126,39 +146,39 @@ function SearchClient() {
           />
           <Input
             type="text"
-            aria-label={strings.searchLabel}
-            placeholder={strings.searchPlaceholder}
+            aria-label={shell.searchLabel}
+            placeholder={shell.searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="ps-10"
           />
         </div>
-        <Button type="submit">بحث</Button>
+        <Button type="submit">{common.search}</Button>
       </form>
 
       {phase === "searching" && (
         <>
           <p role="status" className="mb-4 text-sm text-ink-muted">
-            جاري البحث…
+            {shell.searching}
           </p>
           <SearchResultsSkeleton />
         </>
       )}
 
       {phase === "done" && error && (
-        <ErrorMessage error={error} onRetry={retry} title="تعذّر إتمام البحث" />
+        <ErrorMessage error={error} onRetry={retry} title={shell.searchFailed} />
       )}
 
       {phase === "done" && !error && results.length === 0 && (
         <div>
           <p role="status" className="mb-4 text-sm text-ink-muted">
-            لا توجد نتائج
+            {common.noResults}
           </p>
           <EmptyState
             icon="search"
-            title="لم نجد ما يطابق بحثك"
-            description="جرّب كلمات أخرى، أو ابدأ من أحد هذه الاقتراحات:"
-            action={SUGGESTED_TERMS.map((term) => (
+            title={shell.noMatchesTitle}
+            description={shell.noMatchesDescription}
+            action={shell.searchSuggestions.map((term) => (
               <Button key={term} variant="secondary" size="sm" onClick={() => pickTerm(term)}>
                 {term}
               </Button>
@@ -170,7 +190,7 @@ function SearchClient() {
       {phase === "done" && !error && results.length > 0 && (
         <>
           <p role="status" className="mb-4 text-sm text-ink-muted">
-            <span className="hk-numeric">{results.length}</span> نتيجة
+            <ResultsCount count={results.length} />
           </p>
           <ul className="space-y-4">
             {results.map((result) => (
@@ -183,8 +203,8 @@ function SearchClient() {
       {phase === "idle" && (
         <EmptyState
           icon="search"
-          title={strings.searchLabel}
-          description="اكتب كلمة في الحقل أعلاه، ثم اضغط Enter للبحث."
+          title={shell.searchLabel}
+          description={shell.searchIdleDescription}
         />
       )}
     </div>

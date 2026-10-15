@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
 import { ReactionListEmpty, ReactionRow } from "@/components/social/ReactionRow";
+import { renderWithProviders } from "@/test-utils/render";
 import type { Reaction } from "@/types/api";
 
 const sampleReaction: Reaction = {
@@ -15,7 +16,7 @@ const sampleReaction: Reaction = {
 
 describe("ReactionRow", () => {
   it("renders the reaction author and type label", () => {
-    render(<ReactionRow reaction={sampleReaction} />);
+    renderWithProviders(<ReactionRow reaction={sampleReaction} />);
 
     expect(screen.getByText("مستخدم")).toBeDefined();
   });
@@ -23,7 +24,7 @@ describe("ReactionRow", () => {
 
 describe("ReactionListEmpty", () => {
   it("renders the empty state", () => {
-    render(<ReactionListEmpty />);
+    renderWithProviders(<ReactionListEmpty />);
 
     expect(screen.getByText("لا توجد تفاعلات بعد. كن أول من يتفاعل!")).toBeDefined();
   });

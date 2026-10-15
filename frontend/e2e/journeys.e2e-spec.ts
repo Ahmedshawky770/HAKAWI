@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page, Response } from "@playwright/test";
+import { copy } from "./copy";
 
 const BACKEND_URL = process.env.PLAYWRIGHT_BACKEND_URL ?? "http://localhost:3001";
 const API_URL = `${BACKEND_URL}/api/v1`;
@@ -71,20 +72,20 @@ export async function waitForApiResponse(page: Page, path: string): Promise<Resp
 }
 
 export async function fillRegisterForm(page: Page, email: string, username: string): Promise<void> {
-  await page.getByRole("heading", { name: "إنشاء حساب جديد" }).waitFor();
-  await page.getByLabel("الاسم الكامل").fill("Playwright User");
-  await page.getByLabel("اسم المستخدم").fill(username);
-  await page.getByLabel("البريد الإلكتروني").fill(email);
+  await page.getByRole("heading", { name: copy.auth.registerTitle }).waitFor();
+  await page.getByLabel(copy.auth.nameLabel).fill("Playwright User");
+  await page.getByLabel(copy.auth.usernameLabel).fill(username);
+  await page.getByLabel(copy.auth.emailLabel).fill(email);
   // `exact` matters here: "كلمة المرور" is a substring of "تأكيد كلمة المرور", so the
   // default substring match resolves to both fields and fails on a strict-mode violation.
-  await page.getByLabel("كلمة المرور", { exact: true }).fill(PASSWORD);
-  await page.getByLabel("تأكيد كلمة المرور", { exact: true }).fill(PASSWORD);
+  await page.getByLabel(copy.auth.passwordLabel, { exact: true }).fill(PASSWORD);
+  await page.getByLabel(copy.auth.confirmPasswordLabel, { exact: true }).fill(PASSWORD);
 }
 
 export async function fillLoginForm(page: Page, email: string, password: string): Promise<void> {
-  await page.getByRole("heading", { name: "تسجيل الدخول" }).waitFor();
-  await page.getByLabel("البريد الإلكتروني", { exact: true }).fill(email);
-  await page.getByLabel("كلمة المرور", { exact: true }).fill(password);
+  await page.getByRole("heading", { name: copy.auth.loginTitle }).waitFor();
+  await page.getByLabel(copy.auth.emailLabel, { exact: true }).fill(email);
+  await page.getByLabel(copy.auth.passwordLabel, { exact: true }).fill(password);
 }
 
 test.describe("Critical user journeys", () => {
@@ -97,7 +98,7 @@ test.describe("Critical user journeys", () => {
     const registerResponse = waitForApiResponse(page, "/api/v1/auth/register");
 
     await fillRegisterForm(page, email, username);
-    await page.getByRole("button", { name: "إنشاء الحساب" }).click();
+    await page.getByRole("button", { name: copy.auth.registerButton }).click();
 
     expect((await registerResponse).status()).toBe(201);
     // The app sends a freshly authenticated user to AUTHENTICATED_HOME_ROUTE, which is "/".
@@ -109,6 +110,8 @@ test.describe("Critical user journeys", () => {
     //
     // Asserting the heading rather than the URL is also the more robust form: it is what the
     // journey is actually for, and it cannot drift the way a path can.
+    // The home-page heading has no dictionary key — `shell.ts` owns the navigation words, not
+    // page titles — so it cannot be derived and stays a literal.
     await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
   });
 
@@ -120,7 +123,7 @@ test.describe("Critical user journeys", () => {
     const sessionResponse = waitForApiResponse(page, "/api/v1/auth/session");
 
     await fillLoginForm(page, user.email, PASSWORD);
-    await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+    await page.getByRole("button", { name: copy.auth.loginButton }).click();
 
     expect((await loginResponse).status()).toBe(200);
     expect((await sessionResponse).status()).toBe(200);
@@ -133,6 +136,8 @@ test.describe("Critical user journeys", () => {
     //
     // Asserting the heading rather than the URL is also the more robust form: it is what the
     // journey is actually for, and it cannot drift the way a path can.
+    // Same undictionaried home heading as the register journey above: no key exists for it,
+    // so the literal stays and a comment records why.
     await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
   });
 
@@ -141,9 +146,11 @@ test.describe("Critical user journeys", () => {
     await fillLoginForm(page, `nobody-${uniqueSuffix()}@example.com`, "DefinitelyWrong1!");
 
     const loginResponse = waitForApiResponse(page, "/api/v1/auth/login");
-    await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+    await page.getByRole("button", { name: copy.auth.loginButton }).click();
 
     expect((await loginResponse).status()).toBe(401);
+    // The backend's own English error text, surfaced verbatim by the login form: no dictionary
+    // key exists for it (the dictionary covers the frontend's UI copy only), so it stays literal.
     await expect(page.getByText("Unauthorized")).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
@@ -161,7 +168,8 @@ test.describe("Critical user journeys", () => {
     // injecting a token by hand would.
     await page.goto("/login");
     await fillLoginForm(page, user.email, PASSWORD);
-    await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+    await page.getByRole("button", { name: copy.auth.loginButton }).click();
+    // Same undictionaried home heading: the dictionary has no key for it, so it stays a literal.
     await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/stories");

@@ -3,13 +3,23 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 import { designFonts } from "./fonts";
+import { SkipLink } from "@/components/layout/SkipLink";
+import { TitleMirror } from "@/components/providers/TitleMirror";
+import { stringsFor } from "@/lib/i18n";
 import { PREFERENCE_BOOTSTRAP_SCRIPT } from "@/lib/preferences";
 import { Providers } from "./providers";
 
+// The root metadata is static Arabic — a server `metadata` export cannot read
+// the reader's stored locale — but it is READ FROM THE DICTIONARY so the app
+// title and description exist in exactly one place. `TitleMirror` recognizes
+// the chrome's own title by comparing the document against
+// `shell.appTitle`/`shell.appDescription`; while these were hand-written
+// literals beside the dictionary, editing either copy silently made the
+// comparison stop matching and the mirror die with every suite still green.
 export const metadata: Metadata = {
-  title: "حكاوي",
-  description: "منصة الحكاوي للكتابة والقراءة",
-  applicationName: "حكاوي",
+  title: stringsFor("ar").shell.appTitle,
+  description: stringsFor("ar").shell.appDescription,
+  applicationName: stringsFor("ar").shell.brand,
 };
 
 export const viewport: Viewport = {
@@ -38,10 +48,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: PREFERENCE_BOOTSTRAP_SCRIPT }} />
       </head>
       <body className="min-h-full bg-canvas text-ink antialiased">
-        <a href="#main-content" className="hk-skip-link">
-          تخطَّ إلى المحتوى
-        </a>
-        <Providers>{children}</Providers>
+        <Providers>
+          {/* SkipLink consumes LocaleContext, so it must render inside <Providers> (which mounts
+              LocaleProvider) rather than as a sibling of it. */}
+          <SkipLink />
+          {/* The title mirror lives here rather than in LocaleProvider: it subscribes to the
+              route, and a hook that reaches the 23 mocked `next/navigation` suites that mount
+              the provider does not belong in the provider itself. It renders nothing. */}
+          <TitleMirror />
+          {children}
+        </Providers>
       </body>
     </html>
   );

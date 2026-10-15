@@ -11,6 +11,10 @@ import {
   NotificationRow,
   notificationIcon,
 } from "@/components/social/NotificationRow";
+// The row formats its timestamp through `useLocale()`, so it is rendered under
+// the same provider stack the notifications page uses — the same reason every
+// other row component's suite uses `renderWithProviders`.
+import { renderWithProviders } from "@/test-utils/render";
 import type { Notification } from "@/types/api";
 
 const UNREAD: Notification = {
@@ -27,7 +31,7 @@ const UNREAD: Notification = {
 
 describe("NotificationRow", () => {
   it("marks an unread notification with the accent edge and the word جديد", () => {
-    const { container } = render(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} />);
+    const { container } = renderWithProviders(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} />);
     const card = container.firstElementChild;
 
     expect(card?.className).toContain("border-s-2");
@@ -37,7 +41,7 @@ describe("NotificationRow", () => {
   });
 
   it("carries neither marker once the notification has been read", () => {
-    const { container } = render(
+    const { container } = renderWithProviders(
       <NotificationRow notification={{ ...UNREAD, isRead: true }} onMarkAsRead={() => undefined} />,
     );
 
@@ -47,7 +51,7 @@ describe("NotificationRow", () => {
   });
 
   it("renders the title as a heading and the body as text", () => {
-    render(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} />);
+    renderWithProviders(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} />);
 
     expect(screen.getByRole("heading", { name: UNREAD.title })).toBeInTheDocument();
     expect(screen.getByText(UNREAD.message)).toBeInTheDocument();
@@ -57,7 +61,7 @@ describe("NotificationRow", () => {
     const user = userEvent.setup();
     const onMarkAsRead = vi.fn();
 
-    render(<NotificationRow notification={UNREAD} onMarkAsRead={onMarkAsRead} />);
+    renderWithProviders(<NotificationRow notification={UNREAD} onMarkAsRead={onMarkAsRead} />);
     const button = screen.getByRole("button", { name: "تعليم كمقروء" });
     expect(button.className).toContain("text-ink-muted");
 
@@ -66,7 +70,7 @@ describe("NotificationRow", () => {
   });
 
   it("keeps the action in place while its request is in flight", () => {
-    render(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} isPending />);
+    renderWithProviders(<NotificationRow notification={UNREAD} onMarkAsRead={() => undefined} isPending />);
 
     const button = screen.getByRole("button", { name: "تعليم كمقروء" });
     expect(button).toBeDisabled();

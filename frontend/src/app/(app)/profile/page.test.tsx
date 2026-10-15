@@ -2,12 +2,13 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { api, getStoredUser } from "@/lib/api";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { AUTH_USER } from "@/test-utils/fixtures";
+import { renderWithProviders } from "@/test-utils/render";
 import ProfilePage from "@/app/(app)/profile/page";
 
 vi.mock("next/link", () => ({
@@ -60,17 +61,17 @@ describe("Profile page", () => {
   });
 
   it("renders the user name", async () => {
-    render(<ProfilePage />);
+    renderWithProviders(<ProfilePage />);
     expect(await screen.findByRole("heading", { name: "أحمد محمد" })).toBeInTheDocument();
   });
 
   it("renders the user bio", async () => {
-    render(<ProfilePage />);
+    renderWithProviders(<ProfilePage />);
     expect(await screen.findByText("كاتب قصص")).toBeInTheDocument();
   });
 
   it("shows loading state", () => {
-    render(<ProfilePage />);
+    renderWithProviders(<ProfilePage />);
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
   });

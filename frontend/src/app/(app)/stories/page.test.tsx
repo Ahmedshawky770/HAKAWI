@@ -2,10 +2,13 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { api } from "@/lib/api";
+import { stringsFor } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
 import StoriesPage from "./page";
 
 vi.mock("next/link", () => ({
@@ -31,6 +34,12 @@ vi.mock("@/lib/api", () => ({
 
 const mockedApi = vi.mocked(api);
 
+// Read from the dictionary, not written as literals: it is the single source of
+// truth for this copy, so a literal here would silently drift from the page the
+// moment the string changes in either locale.
+const CATEGORY_LABEL = stringsFor(DEFAULT_LOCALE).story.storiesCategoryLabel;
+const NO_STORIES_TITLE = stringsFor(DEFAULT_LOCALE).shell.noStories;
+
 describe("Stories list page", () => {
   beforeEach(() => {
     mockedApi.listStories.mockResolvedValue({
@@ -42,36 +51,36 @@ describe("Stories list page", () => {
   });
 
   it("renders the page header with title and description", () => {
-    render(<StoriesPage />);
+    renderWithProviders(<StoriesPage />);
     expect(screen.getByRole("heading", { name: "القصص" })).toBeInTheDocument();
   });
 
   it("renders the category filter selector", () => {
-    render(<StoriesPage />);
-    expect(screen.getByLabelText("التصنيف")).toBeInTheDocument();
+    renderWithProviders(<StoriesPage />);
+    expect(screen.getByLabelText(CATEGORY_LABEL)).toBeInTheDocument();
   });
 
   it("calls listStories on mount", async () => {
-    render(<StoriesPage />);
+    renderWithProviders(<StoriesPage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mockedApi.listStories).toHaveBeenCalled();
   });
 
   it("handles loading state", () => {
     mockedApi.listStories.mockResolvedValue({ stories: [], total: 0, page: 1, limit: 20 });
-    render(<StoriesPage />);
+    renderWithProviders(<StoriesPage />);
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("handles error state", async () => {
     mockedApi.listStories.mockRejectedValue(new Error("Failed to load stories"));
-    render(<StoriesPage />);
+    renderWithProviders(<StoriesPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to load stories");
   });
 
   it("handles empty stories list", async () => {
-    render(<StoriesPage />);
-    expect(await screen.findByText("لا توجد قصص بعد")).toBeInTheDocument();
+    renderWithProviders(<StoriesPage />);
+    expect(await screen.findByText(NO_STORIES_TITLE)).toBeInTheDocument();
   });
 
   it("displays stories when available", async () => {
@@ -98,7 +107,7 @@ describe("Stories list page", () => {
       page: 1,
       limit: 20,
     });
-    render(<StoriesPage />);
+    renderWithProviders(<StoriesPage />);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByText("قصة اختبار")).toBeInTheDocument();
   });

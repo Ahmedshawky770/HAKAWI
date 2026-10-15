@@ -6,6 +6,8 @@ import { api, getStoredUser } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDateTime } from "@/lib/i18n";
 
 /**
  * The user restrictions page.
@@ -15,6 +17,7 @@ import { Loading } from "@/components/ui/Loading";
  * This page shows the restrictions for the currently authenticated user only.
  */
 export default function UserRestrictionsPage() {
+  const { intl } = useLocale();
   const [restrictions, setRestrictions] = useState<{ id: string; action: string; reason: string; expiresAt: string | null; createdAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -79,9 +82,9 @@ export default function UserRestrictionsPage() {
               <p className="font-medium text-ink">الإجراء: {restriction.action}</p>
               <p className="text-sm text-ink-muted">السبب: {restriction.reason}</p>
               {restriction.expiresAt && (
-                <p className="text-sm text-ink-muted">تنتهي في: {new Date(restriction.expiresAt).toLocaleString("ar-EG")}</p>
+                <p className="text-sm text-ink-muted">تنتهي في: {formatDateTime(restriction.expiresAt, intl)}</p>
               )}
-              <p className="text-sm text-ink-muted">تاريخ الإنشاء: {new Date(restriction.createdAt).toLocaleString("ar-EG")}</p>
+              <p className="text-sm text-ink-muted">تاريخ الإنشاء: {formatDateTime(restriction.createdAt, intl)}</p>
             </li>
           ))}
         </ul>

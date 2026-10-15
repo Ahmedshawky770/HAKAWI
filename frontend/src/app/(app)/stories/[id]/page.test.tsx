@@ -2,8 +2,12 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, screen } from "@testing-library/react";
+
+import { renderWithProviders } from "@/test-utils/render";
+import { stringsFor } from "@/lib/i18n";
+import { storyCategoryLabel } from "@/lib/i18n/story";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 
 const { mockGetStory, mockDeleteStory, mockGetStoredUser } = vi.hoisted(() => ({
   mockGetStory: vi.fn(),
@@ -31,16 +35,6 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/components/providers/ToastProvider", () => ({
-  useToast: () => ({
-    notify: () => {},
-  }),
-}));
-vi.mock("@/components/providers/LocaleProvider", () => ({
-  useLocale: () => ({ intl: { formatDate: () => "", formatNumber: () => "" } }),
-  LocaleProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
 import StoryDetailPage from "./page";
 
 const mockStory = {
@@ -54,14 +48,15 @@ const mockStory = {
   createdAt: new Date().toISOString(),
 };
 
-let queryClient: QueryClient;
+// The banner title is dictionary copy; a literal here would drift from the page
+// the moment the string changes in either locale.
+const STORY_OPEN_FAILED = stringsFor(DEFAULT_LOCALE).story.storyOpenFailed;
+// The category label is read through the same function the page reads it
+// through, for the same reason: one table per locale, one reader.
+const FICTION_LABEL = storyCategoryLabel("fiction", DEFAULT_LOCALE);
 
 function renderPage() {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <StoryDetailPage />
-    </QueryClientProvider>,
-  );
+  return renderWithProviders(<StoryDetailPage />);
 }
 
 async function settle() {
@@ -73,9 +68,6 @@ async function settle() {
 describe("Story detail page", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
     mockGetStory.mockResolvedValue(mockStory);
     mockGetStoredUser.mockReturnValue({ id: "user-1" });
   });
@@ -87,7 +79,7 @@ describe("Story detail page", () => {
 
   it("renders the story category", async () => {
     renderPage();
-    expect(await screen.findByText("fiction")).toBeInTheDocument();
+    expect(await screen.findByText(FICTION_LABEL)).toBeInTheDocument();
   });
 
   it("renders the author byline and avatar initial", async () => {
@@ -99,8 +91,16 @@ describe("Story detail page", () => {
   it("renders the story views and reactions", async () => {
     renderPage();
     expect(await screen.findByText("قصة مميزة")).toBeInTheDocument();
-    expect(screen.getByText("1,500")).toBeInTheDocument();
-    expect(screen.getByText("42")).toBeInTheDocument();
+
+    // Read from the dictionary, in the shape the page renders them: the digits
+    // inside the `.hk-numeric` isolate and the noun as sentence text. A single
+    // literal here would not notice the two parts drifting apart again.
+    const views = stringsFor("ar").story.views(mockStory.views);
+    const reactions = stringsFor("ar").story.reactions(mockStory.reactions);
+    expect(screen.getByText(views.count)).toBeInTheDocument();
+    expect(screen.getByText(views.label)).toBeInTheDocument();
+    expect(screen.getByText(reactions.count)).toBeInTheDocument();
+    expect(screen.getByText(reactions.label)).toBeInTheDocument();
   });
 
   it("shows loading state initially", async () => {
@@ -113,7 +113,7 @@ describe("Story detail page", () => {
   it("handles error when story not found", async () => {
     mockGetStory.mockRejectedValueOnce(new Error("Story not found"));
     renderPage();
-    expect(await screen.findByText("تعذّر فتح القصة")).toBeInTheDocument();
+    expect(await screen.findByText(STORY_OPEN_FAILED)).toBeInTheDocument();
   });
 
   it("deletes the story when the owner confirms", async () => {

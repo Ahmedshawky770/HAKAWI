@@ -3,12 +3,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { render } from "@testing-library/react";
 
 import userEvent from "@testing-library/user-event";
 
 import { NOTIFICATION } from "@/test-utils/fixtures";
 import { createDeferred } from "@/test-utils/support";
+import { renderWithProviders } from "@/test-utils/render";
 import { api } from "@/lib/api";
 import type { Notification } from "@/types/api";
 import NotificationsPage from "@/app/(app)/notifications/page";
@@ -77,19 +77,19 @@ describe("notifications page", () => {
     mockedApi.getNotifications.mockReturnValue(listDeferred.promise);
     mockedApi.getUnreadNotificationCount.mockReturnValue(countDeferred.promise);
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("requests the first page of notifications", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
     await screen.findByText(NOTIFICATION.title);
     expect(mockedApi.getNotifications).toHaveBeenCalledWith({ page: 1, limit: 20 });
   });
 
   it("renders the title and the body of every notification", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByRole("heading", { name: NOTIFICATION.title })).toBeInTheDocument();
     expect(screen.getByText(NOTIFICATION.message)).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("notifications page", () => {
   });
 
   it("shows the unread count returned by the dedicated count endpoint", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("إشعار غير مقروء")).toBeInTheDocument();
     expect(unreadValue()).toBe("1");
@@ -114,7 +114,7 @@ describe("notifications page", () => {
     });
     mockedApi.getUnreadNotificationCount.mockResolvedValue({ count: 0 });
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: READ_NOTIFICATION.title });
     expect(screen.queryByText("إشعار غير مقروء")).not.toBeInTheDocument();
@@ -124,14 +124,14 @@ describe("notifications page", () => {
     mockedApi.getNotifications.mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 20 });
     mockedApi.getUnreadNotificationCount.mockResolvedValue({ count: 0 });
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("لا توجد إشعارات بعد.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "تعليم كمقروء" })).not.toBeInTheDocument();
   });
 
   it("offers a mark as read action only for an unread notification", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     expect(screen.getAllByRole("button", { name: "تعليم كمقروء" })).toHaveLength(1);
@@ -139,7 +139,7 @@ describe("notifications page", () => {
 
   it("marks a notification as read and decrements the unread counter", async () => {
     const user = userEvent.setup();
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
@@ -155,7 +155,7 @@ describe("notifications page", () => {
 
   it("keeps the notification visible after marking it as read", async () => {
     const user = userEvent.setup();
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
@@ -166,7 +166,7 @@ describe("notifications page", () => {
   it("keeps the unread state when the mark as read request fails", async () => {
     const user = userEvent.setup();
     mockedApi.markNotificationAsRead.mockRejectedValue(new Error("Not your notification"));
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
@@ -181,7 +181,7 @@ describe("notifications page", () => {
   it("renders the failure of the notification list", async () => {
     mockedApi.getNotifications.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("Failed to load notifications")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "الإشعارات" })).not.toBeInTheDocument();
@@ -190,7 +190,7 @@ describe("notifications page", () => {
   it("renders the unauthorized failure of a session that expired", async () => {
     mockedApi.getNotifications.mockRejectedValue(new Error("Unauthorized"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
   });
@@ -198,7 +198,7 @@ describe("notifications page", () => {
   it("keeps the loaded list when only the unread count request fails", async () => {
     mockedApi.getUnreadNotificationCount.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByRole("heading", { name: NOTIFICATION.title })).toBeInTheDocument();
     expect(screen.getByText(NOTIFICATION.message)).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe("notifications page", () => {
   it("reports the unread count as unavailable when only the count request fails", async () => {
     mockedApi.getUnreadNotificationCount.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("تعذّر جلب العدد")).toBeInTheDocument();
     expect(screen.queryByText("إشعار غير مقروء")).not.toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("notifications page", () => {
     mockedApi.getNotifications.mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 20 });
     mockedApi.getUnreadNotificationCount.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     expect(await screen.findByText("تعذّر جلب العدد")).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
@@ -227,7 +227,7 @@ describe("notifications page", () => {
   it("still offers the mark as read action when the count request failed", async () => {
     mockedApi.getUnreadNotificationCount.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     expect(screen.getByRole("button", { name: "تعليم كمقروء" })).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("notifications page", () => {
     const user = userEvent.setup();
     mockedApi.getUnreadNotificationCount.mockRejectedValue(new Error("Failed to load notifications"));
 
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
@@ -249,7 +249,7 @@ describe("notifications page", () => {
   });
 
   it("requests both the list and the count exactly once", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: NOTIFICATION.title });
     expect(mockedApi.getNotifications).toHaveBeenCalledTimes(1);
@@ -257,7 +257,7 @@ describe("notifications page", () => {
   });
 
   it("stops announcing the loading state once the page is ready", async () => {
-    render(<NotificationsPage />);
+    renderWithProviders(<NotificationsPage />);
 
     await screen.findByRole("heading", { name: "الإشعارات" });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();

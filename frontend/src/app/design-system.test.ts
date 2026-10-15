@@ -76,6 +76,7 @@ const REQUIRED_PAIRS: { theme: string; palette: Palette; fg: string; bg: string;
   { theme: "dark", palette: dark, fg: "--hk-chrome-ink", bg: "--hk-canvas", min: 4.5, role: "navigation text" },
   { theme: "dark", palette: dark, fg: "--hk-chrome-ink", bg: "--hk-surface", min: 4.5, role: "navigation text on a card" },
   { theme: "dark", palette: dark, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "label on the primary button" },
+  { theme: "dark", palette: dark, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "the focused skip link" },
   { theme: "dark", palette: dark, fg: "--hk-on-error", bg: "--hk-error-fill", min: 4.5, role: "label on the danger button" },
   { theme: "dark", palette: dark, fg: "--hk-success-ink", bg: "--hk-surface", min: 4.5, role: "success text" },
   { theme: "dark", palette: dark, fg: "--hk-warning-ink", bg: "--hk-surface", min: 4.5, role: "warning text" },
@@ -94,6 +95,7 @@ const REQUIRED_PAIRS: { theme: string; palette: Palette; fg: string; bg: string;
   { theme: "light", palette: light, fg: "--hk-chrome-ink", bg: "--hk-canvas", min: 4.5, role: "navigation text" },
   { theme: "light", palette: light, fg: "--hk-chrome-ink", bg: "--hk-surface", min: 4.5, role: "navigation text on a card" },
   { theme: "light", palette: light, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "label on the primary button" },
+  { theme: "light", palette: light, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "the focused skip link" },
   { theme: "light", palette: light, fg: "--hk-on-error", bg: "--hk-error-fill", min: 4.5, role: "label on the danger button" },
   { theme: "light", palette: light, fg: "--hk-success-ink", bg: "--hk-surface", min: 4.5, role: "success text" },
   { theme: "light", palette: light, fg: "--hk-warning-ink", bg: "--hk-surface", min: 4.5, role: "warning text" },
@@ -207,7 +209,45 @@ describe("the design system document", () => {
       ).toBeLessThanOrEqual(0.01);
     }
   });
+});
 
+describe("the focused skip link", () => {
+  /** The `.hk-skip-link:focus-visible { … }` block, as it sits in globals.css. */
+  function skipLinkBlock(): string {
+    const match = css.match(/\.hk-skip-link:focus-visible\s*\{([^}]*)\}/);
+    if (!match) throw new Error(".hk-skip-link:focus-visible is missing from globals.css");
+    return match[1];
+  }
+
+  it("paints the accent fill with its own on-accent text", () => {
+    // The one pair §4.6 tabulates at 8.70:1 (dark) and 5.18:1 (light). The block
+    // used to pair `--hk-accent` with `--hk-accent-strong`, a token no theme
+    // defines, so the colour computed to the inherited ink: 1.91:1 on the dark
+    // canvas, and a focused skip link nobody could read.
+    const block = skipLinkBlock();
+    expect(block).toContain("background: var(--hk-accent-fill)");
+    expect(block).toContain("color: var(--hk-on-accent)");
+  });
+
+  it("names no colour token that a theme does not define", () => {
+    // The general form of that bug: a `var()` pointing at nothing is invalid, the
+    // declaration is dropped, and the element silently falls back to whatever it
+    // inherits. axe cannot catch it, because the link is clipped out of view
+    // until focus — so the stylesheet is read and every token it names has to
+    // resolve in both themes.
+    const defined = new Set([...Object.keys(dark), ...Object.keys(light)]);
+    for (const [, token] of skipLinkBlock().matchAll(/var\((--hk-[a-z-]+)\)/g)) {
+      expect(defined.has(token), `${token} is used by .hk-skip-link but defined by no theme`).toBe(true);
+    }
+  });
+});
+
+/**
+ * The last section of the document is a matrix: it names the file that owns
+ * each layer of the product. A matrix entry for a component that has moved or
+ * been renamed is a document that lies, and this is where that is caught.
+ */
+describe("the product's conformance matrix", () => {
   it("names the components and the layers the product actually has", () => {
     for (const path of [
       "components/ui/Button.tsx",

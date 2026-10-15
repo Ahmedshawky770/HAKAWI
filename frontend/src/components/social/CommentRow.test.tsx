@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
 import { CommentListEmpty, CommentRow } from "@/components/social/CommentRow";
+import { renderWithProviders } from "@/test-utils/render";
 import type { Comment } from "@/types/api";
 
 const sampleComment: Comment = {
@@ -20,7 +21,7 @@ const sampleComment: Comment = {
 
 describe("CommentRow", () => {
   it("renders the comment author and content", () => {
-    render(<CommentRow comment={sampleComment} />);
+    renderWithProviders(<CommentRow comment={sampleComment} />);
 
     expect(screen.getByText("كاتب تجريبي")).toBeDefined();
     expect(screen.getByText("هذا تعليق تجريبي")).toBeDefined();
@@ -29,7 +30,7 @@ describe("CommentRow", () => {
 
 describe("CommentListEmpty", () => {
   it("renders the empty state", () => {
-    render(<CommentListEmpty />);
+    renderWithProviders(<CommentListEmpty />);
 
     expect(screen.getByText("لا توجد تعليقات بعد. كن أول من يعلق!")).toBeDefined();
   });

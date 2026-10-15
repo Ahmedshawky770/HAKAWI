@@ -2,12 +2,15 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { createDeferred, jsonResponse } from "@/test-utils/support";
 import { STORY, STORY_RECORD } from "@/test-utils/fixtures";
+import { renderWithProviders } from "@/test-utils/render";
+import { stringsFor } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 import AuthenticatedHomePage from "@/app/(app)/page";
 
 vi.mock("next/link", () => ({
@@ -21,6 +24,12 @@ function listResponse(stories: unknown[]): Response {
   return jsonResponse({ stories, total: stories.length, page: 1, limit: 20 });
 }
 
+// The empty state's title comes from the dictionary, and this suite asserts the
+// dictionary rather than a retyped copy of it: the dashboard and the stories
+// list render the SAME sentence, and the period is the difference between one
+// string in two places and one string in one place.
+const NO_STORIES_TITLE = stringsFor(DEFAULT_LOCALE).shell.noStories;
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
@@ -30,7 +39,7 @@ describe("authenticated home page", () => {
   it("announces a loading state while the stories are fetched", () => {
     fetchMock.mockReturnValue(createDeferred<Response>().promise);
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
@@ -38,7 +47,7 @@ describe("authenticated home page", () => {
   it("renders the dashboard heading as the page title", async () => {
     fetchMock.mockResolvedValue(listResponse([]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("لوحة التحكم");
   });
@@ -46,7 +55,7 @@ describe("authenticated home page", () => {
   it("renders zero totals when there is no story", async () => {
     fetchMock.mockResolvedValue(listResponse([]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByText("إجمالي القصص")).toBeInTheDocument();
     expect(screen.getAllByText("0")).toHaveLength(3);
@@ -55,7 +64,7 @@ describe("authenticated home page", () => {
   it("names the author of a story whose name is known", async () => {
     fetchMock.mockResolvedValue(listResponse([STORY]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByText("بواسطة أحمد محمد")).toBeInTheDocument();
   });
@@ -63,7 +72,7 @@ describe("authenticated home page", () => {
   it("omits the byline entirely when the author name is missing", async () => {
     fetchMock.mockResolvedValue(listResponse([{ ...STORY, author: { id: "user-1", name: "" } }]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     await screen.findByRole("heading", { level: 3, name: STORY.title });
     expect(screen.queryByText(/بواسطة/)).not.toBeInTheDocument();
@@ -72,7 +81,7 @@ describe("authenticated home page", () => {
   it("shows the uncategorized affordance when the category is null", async () => {
     fetchMock.mockResolvedValue(listResponse([{ ...STORY, category: null }]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     await screen.findByRole("heading", { level: 3, name: STORY.title });
     expect(screen.getByText("بدون تصنيف")).toBeInTheDocument();
@@ -81,7 +90,7 @@ describe("authenticated home page", () => {
   it("never renders a dangling byline for a raw record payload", async () => {
     fetchMock.mockResolvedValue(listResponse([STORY_RECORD]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     await screen.findByRole("heading", { level: 3, name: STORY_RECORD.title });
     expect(screen.queryByText(/بواسطة/)).not.toBeInTheDocument();
@@ -91,7 +100,7 @@ describe("authenticated home page", () => {
   it("renders the failure of the story list", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "Unauthorized" }, 401));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
   });
@@ -99,7 +108,7 @@ describe("authenticated home page", () => {
   it("links every story to its detail route", async () => {
     fetchMock.mockResolvedValue(listResponse([STORY]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     const link = await screen.findByRole("link", { name: new RegExp(STORY.title) });
     expect(link).toHaveAttribute("href", `/stories/${STORY.id}`);
@@ -108,7 +117,7 @@ describe("authenticated home page", () => {
   it("fills the loading state with shaped story placeholders, not a bare spinner", () => {
     fetchMock.mockReturnValue(createDeferred<Response>().promise);
 
-    const { container } = render(<AuthenticatedHomePage />);
+    const { container } = renderWithProviders(<AuthenticatedHomePage />);
 
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
     // Every placeholder is a shimmer block; a spinner would leave this empty.
@@ -119,7 +128,7 @@ describe("authenticated home page", () => {
   it("keeps the page title while the list is still loading", () => {
     fetchMock.mockReturnValue(createDeferred<Response>().promise);
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("لوحة التحكم");
   });
@@ -127,9 +136,9 @@ describe("authenticated home page", () => {
   it("offers the action that fills an empty dashboard", async () => {
     fetchMock.mockResolvedValue(listResponse([]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
-    expect(await screen.findByText("لا توجد قصص بعد")).toBeInTheDocument();
+    expect(await screen.findByText(NO_STORIES_TITLE)).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "اكتب قصة" })[0]).toHaveAttribute("href", "/stories/create");
   });
 
@@ -137,7 +146,7 @@ describe("authenticated home page", () => {
     const user = userEvent.setup({ delay: null });
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: "Unauthorized" }, 401));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Unauthorized");
     expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
@@ -152,7 +161,7 @@ describe("authenticated home page", () => {
   it("shows a single level one heading on the dashboard", async () => {
     fetchMock.mockResolvedValue(listResponse([STORY]));
 
-    render(<AuthenticatedHomePage />);
+    renderWithProviders(<AuthenticatedHomePage />);
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("لوحة التحكم");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);

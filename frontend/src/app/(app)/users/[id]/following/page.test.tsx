@@ -1,10 +1,13 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { api } from "@/lib/api";
+import { formatDate, intlLocale } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 
+import { renderWithProviders } from "@/test-utils/render";
 import UsersFollowingPage from "@/app/(app)/users/[id]/following/page";
 
 vi.mock("next/link", () => ({
@@ -45,25 +48,25 @@ describe("Users following page", () => {
   });
 
   it("renders the page title", async () => {
-    render(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
+    renderWithProviders(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
     expect(screen.getByRole("heading", { name: "المتابَعون" })).toBeInTheDocument();
   });
 
   it("loads following on mount", async () => {
-    render(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
+    renderWithProviders(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
     expect(mockedApi.getFollowing).toHaveBeenCalledWith("user-1", { page: 1, limit: 20 });
   });
 
   it("renders the following rows", async () => {
-    render(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
+    renderWithProviders(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
     expect(screen.getByText("متابع")).toBeInTheDocument();
-    const joined = new Date(mockFollowing.following[0].createdAt).toLocaleDateString("ar-EG");
+    const joined = formatDate(mockFollowing.following[0].createdAt, intlLocale(DEFAULT_LOCALE));
     expect(screen.getByText(joined)).toBeInTheDocument();
   });
 
   it("falls back to the empty state when the request fails", async () => {
     mockedApi.getFollowing.mockRejectedValueOnce(new Error("request failed"));
-    render(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
+    renderWithProviders(await UsersFollowingPage({ params: Promise.resolve({ id: "user-1" }) }));
     expect(screen.getByText("لا يوجد متابَعون بعد.")).toBeInTheDocument();
   });
 });

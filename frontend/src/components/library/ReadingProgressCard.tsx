@@ -5,6 +5,8 @@ import React from "react";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { ReadingProgress } from "@/types/api";
 
 /**
@@ -26,6 +28,8 @@ export function ReadingProgressCard({
   progress: ReadingProgress;
   action?: React.ReactNode;
 }) {
+  const { intl } = useLocale();
+
   return (
     <Card>
       <CardHeader>
@@ -49,14 +53,14 @@ export function ReadingProgressCard({
 
         {progress.lastReadAt && (
           <p className="mt-2 text-xs text-ink-muted">
-            آخر قراءة: {new Date(progress.lastReadAt).toLocaleDateString("ar-EG")}
+            آخر قراءة: {formatDate(progress.lastReadAt, intl)}
           </p>
         )}
 
         {progress.completedAt && (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-success-ink">
             <Icon name="check" size="sm" />
-            اكتملت القراءة: {new Date(progress.completedAt).toLocaleDateString("ar-EG")}
+            اكتملت القراءة: {formatDate(progress.completedAt, intl)}
           </p>
         )}
       </CardBody>

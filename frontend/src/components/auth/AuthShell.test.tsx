@@ -2,10 +2,11 @@
 
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { renderWithProviders } from "@/test-utils/render";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -14,7 +15,7 @@ vi.mock("next/link", () => ({
 
 describe("AuthShell", () => {
   it("renders the title as the single level one heading", () => {
-    render(
+    renderWithProviders(
       <AuthShell title="تسجيل الدخول">
         <button type="button">إرسال</button>
       </AuthShell>,
@@ -25,7 +26,7 @@ describe("AuthShell", () => {
   });
 
   it("renders the supporting line when one is given", () => {
-    render(
+    renderWithProviders(
       <AuthShell title="استعادة كلمة المرور" description="أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين">
         <p>المحتوى</p>
       </AuthShell>,
@@ -34,12 +35,12 @@ describe("AuthShell", () => {
   });
 
   it("omits the supporting line when none is given", () => {
-    const { container } = render(<AuthShell title="إعادة تعيين كلمة المرور">{null}</AuthShell>);
+    const { container } = renderWithProviders(<AuthShell title="إعادة تعيين كلمة المرور">{null}</AuthShell>);
     expect(container.querySelectorAll("p")).toHaveLength(0);
   });
 
   it("renders the footer line under the card", () => {
-    render(
+    renderWithProviders(
       <AuthShell title="تسجيل الدخول" footer={<a href="/register">إنشاء حساب جديد</a>}>
         <p>المحتوى</p>
       </AuthShell>,
@@ -49,23 +50,23 @@ describe("AuthShell", () => {
   });
 
   it("renders no footer line when none is given", () => {
-    render(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
+    renderWithProviders(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("renders the wordmark as the Arabic mark", () => {
-    const { container } = render(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
+    const { container } = renderWithProviders(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
     expect(container).toHaveTextContent("حكاوي");
     expect(container).toHaveTextContent("ح");
   });
 
   it("does not turn the wordmark into a link out of the authentication flow", () => {
-    render(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
+    renderWithProviders(<AuthShell title="تسجيل الدخول">{null}</AuthShell>);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("renders its children inside the card", () => {
-    render(
+    renderWithProviders(
       <AuthShell title="تسجيل الدخول">
         <button type="button">تسجيل الدخول</button>
       </AuthShell>,
@@ -74,8 +75,20 @@ describe("AuthShell", () => {
     expect(screen.getByRole("button", { name: "تسجيل الدخول" })).toBeInTheDocument();
   });
 
+  it("gives the skip link a main landmark to land on", () => {
+    renderWithProviders(
+      <AuthShell title="تسجيل الدخول">
+        <button type="button">إرسال</button>
+      </AuthShell>,
+    );
+
+    const main = screen.getByRole("main");
+    expect(main).toHaveAttribute("id", "main-content");
+    expect(main).toHaveAttribute("tabindex", "-1");
+  });
+
   it("centres the column on the canvas and raises the card", () => {
-    const { container } = render(<AuthShell title="تسجيل الدخول">المحتوى</AuthShell>);
+    const { container } = renderWithProviders(<AuthShell title="تسجيل الدخول">المحتوى</AuthShell>);
     const frame = container.firstElementChild;
     expect(frame?.className).toContain("bg-canvas");
     expect(frame?.className).toContain("items-center");

@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { AUTH_USER, SESSION_RESPONSE } from "@/test-utils/fixtures";
@@ -35,12 +36,12 @@ describe("auth callback page", () => {
 
   it("announces that the login is being completed while the session is fetched", () => {
     mockedApi.getSession.mockReturnValue(new Promise(() => undefined));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
     expect(screen.getByText("جاري إكمال تسجيل الدخول...")).toBeInTheDocument();
   });
 
   it("stores the session user and replaces the history with the authenticated home", async () => {
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith("/");
@@ -49,7 +50,7 @@ describe("auth callback page", () => {
   });
 
   it("never replaces the history with the removed dashboard route", async () => {
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalled();
@@ -59,19 +60,37 @@ describe("auth callback page", () => {
 
   it("renders the page title as a level one heading", () => {
     mockedApi.getSession.mockReturnValue(new Promise(() => undefined));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+
+  it("owns the main landmark the skip link targets, in both of its states", () => {
+    // The OAuth landing is neither `AppShell`'s frame nor an `AuthShell` page,
+    // so without a landmark here the root layout's skip link has a dead target
+    // on the one route that can sit in front of the reader indefinitely.
+    mockedApi.getSession.mockReturnValue(new Promise(() => undefined));
+    const pending = renderWithProviders(<AuthCallbackPage />);
+    const pendingMain = pending.container.querySelector("main#main-content");
+    expect(pendingMain, "the pending state must render main#main-content").not.toBeNull();
+    expect(pendingMain?.getAttribute("tabindex")).toBe("-1");
+    pending.unmount();
+
+    mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
+    const failed = renderWithProviders(<AuthCallbackPage />);
+    const failedMain = failed.container.querySelector("main#main-content");
+    expect(failedMain, "the failed state must render main#main-content").not.toBeNull();
+    expect(failedMain?.getAttribute("tabindex")).toBe("-1");
   });
 
   it("renders the failure of an expired session inside an alert region", async () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Invalid session");
   });
 
   it("requests the session exactly once per callback", async () => {
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalled();
     });
@@ -80,7 +99,7 @@ describe("auth callback page", () => {
 
   it("renders the failure of an expired session and stays put", async () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     expect(await screen.findByText("Invalid session")).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
@@ -89,7 +108,7 @@ describe("auth callback page", () => {
 
   it("renders the unauthorized failure raised by a missing session", async () => {
     mockedApi.getSession.mockRejectedValue(new Error("Unauthorized"));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
@@ -97,7 +116,7 @@ describe("auth callback page", () => {
 
   it("stops announcing the pending state once the callback failed", async () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
-    render(<AuthCallbackPage />);
+    renderWithProviders(<AuthCallbackPage />);
 
     await screen.findByText("Invalid session");
     expect(screen.queryByText("جاري إكمال تسجيل الدخول...")).not.toBeInTheDocument();

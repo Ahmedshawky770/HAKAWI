@@ -31,7 +31,7 @@ export function Header() {
   const { theme, toggleTheme } = useTheme();
   const { locale, toggleLocale, strings } = useLocale();
 
-  const nextThemeLabel = theme === "dark" ? strings.themeToLight : strings.themeToDark;
+  const nextThemeLabel = theme === "dark" ? strings.shell.themeToLight : strings.shell.themeToDark;
 
   return (
     <header className="sticky top-0 z-40 h-14 border-b border-line bg-canvas/85 backdrop-blur-md">
@@ -55,7 +55,7 @@ export function Header() {
           }}
         >
           <label htmlFor="header-search" className="sr-only">
-            {strings.searchLabel}
+            {strings.shell.searchLabel}
           </label>
           <Icon
             name="search"
@@ -66,19 +66,19 @@ export function Header() {
             id="header-search"
             name="q"
             type="search"
-            placeholder={strings.searchPlaceholder}
+            placeholder={strings.shell.searchPlaceholder}
             className="h-10 w-full rounded-lg border border-line bg-surface-raised ps-9 pe-3 text-sm text-ink placeholder:text-ink-faint transition-colors duration-200 hover:border-line-strong focus:border-chrome"
           />
         </form>
 
         <div className="ms-auto flex items-center gap-1">
           <IconButton
-            label={`${strings.themeLabel}: ${nextThemeLabel}`}
+            label={`${strings.shell.themeLabel}: ${nextThemeLabel}`}
             name={theme === "dark" ? "sun" : "moon"}
             onClick={toggleTheme}
           />
           <IconButton
-            label={`${strings.languageLabel}: ${locale === "ar" ? "English" : "العربية"}`}
+            label={`${strings.shell.languageLabel}: ${locale === "ar" ? strings.shell.languageEnglish : strings.shell.languageArabic}`}
             name="globe"
             onClick={toggleLocale}
           />
@@ -86,7 +86,7 @@ export function Header() {
             href="/profile"
             className="ms-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors duration-200 hover:bg-surface-raised hover:text-ink"
           >
-            {strings.navProfile}
+            {strings.shell.navProfile}
           </Link>
         </div>
       </div>

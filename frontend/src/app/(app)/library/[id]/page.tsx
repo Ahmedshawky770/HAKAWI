@@ -8,6 +8,7 @@ import { formatBookPrice } from "@/components/books/BookCard";
 import { LibraryStatusBadge } from "@/components/library/LibraryStatusBadge";
 import { ReadingProgressCard } from "@/components/library/ReadingProgressCard";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useLocale } from "@/components/providers/LocaleProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -15,6 +16,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Icon } from "@/components/ui/Icon";
 import { Loading } from "@/components/ui/Loading";
 import { RemoteImage } from "@/components/ui/RemoteImage";
+import { formatDate } from "@/lib/i18n";
 import type { Book, LibraryItem, ReadingProgress } from "@/types/api";
 
 /**
@@ -34,6 +36,7 @@ export default function LibraryItemPage() {
   const router = useRouter();
   const id = typeof params.id === "string" ? params.id : "";
   const { notify } = useToast();
+  const { intl } = useLocale();
 
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [book, setBook] = useState<Book | null>(null);
@@ -180,7 +183,7 @@ export default function LibraryItemPage() {
               {item.lastAccessedAt && (
                 <p className="flex items-center gap-2 text-sm text-ink-muted">
                   <Icon name="clock" size="sm" />
-                  آخر قراءة: {new Date(item.lastAccessedAt).toLocaleDateString("ar-EG")}
+                  آخر قراءة: {formatDate(item.lastAccessedAt, intl)}
                 </p>
               )}
 

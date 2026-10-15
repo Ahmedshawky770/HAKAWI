@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ListRowSkeleton } from "@/components/ui/Skeleton";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDateTime } from "@/lib/i18n";
 import type { Notification } from "@/types/api";
 
 /**
@@ -21,11 +23,12 @@ import type { Notification } from "@/types/api";
  * The border is `border-s-*`, the logical edge. A `border-l-*` would put the
  * marker on the wrong side the moment the locale flips to English.
  *
- * The timestamp is formatted with the runtime locale rather than `useLocale()`
- * on purpose: the notifications page is rendered by its test under a bare
- * provider stack, and the shell's locale context is not part of that stack.
- * Reading `document.documentElement.lang` here instead would duplicate
- * `LocaleProvider`'s resolution, which is the thing the design system forbids.
+ * The timestamp is `formatDateTime(..., intl)` from `lib/i18n`, like every other
+ * date in the product: the runtime's default locale differs between Node and the
+ * browser, so a bare `toLocaleString()` hydrates one shape and renders another.
+ * The earlier version of this comment claimed the row could not read the locale
+ * context because the page's test rendered it under a bare stack; that test now
+ * uses `renderWithProviders`, so the constraint it described no longer exists.
  */
 export function NotificationRow({
   notification,
@@ -36,6 +39,7 @@ export function NotificationRow({
   onMarkAsRead: (id: string) => void;
   isPending?: boolean;
 }) {
+  const { intl } = useLocale();
   const unread = !notification.isRead;
 
   return (
@@ -52,7 +56,7 @@ export function NotificationRow({
           </div>
           <p className="mt-1 text-sm leading-7 text-ink-muted">{notification.message}</p>
           <p className="hk-numeric mt-2 text-xs text-ink-faint">
-            {new Date(notification.createdAt).toLocaleString()}
+            {formatDateTime(notification.createdAt, intl)}
           </p>
         </div>
 

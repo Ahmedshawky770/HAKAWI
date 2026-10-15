@@ -1,9 +1,13 @@
+"use client";
+
 import React from "react";
+
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 interface LoadingProps {
   size?: "sm" | "md" | "lg";
   text?: string;
-  /** Fill the viewport. Used by the auth guard, which owns the whole screen. */
+  /** Fill the viewport. Used by the authenticated layout's guard, which owns the whole screen. */
   fullScreen?: boolean;
   className?: string;
 }
@@ -20,10 +24,13 @@ const SIZES = {
  * `aria-live="polite"` plus visible text means a screen reader says "Loading…"
  * without interrupting, and a reader who cannot see the spinner still knows
  * something is happening. When there is no `text`, the region is labelled from
- * an Arabic default rather than left empty — an unlabelled status region is
- * announced as nothing.
+ * the product's localized default rather than left empty — an unlabelled status
+ * region is announced as nothing.
  */
-export function Loading({ size = "md", text = "جارٍ التحميل…", fullScreen = false, className = "" }: LoadingProps) {
+export function Loading({ size = "md", text, fullScreen = false, className = "" }: LoadingProps) {
+  const { common } = useStrings();
+  const label = text ?? common.loading;
+
   return (
     <div
       role="status"
@@ -43,7 +50,7 @@ export function Loading({ size = "md", text = "جارٍ التحميل…", full
           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
         />
       </svg>
-      {text && <p className="text-sm text-ink-muted">{text}</p>}
+      {label && <p className="text-sm text-ink-muted">{label}</p>}
     </div>
   );
 }

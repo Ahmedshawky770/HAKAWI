@@ -1,11 +1,15 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 
 import { api } from "@/lib/api";
-import { AUTH_GUARD_RETRY_LABEL } from "@/lib/auth-guard";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
+import { stringsFor } from "@/lib/i18n";
 import { LOGIN_ROUTE } from "@/lib/routes";
 import { SESSION_RESPONSE } from "@/test-utils/fixtures";
+import { renderWithProviders } from "@/test-utils/render";
+
+const RETRY_LABEL = stringsFor(DEFAULT_LOCALE).auth.authGuardRetry;
 
 import AppLayout from "./layout";
 
@@ -46,7 +50,7 @@ describe("(app) layout auth guard", () => {
   it("renders the chrome only once the session probe succeeds", async () => {
     vi.spyOn(api, "getSession").mockResolvedValue(SESSION);
 
-    render(
+    renderWithProviders(
       <AppLayout params={Promise.resolve({})}>
         <p>محتوى محمي</p>
       </AppLayout>,
@@ -65,7 +69,7 @@ describe("(app) layout auth guard", () => {
       }),
     );
 
-    render(
+    renderWithProviders(
       <AppLayout params={Promise.resolve({})}>
         <p>محتوى محمي</p>
       </AppLayout>,
@@ -84,7 +88,7 @@ describe("(app) layout auth guard", () => {
   it("never renders protected content for a signed-out visitor", async () => {
     vi.spyOn(api, "getSession").mockRejectedValue(new Error("Unauthorized"));
 
-    render(
+    renderWithProviders(
       <AppLayout params={Promise.resolve({})}>
         <p>محتوى محمي</p>
       </AppLayout>,
@@ -101,7 +105,7 @@ describe("(app) layout auth guard", () => {
       .mockRejectedValueOnce(new Error("Network request failed"))
       .mockResolvedValueOnce(SESSION);
 
-    render(
+    renderWithProviders(
       <AppLayout params={Promise.resolve({})}>
         <p>محتوى محمي</p>
       </AppLayout>,
@@ -111,7 +115,7 @@ describe("(app) layout auth guard", () => {
     expect(screen.queryByText("محتوى محمي")).toBeNull();
 
     await act(async () => {
-      screen.getByRole("button", { name: AUTH_GUARD_RETRY_LABEL }).click();
+      screen.getByRole("button", { name: RETRY_LABEL }).click();
     });
 
     await waitFor(() => expect(screen.getByText("محتوى محمي")).toBeInTheDocument());
@@ -121,7 +125,7 @@ describe("(app) layout auth guard", () => {
   it("gives the main content region a skip-link target", async () => {
     vi.spyOn(api, "getSession").mockResolvedValue(SESSION);
 
-    render(
+    renderWithProviders(
       <AppLayout params={Promise.resolve({})}>
         <p>محتوى محمي</p>
       </AppLayout>,
@@ -131,5 +135,39 @@ describe("(app) layout auth guard", () => {
     // appears behind a verified session, which the cases above already assert.
     await screen.findByText("محتوى محمي");
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+  });
+
+  it("keeps the skip-link target alive while the session is unknown", () => {
+    // The probe branch IS the whole page — the shell has not rendered — so it
+    // carries the landmark the root layout's skip link points at.
+    vi.spyOn(api, "getSession").mockReturnValue(new Promise(() => undefined));
+
+    const rendering = renderWithProviders(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+    );
+
+    const main = rendering.container.querySelector("main#main-content");
+    expect(main, "the guard's loading branch must own the skip-link target").not.toBeNull();
+    expect(main?.getAttribute("tabindex")).toBe("-1");
+    expect(rendering.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("keeps the landmark on the retry surface rather than only while loading", async () => {
+    vi.spyOn(api, "getSession").mockRejectedValueOnce(new Error("Network request failed"));
+
+    const rendering = renderWithProviders(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+    );
+
+    // The reader can sit on this surface indefinitely — the retry is live — so
+    // it is the surface that most needs the landmark.
+    await waitFor(() => expect(rendering.getByRole("alert")).toBeInTheDocument());
+    const main = rendering.container.querySelector("main#main-content");
+    expect(main, "the guard's error branch must own the skip-link target").not.toBeNull();
+    expect(main?.getAttribute("tabindex")).toBe("-1");
   });
 });

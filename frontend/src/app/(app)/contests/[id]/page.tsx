@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/Icon";
 import { ContestStatusBadge } from "@/components/social/ContestStatusBadge";
 import { useLocale } from "@/components/providers/LocaleProvider";
 import { useToast } from "@/components/providers/ToastProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Contest } from "@/types/api";
 
 export default function ContestDetailPage() {
@@ -182,16 +183,16 @@ export default function ContestDetailPage() {
     return <ErrorMessage error="المسابقة غير موجودة" title="لا توجد مسابقة بهذا المعرّف" />;
   }
 
-  const formatDate = (value: string): string => new Date(value).toLocaleDateString(intl);
-
+  // No local `formatDate` here on purpose: every date in the product goes
+  // through `lib/i18n`'s pair, so the digit system is decided in one place.
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: "التصنيف", value: contest.categoryId ?? "—" },
     { label: "الحالة", value: <ContestStatusBadge status={contest.status} /> },
-    { label: "تاريخ البداية", value: <span className="hk-numeric">{formatDate(contest.startDate)}</span> },
-    { label: "تاريخ النهاية", value: <span className="hk-numeric">{formatDate(contest.endDate)}</span> },
+    { label: "تاريخ البداية", value: <span className="hk-numeric">{formatDate(contest.startDate, intl)}</span> },
+    { label: "تاريخ النهاية", value: <span className="hk-numeric">{formatDate(contest.endDate, intl)}</span> },
     {
       label: "آخر موعد للمشاركة",
-      value: <span className="hk-numeric">{formatDate(contest.submissionDeadline)}</span>,
+      value: <span className="hk-numeric">{formatDate(contest.submissionDeadline, intl)}</span>,
     },
     { label: "الفائز", value: contest.winnerId ?? "—" },
   ];

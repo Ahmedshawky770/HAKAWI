@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 import userEvent from "@testing-library/user-event";
 
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
@@ -68,7 +69,7 @@ describe("reset password page", () => {
   });
 
   it("renders the reset heading and both password fields", () => {
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
     expect(screen.getByRole("heading", { name: "إعادة تعيين كلمة المرور" })).toBeInTheDocument();
     expect(screen.getByLabelText("كلمة المرور الجديدة")).toBeRequired();
     expect(screen.getByLabelText("تأكيد كلمة المرور الجديدة")).toBeRequired();
@@ -76,7 +77,7 @@ describe("reset password page", () => {
 
   it("rejects a mismatched confirmation without calling the API", async () => {
     const user = userEvent.setup();
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user, "AnotherPass123!");
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -88,7 +89,7 @@ describe("reset password page", () => {
   it("rejects a link without a token", async () => {
     const user = userEvent.setup();
     setResetToken("");
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -99,7 +100,7 @@ describe("reset password page", () => {
 
   it("posts the token and the new password through the message only schema", async () => {
     const user = userEvent.setup();
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -118,7 +119,7 @@ describe("reset password page", () => {
 
   it("confirms the reset and hides the form", async () => {
     const user = userEvent.setup();
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -129,7 +130,7 @@ describe("reset password page", () => {
 
   it("redirects to the login page after a successful reset", async () => {
     const user = userEvent.setup();
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -145,7 +146,7 @@ describe("reset password page", () => {
   it("renders the server failure of a rejected token", async () => {
     const user = userEvent.setup();
     mockedApi.request.mockRejectedValue(new Error("Invalid or expired reset token"));
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -157,7 +158,7 @@ describe("reset password page", () => {
   it("renders a schema rejection of a malformed server response", async () => {
     const user = userEvent.setup();
     mockedApi.request.mockRejectedValue(new Error("Invalid server response: message"));
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
@@ -168,7 +169,7 @@ describe("reset password page", () => {
   it("keeps the recovery form after a failure so the request can be retried", async () => {
     const user = userEvent.setup();
     mockedApi.request.mockRejectedValue(new Error("Invalid or expired reset token"));
-    render(<ResetPasswordPage />);
+    renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));

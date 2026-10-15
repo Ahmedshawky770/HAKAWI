@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { copy } from "./copy";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -16,14 +17,14 @@ async function scan(page: Page): Promise<{ id: string; impact: string | null; no
 test.describe("Accessibility of the authentication pages", () => {
   test("the login page has no detectable WCAG A and AA violations", async ({ page }) => {
     await page.goto("/login");
-    await page.getByRole("heading", { name: "تسجيل الدخول" }).waitFor();
+    await page.getByRole("heading", { name: copy.auth.loginTitle }).waitFor();
 
     expect(await scan(page)).toEqual([]);
   });
 
   test("the register page has no detectable WCAG A and AA violations", async ({ page }) => {
     await page.goto("/register");
-    await page.getByRole("heading", { name: "إنشاء حساب جديد" }).waitFor();
+    await page.getByRole("heading", { name: copy.auth.registerTitle }).waitFor();
 
     expect(await scan(page)).toEqual([]);
   });
@@ -33,18 +34,18 @@ test.describe("Accessibility of the authentication pages", () => {
 
     // `exact` is required because "كلمة المرور" is a substring of "تأكيد كلمة المرور";
     // the default substring match resolves to both inputs and trips a strict-mode violation.
-    const email = page.getByLabel("البريد الإلكتروني", { exact: true });
-    const password = page.getByLabel("كلمة المرور", { exact: true });
+    const email = page.getByLabel(copy.auth.emailLabel, { exact: true });
+    const password = page.getByLabel(copy.auth.passwordLabel, { exact: true });
 
     await expect(email).toBeVisible();
     await expect(password).toBeVisible();
-    await expect(page.getByRole("button", { name: "تسجيل الدخول" })).toBeVisible();
+    await expect(page.getByRole("button", { name: copy.auth.loginButton })).toBeVisible();
   });
 
   test("the register page labels all five fields of the form", async ({ page }) => {
     await page.goto("/register");
 
-    const labels = ["الاسم الكامل", "اسم المستخدم", "البريد الإلكتروني", "كلمة المرور", "تأكيد كلمة المرور"];
+    const labels = [copy.auth.nameLabel, copy.auth.usernameLabel, copy.auth.emailLabel, copy.auth.passwordLabel, copy.auth.confirmPasswordLabel];
 
     for (const label of labels) {
       await expect(page.getByLabel(label, { exact: true })).toBeVisible();

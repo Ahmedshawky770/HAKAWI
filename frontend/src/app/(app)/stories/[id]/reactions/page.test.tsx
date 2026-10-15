@@ -2,10 +2,11 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { api } from "@/lib/api";
 
+import { renderWithProviders } from "@/test-utils/render";
 import StoryReactionsPage from "@/app/(app)/stories/[id]/reactions/page";
 
 vi.mock("next/link", () => ({
@@ -50,17 +51,17 @@ describe("Story reactions page", () => {
   });
 
   it("renders the story reactions heading", async () => {
-    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    renderWithProviders(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
     expect(screen.getByRole("heading", { name: "التفاعلات" })).toBeInTheDocument();
   });
 
   it("loads reactions on mount", async () => {
-    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    renderWithProviders(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
     expect(mockedApi.getReactions).toHaveBeenCalledWith("story-1", { page: 1, limit: 20 });
   });
 
   it("renders the back link to the story", async () => {
-    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    renderWithProviders(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
     expect(screen.getByRole("link", { name: "العودة للقصة" })).toHaveAttribute(
       "href",
       "/stories/story-1",
@@ -68,7 +69,7 @@ describe("Story reactions page", () => {
   });
 
   it("displays the reaction type labels", async () => {
-    render(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
+    renderWithProviders(await StoryReactionsPage({ params: Promise.resolve({ id: "story-1" }) }));
     expect(screen.getByText("أحببتها")).toBeInTheDocument();
     expect(screen.getByText("أعجبني")).toBeInTheDocument();
   });

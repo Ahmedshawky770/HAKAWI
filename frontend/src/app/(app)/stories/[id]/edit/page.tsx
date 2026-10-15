@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
@@ -10,7 +10,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { STORY_CATEGORIES } from "@/components/story/StoryCategoryOptions";
+import { storyCategories } from "@/components/story/StoryCategoryOptions";
+import { useLocale } from "@/components/providers/LocaleProvider";
 import type { Story } from "@/types/api";
 
 const TITLE_LIMIT = 120;
@@ -37,6 +38,7 @@ const TITLE_LIMIT = 120;
 export default function EditStoryPage() {
   const params = useParams();
   const router = useRouter();
+  const { locale, strings } = useLocale();
   const id = typeof params.id === "string" ? params.id : "";
 
   const [story, setStory] = useState<Story | null>(null);
@@ -49,6 +51,19 @@ export default function EditStoryPage() {
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
 
+  // The load is keyed on the story id alone: `strings` changes object identity
+  // when the locale flips, so a `load` that depended on the copy would re-run on
+  // a language toggle and refetch the story — discarding whatever the writer had
+  // typed since. The fallback message is read through a ref kept in step by the
+  // effect below instead, the same pattern `auth/callback/page.tsx` uses for its
+  // one-shot completion effect.
+  const editLoadFailed = strings.story.storyEditLoadFailed;
+  const editLoadFailedRef = useRef(editLoadFailed);
+
+  useEffect(() => {
+    editLoadFailedRef.current = editLoadFailed;
+  }, [editLoadFailed]);
+
   const load = useCallback(() => {
     api
       .getStory(id)
@@ -60,7 +75,7 @@ export default function EditStoryPage() {
           setCategory(data.category ?? "");
           setTags((data.tags || []).join(", "));
         },
-        (failure) => setLoadError(failure instanceof Error ? failure.message : "فشل تحميل القصة"),
+        (failure) => setLoadError(failure instanceof Error ? failure.message : editLoadFailedRef.current),
       )
       .finally(() => setLoading(false));
   }, [id]);
@@ -93,26 +108,30 @@ export default function EditStoryPage() {
       });
       router.push(`/stories/${id}`);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "فشل تحديث القصة");
+      setFormError(err instanceof Error ? err.message : strings.story.storyEditUpdateFailed);
     } finally {
       setSaving(false);
     }
   };
 
   const remaining = TITLE_LIMIT - title.trim().length;
+  const categories = storyCategories(locale);
   const options =
-    category && !STORY_CATEGORIES.some((option) => option.value === category)
-      ? [...STORY_CATEGORIES, { value: category, label: category }]
-      : STORY_CATEGORIES;
+    category && !categories.some((option) => option.value === category)
+      ? [...categories, { value: category, label: category }]
+      : categories;
 
   return (
     <div>
-      <PageHeader title="تعديل القصة" description="عدّل ما كتبته، وستبقى التعديلات على القصة نفسها." />
+      <PageHeader
+        title={strings.story.editPageTitle}
+        description={strings.story.editPageDescription}
+      />
 
       {loading ? (
         <div aria-busy="true">
           <span role="status" className="sr-only">
-            جارٍ التحميل…
+            {strings.common.loading}
           </span>
           <Card className="p-6">
             {/* Mirrors the form's own field order and heights — title, body, then
@@ -138,18 +157,17 @@ export default function EditStoryPage() {
       ) : loadError ? (
         <ErrorMessage
           error={loadError}
-          title="تعذّر فتح القصة للتعديل"
+          title={strings.story.storyEditOpenFailed}
           onRetry={retry}
-          retryLabel="أعد المحاولة"
         />
       ) : !story ? (
         <EmptyState
           icon="book"
-          title="القصة غير موجودة"
-          description="ربما حُذفت أو تغيّر رابطها."
+          title={strings.story.storyNotFound}
+          description={strings.story.storyNotFoundDescription}
           action={
             <ButtonLink href="/stories" variant="secondary">
-              العودة للقصص
+              {strings.story.backToStories}
             </ButtonLink>
           }
         />
@@ -157,48 +175,50 @@ export default function EditStoryPage() {
         <Card>
           <CardBody>
             <form onSubmit={handleSubmit} className="space-y-5">
-              {formError && <ErrorMessage error={formError} title="تعذّر حفظ التعديلات" />}
+              {formError && <ErrorMessage error={formError} title={strings.story.storyEditSaveFailed} />}
 
               <Input
-                label="العنوان"
+                label={strings.story.titleLabel}
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 hint={
-                  remaining <= 0 ? "وصلت الحد الأقصى لطول العنوان" : `${remaining} حرفاً متبقياً`
+                  remaining <= 0
+                    ? strings.story.titleLimitReached
+                    : strings.story.titleRemaining(remaining)
                 }
               />
 
               <Textarea
-                label="المحتوى"
+                label={strings.story.contentLabel}
                 rows={10}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                hint="اترك الحقل فارغاً إن كنت تريد حذف نص القصة."
+                hint={strings.story.contentEditHint}
               />
 
               <Select
-                label="التصنيف"
+                label={strings.story.storiesCategoryLabel}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 options={options}
               />
 
               <Input
-                label="الوسوم (مفصولة بفاصلة)"
+                label={strings.story.tagsLabel}
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                hint="افصل بين الوسوم بفاصلة"
+                hint={strings.story.tagsHint}
               />
 
               <div className="flex flex-wrap gap-3">
                 <Button type="submit" loading={saving}>
-                  حفظ التغييرات
+                  {strings.story.editSubmitButton}
                 </Button>
                 <ButtonLink href={`/stories/${id}`} variant="ghost">
-                  إلغاء
+                  {strings.story.cancelButton}
                 </ButtonLink>
               </div>
             </form>

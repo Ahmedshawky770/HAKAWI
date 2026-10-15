@@ -7,6 +7,8 @@ import { screen, waitFor } from "@testing-library/react";
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { jsonResponse } from "@/test-utils/support";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
+import { stringsFor } from "@/lib/i18n";
 import { AppShell } from "@/components/layout/AppShell";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
@@ -110,6 +112,17 @@ describe("Header", () => {
     await user.click(screen.getByRole("button", { name: /تبديل اللغة/ }));
 
     await waitFor(() => expect(document.documentElement.getAttribute("lang")).toBe("en"));
+
+    // The attribute alone would stay green if every label kept rendering in
+    // Arabic, which is exactly the failure the i18n work exists to prevent —
+    // so the chrome is asserted in English, from the dictionary rather than
+    // from literals. The theme toggle names the theme it switches TO inside a
+    // label that starts with the action, so it is matched by its prefix.
+    const en = stringsFor("en").shell;
+    expect(screen.getByRole("button", { name: new RegExp(`^${en.themeLabel}: `) })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(en.searchPlaceholder)).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: en.searchLabel })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: en.navProfile })).toBeInTheDocument();
   });
 
   it("labels the theme toggle with the theme it switches to", () => {
@@ -183,7 +196,9 @@ describe("TrendingRail", () => {
 
   it("says so when there is nothing to rank", async () => {
     renderWithProviders(<TrendingRail />);
-    expect(await screen.findByText("لا توجد قصص بعد.")).toBeInTheDocument();
+    // Read from the dictionary: the sentence's trailing period is part of the
+    // copy the table owns, and a drifting literal here is how it gets lost.
+    expect(await screen.findByText(stringsFor(DEFAULT_LOCALE).shell.noStories)).toBeInTheDocument();
   });
 
   it("offers the writing action above the ranking", () => {

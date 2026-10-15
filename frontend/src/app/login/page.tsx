@@ -9,9 +9,11 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const strings = useStrings();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,7 +30,7 @@ export default function LoginPage() {
       setStoredUser(session.user);
       router.push(AUTHENTICATED_HOME_ROUTE);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل تسجيل الدخول");
+      setError(err instanceof Error ? err.message : strings.auth.loginError);
     } finally {
       setLoading(false);
     }
@@ -36,12 +38,12 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="تسجيل الدخول"
+      title={strings.auth.loginTitle}
       footer={
         <>
-          ليس لديك حساب؟{" "}
+          {strings.auth.loginFooter}{" "}
           <Link href="/register" className="font-medium text-chrome-ink hover:text-chrome-hover">
-            إنشاء حساب جديد
+            {strings.auth.loginCreateAccountLink}
           </Link>
         </>
       }
@@ -50,32 +52,32 @@ export default function LoginPage() {
         {error && <ErrorMessage error={error} />}
 
         <Input
-          label="البريد الإلكتروني"
+          label={strings.auth.emailLabel}
           type="email"
           required
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="example@mail.com"
+          placeholder={strings.auth.emailPlaceholder}
         />
         <Input
-          label="كلمة المرور"
+          label={strings.auth.passwordLabel}
           type="password"
           required
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
+          placeholder={strings.auth.passwordPlaceholder}
         />
 
         <div className="flex justify-end">
           <Link href="/forgot-password" className="text-sm font-medium text-chrome-ink hover:text-chrome-hover">
-            نسيت كلمة المرور؟
+            {strings.auth.loginForgotPasswordLink}
           </Link>
         </div>
 
         <Button type="submit" loading={loading} block>
-          تسجيل الدخول
+          {strings.auth.loginButton}
         </Button>
       </form>
     </AuthShell>

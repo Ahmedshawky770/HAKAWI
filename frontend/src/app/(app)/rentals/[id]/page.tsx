@@ -8,6 +8,7 @@ import { ReadingProgressCard } from "@/components/library/ReadingProgressCard";
 import { EXTENSION_DURATION_OPTIONS } from "@/components/rental/RentalRow";
 import { RentalStatusBadge } from "@/components/rental/RentalStatusBadge";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useLocale } from "@/components/providers/LocaleProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,6 +17,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Input";
 import { Loading } from "@/components/ui/Loading";
 import { RemoteImage } from "@/components/ui/RemoteImage";
+import { formatDate } from "@/lib/i18n";
 import type { Book, ReadingProgress, Rental } from "@/types/api";
 
 /**
@@ -30,6 +32,7 @@ export default function RentalDetailPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
   const { notify } = useToast();
+  const { intl } = useLocale();
 
   const [rental, setRental] = useState<Rental | null>(null);
   const [book, setBook] = useState<Book | null>(null);
@@ -176,13 +179,13 @@ export default function RentalDetailPage() {
                   <Icon name="calendar" size="sm" />
                   <dt className="sr-only">تاريخ البدء</dt>
                   <span>تاريخ البدء:</span>
-                  <dd className="hk-numeric">{new Date(rental.startDate).toLocaleDateString("ar-EG")}</dd>
+                  <dd className="hk-numeric">{formatDate(rental.startDate, intl)}</dd>
                 </div>
                 <div className="flex items-center gap-2">
                   <Icon name="clock" size="sm" />
                   <dt className="sr-only">تاريخ الانتهاء</dt>
                   <span>تاريخ الانتهاء:</span>
-                  <dd className="hk-numeric">{new Date(rental.endDate).toLocaleDateString("ar-EG")}</dd>
+                  <dd className="hk-numeric">{formatDate(rental.endDate, intl)}</dd>
                 </div>
                 <div className="flex items-center gap-2">
                   <Icon name="plus" size="sm" />
@@ -197,7 +200,7 @@ export default function RentalDetailPage() {
                     <Icon name="check" size="sm" />
                     <dt className="sr-only">تاريخ الإرجاع</dt>
                     <span>تاريخ الإرجاع:</span>
-                    <dd className="hk-numeric">{new Date(rental.returnedAt).toLocaleDateString("ar-EG")}</dd>
+                    <dd className="hk-numeric">{formatDate(rental.returnedAt, intl)}</dd>
                   </div>
                 )}
               </dl>

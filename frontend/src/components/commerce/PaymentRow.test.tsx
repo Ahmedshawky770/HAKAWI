@@ -12,6 +12,8 @@ import {
   PaymentRow,
   PaymentRowSkeleton,
 } from "@/components/commerce/PaymentRow";
+import { formatDate, intlLocale } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 import { PAYMENT } from "@/test-utils/fixtures";
 import type { Payment } from "@/types/api";
 
@@ -39,7 +41,7 @@ describe("PaymentRow", () => {
 
     expect(screen.getByText(PAYMENT.id)).toHaveClass("hk-numeric");
     expect(screen.getByText(`${PAYMENT.amount} ${PAYMENT.currency}`)).toHaveClass("hk-numeric");
-    expect(container.textContent).toContain(new Date(PAYMENT.createdAt).toLocaleDateString("ar-EG"));
+    expect(container.textContent).toContain(formatDate(PAYMENT.createdAt, intlLocale(DEFAULT_LOCALE)));
   });
 
   it("labels the status in Arabic with the resolved tone", () => {

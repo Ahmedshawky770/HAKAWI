@@ -4,6 +4,7 @@ import React from "react";
 
 import { Button } from "./Button";
 import { Icon } from "./Icon";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 interface ErrorMessageProps {
   error: string | Error | null;
@@ -18,17 +19,20 @@ interface ErrorMessageProps {
  * The failure surface. Semantic error tokens, never a raw red.
  *
  * `role="alert"` on the banner and `aria-live` are what make this announced the
- * moment it appears rather than the moment the reader happens to look. The
- * retry control is a real `Button`, so it gets the product's focus ring and
- * 44px touch target instead of a bespoke one.
+ * moment it appears rather than the moment the reader happens to look. The retry
+ * control is a real `Button`, so it gets the product's focus ring and 44px touch
+ * target instead of a bespoke one.
  */
 export function ErrorMessage({
   error,
   onRetry,
-  title = "حدث خطأ",
-  retryLabel = "أعد المحاولة",
+  title,
+  retryLabel,
   className = "",
 }: ErrorMessageProps) {
+  const { common } = useStrings();
+  const resolvedTitle = title ?? common.errorTitle;
+  const resolvedRetryLabel = retryLabel ?? common.retry;
   const message = error instanceof Error ? error.message : error;
 
   if (!message) return null;
@@ -40,12 +44,12 @@ export function ErrorMessage({
     >
       <Icon name="warning" className="mt-0.5 shrink-0 text-error-ink" />
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold text-error-ink">{title}</h3>
+        <h3 className="text-sm font-semibold text-error-ink">{resolvedTitle}</h3>
         <p className="mt-1 break-words text-sm text-ink">{message}</p>
         {onRetry && (
           <div className="mt-3">
             <Button size="sm" variant="secondary" onClick={onRetry}>
-              {retryLabel}
+              {resolvedRetryLabel}
             </Button>
           </div>
         )}
@@ -59,7 +63,7 @@ export function ErrorMessage({
  * "the reset link is on its way", "the entry was submitted".
  */
 export function SuccessMessage({
-  title = "تم",
+  title,
   children,
   className = "",
 }: {
@@ -67,6 +71,9 @@ export function SuccessMessage({
   children: React.ReactNode;
   className?: string;
 }) {
+  const { common } = useStrings();
+  const resolvedTitle = title ?? common.success;
+
   return (
     <div
       role="status"
@@ -74,7 +81,7 @@ export function SuccessMessage({
     >
       <Icon name="check" className="mt-0.5 shrink-0 text-success-ink" />
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold text-success-ink">{title}</h3>
+        <h3 className="text-sm font-semibold text-success-ink">{resolvedTitle}</h3>
         <div className="mt-1 text-sm text-ink">{children}</div>
       </div>
     </div>

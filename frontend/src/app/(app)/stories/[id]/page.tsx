@@ -68,7 +68,7 @@ export default function StoryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { notify } = useToast();
-  const { intl } = useLocale();
+  const { intl, strings } = useLocale();
   const id = typeof params.id === "string" ? params.id : "";
 
   const [story, setStory] = useState<Story | null>(null);
@@ -92,6 +92,17 @@ export default function StoryDetailPage() {
    * sanitized HTML is a pure function of that string, and the page never mutates a story in place.
    */
   const sanitizedContent = useMemo(() => sanitizeHtml(content), [content]);
+
+  /**
+   * The count readouts, resolved once per story rather than once per render.
+   *
+   * Each is a `CountReadout` — digits and noun kept apart — because `.hk-numeric`
+   * is an LTR isolate and wrapping the whole Arabic phrase in it reorders the
+   * words around it. The digits go inside the span; the noun stays in the
+   * sentence. See `lib/i18n/common.ts` for the rule.
+   */
+  const viewsReadout = story ? strings.story.views(story.views) : null;
+  const reactionsReadout = story ? strings.story.reactions(story.reactions) : null;
 
   const load = useCallback(() => {
     api
@@ -121,10 +132,10 @@ export default function StoryDetailPage() {
     setDeleting(true);
     try {
       await api.deleteStory(story.id);
-      notify("تم حذف القصة", "success");
+      notify(strings.story.storyDeleteSucceeded, "success");
       router.push("/stories");
     } catch (err) {
-      notify(err instanceof Error ? err.message : "تعذّر حذف القصة", "error");
+      notify(err instanceof Error ? err.message : strings.story.storyDeleteFailed, "error");
       setDeleteArmed(false);
       setDeleting(false);
     }
@@ -143,7 +154,7 @@ export default function StoryDetailPage() {
       {loading ? (
         <div aria-busy="true">
           <span role="status" className="sr-only">
-            جارٍ التحميل…
+            {strings.common.loading}
           </span>
           <Card className="p-6 sm:p-8">
             <Skeleton className="mb-4 h-6 w-24" rounded="rounded-full" />
@@ -165,9 +176,8 @@ export default function StoryDetailPage() {
       ) : error ? (
         <ErrorMessage
           error={error}
-          title="تعذّر فتح القصة"
+          title={strings.story.storyOpenFailed}
           onRetry={retry}
-          retryLabel="أعد المحاولة"
         />
       ) : !story ? (
         <EmptyState
@@ -196,14 +206,18 @@ export default function StoryDetailPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-4 text-sm text-ink-muted">
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name="eye" size="sm" />
-                  <span className="hk-numeric">{story.views.toLocaleString()}</span> مشاهدة
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name="heart" size="sm" className="text-accent-ink" />
-                  <span className="hk-numeric">{story.reactions}</span> تفاعل
-                </span>
+                {viewsReadout && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name="eye" size="sm" />
+                    <span className="hk-numeric">{viewsReadout.count}</span> {viewsReadout.label}
+                  </span>
+                )}
+                {reactionsReadout && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name="heart" size="sm" className="text-accent-ink" />
+                    <span className="hk-numeric">{reactionsReadout.count}</span> {reactionsReadout.label}
+                  </span>
+                )}
               </div>
             </div>
           </header>

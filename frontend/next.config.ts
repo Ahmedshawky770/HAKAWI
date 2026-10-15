@@ -50,9 +50,48 @@ import type { NextConfig } from "next";
  * names three hosts is a weakened one, and the honest way to get back to `'self'` is to remove
  * the reason it is needed, not to hope.
  */
+// The flag is read from `process.env` when this config module is evaluated —
+// Next transpiles `next.config.ts` with a plain transform and `require`s it
+// (see `next/dist/server/config.js` → `transpile-config.js`), so the value is
+// resolved at config-load time, not compile time, and the header is serialized
+// into `.next/routes-manifest.json` at build time.
+//
+// WHAT NEXT ACTUALLY GUARANTEES, STATED PRECISELY. `next/dist/bin/next` sets
+// `NODE_ENV` as a DEFAULT when it is unset — `process.env.NODE_ENV = process.env.NODE_ENV || (commandName === 'dev' ? 'development' : 'production')` — and only *warns* when an already-set value disagrees. It does not force it. So
+// the production guarantee is environmental, and it holds for every committed
+// build path in this repository: the frontend Dockerfile's builder stage and
+// the three deploy workflows all build with `NODE_ENV` unset, so `next build`
+// defaults it to `production` while this config is loaded. The runtime values —
+// the Dockerfile runtime stage's `NODE_ENV=production`, and the Helm chart's
+// per-environment `nodeEnv` (which is `staging`, not `production`, in
+// `values-staging.yaml`) — arrive after the header is already serialized and
+// are deliberately irrelevant to it: `next start` serves the policy from the
+// build-time manifest and never re-reads this file. The guarantee does NOT
+// hold by construction: `NODE_ENV=development next build` bakes
+// `'unsafe-eval'` into a production bundle with nothing but a warning, and
+// `next build --debug-prerender` forces `NODE_ENV=development` outright
+// (`next/dist/bin/next`). Do not run either.
+//
+// Because the guarantee is environmental rather than structural, the built
+// artifact is the thing that has to be checked — and checked where it ships:
+// `npm run verify:csp` asserts that `.next/routes-manifest.json` carries a
+// policy without `'unsafe-eval'`. CI runs it after its own build, and the
+// frontend image build runs the same assertion immediately after its `next
+// build` (`frontend/Dockerfile`), so the artifact that deploys is the one
+// asserted — not only the build the CI runner happened to produce. See the
+// CHANGELOG entry for this round.
+const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
+
+// WHY `'unsafe-eval'` IS DEV-ONLY. React's development build reconstructs server error stacks in
+// the browser and runs its debug hooks through `eval()`, which a bare `script-src` reports as
+// "[browser] eval() is not supported in this environment" on every dev page while doing nothing
+// to improve safety — it only breaks debugging. Neither React nor Next.js call `eval` in
+// production, so the keyword is attached only when this config is loaded with
+// NODE_ENV=development and the production policy keeps `eval` blocked. (Per the CSP guide in
+// `next/dist/docs`.)
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${IS_DEVELOPMENT ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https:",

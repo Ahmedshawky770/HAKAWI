@@ -286,6 +286,7 @@ Every ratio below is recomputed from the tokens by
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (dark) | 12.77:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (dark) | 11.67:1 | 4.5:1 |
 | label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (dark) | 8.70:1 | 4.5:1 |
+| the focused skip link | `--hk-on-accent` on `--hk-accent-fill` (dark) | 8.70:1 | 4.5:1 |
 | label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 5.22:1 | 4.5:1 |
 | success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.34:1 | 4.5:1 |
 | warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 10.76:1 | 4.5:1 |
@@ -309,6 +310,7 @@ Every ratio below is recomputed from the tokens by
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (light) | 4.97:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (light) | 5.36:1 | 4.5:1 |
 | label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (light) | 5.18:1 | 4.5:1 |
+| the focused skip link | `--hk-on-accent` on `--hk-accent-fill` (light) | 5.18:1 | 4.5:1 |
 | label on the danger button | `--hk-on-error` on `--hk-error-fill` (light) | 4.83:1 | 4.5:1 |
 | success text | `--hk-success-ink` on `--hk-surface` (light) | 5.48:1 | 4.5:1 |
 | warning text | `--hk-warning-ink` on `--hk-surface` (light) | 5.02:1 | 4.5:1 |
@@ -701,18 +703,22 @@ reverted under the reader's finger.
 | Visible focus on everything interactive | one global rule in `globals.css`: `outline: 2px solid var(--hk-accent)` + 2px offset |
 | Full keyboard operation | every control is a real `<button>`, `<a>`, `<input>`, `<select>`; no click-only affordance |
 | `aria-current="page"` on the active destination | `Sidebar`, `BottomNav` — never colour alone |
-| Landmarks | `header`, `nav` (two, each labelled), `main#main-content`, `aside`, `role="status"`, `role="alert"` |
+| Landmarks | `header`, `nav` (three, each labelled — `mainNavigation` for the sidebar's start column, `secondaryNavigation` for the sidebar's second column, `bottomNavigation` for the bottom bar), `main#main-content`, `aside`, `role="status"`, `role="alert"` |
 | Live regions | loading `status`, errors `alert`, toasts polite, chat `log` |
 | Touch targets ≥ 44×44px | `min-h-11` on buttons, `min-h-14` on bottom-bar items, `min-h-9`+padding on `sm` buttons |
 | `prefers-reduced-motion` | one global block in `globals.css` collapses every animation and transition |
 | No colour-only meaning | active nav, unread items and status pills all carry text or an icon too |
 | Decorative icons hidden | `Icon` sets `aria-hidden` unless given a `title` |
-| Skip link | `.hk-skip-link` in the root layout, targeting `#main-content` |
+| Skip link | `.hk-skip-link` in the root layout, targeting `#main-content` — the target is rendered by `AppShell` (the authenticated routes), by `AuthShell` (the auth routes), by the `(app)` layout's own session-guard branches, and by the OAuth callback. The focused link paints the accent fill with its own on-accent text (8.70:1 dark, 5.18:1 light), and both the pair and the tokens it names are asserted by `design-system.test.ts` |
 | Numbers in RTL | `.hk-numeric` isolates and LTR-orders digits, signs and currency |
 
 WCAG A/AA on `/login` and `/register` is asserted by
 `frontend/e2e/accessibility.e2e-spec.ts` with axe-core, and those two pages keep a
-fixed field count and fixed Arabic labels because that spec queries them by name.
+fixed field count and stable Arabic labels — not by copying those labels into the
+spec, but because the spec derives them from the application's own dictionary
+(`frontend/e2e/copy.ts`), so a copy edit moves the selector and the page together.
+The button selectors read the button's key and the headings read the heading's;
+the two literals with no dictionary key are commented in the spec as gaps.
 
 ### 8.1 RTL
 
@@ -842,9 +848,13 @@ first paint
 - Arabic is the default and RTL; English is available and flips the document.
 - The toggle writes `lang` and `dir` on `<html>` and persists under
   `hakawi.locale`; `LocaleProvider` subscribes the same way the theme does.
-- Shell copy is bilingual (`src/lib/i18n.ts`): navigation, header, bottom bar and
-  the empty states. **Authored content is not translated** — a story body is
-  Arabic by definition. See §14.
+- Everything the dictionary covers is bilingual (`src/lib/i18n/`, namespaced
+  `shell` / `common` / `auth` / `story`): navigation, header, bottom bar, wordmark,
+  the auth flows, the story readouts and their error surfaces, the story forms
+  (`stories/create`, `stories/[id]/edit`) and the search surface. **Authored content
+  is not translated** — a story body is Arabic by definition. The rest of the page
+  bodies still carry Arabic literals; the boundary is written down in the shell
+  table's own header rather than implied. See §14.
 - RTL adaptations:
 
 | Element | Arabic (RTL) | English (LTR) |
@@ -853,7 +863,16 @@ first paint
 | Layout | mirrored | normal |
 | Icons | directional glyphs mirror | normal |
 | Navigation | start column on the right | start column on the left |
-| Dates | `ar-EG` via `toLocaleDateString` | `en-GB` |
+| Digits | Western, in both locales | Western, in both locales |
+| Dates | `ar-EG` via `formatDate`/`formatLongDate`, month names in Arabic | `en-GB` through the same helpers |
+
+Digits and dates are Western **in both** locales, and that is a rule rather than an accident:
+Egyptian readers read Western digits, every other figure in the product is Western, and
+`hk-numeric` isolates these runs as LTR to begin with — the same argument §4.7 records for
+money. `toLocaleDateString("ar-EG")` on its own renders Arabic-Indic digits, which is how a row
+ended up showing "١٤ أكتوبر ٢٠٢٦" beside "1,234" views; the helpers in `frontend/src/lib/i18n/`
+pin the numbering system to Latin and leave the month and weekday names in the reader's language,
+so the Arabic date reads "14 أكتوبر 2026".
 
 ---
 
@@ -869,8 +888,9 @@ Every rule in this document, and the file that implements it.
 | Font loading | `frontend/src/app/fonts.ts` |
 | Theme and locale bootstrap | `frontend/src/lib/preferences.ts`, `frontend/src/app/layout.tsx` |
 | Theme and locale state | `frontend/src/components/providers/ThemeProvider.tsx`, `frontend/src/components/providers/LocaleProvider.tsx` |
+| The document title and description, in the reader's language | `frontend/src/components/providers/TitleMirror.tsx` (rendered by the root layout) |
 | Transient feedback | `frontend/src/components/providers/ToastProvider.tsx` |
-| Shell copy, both locales | `frontend/src/lib/i18n.ts` |
+| Shell copy, both locales | `frontend/src/lib/i18n/` (`shell`, `common`, `auth`, `story`) |
 | Buttons, links, icon buttons | `frontend/src/components/ui/Button.tsx` |
 | Cards, card parts, page header | `frontend/src/components/ui/Card.tsx` |
 | Field wiring, input, textarea, select | `frontend/src/components/ui/Field.tsx`, `frontend/src/components/ui/Input.tsx` |
@@ -898,6 +918,7 @@ Every rule in this document, and the file that implements it.
 | Byline, category, date | `frontend/src/components/story/StoryMeta.tsx` |
 | One query key per fact, paging maths, trending derivation | `frontend/src/lib/queries.ts` |
 | Money: one currency, one unit, one division | `frontend/src/lib/money.ts` |
+| Dates and digits: one numbering system, both locales | `frontend/src/lib/i18n/index.ts` |
 | **This document, held against the stylesheet** | `frontend/src/app/design-system.test.ts` |
 
 ---
@@ -914,9 +935,17 @@ is worse than one that does not exist.
    Deep Aqua `#00b8d4` are still in the palette as hues, but they cannot carry
    text or a button label. Text and fills use the darker variants in §4.4, with
    the measurements.
-3. **Only shell copy is bilingual.** The language toggle flips `lang`, `dir` and
-   the chrome. Page content — story bodies, contest copy, notifications — is
-   Arabic. A full dictionary is not built; this document does not claim one.
+3. **Only part of the surface is bilingual, and the boundary is stated rather than
+   implied.** The toggle flips `lang`, `dir` and everything the dictionary covers: the
+   chrome (navigation, header, bottom bar, wordmark), the auth flows, the story
+   readouts and their error surfaces, the story forms (`stories/create`,
+   `stories/[id]/edit`) and the search page. Arabic by design: a story body, a
+   contest brief, the prose a reader writes. Arabic by omission: the bodies of the
+   remaining pages — the dashboard, books, contests, messages, moderation, payments,
+   rentals, profile, badges and notifications — still carry literals, as do many of
+   the row components inside them. The boundary is written down in
+   `frontend/src/lib/i18n/shell.ts`'s own header. A full dictionary is not built;
+   this document does not claim one.
 4. **Trending is derived, not served.** `GET /stories` takes only `page`,
    `limit` and `category`, so the rail sorts the recent page by reactions on the
    client. A server-side trending endpoint is the correct answer; until it

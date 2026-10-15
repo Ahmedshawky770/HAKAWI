@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 import userEvent from "@testing-library/user-event";
 
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
@@ -43,26 +44,26 @@ describe("login page", () => {
   });
 
   it("renders the login heading and the sign up link", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     expect(screen.getByRole("heading", { name: "تسجيل الدخول" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "إنشاء حساب جديد" })).toHaveAttribute("href", "/register");
   });
 
   it("renders the login title as the only level one heading", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     expect(screen.getByRole("heading", { level: 1, name: "تسجيل الدخول" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("shows the wordmark without linking it to the authenticated home", () => {
-    const { container } = render(<LoginPage />);
+    const { container } = renderWithProviders(<LoginPage />);
     expect(container).toHaveTextContent("حكاوي");
     expect(screen.queryByRole("link", { name: "حكاوي - الصفحة الرئيسية" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^حكاوي/ })).not.toBeInTheDocument();
   });
 
   it("renders a labelled email field that is required and of type email", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     const email = screen.getByLabelText("البريد الإلكتروني");
     expect(email).toHaveAttribute("type", "email");
     expect(email).toBeRequired();
@@ -70,25 +71,25 @@ describe("login page", () => {
   });
 
   it("renders a labelled password field that is required and masked", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     const password = screen.getByLabelText("كلمة المرور");
     expect(password).toHaveAttribute("type", "password");
     expect(password).toBeRequired();
   });
 
   it("offers a link to the password recovery flow", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     expect(screen.getByRole("link", { name: "نسيت كلمة المرور؟" })).toHaveAttribute("href", "/forgot-password");
   });
 
   it("shows no error before the form is submitted", () => {
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
   it("submits the typed credentials", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -103,7 +104,7 @@ describe("login page", () => {
 
   it("stores the session user and moves to the authenticated home after a successful login", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -117,7 +118,7 @@ describe("login page", () => {
 
   it("never navigates to the removed dashboard route", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -131,7 +132,7 @@ describe("login page", () => {
   it("surfaces a rejected credential message inside an alert region", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValue(new Error("Invalid email or password"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -142,7 +143,7 @@ describe("login page", () => {
   it("does not navigate when the credentials are rejected", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValue(new Error("Invalid email or password"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -155,7 +156,7 @@ describe("login page", () => {
   it("surfaces the unauthorized message of an expired session", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValue(new Error("Unauthorized"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -167,7 +168,7 @@ describe("login page", () => {
     const user = userEvent.setup({ delay: null });
     const deferred = createDeferred<typeof AUTH_RESPONSE>();
     mockedApi.login.mockReturnValue(deferred.promise);
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     const submit = screen.getByRole("button", { name: "تسجيل الدخول" });
@@ -186,7 +187,7 @@ describe("login page", () => {
   it("re-enables the submit button after a failure", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValue(new Error("Invalid email or password"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -198,7 +199,7 @@ describe("login page", () => {
   it("clears a previous error when the form is submitted again", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValueOnce(new Error("Invalid email or password"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -214,7 +215,7 @@ describe("login page", () => {
   it("does not call the session endpoint when the login itself fails", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.login.mockRejectedValue(new Error("Invalid email or password"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
@@ -226,7 +227,7 @@ describe("login page", () => {
   it("reports a failure of the session lookup after a successful login", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
-    render(<LoginPage />);
+    renderWithProviders(<LoginPage />);
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));

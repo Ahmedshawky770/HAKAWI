@@ -4,6 +4,8 @@ import React from "react";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Comment } from "@/types/api";
 
 interface CommentRowProps {
@@ -11,6 +13,8 @@ interface CommentRowProps {
 }
 
 export function CommentRow({ comment }: CommentRowProps) {
+  const { intl } = useLocale();
+
   return (
     <Card className="p-4">
       <div className="flex gap-3">
@@ -20,9 +24,7 @@ export function CommentRow({ comment }: CommentRowProps) {
             <p className="truncate text-sm font-semibold text-ink">
               {comment.authorName ?? "مستخدم"}
             </p>
-            <span className="text-xs text-ink-muted">
-              {new Date(comment.createdAt).toLocaleDateString("ar-EG")}
-            </span>
+            <span className="text-xs text-ink-muted">{formatDate(comment.createdAt, intl)}</span>
           </div>
           <p className="mt-1 text-sm text-ink">{comment.content}</p>
           {comment.replyCount > 0 && (

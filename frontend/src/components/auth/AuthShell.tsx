@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 
 import { Brand } from "@/components/layout/Brand";
@@ -37,10 +39,22 @@ export interface AuthShellProps {
  * The card, not the column, is the surface: one `bg-surface` box on the canvas,
  * `shadow-card` because it is the only raised element on the screen, and
  * `animate-rise` for the 300ms page entrance of §13.
+ *
+ * WHY THE FRAME IS A `<main>` LANDMARK. The skip link in the root layout is
+ * the first tab stop on every route, and it targets `#main-content`. The
+ * authenticated shell owns that id through `AppShell`; without a matching
+ * landmark here, the skip link on every auth page would be a first tab stop
+ * that goes nowhere. It is `tabIndex={-1}` for the same reason `AppShell`'s
+ * `<main>` is: the skip link moves focus, and focus needs a target that can
+ * receive it.
  */
 export function AuthShell({ title, description, children, footer, className = "" }: AuthShellProps) {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10 sm:px-6">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10 sm:px-6"
+    >
       <div className={`w-full max-w-md animate-rise ${className}`.trim()}>
         <div className="mb-6 flex justify-center">
           <Brand size="lg" />
@@ -57,6 +71,6 @@ export function AuthShell({ title, description, children, footer, className = ""
 
         {footer && <p className="mt-6 text-center text-sm text-ink-muted">{footer}</p>}
       </div>
-    </div>
+    </main>
   );
 }

@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 import { MessageBubble } from "@/components/social/MessageBubble";
+import { formatTime } from "@/lib/i18n";
 import type { Message } from "@/types/api";
 
 const MESSAGE: Message = {
@@ -49,7 +50,7 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText(MESSAGE.content)).toBeInTheDocument();
     expect(container.querySelector(".hk-numeric")?.textContent).toBe(
-      new Date(MESSAGE.createdAt).toLocaleTimeString("ar-EG"),
+      formatTime(MESSAGE.createdAt, "ar-EG"),
     );
   });
 });

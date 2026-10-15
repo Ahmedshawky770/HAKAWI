@@ -12,6 +12,8 @@ import {
   ContestListEmpty,
   ContestListSkeleton,
 } from "@/components/social/ContestCard";
+import { formatDate, intlLocale } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 import type { Contest } from "@/types/api";
 
 vi.mock("next/link", () => ({
@@ -53,10 +55,8 @@ describe("ContestCard", () => {
 
     const dates = container.querySelectorAll(".hk-numeric");
     expect(dates).toHaveLength(2);
-    expect(dates[0]?.textContent).toBe(
-      new Date(CONTEST.startDate).toLocaleDateString("ar-EG"),
-    );
-    expect(dates[1]?.textContent).toBe(new Date(CONTEST.endDate).toLocaleDateString("ar-EG"));
+    expect(dates[0]?.textContent).toBe(formatDate(CONTEST.startDate, intlLocale(DEFAULT_LOCALE)));
+    expect(dates[1]?.textContent).toBe(formatDate(CONTEST.endDate, intlLocale(DEFAULT_LOCALE)));
   });
 
   it("omits the description block when the contest has none", () => {

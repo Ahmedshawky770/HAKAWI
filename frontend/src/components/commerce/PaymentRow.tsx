@@ -6,6 +6,7 @@ import { CardLink } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { Payment } from "@/types/api";
 
 import { PaymentStatusBadge } from "./PaymentStatusBadge";
@@ -34,7 +35,7 @@ export function PaymentRow({ payment }: { payment: Payment }) {
             {payment.amount} {payment.currency}
           </p>
           <p className="mt-1 text-xs text-ink-faint">
-            {new Date(payment.createdAt).toLocaleDateString(intl)}
+            {formatDate(payment.createdAt, intl)}
           </p>
         </div>
         <PaymentStatusBadge status={payment.status} className="shrink-0" />

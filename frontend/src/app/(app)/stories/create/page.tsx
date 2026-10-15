@@ -8,7 +8,8 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input, Select, Textarea } from "@/components/ui/Input";
-import { STORY_CATEGORIES } from "@/components/story/StoryCategoryOptions";
+import { storyCategories } from "@/components/story/StoryCategoryOptions";
+import { useLocale } from "@/components/providers/LocaleProvider";
 
 /** The same ceiling the inline composer enforces, so the two forms cannot drift. */
 const TITLE_LIMIT = 120;
@@ -34,6 +35,7 @@ const TITLE_LIMIT = 120;
  */
 export default function CreateStoryPage() {
   const router = useRouter();
+  const { locale, strings } = useLocale();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("fiction");
@@ -60,7 +62,7 @@ export default function CreateStoryPage() {
       });
       router.push(`/stories/${response.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل إنشاء القصة");
+      setError(err instanceof Error ? err.message : strings.story.storyCreateFailed);
     } finally {
       setLoading(false);
     }
@@ -68,55 +70,62 @@ export default function CreateStoryPage() {
 
   return (
     <div>
-      <PageHeader title="إنشاء قصة" description="اكتب حكايتك، وامنحها تصنيفاً يقرّبها من القرّاء." />
+      <PageHeader
+        title={strings.story.createPageTitle}
+        description={strings.story.createPageDescription}
+      />
 
       <Card>
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <ErrorMessage error={error} title="تعذّر نشر القصة" />}
+            {error && <ErrorMessage error={error} title={strings.story.storyPublishFailed} />}
 
             <Input
-              label="العنوان"
+              label={strings.story.titleLabel}
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="أدخل عنوان القصة"
-              hint={remaining <= 0 ? "وصلت الحد الأقصى لطول العنوان" : `${remaining} حرفاً متبقياً`}
+              placeholder={strings.story.titlePlaceholder}
+              hint={
+                remaining <= 0
+                  ? strings.story.titleLimitReached
+                  : strings.story.titleRemaining(remaining)
+              }
             />
 
             <Textarea
-              label="المحتوى"
+              label={strings.story.contentLabel}
               rows={10}
               required
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="اكتب قصتك هنا..."
-              hint="اكتب الحكاية كما تُروى: فقرات قصيرة، وفصل بين المشاهد."
+              placeholder={strings.story.contentPlaceholder}
+              hint={strings.story.contentHint}
             />
 
             <Select
-              label="التصنيف"
+              label={strings.story.storiesCategoryLabel}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              options={STORY_CATEGORIES}
+              options={storyCategories(locale)}
             />
 
             <Input
-              label="الوسوم (مفصولة بفاصلة)"
+              label={strings.story.tagsLabel}
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="مغامرة، غموض"
-              hint="افصل بين الوسوم بفاصلة"
+              placeholder={strings.story.tagsPlaceholder}
+              hint={strings.story.tagsHint}
             />
 
             <div className="flex flex-wrap gap-3">
               <Button type="submit" loading={loading}>
-                إنشاء القصة
+                {strings.story.createSubmitButton}
               </Button>
               <ButtonLink href="/stories" variant="ghost">
-                إلغاء
+                {strings.story.cancelButton}
               </ButtonLink>
             </div>
           </form>

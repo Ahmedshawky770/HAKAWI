@@ -7,24 +7,25 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { ButtonLink } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LOGIN_ROUTE } from "@/lib/routes";
-
-const ERROR_MESSAGES: Record<string, string> = {
-  access_denied: "تم رفض الوصول من قبل مزود المصادقة",
-  missing_code: "رمز التفويض مفقود",
-  oauth_failed: "فشل عملية تسجيل الدخول عبر OAuth",
-  invalid_request: "طلب غير صالح",
-};
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 function AuthErrorContent() {
+  const strings = useStrings();
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error") || "";
-  const error = ERROR_MESSAGES[errorParam] || `خطأ: ${errorParam || "غير معروف"}`;
+  const errorMessages: Record<string, string> = {
+    access_denied: strings.auth.authErrorAccessDenied,
+    missing_code: strings.auth.authErrorMissingCode,
+    oauth_failed: strings.auth.authErrorOauthFailed,
+    invalid_request: strings.auth.authErrorInvalidRequest,
+  };
+  const error = errorMessages[errorParam] || `${strings.auth.errorUnknownPrefix}${errorParam || strings.auth.errorUnknown}`;
 
   return (
-    <AuthShell title="خطأ في تسجيل الدخول">
-      <ErrorMessage error={error} title="سبب الخطأ" />
+    <AuthShell title={strings.auth.errorPageTitle}>
+      <ErrorMessage error={error} title={strings.auth.errorReasonTitle} />
       <ButtonLink href={LOGIN_ROUTE} block className="mt-5">
-        العودة لتسجيل الدخول
+        {strings.auth.authErrorBackToLogin}
       </ButtonLink>
     </AuthShell>
   );

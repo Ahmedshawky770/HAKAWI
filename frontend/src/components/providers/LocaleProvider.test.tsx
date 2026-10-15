@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { LocaleProvider, useLocale } from "@/components/providers/LocaleProvider";
+import { LocaleProvider, useLocale, useStrings } from "@/components/providers/LocaleProvider";
+import { stringsFor, type AppStrings } from "@/lib/i18n";
 import { LOCALE_STORAGE_KEY } from "@/lib/preferences";
 import { render } from "@testing-library/react";
 
@@ -15,7 +16,7 @@ function Probe() {
     <div>
       <span data-testid="locale">{locale}</span>
       <span data-testid="direction">{direction}</span>
-      <span data-testid="stories-label">{strings.navStories}</span>
+      <span data-testid="stories-label">{strings.shell.navStories}</span>
       <span data-testid="intl">{intl}</span>
       <button type="button" onClick={() => setLocale("en")}>
         to english
@@ -125,5 +126,45 @@ describe("LocaleProvider", () => {
     expect(() => render(<Orphan />)).toThrow(/useLocale must be used inside <LocaleProvider>/);
 
     consoleError.mockRestore();
+  });
+
+  it("keeps its own concern: the locale store, not the document title", async () => {
+    const user = userEvent.setup();
+    // The document is not this provider's business: the `<title>` and its
+    // description meta are mirrored by `TitleMirror`, a sibling the root layout
+    // renders, because mirroring them means listening to the route — and a
+    // provider that every mocked-router suite mounts must not grow that hook.
+    // Capturing the title around the flip is what proves no effect HERE writes
+    // to the document; the locale assertions alone cannot fail for that reason.
+    const titleBefore = document.title;
+
+    render(
+      <LocaleProvider>
+        <Probe />
+      </LocaleProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "to english" }));
+
+    expect(screen.getByTestId("locale")).toHaveTextContent("en");
+    expect(document.title).toBe(titleBefore);
+  });
+
+
+  it("serves the very same dictionary through the strings-only hook", () => {
+    const seen: AppStrings[] = [];
+
+    function AliasProbe() {
+      seen.push(useStrings());
+      return null;
+    }
+
+    render(
+      <LocaleProvider>
+        <AliasProbe />
+      </LocaleProvider>,
+    );
+
+    expect(seen[0]).toBe(stringsFor("ar"));
   });
 });

@@ -2,13 +2,14 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { api } from "@/lib/api";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { createDeferred } from "@/test-utils/support";
+import { renderWithProviders } from "@/test-utils/render";
 import StoryCreatePage from "@/app/(app)/stories/create/page";
 
 vi.mock("next/link", () => ({
@@ -59,7 +60,7 @@ describe("Story create page", () => {
   });
 
   it("renders the story create heading", () => {
-    render(<StoryCreatePage />);
+    renderWithProviders(<StoryCreatePage />);
     expect(screen.getByRole("heading", { name: "إنشاء قصة" })).toBeInTheDocument();
   });
 
@@ -67,7 +68,7 @@ describe("Story create page", () => {
     const deferred = createDeferred<typeof mockStory>();
     mockedApi.createStory.mockReturnValue(deferred.promise);
     const user = userEvent.setup({ delay: null });
-    render(<StoryCreatePage />);
+    renderWithProviders(<StoryCreatePage />);
     await user.type(screen.getByLabelText("العنوان"), "قصة جديدة");
     await user.type(screen.getByLabelText("المحتوى"), "محتوى القصة");
     await user.click(screen.getByRole("button", { name: "إنشاء القصة" }));
@@ -83,7 +84,7 @@ describe("Story create page", () => {
 
   it("handles form submission", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<StoryCreatePage />);
+    renderWithProviders(<StoryCreatePage />);
     await user.type(screen.getByLabelText("العنوان"), "قصة جديدة");
     await user.type(screen.getByLabelText("المحتوى"), "محتوى القصة");
     await user.click(screen.getByRole("button", { name: "إنشاء القصة" }));

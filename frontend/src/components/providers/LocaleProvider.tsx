@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 
-import { intlLocale, shellStrings, type ShellStrings } from "@/lib/i18n";
+import { intlLocale, stringsFor, type AppStrings } from "@/lib/i18n";
 import {
   DEFAULT_LOCALE,
   directionFor,
@@ -15,8 +15,8 @@ import {
 interface LocaleContextValue {
   locale: Locale;
   direction: "rtl" | "ltr";
-  strings: ShellStrings;
-  /** `ar-EG` or `en-GB`, for `Intl` and `toLocaleDateString`. */
+  strings: AppStrings;
+  /** `ar-EG` or `en-GB`, for `Intl` and the date helpers in `lib/i18n`. */
   intl: string;
   setLocale: (locale: Locale) => void;
   toggleLocale: () => void;
@@ -73,7 +73,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       direction: directionFor(locale),
-      strings: shellStrings(locale),
+      strings: stringsFor(locale),
       intl: intlLocale(locale),
       setLocale,
       toggleLocale,
@@ -81,6 +81,12 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     [locale, setLocale, toggleLocale],
   );
 
+  // The document title and description meta are mirrored by `TitleMirror`, a
+  // sibling component the root layout renders. It is deliberately NOT an effect
+  // here: it has to subscribe to the route (Next re-applies the root layout's
+  // static Arabic title on every route commit), and a hook that reaches 23
+  // mocked `next/navigation` suites is the wrong price for a `<title>`. See the
+  // header of `TitleMirror.tsx` for the whole argument.
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
 
@@ -92,7 +98,14 @@ export function useLocale(): LocaleContextValue {
   return context;
 }
 
-/** Shell copy for the active locale. */
-export function useStrings(): ShellStrings {
+/**
+ * The strings alone, for the components that need copy and nothing else.
+ *
+ * The same dictionary object `useLocale().strings` returns — the split is
+ * ergonomic, not a second source: one dictionary instance per locale, two ways
+ * to reach it, and a component that also needs `direction` or `intl` reaches
+ * for the wider hook instead.
+ */
+export function useStrings(): AppStrings {
   return useLocale().strings;
 }

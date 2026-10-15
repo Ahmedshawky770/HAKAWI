@@ -23,7 +23,13 @@
 # sources are, exhaustively: root `package.json`, root `package-lock.json`,
 # `packages/shared-types/package.json`, `packages/shared-types/` (source + tsconfig),
 # `backend/package.json`, `backend/` (source + tsconfig + nest-cli.json + .swcrc),
-# `frontend/package.json`, `frontend/` (source + next.config.ts + postcss config + public).
+# `frontend/package.json`, `frontend/` (source + next.config.ts + postcss config + public),
+# and `frontend/scripts/` — not merely copied but EXECUTED inside the builder stage, by the
+# `RUN npm run verify:csp --workspace=frontend` assertion in `frontend/Dockerfile`. A path that
+# a build runs is a stricter dependency than one it only reads: a future context-trimming
+# exclusion here does not surface as a missing file in a COPY, it surfaces as
+# `Cannot find module '…/frontend/scripts/verify-csp.mjs'` failing the image build with nothing
+# in the diff to explain it. Keep it.
 
 # --- Dependencies ------------------------------------------------------------------------------
 # The image installs its own from the lockfile inside its own stage. The host tree is never an
@@ -84,3 +90,19 @@
 **/.vscode
 **/*.swp
 **/*~
+
+# --- Re-included: build-EXECUTED paths -----------------------------------------------------------
+# WHY A GUARD AND NOT JUST A NOTE. The `!` rules below have to come AFTER every exclusion they
+# could contradict, because Docker matches patterns in order and a later negation only wins over
+# an earlier match — the reverse order silently keeps the file out. Nothing above currently
+# excludes these paths, so this is not a fix for a live bug; it is the line that stops a future
+# context-trimming rule (`**/scripts`, say, added to shave the upload) from breaking
+# `frontend/Dockerfile`'s `RUN npm run verify:csp --workspace=frontend` with an ENOENT that names
+# no file in the diff that caused it.
+#
+# This is a re-inclusion of BUILD CODE, which is a different category from the `**/.env*` note
+# above: no exclusion here can be widened to reach a secret without removing its own block, and
+# `verify-csp.mjs` is committed, dependency-free (node builtins only) and reviewed like the
+# Dockerfile that runs it. Never put a `!` rule in the secrets section.
+!frontend/scripts
+!frontend/scripts/**

@@ -9,10 +9,10 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
 import { ErrorMessage, SuccessMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
-
-const SUCCESS_TEXT = "إذا كان هناك حساب بهذا البريد الإلكتروني، فقد أرسلنا رابط إعادة تعيين كلمة المرور.";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 export default function ForgotPasswordPage() {
+  const strings = useStrings();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -30,7 +30,7 @@ export default function ForgotPasswordPage() {
       });
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل إرسال رابط إعادة التعيين");
+      setError(err instanceof Error ? err.message : strings.auth.forgotError);
     } finally {
       setLoading(false);
     }
@@ -38,11 +38,11 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      title="استعادة كلمة المرور"
-      description="أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين"
+      title={strings.auth.forgotTitle}
+      description={strings.auth.forgotDescription}
       footer={
         <Link href={LOGIN_ROUTE} className="font-medium text-chrome-ink hover:text-chrome-hover">
-          العودة لتسجيل الدخول
+          {strings.auth.forgotBackToLogin}
         </Link>
       }
     >
@@ -50,20 +50,20 @@ export default function ForgotPasswordPage() {
         {error && <ErrorMessage error={error} />}
 
         {success ? (
-          <SuccessMessage title="تم إرسال الطلب">{SUCCESS_TEXT}</SuccessMessage>
+          <SuccessMessage title={strings.auth.forgotSuccessTitle}>{strings.auth.forgotSuccessText}</SuccessMessage>
         ) : (
           <>
             <Input
-              label="البريد الإلكتروني"
+              label={strings.auth.emailLabel}
               type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@mail.com"
+              placeholder={strings.auth.emailPlaceholder}
             />
             <Button type="submit" loading={loading} block>
-              إرسال رابط إعادة التعيين
+              {strings.auth.forgotButton}
             </Button>
           </>
         )}

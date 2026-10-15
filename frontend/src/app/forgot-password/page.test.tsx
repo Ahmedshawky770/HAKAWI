@@ -2,7 +2,8 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "@/test-utils/render";
 import userEvent from "@testing-library/user-event";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
@@ -31,19 +32,19 @@ describe("forgot password page", () => {
   });
 
   it("renders the recovery heading and the email field", () => {
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
     expect(screen.getByRole("heading", { name: "استعادة كلمة المرور" })).toBeInTheDocument();
     expect(screen.getByLabelText("البريد الإلكتروني")).toBeRequired();
   });
 
   it("offers a link back to the login page", () => {
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
     expect(screen.getByRole("link", { name: "العودة لتسجيل الدخول" })).toHaveAttribute("href", "/login");
   });
 
   it("posts the email through the message only schema", async () => {
     const user = userEvent.setup();
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
 
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "ahmed@example.com");
     await user.click(screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" }));
@@ -62,7 +63,7 @@ describe("forgot password page", () => {
 
   it("confirms the request with a neutral message that leaks no account existence", async () => {
     const user = userEvent.setup();
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
 
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "nobody@example.com");
     await user.click(screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" }));
@@ -72,7 +73,7 @@ describe("forgot password page", () => {
 
   it("hides the form once the request succeeds", async () => {
     const user = userEvent.setup();
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
 
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "ahmed@example.com");
     await user.click(screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" }));
@@ -85,7 +86,7 @@ describe("forgot password page", () => {
   it("renders the server failure and keeps the form available for a retry", async () => {
     const user = userEvent.setup();
     mockedApi.request.mockRejectedValue(new Error("Too many requests"));
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
 
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "ahmed@example.com");
     await user.click(screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" }));
@@ -98,7 +99,7 @@ describe("forgot password page", () => {
     const user = userEvent.setup();
     const deferred = createDeferred<{ message: string }>();
     mockedApi.request.mockReturnValue(deferred.promise);
-    render(<ForgotPasswordPage />);
+    renderWithProviders(<ForgotPasswordPage />);
 
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "ahmed@example.com");
     const submit = screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" });

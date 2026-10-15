@@ -7,6 +7,7 @@ import { CardLink } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useLocale } from "@/components/providers/LocaleProvider";
+import { formatDate } from "@/lib/i18n";
 import type { SearchResult } from "@/types/api";
 
 /**
@@ -56,7 +57,7 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
               <span className="sr-only">تفاعل</span>
             </span>
             <span aria-hidden="true">·</span>
-            <span className="hk-numeric">{new Date(result.createdAt).toLocaleDateString(intl)}</span>
+            <span className="hk-numeric">{formatDate(result.createdAt, intl)}</span>
           </p>
         </div>
       </CardLink>

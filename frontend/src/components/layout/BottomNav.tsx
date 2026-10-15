@@ -8,7 +8,7 @@ import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { Icon, type IconName } from "@/components/ui/Icon";
 
-const ITEMS: { href: string; icon: IconName; key: keyof ReturnType<typeof useStrings> }[] = [
+const ITEMS: { href: string; icon: IconName; key: keyof ReturnType<typeof useStrings>["shell"] }[] = [
   { href: AUTHENTICATED_HOME_ROUTE, icon: "home", key: "navHome" },
   { href: "/stories", icon: "pen", key: "navStories" },
   { href: "/library", icon: "book", key: "navLibrary" },
@@ -36,13 +36,18 @@ export function BottomNav() {
 
   return (
     <nav
-      aria-label={strings.mainNavigation}
+      // Its own label, not the sidebar's: both landmarks are in the DOM on every
+      // route (only `display: none` separates them at a breakpoint), and two
+      // `navigation` landmarks that resolve to one accessible name are
+      // indistinguishable to a screen reader — the rule `TrendingRail` states
+      // for the rail. The bar is the phone's navigation, so it says so.
+      aria-label={strings.shell.bottomNavigation}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/95 backdrop-blur-md lg:hidden"
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-around">
         {ITEMS.map((item) => {
           const active = isActive(item.href);
-          const label = strings[item.key];
+          const label = strings.shell[item.key];
           return (
             <li key={item.href} className="flex-1">
               <Link
