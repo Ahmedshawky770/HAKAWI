@@ -8,6 +8,7 @@ import { EventValidatorService } from '../../common/events/event-validator.servi
 import { PaymentsService } from '../payments/payments.service.ts';
 import type { ILibraryRepository } from '../library/interfaces/library-repository.interface.ts';
 import { RentalsService } from '../rentals/rentals.service.ts';
+import type { Rental } from '../rentals/types.ts';
 import { requireValue } from '../../test/helpers/require-value.ts';
 
 import type { Book, CreateBookInput, UpdateBookInput } from './types.ts';
@@ -56,7 +57,10 @@ type MockPaymentsService = {
 };
 
 type MockRentalsService = {
-  createRental: ReturnType<typeof vi.fn>;
+  // `createRental` was removed with the free-rental door: this service used to grant an ACTIVE rental
+  // for the price of one request. `rent` now returns a Paymob checkout, so the mock's subject is the
+  // grant question `findActiveRentalForBook` answers, not a method that no longer exists.
+  findActiveRentalForBook: ReturnType<typeof vi.fn<(userId: string, bookId: string) => Promise<Rental | null>>>;
 };
 
 function createFakeTaggedCache(): {
@@ -177,7 +181,8 @@ describe('BooksService', () => {
     };
 
     rentalsService = {
-      createRental: vi.fn(),
+      // No live rental by default: access tests that need one set it explicitly.
+      findActiveRentalForBook: vi.fn().mockResolvedValue(null),
     };
 
     libraryRepository = {
@@ -592,20 +597,138 @@ describe('BooksService', () => {
     });
   });
 
-  describe('incrementDownloadCount', () => {
-    it('should increment download count', async () => {
-      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+  // WHY THERE IS NO `incrementDownloadCount` SUITE. The service method it tested was deleted with the
+  // download work: `recordDownload` is now the single path that bumps the counter, and it does so
+  // only after the entitlement check. Keeping the suite would have tested a method that no longer
+  // exists — the counter's coverage lives in `recordDownload` below.
+
+  describe('recordDownload', () => {
+    /**
+     * The file of a paid book is an entitlement, not public content. `POST /books/:id/download`
+     * used to authenticate the caller and hand over the URL of any book in the catalogue, paid or
+     * not, because nothing on the route asked what the caller had acquired. These tests hold the
+     * three facts that confer access in place.
+     */
+    it('hands the file to anyone when the book is free, without consulting the library', async () => {
+      const freeBook = { ...mockBook, isFree: true };
+      vi.mocked(booksRepository.findById).mockResolvedValue(freeBook);
       vi.mocked(booksRepository.incrementDownloadCount).mockResolvedValue(undefined);
 
-      await booksService.incrementDownloadCount('book-123');
+      const book = await booksService.recordDownload('book-123', 'user-123');
 
+      expect(book.fileUrl).toBe(freeBook.fileUrl);
       expect(booksRepository.incrementDownloadCount).toHaveBeenCalledWith('book-123');
     });
 
-    it('should throw NotFoundException when book not found', async () => {
-      vi.mocked(booksRepository.findById).mockResolvedValue(null);
+    it('hands the file to a reader who owns the book', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(booksRepository.incrementDownloadCount).mockResolvedValue(undefined);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue({
+        id: 'library-1',
+        userId: 'user-123',
+        bookId: 'book-123',
+        rentalId: null,
+        status: 'owned',
+        addedAt: new Date(),
+        lastAccessedAt: null,
+      });
 
-      await expect(booksService.incrementDownloadCount('book-999')).rejects.toThrow('Book not found');
+      await expect(booksService.recordDownload('book-123', 'user-123')).resolves.toMatchObject({ id: 'book-123' });
+      expect(booksRepository.incrementDownloadCount).toHaveBeenCalledWith('book-123');
+    });
+
+    it('hands the file to a reader with a rental that is still inside its dates', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(booksRepository.incrementDownloadCount).mockResolvedValue(undefined);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(null);
+      vi.mocked(rentalsService.findActiveRentalForBook).mockResolvedValue({
+        id: 'rental-1',
+        userId: 'user-123',
+        bookId: 'book-123',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        extendedCount: 0,
+        maxExtensions: 2,
+        returnedAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).resolves.toMatchObject({ id: 'book-123' });
+    });
+
+    it('refuses the file of a paid book to a reader who has not acquired it, and counts nothing', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(null);
+      vi.mocked(rentalsService.findActiveRentalForBook).mockResolvedValue(null);
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).rejects.toThrow(
+        'You do not have access to this book. Purchase it or rent it to add it to your library.',
+      );
+      expect(booksRepository.incrementDownloadCount).not.toHaveBeenCalled();
+    });
+
+    it('refuses a lapsed rental, because access follows the end date and not the status word', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(null);
+      // The service answers this, so an `active` row past its end date never reaches the check —
+      // but the guard itself is also pinned here in case the two ever drift apart.
+      vi.mocked(rentalsService.findActiveRentalForBook).mockResolvedValue(null);
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).rejects.toThrow(
+        'You do not have access to this book',
+      );
+    });
+
+    it('refuses the file when a rented SHELF ROW outlived its rental', async () => {
+      // The defect this pins: access used to return on the mere existence of a library row, so a
+      // `rented` row whose rental had lapsed kept handing out the paid book — nothing retires a
+      // lapsed rental on a clock (`checkAndExpireOverdue` has no caller), and the stale row also
+      // blocked the reader from buying or re-renting the book with a `ConflictException`.
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue({
+        id: 'lib-rented-stale',
+        userId: 'user-123',
+        bookId: 'book-123',
+        rentalId: 'rental-1',
+        status: 'rented',
+        addedAt: new Date(),
+        lastAccessedAt: new Date(),
+      });
+      vi.mocked(rentalsService.findActiveRentalForBook).mockResolvedValue(null);
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).rejects.toThrow(
+        'You do not have access to this book',
+      );
+      expect(booksRepository.incrementDownloadCount).not.toHaveBeenCalled();
+    });
+
+    it('still hands the file to an owned row, whatever the rental store says', async () => {
+      // The other half of the same fix: an `owned` row is a permanent entitlement and is trusted on
+      // its own, without a rental lookup — so tightening the rental check must not start 403ing
+      // purchases.
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue({
+        id: 'library-1',
+        userId: 'user-123',
+        bookId: 'book-123',
+        rentalId: null,
+        status: 'owned',
+        addedAt: new Date(),
+        lastAccessedAt: null,
+      });
+      vi.mocked(rentalsService.findActiveRentalForBook).mockResolvedValue(null);
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).resolves.toMatchObject({ id: 'book-123' });
+    });
+
+    it('refuses a deleted book before any entitlement question', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue({ ...mockBook, deletedAt: new Date() });
+
+      await expect(booksService.recordDownload('book-123', 'user-123')).rejects.toThrow('Book not found');
+      expect(libraryRepository.findByUserAndBook).not.toHaveBeenCalled();
     });
   });
 
@@ -680,11 +803,17 @@ describe('BooksService', () => {
 
       vi.mocked(booksRepository.findById).mockResolvedValue(rentableBook);
       vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);
-      // `rent` returns a checkout now, so the payment mock has to resolve one — otherwise the test
-      // asserts against `undefined` and passes/fails for the wrong reason.
+      // `rent` returns a checkout now, so the payment mock has to resolve one in the shape
+      // `PaymobCheckoutResponse` actually has — `iframeUrl`, which `toCheckoutResponse` maps to
+      // `checkoutUrl`. An object that already said `checkoutUrl` would map to `undefined` and the
+      // response assertions below would pass or fail for the wrong reason.
       vi.mocked(paymentsService.paymobInitializePayment).mockResolvedValue({
         paymentId: 'pay-1',
-        checkoutUrl: 'https://accept.paymob.com/iframes/abc',
+        orderId: 'order-1',
+        paymentKey: 'pk-1',
+        iframeUrl: 'https://accept.paymob.com/iframes/abc',
+        acceptUrl: 'https://accept.paymob.com/accept/abc',
+        status: 'pending',
       });
 
       // The old assertion was `expect(result).toEqual(createdRental)` — an ACTIVE rental, granted for
@@ -705,8 +834,11 @@ describe('BooksService', () => {
       expect(metadata).toMatchObject({ bookId: 'book-123', type: 'rental', durationDays: 7 });
       expect(result).toBeDefined();
 
-      // And the access is NOT granted here. That is the whole fix.
-      expect(rentalsService.createRental).not.toHaveBeenCalled();
+      // And the access is NOT granted here. That is the whole fix: an ACTIVE rental used to come back
+      // from this call. What proves it now is the checkout itself — a payment request whose metadata
+      // names the book, the type and the duration — asserted above. A rental only exists once
+      // `payment.completed` arrives, which `RentalsEventHandler` owns and its own spec pins.
+      expect(result).toMatchObject({ checkoutUrl: expect.any(String) });
     });
 
     it('should throw NotFoundException when book not found', async () => {

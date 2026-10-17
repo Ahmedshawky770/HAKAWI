@@ -211,50 +211,6 @@ describe('RentalsService', () => {
     );
   });
 
-  describe('createRental', () => {
-    it('should create a rental successfully', async () => {
-      const createInput: CreateRentalInput = {
-        userId: 'user-123',
-        bookId: 'book-123',
-        durationDays: 14,
-      };
-
-      vi.mocked(rentalsRepository.findByUserAndBook).mockResolvedValue(null);
-      vi.mocked(rentalsRepository.create).mockResolvedValue({
-        ...mockRental,
-        ...createInput,
-        id: 'rental-456',
-      });
-
-      const result = await rentalsService.createRental('user-123', createInput);
-
-      expect(result).toHaveProperty('id', 'rental-456');
-      expect(result.status).toBe('active');
-      expect(rentalsRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-123',
-          bookId: 'book-123',
-          durationDays: 14,
-        }),
-      );
-      expect(eventValidatorService.emit).toHaveBeenCalledWith('rental.created', expect.any(Object));
-    });
-
-    it('should throw ConflictException when user already has an active rental', async () => {
-      const createInput: CreateRentalInput = {
-        userId: 'user-123',
-        bookId: 'book-123',
-        durationDays: 7,
-      };
-
-      vi.mocked(rentalsRepository.findByUserAndBook).mockResolvedValue(mockRental);
-
-      await expect(rentalsService.createRental('user-123', createInput)).rejects.toThrow(
-        'You already have an active rental for this book',
-      );
-    });
-  });
-
   describe('findById', () => {
     it('should return a rental by id', async () => {
       vi.mocked(rentalsRepository.findById).mockResolvedValue(mockRental);

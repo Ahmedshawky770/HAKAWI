@@ -4,12 +4,18 @@
 Manages book rental lifecycle including creation, extensions, returns, and expiry.
 
 ## Endpoints
-- `POST /rentals` - Create a rental (authenticated)
 - `GET /rentals/my` - Get current user's rentals (authenticated)
 - `GET /rentals/:id` - Get rental by ID (authenticated)
-- `POST /rentals/:id/extend` - Extend rental period (authenticated)
+- `POST /rentals/:id/extend` - Extend rental period, as a checkout (authenticated)
+- `GET /rentals/:id/extend/quote` - The price of an extension, before any money moves (authenticated)
 - `POST /rentals/:id/return` - Return rental early (authenticated)
 - `GET /rentals/overdue` - List overdue rentals (authenticated)
+
+**There is no `POST /rentals`, by design.** It used to create an ACTIVE rental for nothing, which
+made the payment-first flow bypassable with one request. A rental is created only by money:
+`POST /books/:id/rent` initialises a Paymob checkout whose metadata describes what was bought, and
+`RentalsEventHandler` writes the row when `payment.completed` arrives. The route is pinned to a
+404 by the controller spec and the e2e suite.
 
 ## Features
 - Rental creation with configurable duration

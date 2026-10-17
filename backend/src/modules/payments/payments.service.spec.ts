@@ -518,6 +518,51 @@ describe('PaymentsService', () => {
         reason: 'Customer request',
       });
       expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.created', expect.any(Object));
+      // The settled refund must announce `refund.completed` carrying `paymentId` + `refundId`, so the
+      // library and rentals `@OnEvent` consumers can revoke the entitlement the money bought back.
+      // This producer is what the whole revocation depended on and it never existed.
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.completed', {
+        paymentId: 'payment-123',
+        refundId: 'refund-123',
+      });
+    });
+
+    it('does NOT emit refund.completed while the gateway refund is still pending', async () => {
+      // `refund.completed` means the money has actually come back. A refund Paymob accepted but has
+      // not settled has not, and revoking the entitlement on it would destroy access we may yet have
+      // to restore if it fails — so the settled-refund signal waits for `status: 'processed'`.
+      const completedPayment = { ...mockPayment, status: 'completed' as const };
+      vi.mocked(paymentsRepository.findById).mockResolvedValue(completedPayment);
+      vi.mocked(paymentsRepository.reserveRefundCapacity).mockResolvedValue(
+        reservationFor({ payment: completedPayment, amountCents: 500 }),
+      );
+      vi.mocked(paymentsRepository.updateRefund).mockImplementation(async (_id, patch) => ({
+        id: 'refund-123',
+        paymentId: 'payment-123',
+        amount: 500,
+        currency: 'EGP',
+        reason: 'Customer request',
+        status: 'pending',
+        paymobRefundId: 'paymob-refund-1',
+        metadata: null,
+        createdAt: new Date(),
+        ...patch,
+      }));
+      vi.mocked(paymobGateway.refundTransaction).mockResolvedValue({
+        refundId: 'paymob-refund-1',
+        success: true,
+        pending: true,
+        isRefund: true,
+        amountCents: 500,
+        currency: 'EGP',
+        raw: { id: 56, success: true, pending: true, is_refund: true },
+      });
+
+      const result = await paymentsService.createRefund('payment-123', 500, 'Customer request');
+
+      expect(result.status).toBe('pending');
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.created', expect.any(Object));
+      expect(eventValidatorService.emit).not.toHaveBeenCalledWith('refund.completed', expect.any(Object));
     });
 
     it('should throw BadRequestException when payment is not completed', async () => {
@@ -831,8 +876,13 @@ describe('PaymentsService', () => {
       const reason: unknown = refusal.reason;
       expect(reason).toBeInstanceOf(BadRequestException);
       expect((reason as BadRequestException).message).toMatch(/already refunded/);
-      // The loser never reached the gateway and never emitted a refund row.
-      expect(eventValidatorService.emit).toHaveBeenCalledTimes(1);
+      // Only the winner reaches the gateway, and it now emits twice: `refund.created` when the
+      // reservation is admitted, and `refund.completed` once the gateway returns the money. The
+      // loser is refused under the lock, before any gateway call or any submit, so it emits nothing
+      // — which is exactly why the total is 2 and not 3.
+      expect(eventValidatorService.emit).toHaveBeenCalledTimes(2);
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.created', expect.any(Object));
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('refund.completed', expect.any(Object));
     });
   });
 
@@ -1111,6 +1161,51 @@ describe('PaymentsService', () => {
         expect.objectContaining({ status: 'completed', paymobTransactionId: 'txn-123' }),
       );
       expect(eventValidatorService.emit).toHaveBeenCalledWith('payment.completed', { paymentId: 'payment-123' });
+    });
+
+    it('leaves the metadata naming what was bought intact and records the delivery in its own place', async () => {
+      const payload = {
+        transaction_id: 'txn-123',
+        order_id: 'order-123',
+        status: 'success',
+        payment_id: 'pay-123',
+        amount_cents: 1000,
+      };
+      const rawBody = JSON.stringify(payload);
+
+      vi.mocked(paymentsRepository.findByTransactionId).mockResolvedValue(null);
+      vi.mocked(paymentsRepository.findByOrderId).mockResolvedValue(mockPayment);
+      vi.mocked(paymentsRepository.update).mockResolvedValue({ ...mockPayment, status: 'completed' });
+
+      await paymentsService.handlePaymobWebhook(rawBody, sign(rawBody));
+
+      // An exact match, not objectContaining: the update carries no `metadata` key at all, so the row
+      // keeps the purchase description (`{ bookId, type: 'purchase' }`) that LibraryEventHandler and
+      // RentalsEventHandler read back when `payment.completed` fires. Overwriting it here is what
+      // used to happen, and the payment then completed with nothing delivered — no library row, no
+      // rental, no extension — because the handlers could not tell what had been paid for.
+      expect(paymentsRepository.update).toHaveBeenCalledWith('payment-123', {
+        status: 'completed',
+        paymobPaymentId: 'pay-123',
+        paymobTransactionId: 'txn-123',
+      });
+
+      // The gateway's delivery has a home of its own — the transaction ledger — recorded verbatim so
+      // an operator reconciling the capture sees every field Paymob sent.
+      //
+      // WHY `completed` AND NOT THE GATEWAY'S `success`. This column is the `payment_status` enum
+      // since `migrations/0024_create_database_enums.sql`, and `success` is not one of its members:
+      // writing it here killed the insert (22P02) after the payment row had already been flipped, so
+      // the webhook 500'd before `payment.completed` was emitted, no entitlement was ever granted,
+      // and the gateway's retry short-circuits at `already_processed`.
+      expect(paymentsRepository.createTransaction).toHaveBeenCalledWith({
+        paymentId: 'payment-123',
+        type: 'webhook',
+        status: 'completed',
+        amount: 1000,
+        currency: 'EGP',
+        gatewayResponse: rawBody,
+      });
     });
 
     it('completes the payment from the documented TRANSACTION envelope', async () => {

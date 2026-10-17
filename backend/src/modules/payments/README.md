@@ -51,6 +51,18 @@ part of the published contract in `docs/api-contract/openapi/rest-api-spec.md`) 
 `paymobOrderId` and no checkout URL can never be paid, because no webhook can match an order
 that was never registered upstream.
 
+### What `metadata` is, and who may touch it
+
+`payments.metadata` records **what was bought** — `{ bookId, type: 'purchase' | 'rental' |
+'subscription', durationDays }` — written once at checkout and read back by the entitlement
+handlers when `payment.completed` fires (`LibraryEventHandler` grants ownership,
+`RentalsEventHandler` writes the rental). It is therefore off-limits to every other writer, and
+the webhook is the case that mattered: it used to overwrite the column with the gateway's raw
+delivery _before_ emitting `payment.completed`, so the handlers could no longer tell what had
+been paid for and completed captures delivered nothing. The webhook never writes `metadata`; the
+delivery is recorded verbatim where a delivery belongs — a `payment_transactions` row with
+`type: 'webhook'` and `gateway_response` set to the raw body.
+
 ## Environment
 
 `PAYMOB_ENVIRONMENT=sandbox` (default) or `live` selects the credential set. Paymob's test

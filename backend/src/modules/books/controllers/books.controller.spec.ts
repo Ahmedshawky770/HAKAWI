@@ -7,6 +7,7 @@ import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { BooksService } from '../books.service.ts';
@@ -38,7 +39,7 @@ type MockBooksService = {
   update: ReturnType<typeof vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>>;
   publish: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
   archive: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
-  incrementDownloadCount: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  recordDownload: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
   delete: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<void>>>;
 };
 
@@ -84,7 +85,7 @@ describe('BooksController', () => {
       update: vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>(),
       publish: vi.fn<(id: string, userId: string) => Promise<Book>>(),
       archive: vi.fn<(id: string, userId: string) => Promise<Book>>(),
-      incrementDownloadCount: vi.fn<(id: string) => Promise<void>>(),
+      recordDownload: vi.fn<(id: string, userId: string) => Promise<Book>>(),
       delete: vi.fn<(id: string, userId: string) => Promise<void>>(),
     };
 
@@ -101,13 +102,22 @@ describe('BooksController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
-        // This module is hand-built rather than importing `CommonModule`, so both must be provided
-        // here or Nest fails at DI resolution before any assertion runs.
+        // `@Secured` composes `RestrictionGuard`, which now reads the account's restriction through
+        // the shared `AccountRestrictionService` (the same reader `AuthService` uses for a ban at
+        // login). That service injects `ValkeyService` and the logger, and this module is hand-built
+        // rather than importing `CommonModule`, so all three must be provided here or Nest fails at
+        // DI resolution before any assertion runs. The reader answers "no restriction" by default.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
         },
       ],
     }).compile();
@@ -214,11 +224,10 @@ describe('BooksController', () => {
   });
 
   describe('POST /books/:id/download', () => {
-    it('should increment download count and return URL', async () => {
+    it('hands the file URL to the caller the service granted access to', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(booksService.incrementDownloadCount).mockResolvedValue(undefined);
-      vi.mocked(booksService.findById).mockResolvedValue(
+      vi.mocked(booksService.recordDownload).mockResolvedValue(
         makeBook({ fileUrl: 'https://s3.amazonaws.com/bucket/book.pdf', downloadCount: 1 }),
       );
 
@@ -228,7 +237,9 @@ describe('BooksController', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('downloadUrl');
-      expect(booksService.incrementDownloadCount).toHaveBeenCalledWith('book-1');
+      // The caller's identity is part of the request because the file is an entitlement: the
+      // route used to omit it and hand any authenticated account the file of a paid book.
+      expect(booksService.recordDownload).toHaveBeenCalledWith('book-1', 'user-1');
     });
   });
 

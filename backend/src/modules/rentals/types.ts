@@ -21,11 +21,6 @@ export type CreateRentalInput = {
   durationDays: number;
 };
 
-export type CreateRentalRequest = {
-  bookId: string;
-  durationDays: number;
-};
-
 export type RentalExtension = {
   id: string;
   rentalId: string;

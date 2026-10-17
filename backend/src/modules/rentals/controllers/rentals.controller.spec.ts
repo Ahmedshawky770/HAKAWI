@@ -7,12 +7,13 @@ import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { RentalsService } from '../rentals.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import type { PaymobCheckoutResponse } from '../../payments/types.ts';
-import type { CreateRentalRequest, Rental, RentalsListResponse } from '../types.ts';
+import type { Rental, RentalsListResponse } from '../types.ts';
 
 import { RentalsController } from './rentals.controller.ts';
 
@@ -31,7 +32,6 @@ type RentalsListParams = { status?: string; page?: number; limit?: number };
 type ExtensionCheckout = PaymobCheckoutResponse & { id: string };
 
 type MockRentalsService = {
-  createRental: ReturnType<typeof vi.fn<(userId: string, input: CreateRentalRequest) => Promise<Rental>>>;
   findMyRentals: ReturnType<typeof vi.fn<(userId: string, params: RentalsListParams) => Promise<RentalsListResponse>>>;
   findById: ReturnType<typeof vi.fn<(id: string, userId?: string) => Promise<Rental>>>;
   extendRental: ReturnType<
@@ -77,7 +77,6 @@ describe('RentalsController', () => {
 
   beforeAll(async () => {
     rentalsService = {
-      createRental: vi.fn<(userId: string, input: CreateRentalRequest) => Promise<Rental>>(),
       findMyRentals: vi.fn<(userId: string, params: RentalsListParams) => Promise<RentalsListResponse>>(),
       findById: vi.fn<(id: string, userId?: string) => Promise<Rental>>(),
       extendRental: vi.fn<(id: string, extensionDays: number, userId: string) => Promise<ExtensionCheckout>>(),
@@ -98,13 +97,22 @@ describe('RentalsController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
-        // This module is hand-built rather than importing `CommonModule`, so both must be provided
-        // here or Nest fails at DI resolution before any assertion runs.
+        // `@Secured` composes `RestrictionGuard`, which now reads the account's restriction through
+        // the shared `AccountRestrictionService` (the same reader `AuthService` uses for a ban at
+        // login). That service injects `ValkeyService` and the logger, and this module is hand-built
+        // rather than importing `CommonModule`, so all three must be provided here or Nest fails at
+        // DI resolution before any assertion runs. The reader answers "no restriction" by default.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
         },
       ],
     }).compile();
@@ -122,19 +130,17 @@ describe('RentalsController', () => {
   });
 
   describe('POST /rentals', () => {
-    it('should create a rental', async () => {
+    // The free-rental door is gone: it used to create an ACTIVE rental with no payment, which made
+    // the payment-first redesign (`POST /books/:id/rent` → checkout → grant on `payment.completed`)
+    // bypassable with one request. Pinning the 404 keeps the route from being re-added quietly.
+    it('no longer exists', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
-      vi.mocked(rentalsService.createRental).mockResolvedValue(makeRental());
-
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/rentals')
         .set('Authorization', `Bearer ${token}`)
         .send({ bookId: 'book-1' })
-        .expect(201);
-
-      expect(res.body).toHaveProperty('id', 'rental-1');
-      expect(rentalsService.createRental).toHaveBeenCalled();
+        .expect(404);
     });
   });
 

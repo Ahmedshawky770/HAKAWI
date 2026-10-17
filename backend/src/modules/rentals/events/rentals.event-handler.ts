@@ -4,8 +4,10 @@ import { MAX_RENTAL_EXTENSIONS } from '@hakawi/shared-types';
 
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type { PaymentCompletedEvent } from '../../../common/events/payments.events.ts';
-import type { RentalCreatedEvent, RentalExtendedEvent } from '../../../common/events/rentals.events.ts';
+import type { PaymentCompletedEvent, RefundCompletedEvent } from '../../../common/events/payments.events.ts';
+import type { RentalCreatedEvent, RentalExtendedEvent, RentalExpiredEvent } from '../../../common/events/rentals.events.ts';
+import { TaggedCacheService } from '../../shared/cache/tagged-cache.service.ts';
+import { RENTAL_CACHE_NAMESPACE, RENTALS_CACHE_TAG } from '../rentals.service.ts';
 import type { IRentalsRepository } from '../interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from '../interfaces/rentals-repository.interface.ts';
 import type { IPaymentsRepository } from '../../payments/interfaces/payments-repository.interface.ts';
@@ -40,6 +42,9 @@ export class RentalsEventHandler {
     @Inject(PAYMENTS_REPOSITORY) private readonly paymentsRepository: IPaymentsRepository,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    // Used only to retire a cached rental after a refund expires it, the same
+    // `invalidateKey` `RentalsService` runs on its own write paths.
+    @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
   ) {}
 
   @OnEvent('payment.completed')
@@ -102,6 +107,108 @@ export class RentalsEventHandler {
       userId: payment.userId,
       bookId,
     } as RentalCreatedEvent);
+  }
+
+  /**
+   * A settled refund revokes the rental it paid for.
+   *
+   * WHY THIS EXISTS. `PaymentsService` emits `refund.completed` the moment the gateway returns the
+   * money. That name used to be registered in the schema and even carried an `@OnEvent` consumer,
+   * but no producer ever emitted it and the consumer only logged — so a refunded rental stayed
+   * `active` and the reader kept reading a book the merchant had already paid back. Money left the
+   * merchant, the entitlement never came back in. Flipping the row to `expired` is the revocation,
+   * and it is enough on its own: `RentalsService.findActiveRentalForBook` answers the access
+   * question against the row's `status` and `endDate`, not against a word a scheduled job would have
+   * to keep honest, so a refunded rental stops entitling access the instant the row changes.
+   *
+   * WHY IT LIVES HERE. The rentals module owns the rental (Principle #9); the payments module only
+   * announces the refund and must not write a rentals row it does not own (Principle #7). The payment
+   * is read back for its stored `userId` and `metadata`, exactly as the grant path does, so the
+   * revocation is derived from the authoritative record of what was bought rather than from a second,
+   * event-borne copy of the book id that could drift.
+   *
+   * WHY IT IS IDEMPOTENT (Principle #16). A gateway delivery can be replayed or duplicated. Expiring
+   * an already-`expired` or `returned` rental is a deliberate no-op, not a fresh write and not a
+   * throw, so a second `refund.completed` cannot corrupt the row or surface as a 500 in the listener.
+   *
+   * WHY A `rental_extension` REFUND IS NOT HANDLED HERE. Reverting an extension would mean restoring
+   * a previous end date, undoing an increment a different payment made, and possibly fighting the
+   * base rental the reader still paid for — a lossy, multi-source reconciliation this handler must
+   * not perform on its own. It is logged for an operator instead, and the base rental is left intact
+   * because refunding an extension does not refund the original rental.
+   */
+  @OnEvent('refund.completed')
+  async handleRefundCompleted(event: RefundCompletedEvent): Promise<void> {
+    const payment = await this.paymentsRepository.findById(event.paymentId);
+    if (!payment) {
+      throw new NotFoundException(`Payment ${event.paymentId} not found while revoking a rental`);
+    }
+
+    const meta = this.parseMetadata(payment.metadata);
+    if (meta.type !== 'rental') {
+      if (meta.type === 'rental_extension') {
+        // Documented interaction, not a silent skip: the base rental keeps its access.
+        this.logger.warn(
+          `Refund ${event.refundId} refunded a rental extension of payment ${payment.id}; extensions are not auto-reverted and the base rental stands — reconcile manually`,
+          'RentalsEventHandler',
+        );
+      }
+      // A purchase refund is the library module's fact; it subscribes to the same event.
+      return;
+    }
+
+    const bookId = typeof meta.bookId === 'string' ? meta.bookId : null;
+    if (!bookId) {
+      this.logger.error(
+        `Rental refund ${event.refundId} names payment ${payment.id} with no usable bookId metadata; the rental cannot be expired`,
+        'RentalsEventHandler',
+      );
+      return;
+    }
+
+    const rental = await this.rentalsRepository.findByUserAndBook(payment.userId, bookId);
+    if (!rental || rental.deletedAt) {
+      // A refund against a payment whose rental never materialised, or was hard-deleted: the access
+      // the reader would have had never existed, so there is nothing to revoke and nothing to throw.
+      this.logger.warn(
+        `Rental refund ${event.refundId} found no rental for user ${payment.userId} on book ${bookId}; nothing to expire`,
+        'RentalsEventHandler',
+      );
+      return;
+    }
+
+    if (rental.status === 'expired' || rental.status === 'returned') {
+      this.logger.info(
+        `Rental ${rental.id} is already ${rental.status}; refund ${event.refundId} is a replayed or duplicate revocation`,
+        'RentalsEventHandler',
+      );
+      return;
+    }
+
+    await this.rentalsRepository.update(rental.id, { status: 'expired' });
+    await this.invalidateRentalCache(rental.id);
+
+    this.logger.info(
+      `Expired rental ${rental.id} of book ${bookId} for user ${payment.userId} because refund ${event.refundId} settled`,
+      'RentalsEventHandler',
+    );
+
+    // `rental.expired` is the same signal `checkAndExpireOverdue` publishes for a lapsed rental, so
+    // every consumer that ends access on a rental — the library module withdrawing the shelf entry,
+    // for one — treats a refunded rental exactly like a lapsed one, with no second vocabulary. The
+    // entitlement is already gone here (the row is `expired`); this only tells the rest of the system.
+    await this.eventBus.emit('rental.expired', { rentalId: rental.id } as RentalExpiredEvent);
+  }
+
+  /**
+   * Retires the cached copy of one rental, mirroring `RentalsService.invalidateRentalCache`.
+   *
+   * Every write path that changes a rental retires the cached copy — the module's own stated
+   * invariant — and a refund that flips the row to `expired` without doing so would leave
+   * `GET /rentals/:id` reporting `active` for up to a TTL after access had already ended.
+   */
+  private async invalidateRentalCache(id: string): Promise<void> {
+    await this.cache.invalidateKey(RENTAL_CACHE_NAMESPACE, id, [RENTALS_CACHE_TAG]);
   }
 
   /**

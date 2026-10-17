@@ -13,6 +13,10 @@ Manages user personal library with owned and rented books.
 ## Features
 - Library management for purchased and rented books
 - Status tracking (owned, rented, reading)
+- `rented` is a real access state: `rental.created` writes the entry (`status: 'rented'`, tied to
+  the rental's id), and `rental.returned` / `rental.expired` withdraw it. It is the row the books
+  module's access checks consult, so a paid rental both appears on the shelf and opens the file.
+  Both writes are idempotent, and ownership is never demoted into a lease.
 - Last accessed timestamp for reading progress
 - Conflict prevention (duplicate library items)
 - Library item counting

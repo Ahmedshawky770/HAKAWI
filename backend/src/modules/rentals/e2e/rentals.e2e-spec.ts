@@ -13,16 +13,7 @@ import { EncryptionService } from '../../../common/utils/encryption.util.ts';
 import { UsersRepository } from '../../../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../../../modules/users/interfaces/users-repository.interface.ts';
 import { UsersEventHandler } from '../../../modules/users/events/users.event-handler.ts';
-import type {
-  IdResponse,
-  JsonResponse,
-  LoginResponseBody,
-} from '../../../test/helpers/test-response-types.ts';
-
-interface RentalResponseBody {
-  id: string;
-  status: string;
-}
+import type { IdResponse, JsonResponse, LoginResponseBody } from '../../../test/helpers/test-response-types.ts';
 
 describe('Rentals E2E', () => {
   let app: INestApplication<Server>;
@@ -93,15 +84,16 @@ describe('Rentals E2E', () => {
   });
 
   describe('POST /rentals', () => {
-    it('should create a rental', async () => {
-      const res = await request(httpServer)
+    // The free-rental door is gone. This route used to create an ACTIVE rental with no payment —
+    // the entitlement for the price of one request — which made the whole payment-first redesign
+    // of rentals bypassable. A rental now exists only after `POST /books/:id/rent` takes the money
+    // and `payment.completed` arrives; the route is pinned as a 404 so it cannot come back quietly.
+    it('no longer exists', async () => {
+      await request(httpServer)
         .post('/rentals')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ bookId })
-        .expect(201);
-
-      expect(res.body).toHaveProperty('id');
-      expect((res.body as RentalResponseBody).status).toBe('active');
+        .expect(404);
     });
   });
 

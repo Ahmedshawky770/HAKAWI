@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
@@ -8,7 +8,13 @@ import type {
   LibraryItemAccessedEvent,
   LibraryItemRemovedEvent,
 } from '../../../common/events/library.events.ts';
-import type { PaymentCompletedEvent } from '../../../common/events/payments.events.ts';
+import type { PaymentCompletedEvent, RefundCompletedEvent } from '../../../common/events/payments.events.ts';
+import type {
+  RentalCreatedEvent,
+  RentalReturnedEvent,
+  RentalExpiredEvent,
+} from '../../../common/events/rentals.events.ts';
+import { LibraryService } from '../library.service.ts';
 import type { ILibraryRepository } from '../interfaces/library-repository.interface.ts';
 import { LIBRARY_REPOSITORY } from '../interfaces/library-repository.interface.ts';
 import type { IPaymentsRepository } from '../../payments/interfaces/payments-repository.interface.ts';
@@ -21,6 +27,10 @@ export class LibraryEventHandler {
     @Inject(PAYMENTS_REPOSITORY) private readonly paymentsRepository: IPaymentsRepository,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    // Reused only to revoke a purchase entitlement on a refund, through the same removal path a
+    // reader-initiated DELETE uses. Injected rather than re-implemented so the vault-key delete and
+    // the `library.item.removed` announcement stay in the one place that owns them (Principle #9).
+    @Inject(LibraryService) private readonly libraryService: LibraryService,
   ) {}
 
   @OnEvent('library.item.added')
@@ -127,6 +137,186 @@ export class LibraryEventHandler {
       userId: payment.userId,
       bookId,
     } as LibraryItemAddedEvent);
+  }
+
+  /**
+   * A settled refund revokes the purchased entitlement.
+   *
+   * WHY THIS EXISTS. `PaymentsService` emits `refund.completed` when the gateway returns the money.
+   * That name was registered in the schema and even subscribed, but no producer ever emitted it and
+   * nothing acted on it — so a refunded purchase left the reader a permanent owner of a book the
+   * merchant had paid back: a book nobody was paying for, delivered forever. Removing the library
+   * entry is the revocation, and it is the whole of it — the download path consults this table, so
+   * once the entry is gone the only way the reader has the file again is by buying it again.
+   *
+   * WHY IT LIVES HERE. "This user owns this book" is the library's fact (Principle #9), so the
+   * entitlement is revoked by the library module and not by the payments module reaching into a
+   * library table it does not own (Principle #7). The payment is read back for its stored `userId`
+   * and `metadata`, exactly as the grant path does, so the revocation targets the same
+   * `(userId, bookId)` the grant created and is derived from the authoritative record of the sale
+   * rather than from the event payload.
+   *
+   * WHY IT IS IDEMPOTENT (Principle #16). A gateway delivery can be replayed or duplicated. Removal
+   * goes through `LibraryService.removeBookForRefund`, which treats an already-absent entitlement as
+   * a no-op rather than a `NotFoundException`/500, so a second delivery cannot fail the listener or
+   * disturb a reader who had already lost the book.
+   *
+   * ONLY a purchase is revoked here. A rental refund is the rentals module's fact — it subscribes to
+   * the same event and expires the rental — and a rental's `rented` shelf entry is then withdrawn by
+   * the existing `rental.expired`/`rental.returned` consumers. Filtering on `purchase` is what keeps
+   * this handler from ever deleting a rental the reader still paid for.
+   */
+  @OnEvent('refund.completed')
+  async handleRefundCompleted(event: RefundCompletedEvent): Promise<void> {
+    const payment = await this.paymentsRepository.findById(event.paymentId);
+    if (!payment) {
+      throw new NotFoundException(`Payment ${event.paymentId} not found while revoking an entitlement`);
+    }
+
+    const meta = this.parseMetadata(payment.metadata);
+    if (meta.type !== 'purchase') {
+      // A rental refund is revoked by the rentals module; anything this module does not own is
+      // declined rather than guessed at, and the money-side consumer runs independently.
+      return;
+    }
+
+    const bookId = typeof meta.bookId === 'string' ? meta.bookId : null;
+    if (!bookId) {
+      this.logger.error(
+        `Purchase refund ${event.refundId} names payment ${payment.id} with no usable bookId metadata; no entitlement revoked`,
+        'LibraryEventHandler',
+      );
+      return;
+    }
+
+    const removed = await this.libraryService.removeBookForRefund(payment.userId, bookId);
+    if (removed) {
+      this.logger.info(
+        `Revoked ownership of book ${bookId} from user ${payment.userId} because refund ${event.refundId} settled`,
+        'LibraryEventHandler',
+      );
+    } else {
+      // The entitlement was already gone, or a purchase whose entitlement never materialised. Not an
+      // error: the refund still settled, and re-removing nothing is the correct outcome.
+      this.logger.warn(
+        `Purchase refund ${event.refundId} found no library entry for user ${payment.userId} on book ${bookId}; nothing to revoke`,
+        'LibraryEventHandler',
+      );
+    }
+  }
+
+  /**
+   * A paid rental becomes library access.
+   *
+   * THE ROW THIS WRITES IS THE READER'S ONLY PROOF OF THE RENTAL. `RentalsEventHandler` records the
+   * rental itself when the payment completes, but nothing connected that rental to this table, so a
+   * book paid for by the day was never on the shelf — the reader could not see it, and the access
+   * check in the books module, which grants the file on a library row or a live rental, had nothing
+   * in this table to find. `status: 'rented'` is the vocabulary the column has always carried and
+   * the client's `LibraryItem` schema already parses.
+   *
+   * WHY THE TWO GUARDS. The handler is reachable again from a replayed or duplicated event, and the
+   * `library`'s uniqueness is on the id, not on the pair: so this rental is checked for an entry of
+   * its own, and the book for an entry the reader already has. A reader who owns the book outright
+   * must not have that ownership demoted into a rental that expires in a fortnight.
+   */
+  @OnEvent('rental.created')
+  async handleRentalCreated(event: RentalCreatedEvent): Promise<void> {
+    this.logger.info(`Handling rental created event: ${event.rentalId}`, 'LibraryEventHandler');
+
+    const existingForRental = await this.libraryRepository.findByRentalId(event.rentalId);
+    if (existingForRental) {
+      this.logger.info(`Rental ${event.rentalId} is already on the shelf; nothing to grant`);
+      return;
+    }
+
+    const existingForBook = await this.libraryRepository.findByUserAndBook(event.userId, event.bookId);
+    if (existingForBook) {
+      this.logger.warn(
+        `Rental ${event.rentalId} found the reader already holding book ${event.bookId} on the shelf; keeping the existing entry`,
+      );
+      return;
+    }
+
+    // The grant itself goes through the service, the same one the purchase grant and a
+    // reader-initiated add use. This used to create the row and emit `library.item.added` by hand,
+    // a second copy of the grant sequence that would silently miss any step later added to
+    // `addToLibrary`. The two guards above are not redundant with the service's own existence
+    // check: they answer this handler's two questions first — "is this rental already on the
+    // shelf" and "does the reader already hold this book" — so a replayed or duplicated rental is
+    // a log line rather than an exception, and the ConflictException below only covers the race
+    // they cannot see.
+    try {
+      await this.libraryService.addToLibrary(event.userId, {
+        bookId: event.bookId,
+        rentalId: event.rentalId,
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        this.logger.warn(
+          `Rental ${event.rentalId} lost the shelf race for book ${event.bookId}; keeping the existing entry`,
+        );
+        return;
+      }
+      throw error;
+    }
+
+    this.logger.info(
+      `Granted rented access to book ${event.bookId} for user ${event.userId} from rental ${event.rentalId}`,
+    );
+  }
+
+  /**
+   * A rental that ended stops being library access.
+   *
+   * The two endings share one withdrawal because they mean the same thing to the shelf: the rental
+   * is no longer the reader's entitlement. Keeping the row would leave the shelf claiming access for
+   * a book the reader handed back or let lapse, and the download path would have honoured it.
+   */
+  @OnEvent('rental.returned')
+  async handleRentalReturned(event: RentalReturnedEvent): Promise<void> {
+    await this.withdrawRentalAccess(event.rentalId, 'returned');
+  }
+
+  /** See {@link handleRentalReturned} — a lapsed rental ends the access it granted exactly the same way. */
+  @OnEvent('rental.expired')
+  async handleRentalExpired(event: RentalExpiredEvent): Promise<void> {
+    await this.withdrawRentalAccess(event.rentalId, 'expired');
+  }
+
+  /**
+   * Takes back the entry a rental granted, found by the rental's own id.
+   *
+   * A missing entry is logged rather than thrown: the rental ended, which is the fact that matters,
+   * and a 500 inside the handler would leave the listener believing the withdrawal failed.
+   */
+  private async withdrawRentalAccess(rentalId: string, reason: string): Promise<void> {
+    this.logger.info(`Handling rental ${reason} event: ${rentalId}`, 'LibraryEventHandler');
+
+    const granted = await this.libraryRepository.findByRentalId(rentalId);
+    if (!granted) {
+      this.logger.warn(`Rental ${rentalId} ${reason} but has no library entry to withdraw`);
+      return;
+    }
+
+    // WHY THROUGH THE SERVICE AND NOT A DIRECT DELETE. This used to re-implement the removal —
+    // `libraryRepository.delete` plus a hand-rolled `library.item.removed` emit — and the copy
+    // drifted from the original on its first side effect: `LibraryService.removeFromLibrary` also
+    // deletes the `library:<id>` cache key, so a withdrawn rental entry could keep being served from
+    // cache. The refund consumer in this same file already goes through the service; a returned or
+    // lapsed rental is the same revocation with a different cause and must not have a second code
+    // path (Principle #9).
+    const withdrawn = await this.libraryService.removeBookForRefund(granted.userId, granted.bookId);
+    if (!withdrawn) {
+      // The entry disappeared between the lookup and the removal: the entitlement is gone either
+      // way, which is the same no-op a replayed delivery must be.
+      this.logger.info(`Rental ${rentalId} ${reason}; its library entry was already withdrawn`);
+      return;
+    }
+
+    // `library.item.removed` is emitted by `removeFromLibrary` inside that call — one announcement
+    // per removal, from the module that owns it.
+    this.logger.info(`Withdrew rented access for rental ${rentalId} (library item ${granted.id})`);
   }
 
   /**

@@ -13,8 +13,14 @@ Manages book CRUD operations, publishing workflow, and download tracking.
 - `PATCH /books/:id` - Update book (authenticated)
 - `POST /books/:id/publish` - Publish book (authenticated)
 - `POST /books/:id/archive` - Archive book (authenticated)
-- `POST /books/:id/download` - Increment download count and get URL (authenticated)
+- `POST /books/:id/download` - Get the download URL for a book the caller has access to (authenticated)
 - `DELETE /books/:id` - Soft delete book (authenticated)
+
+`download` is an entitlement, not public content: the caller's identity travels with the request,
+and the service grants the file only when the book is free, the reader owns it (a `library` row,
+read through the library module's interface), or a rental is still inside its dates
+(`RentalsService.findActiveRentalForBook`). A refusal says to buy or rent the book, and counts
+nothing.
 
 ## Features
 

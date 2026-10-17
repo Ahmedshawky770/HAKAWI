@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { LibraryService } from '../library.service.ts';
 import { AddToLibraryDto, LibraryQueryDto } from '../dto/library.dto.ts';
 import type { LibraryQuery } from '../types.ts';
@@ -53,7 +54,7 @@ export class LibraryController {
    * because a controller-level check is bypassed by any other caller — and the service has two other
    * callers that are allowed to bypass it deliberately (the payment grant).
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('claim')
   @HttpCode(HttpStatus.CREATED)
   async claimFreeBook(@Body() dto: AddToLibraryDto, @Request() req: Request & { user: { sub: string } }) {
@@ -73,14 +74,14 @@ export class LibraryController {
     return this.libraryService.count(req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/access')
   @HttpCode(HttpStatus.OK)
   async accessItem(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
     return this.libraryService.accessItem(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeFromLibrary(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {

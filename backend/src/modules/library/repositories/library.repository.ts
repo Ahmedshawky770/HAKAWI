@@ -59,6 +59,20 @@ export class LibraryRepository implements ILibraryRepository {
     return item ?? null;
   }
 
+  async findByRentalId(rentalId: string): Promise<LibraryItem | null> {
+    this.logger.debug(`Finding library item by rental: ${rentalId}`);
+    try {
+      const [item] = await db.select().from(library).where(eq(library.rentalId, rentalId)).limit(1);
+      return item ?? null;
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === '22P02') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async create(data: {
     userId: string;
     bookId: string;

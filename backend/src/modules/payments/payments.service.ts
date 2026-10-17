@@ -18,6 +18,7 @@ import type {
   PaymentCompletedEvent,
   PaymentFailedEvent,
   RefundCreatedEvent,
+  RefundCompletedEvent,
 } from '../../common/events/payments.events.ts';
 
 import { PAYMOB_CLIENT, PaymobGatewayError } from './clients/paymob.client.ts';
@@ -426,9 +427,33 @@ export class PaymentsService {
 
     if (result.pending) {
       // Still pending upstream, so the capacity stays reserved and the payment keeps whatever status
-      // the reservation gave it. The refund row is the thing an operator reconciles later.
+      // the reservation gave it. The refund row is the thing an operator reconciles later. NO
+      // `refund.completed` from here: the gateway has not returned the money yet, and revoking an
+      // entitlement on a refund that can still fail would destroy access the customer paid for and
+      // that we may then have to restore. The entitlement follows the SETTLED refund, never the
+      // pending one.
       this.logger.info(`Paymob refund ${refund.id} is still pending upstream (paymobRefundId=${result.refundId})`);
+      return submitted;
     }
+
+    // TERMINAL SUCCESS — the gateway has returned the money, so the entitlement the payment was sold
+    // for must be revoked. This is the producer `refund.completed` always lacked: the name was
+    // registered in the schema registry and even carried an `@OnEvent` consumer, yet nothing ever
+    // emitted it, so a completed refund never reached the library or the rentals module and the
+    // reader kept a book the merchant had paid back, forever. The revocation itself belongs to those
+    // modules ("this user owns this book" is the library's fact; the rentals module owns the rental —
+    // Principle #9), so we only announce the settled refund and let each consumer remove what it
+    // owns (Principle #7). Consumers read the payment row back from `paymentId`, so this event does
+    // not have to carry the book or the type. A replayed delivery is a no-op in the consumer, because
+    // removing an already-absent entitlement is not an error.
+    await this.eventBus.emit('refund.completed', {
+      paymentId: payment.id,
+      refundId: refund.id,
+    } as RefundCompletedEvent);
+
+    this.logger.info(
+      `Paymob refund ${refund.id} settled (paymobRefundId=${result.refundId}); entitlement revocation announced for payment ${payment.id}`,
+    );
 
     return submitted;
   }
@@ -637,11 +662,41 @@ export class PaymentsService {
 
     this.validateStatusTransition(payment.status as PaymentStatus, status as PaymentStatus);
 
+    // THE PAYMENT'S OWN `metadata` IS LEFT ALONE. It records WHAT was bought — `{ bookId, type:
+    // 'purchase' | 'rental', durationDays }` — and `LibraryEventHandler` / `RentalsEventHandler` read
+    // exactly those fields back off this row when `payment.completed` fires below to grant the
+    // entitlement. Overwriting it with the gateway's delivery, which is what this line used to do,
+    // meant the grant handlers found none of it: a completed capture created no library row and no
+    // rental, so the money was taken and nothing was delivered. The gateway's payload has a home of
+    // its own — `payment_transactions.gateway_response`, via `createTransaction` below — and only
+    // that place stores it (Principle #9).
     await this.paymentsRepository.update(payment.id, {
       status,
       paymobPaymentId: (payload.payment_id as string | null) ?? payment.paymobPaymentId,
       paymobTransactionId: transactionId,
-      metadata: JSON.stringify(decoded),
+    });
+
+    // The delivery itself is recorded verbatim — the raw body, not the schema-stripped copy — because
+    // an operator reconciling a capture needs every field Paymob sent, including ones this schema
+    // does not name. The amount falls back to the recorded amount when the envelope carried none;
+    // a `completed` delivery without an amount was already rejected above, so this is the failed
+    // and pending branches.
+    // WHY THIS IS `status` AND NOT THE `'success'` THIS LINE USED TO WRITE. `resolveWebhookStatus`
+    // normalises the gateway's vocabulary to `'completed' | 'failed'` — both of them members of the
+    // `payment_status` enum that `migrations/0024_create_database_enums.sql` applies to this very
+    // column. The `? 'success' :` branch translated the normalised `completed` back into the
+    // gateway's word, which is NOT in the enum, so every successful delivery died on the insert
+    // (22P02) — after the payment row had already been flipped to `completed`, and before
+    // `payment.completed` was emitted. The webhook answered 500, no library row and no rental were
+    // ever granted, and the gateway's retry short-circuits at `already_processed`: the entitlement
+    // was unrecoverable. `status` is already the stored vocabulary; writing it is the whole fix.
+    await this.paymentsRepository.createTransaction({
+      paymentId: payment.id,
+      type: 'webhook',
+      status,
+      amount: capturedAmountCents ?? payment.amount,
+      currency: payment.currency,
+      gatewayResponse: rawBody,
     });
 
     await this.invalidatePaymentCache(payment.id);

@@ -31,10 +31,19 @@ export class RentalsRepository implements IRentalsRepository {
 
   async findByUserAndBook(userId: string, bookId: string): Promise<Rental | null> {
     this.logger.debug(`Finding rental by user: ${userId} and book: ${bookId}`);
+    // WHY NEWEST FIRST, AND WHY THE ORDER IS NOT COSMETIC. `rentals_user_book_unique_idx` is a plain
+    // index, so one reader can hold several rows for the same book — rent, refund, rent again — and
+    // `limit(1)` without an `ORDER BY` returns whichever row the planner picks, normally the oldest.
+    // The refund consumer classifies the row it gets here: if it resolves an earlier `returned` or
+    // `expired` row it takes the "already ended, this is a replayed revocation" branch and returns,
+    // leaving the refunded rental — the current one — still `active` with its shelf entry intact.
+    // Ordering by `createdAt desc` makes every caller that asks "the rental for this user on this
+    // book" get the one in force, which is what both the access check and the refund path mean.
     const [rental] = await db
       .select()
       .from(rentals)
       .where(and(eq(rentals.userId, userId), eq(rentals.bookId, bookId), isNull(rentals.deletedAt)))
+      .orderBy(desc(rentals.createdAt))
       .limit(1);
     return rental ?? null;
   }

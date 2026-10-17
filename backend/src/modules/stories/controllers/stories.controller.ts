@@ -19,6 +19,7 @@ import { ThrottleTier } from '../../../common/decorators/throttle-tier.decorator
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { OptionalJwtAuthGuard } from '../../../common/guards/optional-jwt-auth.guard.ts';
 import { OwnershipGuard } from '../../../common/guards/ownership.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import type { AuthRequest } from '../../../common/types/auth-request.interface.ts';
 import type { OptionalAuthRequest } from '../../../common/types/optional-auth-request.interface.ts';
 import { StoriesService } from '../stories.service.ts';
@@ -209,7 +210,7 @@ export class StoriesController {
    * tell whether a candidate slug was really free. Doing it here would have meant the controller
    * probing for a slug it could not write.
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateStoryDto, @Request() req: AuthRequest) {
@@ -251,26 +252,26 @@ export class StoriesController {
    *
    * `POST /stories` is deliberately NOT gated: there is no resource yet, so there is nothing to own.
    */
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateStoryDto, @Request() req: AuthRequest) {
     const story = await this.storiesService.update(id, dto, req.user.sub);
     return this.storiesService.toRecord(story);
   }
 
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Post(':id/publish')
   async publish(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.storiesService.publish(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Post(':id/archive')
   async archive(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.storiesService.archive(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string, @Request() req: AuthRequest) {
@@ -331,7 +332,7 @@ export class StoriesController {
    * otherwise.
    */
   @ThrottleTier('search')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/view')
   @HttpCode(HttpStatus.NO_CONTENT)
   async recordView(@Param('id') id: string, @Request() req: AuthRequest): Promise<void> {

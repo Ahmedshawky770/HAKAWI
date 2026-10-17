@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
   ForbiddenException,
   BadRequestException,
   InternalServerErrorException,
@@ -14,23 +13,11 @@ import { PaymentsService } from '../payments/payments.service.ts';
 import type { PaymobCheckoutResponse } from '../payments/types.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
-import type {
-  RentalCreatedEvent,
-  RentalReturnedEvent,
-  RentalExpiredEvent,
-} from '../../common/events/rentals.events.ts';
+import type { RentalReturnedEvent, RentalExpiredEvent } from '../../common/events/rentals.events.ts';
 
 import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.ts';
-import type {
-  Rental,
-  CreateRentalInput,
-  RentalExtension,
-  RentalResponse,
-  RentalsListResponse,
-  RentalExtensionResponse,
-  CreateRentalRequest,
-} from './types.ts';
+import type { Rental, RentalExtension, RentalResponse, RentalsListResponse, RentalExtensionResponse } from './types.ts';
 import { reviveRentalDates } from './types.ts';
 
 export const RENTAL_CACHE_NAMESPACE = 'rental';
@@ -50,33 +37,18 @@ export class RentalsService {
     @Inject(PaymentsService) private readonly paymentsService: PaymentsService,
   ) {}
 
-  async createRental(userId: string, input: CreateRentalRequest): Promise<Rental> {
-    const existing = await this.rentalsRepository.findByUserAndBook(userId, input.bookId);
-    if (existing && existing.status === 'active') {
-      throw new ConflictException('You already have an active rental for this book');
-    }
-
-    const durationDays = input.durationDays ?? 14;
-    const allowedDurations = [1, 3, 7, 14, 30, 90];
-    if (!allowedDurations.includes(durationDays)) {
-      throw new BadRequestException('Invalid rental duration. Allowed values: 1, 3, 7, 14, 30, 90 days');
-    }
-
-    const data: CreateRentalInput = {
-      userId,
-      bookId: input.bookId,
-      durationDays,
-    };
-
-    const rental = await this.rentalsRepository.create(data);
-    await this.eventBus.emit('rental.created', {
-      rentalId: rental.id,
-      userId,
-      bookId: input.bookId,
-    } as RentalCreatedEvent);
-    return rental;
-  }
-
+  /*
+   * THERE IS DELIBERATELY NO `createRental`.
+   *
+   * It used to insert an ACTIVE rental and nothing else: no payment was initialised, no amount was
+   * checked, and the book's price was never consulted — the caller received the entitlement for the
+   * price of the request. It was reachable over HTTP from `POST /rentals`, which the payment-first
+   * redesign left standing, and from the test suite, which is why it survived.
+   *
+   * The single creation path is now the money: `POST /books/:id/rent` initialises a Paymob payment
+   * whose `metadata` carries `{ bookId, durationDays, type: 'rental' }`, and `RentalsEventHandler`
+   * writes the row when `payment.completed` arrives. Access therefore never precedes the charge.
+   */
   /**
    * Reads a rental by id, cached.
    *
@@ -142,6 +114,30 @@ export class RentalsService {
       page,
       limit,
     };
+  }
+
+  /**
+   * The rental that currently entitles `userId` to read `bookId`, or none.
+   *
+   * WHY THE EXPIRY IS CHECKED HERE AND NOT LEFT TO THE ROW. Nothing in the system transitions a
+   * rental to `expired` on a clock — `checkAndExpireOverdue` has no caller — so an `active` row is
+   * exactly what a lapsed rental looks like from the outside. The end date is the fact about access,
+   * and this method is where the access question is answered, so it answers it against the date
+   * rather than against a status word that only a scheduled job would have kept honest. Callers get
+   * a rental they may rely on, or `null` they may deny with.
+   */
+  async findActiveRentalForBook(userId: string, bookId: string): Promise<Rental | null> {
+    const rental = await this.rentalsRepository.findByUserAndBook(userId, bookId);
+    if (!rental || rental.deletedAt) {
+      return null;
+    }
+    if (rental.status !== 'active') {
+      return null;
+    }
+    if (rental.endDate.getTime() <= Date.now()) {
+      return null;
+    }
+    return rental;
   }
 
   /**

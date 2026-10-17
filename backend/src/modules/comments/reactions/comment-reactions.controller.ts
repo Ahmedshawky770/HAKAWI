@@ -3,6 +3,7 @@ import type { Request as ExpressRequest } from 'express';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 
 import { CommentReactionsService } from './comment-reactions.service.ts';
 import { CommentReactionPageQueryDto, CreateCommentReactionDto } from './dto/comment-reactions.dto.ts';
@@ -11,7 +12,7 @@ import { CommentReactionPageQueryDto, CreateCommentReactionDto } from './dto/com
 export class CommentReactionsController {
   constructor(@Inject(CommentReactionsService) private readonly commentReactionsService: CommentReactionsService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':commentId/reactions')
   async addReaction(
     @Param('commentId') commentId: string,
@@ -21,7 +22,7 @@ export class CommentReactionsController {
     return this.commentReactionsService.addReaction(req.user.sub, commentId, dto.type);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':commentId/reactions')
   async removeReaction(
     @Param('commentId') commentId: string,

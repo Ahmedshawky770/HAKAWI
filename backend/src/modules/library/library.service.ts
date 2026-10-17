@@ -116,9 +116,16 @@ export class LibraryService {
       throw new ForbiddenException('You do not have access to this library item');
     }
 
+    // WHY THE STATUS IS LEFT ALONE. This used to write `status: 'reading'` unconditionally, which
+    // demoted the very column every entitlement decision reads: a `rented` row opened once became
+    // `reading` and slipped past both of `BooksService.purchase`'s guards (`owned` and `rented`), so
+    // the reader was charged a second time for a book the library already said they held; and an
+    // `owned` row read once stopped being recognisable as owned. The activity signal this route cares
+    // about is `lastAccessedAt`, which it already stamps. `reading` and `completed` remain accepted
+    // vocabulary in the DTO for callers that have an activity state to record — what this route no
+    // longer does is overwrite an entitlement with one.
     const updated = await this.libraryRepository.update(id, {
       lastAccessedAt: new Date(),
-      status: 'reading',
     });
 
     await this.eventBus.emit('library.item.accessed', {
@@ -142,6 +149,48 @@ export class LibraryService {
     await this.valkeyService.del(`library:${id}`);
 
     await this.eventBus.emit('library.item.removed', { libraryItemId: id, userId } as LibraryItemRemovedEvent);
+  }
+
+  /**
+   * Revokes a purchased book's entitlement because its payment was refunded. Idempotent.
+   *
+   * WHY A DEDICATED METHOD RATHER THAN `removeFromLibrary`. `removeFromLibrary` revokes by the item
+   * id and throws `NotFoundException` when the row is already gone — right for a reader-initiated
+   * DELETE, wrong for a `refund.completed` consumer: a replayed gateway delivery must not turn "the
+   * entitlement is already revoked" into a 500 (Principle #16). This finds the entry the refund
+   * targets by the same `(userId, bookId)` the grant used and calls the removal path only when the
+   * entry still exists, so removing an already-absent entitlement is a no-op that returns `false`.
+   *
+   * The removal itself reuses {@link removeFromLibrary}, so the vault-key delete and the
+   * `library.item.removed` announcement stay in the one place that owns them (Principle #9); this
+   * method only adds the "is it still there?" guard a refund consumer needs.
+   *
+   * It is only ever called for a `purchase` refund. A purchase payment cannot coexist with a
+   * `rented` library row for the same book — the purchase route refuses a reader who is mid-rental —
+   * so the entry this removes is the `owned` one the grant wrote, never a rental the reader still
+   * paid for.
+   *
+   * @returns `true` when an entry was removed; `false` when there was none (already revoked, or a
+   *   payment whose entitlement never materialised).
+   */
+  async removeBookForRefund(userId: string, bookId: string): Promise<boolean> {
+    const item = await this.libraryRepository.findByUserAndBook(userId, bookId);
+    if (!item) {
+      return false;
+    }
+    try {
+      await this.removeFromLibrary(item.id, userId);
+      return true;
+    } catch (error) {
+      // `removeFromLibrary` re-reads the row by id and throws `NotFoundException` if it has vanished.
+      // A concurrent revocation of the same entry can do that between the lookup and the delete; the
+      // entitlement is gone either way, so it is the same no-op a replayed delivery must be rather
+      // than a failure (Principle #16). Anything else re-throws — a real infra error is not "gone".
+      if (error instanceof NotFoundException) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private toLibraryItemResponse(item: LibraryItem): LibraryItemResponse {

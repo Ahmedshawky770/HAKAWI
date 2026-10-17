@@ -22,6 +22,7 @@ type MockLibraryRepository = {
     >
   >;
   findByUserAndBook: ReturnType<typeof vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>>;
+  findByRentalId: ReturnType<typeof vi.fn<(rentalId: string) => Promise<LibraryItem | null>>>;
   create: ReturnType<
     typeof vi.fn<
       (data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>
@@ -84,6 +85,7 @@ describe('LibraryService', () => {
           ) => Promise<{ items: LibraryItem[]; total: number }>
         >(),
       findByUserAndBook: vi.fn<(userId: string, bookId: string) => Promise<LibraryItem | null>>(),
+      findByRentalId: vi.fn<(rentalId: string) => Promise<LibraryItem | null>>(),
       create:
         vi.fn<
           (data: { userId: string; bookId: string; rentalId?: string | null; status?: string }) => Promise<LibraryItem>
@@ -261,16 +263,23 @@ describe('LibraryService', () => {
       vi.mocked(libraryRepository.update).mockResolvedValue({
         ...mockLibraryItem,
         lastAccessedAt: new Date(),
-        status: 'reading',
       });
 
       const result = await libraryService.accessItem('library-123', 'user-123');
 
       expect(result.lastAccessedAt).not.toBeNull();
-      expect(result.status).toBe('reading');
+      // WHY THE STATUS IS NOT WRITTEN ANY MORE. This used to stamp `status: 'reading'` on every
+      // access, which demoted the column every entitlement decision reads: a `rented` row opened
+      // once slipped past both of `BooksService.purchase`'s guards and was charged for twice, and
+      // an `owned` row stopped being recognisable as owned. Activity is what `lastAccessedAt` is
+      // for; the status stays what the grant wrote.
       expect(libraryRepository.update).toHaveBeenCalledWith(
         'library-123',
-        expect.objectContaining({ status: 'reading', lastAccessedAt: expect.any(Date) }),
+        expect.objectContaining({ lastAccessedAt: expect.any(Date) }),
+      );
+      expect(libraryRepository.update).not.toHaveBeenCalledWith(
+        'library-123',
+        expect.objectContaining({ status: expect.anything() }),
       );
       expect(eventValidatorService.emit).toHaveBeenCalledWith('library.item.accessed', expect.any(Object));
     });
@@ -309,6 +318,55 @@ describe('LibraryService', () => {
       await expect(libraryService.removeFromLibrary('library-123', 'user-123')).rejects.toThrow(
         'Library item not found',
       );
+    });
+  });
+
+  /**
+   * The refund revokes a purchased entitlement, and it must survive a replayed delivery.
+   *
+   * `removeBookForRefund` finds the entry the refund targets by the same `(userId, bookId)` the grant
+   * used and only removes it when it still exists, so an already-absent entitlement is a no-op
+   * rather than the `NotFoundException` `removeFromLibrary` throws — a gateway can deliver
+   * `refund.completed` twice, and the second delivery must not fail.
+   */
+  describe('removeBookForRefund', () => {
+    it('removes the refunded (userId, bookId) entry and reports it was removed', async () => {
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(mockLibraryItem);
+      // `removeFromLibrary` re-reads the row it is about to delete; it must still find it and confirm
+      // ownership, so the lookup path is mocked end to end.
+      vi.mocked(libraryRepository.findById).mockResolvedValue(mockLibraryItem);
+      vi.mocked(libraryRepository.delete).mockResolvedValue(undefined);
+
+      const removed = await libraryService.removeBookForRefund('user-123', 'book-123');
+
+      expect(libraryRepository.findByUserAndBook).toHaveBeenCalledWith('user-123', 'book-123');
+      expect(libraryRepository.delete).toHaveBeenCalledWith('library-123');
+      expect(valkeyService.del).toHaveBeenCalledWith('library:library-123');
+      expect(eventValidatorService.emit).toHaveBeenCalledWith('library.item.removed', expect.any(Object));
+      expect(removed).toBe(true);
+    });
+
+    it('is a no-op returning false when the entitlement is already gone', async () => {
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(null);
+
+      const removed = await libraryService.removeBookForRefund('user-123', 'book-123');
+
+      expect(removed).toBe(false);
+      expect(libraryRepository.delete).not.toHaveBeenCalled();
+      expect(eventValidatorService.emit).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when a concurrent revocation took the row between lookup and delete', async () => {
+      // `removeFromLibrary` re-reads by id; if a second concurrent refund removed the row in between,
+      // that re-read is null and it throws NotFound. The entitlement is already revoked either way, so
+      // this is a no-op, not a 500 the listener would surface (Principle #16).
+      vi.mocked(libraryRepository.findByUserAndBook).mockResolvedValue(mockLibraryItem);
+      vi.mocked(libraryRepository.findById).mockResolvedValue(null);
+
+      const removed = await libraryService.removeBookForRefund('user-123', 'book-123');
+
+      expect(removed).toBe(false);
+      expect(libraryRepository.delete).not.toHaveBeenCalled();
     });
   });
 });

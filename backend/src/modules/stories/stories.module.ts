@@ -11,6 +11,7 @@ import { StoriesService } from './stories.service.ts';
 import { StoriesController } from './controllers/stories.controller.ts';
 import { StoriesRepository } from './repositories/stories.repository.ts';
 import { StoriesEventHandler } from './events/stories.event-handler.ts';
+import { ModerationContentRemovalEventHandler } from './events/moderation-content-removal.event-handler.ts';
 import { SanitySyncEventHandler } from './sanity/sanity-sync.event-handler.ts';
 import { SanityService } from './sanity/sanity.service.ts';
 import { StoryOwnershipResolver } from './story-ownership.resolver.ts';
@@ -23,6 +24,11 @@ import { STORIES_REPOSITORY } from './interfaces/stories-repository.interface.ts
     StoriesService,
     StoriesRepository,
     StoriesEventHandler,
+    // Consumes `moderation.content.removed` so a moderator's `content_removal` reaches a story.
+    // Registered here, beside the module that owns the row, because the deletion itself is this
+    // module's business (`stories.service.ts`), not moderation's — which is why `ModerationModule`
+    // imports nothing from here and this module imports nothing from it (Principle #7).
+    ModerationContentRemovalEventHandler,
     SanitySyncEventHandler,
     SanityService,
     StoryOwnershipResolver,

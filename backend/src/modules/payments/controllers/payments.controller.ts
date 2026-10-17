@@ -18,6 +18,7 @@ import {
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { AdminRole } from '../../../common/constants/roles.ts';
 import { PaymentsService } from '../payments.service.ts';
 import { CreatePaymentDto, UpdatePaymentStatusDto, CreateRefundDto, PaymentsQueryDto } from '../dto/payments.dto.ts';
@@ -26,7 +27,7 @@ import { CreatePaymentDto, UpdatePaymentStatusDto, CreateRefundDto, PaymentsQuer
 export class PaymentsController {
   constructor(@Inject(PaymentsService) private readonly paymentsService: PaymentsService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createPayment(@Body() dto: CreatePaymentDto, @Request() req: Request & { user: { sub: string } }) {
@@ -76,7 +77,7 @@ export class PaymentsController {
     return this.paymentsService.findAll({ ...query, userId: req.user.sub });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: string,
@@ -95,7 +96,7 @@ export class PaymentsController {
     return this.paymentsService.updateStatus(id, dto.status);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/refund')
   @HttpCode(HttpStatus.CREATED)
   async createRefund(

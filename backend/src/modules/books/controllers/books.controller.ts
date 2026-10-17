@@ -16,6 +16,7 @@ import {
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { BooksService } from '../books.service.ts';
 import { CreateBookDto, UpdateBookDto, BooksQueryDto, PurchaseBookDto, RentBookDto } from '../dto/books.dto.ts';
 import type { CreateBookInput } from '../types.ts';
@@ -43,14 +44,14 @@ export class BooksController {
     return toBookResponse(await this.booksService.findById(id));
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateBookDto, @Request() req: Request & { user: { sub: string } }) {
     return this.booksService.create(req.user.sub, dto as CreateBookInput);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -60,29 +61,31 @@ export class BooksController {
     return this.booksService.update(id, dto, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/publish')
   @HttpCode(HttpStatus.OK)
   async publish(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
     return this.booksService.publish(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/archive')
   async archive(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
     return this.booksService.archive(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/download')
   @HttpCode(HttpStatus.OK)
-  async download(@Param('id') id: string) {
-    await this.booksService.incrementDownloadCount(id);
-    const book = await this.booksService.findById(id);
+  async download(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {
+    // The caller's identity travels with the request because the file of a paid book is an
+    // entitlement, not public content: `recordDownload` decides — free, owned, or inside an active
+    // rental — before the URL is handed over, and it records the download in the same call.
+    const book = await this.booksService.recordDownload(id, req.user.sub);
     return { downloadUrl: book.fileUrl };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/purchase')
   @HttpCode(HttpStatus.CREATED)
   async purchase(
@@ -93,14 +96,14 @@ export class BooksController {
     return this.booksService.purchase(req.user.sub, id, dto.paymentMethodId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/rent')
   @HttpCode(HttpStatus.CREATED)
   async rent(@Param('id') id: string, @Body() dto: RentBookDto, @Request() req: Request & { user: { sub: string } }) {
     return this.booksService.rent(req.user.sub, id, dto.durationDays);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {

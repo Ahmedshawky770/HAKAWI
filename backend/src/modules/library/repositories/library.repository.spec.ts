@@ -205,6 +205,29 @@ describe('LibraryRepository', () => {
     });
   });
 
+  describe('findByRentalId', () => {
+    it('returns the shelf entry a rental granted', async () => {
+      control.queue([{ id: ITEM_ID, rentalId: RENTAL_ID, status: 'rented' }]);
+
+      await expect(repository.findByRentalId(RENTAL_ID)).resolves.toMatchObject({ id: ITEM_ID });
+    });
+
+    it('looks the entry up by rental so a lapsed one can be taken back by the right row', async () => {
+      control.queue([{ id: ITEM_ID }]);
+
+      await repository.findByRentalId(RENTAL_ID);
+
+      expect(whereOf()).toEqual(eq(library.rentalId, RENTAL_ID));
+      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
+    });
+
+    it('returns null when the rental produced no entry', async () => {
+      control.queue([]);
+
+      await expect(repository.findByRentalId(RENTAL_ID)).resolves.toBeNull();
+    });
+  });
+
   describe('create', () => {
     it('inserts the row and returns the stored item', async () => {
       control.queue([{ id: ITEM_ID, userId: USER_ID, bookId: BOOK_ID }]);

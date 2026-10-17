@@ -401,14 +401,77 @@ export class BooksService {
     await this.invalidateBookCache(id, book.isbn);
   }
 
-  async incrementDownloadCount(id: string): Promise<void> {
+  // WHY THERE IS NO `incrementDownloadCount` HERE. The service carried one next to `incrementViewCount`
+  // until this module's download work, when `POST /books/:id/download` moved to `recordDownload` —
+  // the entitlement-checked path that does the counter bump itself. Left in place it was a second,
+  // unchecked door to the same repository write: fetch, 404, increment, invalidate, with none of the
+  // access question. It had exactly one caller (the controller line that now calls `recordDownload`)
+  // and its own unit spec, so it kept looking alive. `incrementViewCount` above stays: the view route
+  // still calls it.
+
+  /**
+   * The whole read path for a book's FILE: who may download it, and the counter that records it.
+   *
+   * WHY THE CHECK IS HERE. `POST /books/:id/download` used to authenticate the caller and then hand
+   * over the file URL of any book in the catalogue — a paid book included — because nothing on the
+   * route asked what the caller had paid for. Authentication is not entitlement: the question this
+   * answers is what the account has ACQUIRED, and the library and the rental are the two records
+   * that say so, read through their own modules' contracts (Principle #7) rather than by querying
+   * their tables from here (Principle #9 keeps them authoritative for ownership and for the rental's
+   * remaining time, respectively — hence `findActiveRentalForBook`, which judges access by the end
+   * date rather than by a status word no clock maintains).
+   *
+   * A free book is the one exception, and it is stated first because it is the common case: nothing
+   * was ever charged for it, so there is nothing to enforce.
+   */
+  async recordDownload(id: string, userId: string): Promise<Book> {
     const book = await this.booksRepository.findById(id);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
     }
 
+    await this.assertReadAccess(book, userId);
+
     await this.booksRepository.incrementDownloadCount(id);
     await this.invalidateBookCache(id, book.isbn);
+    return book;
+  }
+
+  /**
+   * Whether `userId` may read the FILE of `book`.
+   *
+   * The facts that confer access, in order of cheapness: the book is free; the reader holds an
+   * `owned` library row (the purchase grant or the free-book claim); or a rental of it is still
+   * inside its dates. Anything else is a 403 that names the real route out — buy it or rent it —
+   * rather than pretending the book is missing.
+   *
+   * WHY THE RENTAL IS RESOLVED EVEN WHEN A ROW EXISTS. This used to return on the mere existence of
+   * a library row, so a `rented` row whose rental had lapsed kept handing out the paid book forever:
+   * `checkAndExpireOverdue` has no scheduled caller, nothing retires a lapsed rental on a clock, and
+   * `rental.expired` is only published by a refund. The stale row also blocked the legitimate
+   * re-purchase and re-rental with a `ConflictException`. An `owned` row is a permanent entitlement
+   * and is trusted on its own; every other row is only as good as the rental it records, and
+   * `findActiveRentalForBook` judges that by the end date rather than by a status word no clock
+   * maintains.
+   */
+  private async assertReadAccess(book: Book, userId: string): Promise<void> {
+    if (book.isFree) {
+      return;
+    }
+
+    const entry = await this.libraryRepository.findByUserAndBook(userId, book.id);
+    if (entry && entry.status === 'owned') {
+      return;
+    }
+
+    const rental = await this.rentalsService.findActiveRentalForBook(userId, book.id);
+    if (rental) {
+      return;
+    }
+
+    throw new ForbiddenException(
+      'You do not have access to this book. Purchase it or rent it to add it to your library.',
+    );
   }
 
   /**

@@ -10,6 +10,7 @@ import { CommentsRepository } from './repositories/comments.repository.ts';
 import { COMMENTS_REPOSITORY } from './interfaces/comments-repository.interface.ts';
 import { CommentOwnershipResolver } from './comment-ownership.resolver.ts';
 import { CommentsEventHandler } from './events/comments.event-handler.ts';
+import { ModerationContentRemovalEventHandler } from './events/moderation-content-removal.event-handler.ts';
 import { CommentReactionsModule } from './reactions/comment-reactions.module.ts';
 
 @Module({
@@ -19,6 +20,12 @@ import { CommentReactionsModule } from './reactions/comment-reactions.module.ts'
     CommentsService,
     CommentsRepository,
     CommentsEventHandler,
+    // Consumes `moderation.content.removed` so a moderator's `content_removal` reaches a comment,
+    // deleted through `CommentsService.delete` so the parent's `reply_count`, the story's
+    // `comment_count` and the `comment.deleted` event all still run exactly once. The stories twin
+    // subscribes to the same event and filters on `targetType`, so neither handler knows the other
+    // exists (Principle #7).
+    ModerationContentRemovalEventHandler,
     CommentOwnershipResolver,
     { provide: COMMENTS_REPOSITORY, useExisting: CommentsRepository },
     // `useExisting`, not `useClass`: the guard receives the same singleton the rest of the module

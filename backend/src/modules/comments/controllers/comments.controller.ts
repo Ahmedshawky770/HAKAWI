@@ -16,6 +16,7 @@ import {
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { OwnershipGuard } from '../../../common/guards/ownership.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { CommentsService } from '../comments.service.ts';
 import { CommentPageQueryDto, CreateCommentDto, UpdateCommentDto } from '../dto/comments.dto.ts';
 
@@ -35,7 +36,7 @@ export class CommentsController {
     return this.commentsService.findReplies(id, query.page ?? 1, query.limit ?? 20);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   async create(@Body() dto: CreateCommentDto, @Request() req: { user: { sub: string } }) {
     return this.commentsService.create({
@@ -54,7 +55,7 @@ export class CommentsController {
    * reviewer reads when asking "can user X touch comment Y?" — enforced nothing. The check now
    * happens before the service is called, against the module's own `CommentOwnershipResolver`.
    */
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Patch(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -69,7 +70,7 @@ export class CommentsController {
    * distinguishes "not your comment" from "no such comment", which is the intended answer to an
    * existence probe.
    */
-  @UseGuards(JwtAuthGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Delete(':id')
   async delete(@Param('id', ParseUUIDPipe) id: string, @Request() req: { user: { sub: string } }) {
     await this.commentsService.delete(id, req.user.sub);
