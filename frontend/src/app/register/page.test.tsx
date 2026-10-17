@@ -10,6 +10,9 @@ import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { createDeferred } from "@/test-utils/support";
 import { AUTH_RESPONSE, AUTH_USER, SESSION_RESPONSE } from "@/test-utils/fixtures";
 import { api, setStoredUser } from "@/lib/api";
+import { stringsFor } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
+import { type OAuthProvider } from "@hakawi/shared-types";
 import RegisterPage from "@/app/register/page";
 
 vi.mock("next/link", () => ({
@@ -22,6 +25,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  API_URL: "http://localhost:3001/api/v1",
   api: {
     register: vi.fn(),
     getSession: vi.fn(),
@@ -31,6 +35,16 @@ vi.mock("@/lib/api", () => ({
 
 const mockedApi = vi.mocked(api);
 const mockedSetStoredUser = vi.mocked(setStoredUser);
+
+const authStrings = stringsFor(DEFAULT_LOCALE).auth;
+
+const PROVIDER_LABELS: Record<OAuthProvider, string> = {
+  google: authStrings.oauthGoogle,
+  facebook: authStrings.oauthFacebook,
+  github: authStrings.oauthGithub,
+  apple: authStrings.oauthApple,
+  tiktok: authStrings.oauthTiktok,
+};
 
 const PASSWORD = "SecurePass123!";
 
@@ -73,6 +87,36 @@ describe("register page", () => {
     }
     expect(screen.getByLabelText("البريد الإلكتروني")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("كلمة المرور")).toHaveAttribute("type", "password");
+  });
+
+  it("offers one link per social provider below the registration form", () => {
+    const { container } = renderWithProviders(<RegisterPage />);
+
+    const links = Object.values(PROVIDER_LABELS).map((label) =>
+      screen.getAllByRole("link", { name: label })
+    );
+
+    // Each provider gets exactly one link.
+    for (const linkGroup of links) {
+      expect(linkGroup).toHaveLength(1);
+    }
+
+    // The links sit outside the registration form: they must not submit it.
+    const form = container.querySelector("form");
+    expect(form).toBeInTheDocument();
+    for (const linkGroup of links) {
+      expect(form).not.toContain(linkGroup[0]);
+    }
+  });
+
+  it("points every social link at the provider's handshake route", () => {
+    renderWithProviders(<RegisterPage />);
+
+    for (const [provider, label] of Object.entries(PROVIDER_LABELS)) {
+      expect(
+        screen.getByRole("link", { name: label })
+      ).toHaveAttribute("href", expect.stringContaining(`/auth/oauth/${provider}`));
+    }
   });
 
   it("surfaces a mismatch message inside an alert region", async () => {

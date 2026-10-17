@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page, Response } from "@playwright/test";
 import { copy } from "./copy";
+import { OAUTH_PROVIDERS, type OAuthProvider } from "@hakawi/shared-types";
 
 const BACKEND_URL = process.env.PLAYWRIGHT_BACKEND_URL ?? "http://localhost:3001";
 const API_URL = `${BACKEND_URL}/api/v1`;
@@ -200,5 +201,49 @@ test.describe("Critical user journeys", () => {
     const sessionAfter = await request.get(`${API_URL}/auth/session`, { timeout: API_TIMEOUT });
     expect(sessionAfter.status()).toBe(401);
     expect(user.email).toContain("@example.com");
+  });
+});
+
+/**
+ * The social sign-in surface, asserted on both entry points of the flow.
+ *
+ * WHY THIS DOES NOT CLICK THROUGH. A pressed control navigates to the API, which redirects to
+ * the provider's consent screen, and the provider only answers a real client id with a real
+ * registered redirect URI — none of which a test environment holds. What CAN be asserted
+ * without any of that is the surface the reader is offered: one control per provider, each named
+ * from the app's own dictionary so a copy edit cannot leave a spec asserting a label nobody
+ * renders.
+ */
+test.describe("Social sign-in surface", () => {
+  type OAuthLabelKey =
+    | "oauthGoogle"
+    | "oauthFacebook"
+    | "oauthGithub"
+    | "oauthApple"
+    | "oauthTiktok";
+
+  const providerLabelKey = (provider: OAuthProvider): OAuthLabelKey =>
+    `oauth${provider.charAt(0).toUpperCase()}${provider.slice(1)}` as OAuthLabelKey;
+
+  test("the login page offers every provider the API supports", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("heading", { name: copy.auth.loginTitle }).waitFor();
+
+    for (const provider of OAUTH_PROVIDERS) {
+      await expect(
+        page.getByRole("link", { name: copy.auth[providerLabelKey(provider)] })
+      ).toBeVisible();
+    }
+  });
+
+  test("the register page offers every provider the API supports", async ({ page }) => {
+    await page.goto("/register");
+    await page.getByRole("heading", { name: copy.auth.registerTitle }).waitFor();
+
+    for (const provider of OAUTH_PROVIDERS) {
+      await expect(
+        page.getByRole("link", { name: copy.auth[providerLabelKey(provider)] })
+      ).toBeVisible();
+    }
   });
 });
