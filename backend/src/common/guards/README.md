@@ -9,13 +9,13 @@ from that.
 applied per route with `@UseGuards`, and `OptionalJwtAuthGuard` is registered by its consuming
 module; neither is composed by `@Secured()`.
 
-| Guard                   | Question it answers                            | Wired                                        |
-| ----------------------- | ---------------------------------------------- | -------------------------------------------- |
-| `JwtAuthGuard`          | Is there a verified token, and who is it?      | `@UseGuards`, per route                      |
-| `RolesGuard`            | Is the account type / admin role sufficient?   | `@Secured`, per route                        |
-| `PermissionsGuard`      | Is the granted permission set sufficient?      | `@Secured` (via `SECURED_GUARDS`)            |
-| `OwnershipGuard`        | Is the caller the owner of _this_ resource?    | applied per route — see below                |
-| `RestrictionGuard`      | Is the account restricted (ban / mute)?       | `@Secured` (via `SECURED_GUARDS`) — see below |
+| Guard              | Question it answers                          | Wired                                         |
+| ------------------ | -------------------------------------------- | --------------------------------------------- |
+| `JwtAuthGuard`     | Is there a verified token, and who is it?    | `@UseGuards`, per route                       |
+| `RolesGuard`       | Is the account type / admin role sufficient? | `@Secured`, per route                         |
+| `PermissionsGuard` | Is the granted permission set sufficient?    | `@Secured` (via `SECURED_GUARDS`)             |
+| `OwnershipGuard`   | Is the caller the owner of _this_ resource?  | applied per route — see below                 |
+| `RestrictionGuard` | Is the account restricted (ban / mute)?      | `@Secured` (via `SECURED_GUARDS`) — see below |
 
 All five are provided **and exported** by `CommonModule`, so `@UseGuards(SomeGuard)`
 resolves from any module. `common.module.spec.ts` pins that list; it is the exact property
@@ -45,10 +45,10 @@ refused for lacking a token. The consequence is that `request.user` is never pop
 public route cannot tell an anonymous caller from the author of the story in front of it. This guard
 supplies exactly that distinction and nothing more:
 
-| Credential                      | Result                                          |
-| ------------------------------- | ----------------------------------------------- |
-| absent                          | allowed, `request.user` left unset              |
-| present and verifies            | allowed, `request.user` = verified `JwtPayload` |
+| Credential                      | Result                                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| absent                          | allowed, `request.user` left unset                                                           |
+| present and verifies            | allowed, `request.user` = verified `JwtPayload`                                              |
 | present and does **not** verify | **allowed, `request.user` left unset** — treated as anonymous, never honoured as an identity |
 
 ⛔ **Corrected.** This table previously said the third case is a **`401`** and the handler never
@@ -58,18 +58,18 @@ into an anonymous fallback. **The implementation does the opposite, deliberately
 `request.user = undefined` and `return true`.
 
 The reasoning is recorded in the guard's own class comment and it is sound. The security property
-that matters is *"an unverifiable claim is never trusted as an identity"* — falling back to the
+that matters is _"an unverifiable claim is never trusted as an identity"_ — falling back to the
 anonymous branch preserves that exactly, because `request.user` stays unset and the handler applies
 its rule to an anonymous caller. Nothing is granted. What a 401 adds is a refusal, not safety, and
 this client authenticates **by cookie, not header**: `api.ts` sends `credentials: "include"` and
 never sets `Authorization`, and `access_token` lives 15 minutes. So every reader who browses past
 that boundary holds a stale cookie, and a 401 on a `@Public()` route reaches `handleResponse`,
-which clears the stored user and signs them out — while trying to read a *published* story. An
+which clears the stored user and signs them out — while trying to read a _published_ story. An
 expired session would deny anonymous access to public content.
 
 The cost, stated plainly: an author whose token has expired gets 404 on their own draft rather than
 a 401 telling them to refresh. `JwtAuthGuard` still returns 401 for the same token on every
-*protected* route, so genuine authentication failure is still reported loudly where authentication
+_protected_ route, so genuine authentication failure is still reported loudly where authentication
 is actually required.
 
 ### It grants nothing
@@ -93,7 +93,7 @@ it**, so a moderation `ban` had no effect on the API at all.
 
 Read naively, the guard's own logic denied on the mere presence of the key. But the
 producer wrote the **raw** action for all five of `'warn' | 'mute' | 'ban' | 'content_removal'
-| 'no_action'`. So `restriction:<id>` held `'warn'` for a *warned* account — and wiring the
+| 'no_action'`. So `restriction:<id>` held `'warn'` for a _warned_ account — and wiring the
 guard as written would have turned every warning, every content removal and every no-op
 decision into a **total account lockout**.
 
@@ -117,8 +117,23 @@ The guard's tautology hid this: `restrictionTypeStr === 'ban' ? 403 : 403`. Both
 driver-level failure on a live connection, which would otherwise become a 500 on **every
 authenticated request** — this guard is on every `@Secured` route. The trade is explicit: a cache
 outage means the restriction is temporarily unenforced, which is the posture the WAF IP blocklist
-already takes, and better than taking the API down. A banned account is still stopped at login
-by `users.accessBlocked`, so the ban is not simply lifted.
+already takes, and better than taking the API down.
+
+⛔ **Correction.** This section used to end "A banned account is still stopped at login by
+`users.accessBlocked`, so the ban is not simply lifted." That was false when it was written and is
+false today: **nothing in `backend/src` ever writes `users.accessBlocked`.** It appears in the Drizzle
+schema, in two users response DTOs and in the auth spec — and in no write. Moderation's ban lands in a
+`user_restrictions` row and in the cache key this guard reads. So a banned account was locked out of
+every authenticated route and could still log in, refresh its tokens and sign in through any of the
+five OAuth providers, because the auth routes are `@Public()` and this guard never runs on them.
+
+The claim is now true, but not for the reason it gave. `AuthService.login`, `refreshTokens` and
+`findOrCreateOAuthUser` all refuse an account whose current restriction is `ban`, read through the
+SAME reader this guard uses (`common/services/account-restriction.service.ts`), so the two cannot
+disagree about whether an account is banned. What remains true, and is stated plainly: during a
+Valkey outage the ban is unenforced at all four points for the length of the outage, and the
+`user_restrictions` row records the decision without enforcing it. It is an availability choice, not
+a defence.
 
 ### `@Public()` routes are not covered
 
@@ -126,6 +141,49 @@ by `users.accessBlocked`, so the ban is not simply lifted.
 account can still read public content. That is intended — a ban stops account access, it does not
 make the public site disappear — but it means the control is **"every authenticated request"**,
 not "every request". `consistency-matrix.md` is worded accordingly.
+
+### The user-facing routes were the uncovered half
+
+Wiring the guard into `@Secured` covered the admin surface and nothing else. Every regular-user
+write route carried raw `@UseGuards(JwtAuthGuard)` — `POST /stories`, `PATCH /comments/:id`, the
+message senders, the upload confirmations, `POST /payments`, `POST /books/:id/purchase` — so for the
+whole ban window a muted user kept posting, commenting, reacting, messaging and uploading, and a
+banned user did too. The guard was correct, reachable, and pointed at the wrong routes.
+
+**The policy, applied to every authenticated mutating route:** `@UseGuards(JwtAuthGuard,
+RestrictionGuard)` — RestrictionGuard **after** JwtAuthGuard, because it reads `request.user.sub`,
+which only JwtAuthGuard populates; and before `OwnershipGuard` where that guard is also composed,
+so a restricted account is told about the restriction rather than about ownership. Admin routes
+receive the same guard through `@Secured`.
+
+**The two documented exceptions**, both about identity rather than publication:
+
+- **Auth bootstrap** — `register`, `login`, `refresh`, `logout`, `forgot-password`,
+  `reset-password`, `verify-email`, `resend-verification`, and the MFA endpoints. A ban is refused
+  at `login`, `refreshTokens` and `findOrCreateOAuthUser` through the same reader this guard uses,
+  so the session can never start; and a mute must not lock a user out of proving who they are.
+- **Account self-service** — `PATCH /users/me`, `POST /users/me/verification`,
+  `POST /users/verification/confirm`, `DELETE /users/me`. A muted user must still be able to verify
+  their email and edit their own profile, and a banned user must still be able to delete the
+  account. These routes mutate the caller's own row and publish nothing.
+
+The Paymob webhook stays `@Public()` for the obvious reason: the gateway is not a user.
+
+**The executable proof is `restriction-route-coverage.spec.ts`**, which drives the REAL
+`CommentsController` and `FollowsController` over HTTP — a banned account gets 403 on
+`POST /comments` and `POST /follows`, a muted account gets 423 on the write and 200 on the read,
+and the three-guard chain answers 423 before `OwnershipGuard` runs. The controller unit specs
+cannot catch a dropped guard, because a unit test constructs the controller directly and guards
+never execute.
+
+### Why the read moved out of this guard
+
+The guard used to talk to `ValkeyService` directly. `AuthService` needed the same question answered
+before it minted a token, so the read was extracted into `AccountRestrictionService` and both
+consumers inject it (Principle #9 — one implementation, one answer). The guard's fail-open posture is
+unchanged and still lives in the guard, because it is a decision about HTTP status, not about the
+cache: the shared reader deliberately rejects on a driver failure rather than swallowing it, so every
+caller has to state what a cache outage means to it.
 
 ---
 
@@ -223,7 +281,7 @@ Two things about the current state, stated precisely rather than as a new gap:
   enforcement. It is simply invisible to anything auditing `@UseGuards`, and books still has no
   ownership resolver of the kind `comment-ownership.resolver.ts` provides.
 - **`owner_id` is nullable and deliberately not backfilled.** `0021` cannot derive it from a display
-  name, so pre-existing books are `ownerId === null` and `assertOwnership` throws a *distinct*
+  name, so pre-existing books are `ownerId === null` and `assertOwnership` throws a _distinct_
   message for that case ("This book has no owner. It was created before ownership was recorded, so
   an administrator must claim it…") rather than the generic "You can only update your own books".
   The migration ships the claim query as a comment; running it is an operator decision.

@@ -11,7 +11,6 @@ import { NotificationsRepository } from './repositories/notifications.repository
 import { NOTIFICATIONS_REPOSITORY } from './interfaces/notifications-repository.interface.ts';
 import { NotificationsEventHandler } from './events/notifications.event-handler.ts';
 import { NotificationsEmailService } from './email/notifications-email.service.ts';
-import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
 
 @Module({
   // StoriesModule and CommentsModule are imported so `NotificationsEventHandler` can resolve an
@@ -26,9 +25,8 @@ import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
     NotificationsRepository,
     NotificationsEventHandler,
     NotificationsEmailService,
-    SmtpEmailTransporter,
     { provide: NOTIFICATIONS_REPOSITORY, useExisting: NotificationsRepository },
   ],
-  exports: [NotificationsService, SmtpEmailTransporter],
+  exports: [NotificationsService],
 })
 export class NotificationsModule {}

@@ -7,6 +7,7 @@ import * as express from 'express';
 
 import { AppModule } from './app.module.ts';
 import { WinstonLoggerService } from './common/services/winston-logger.service.ts';
+import { SmtpEmailTransporter } from './common/email/smtp-email-transporter.ts';
 import { WafMiddleware } from './common/middleware/waf.middleware.ts';
 import { CacheInterceptor } from './common/interceptors/cache.interceptor.ts';
 import { RedisIoAdapter } from './redis-io.adapter.ts';
@@ -167,6 +168,20 @@ async function bootstrap() {
   // container means the timer starts only once the application is otherwise fully configured.
   const { DefaultMetricsCollector } = await import('./common/observability/default-metrics.collector.ts');
   app.get(DefaultMetricsCollector).start();
+
+  // Startup email-configuration check. In production, an unconfigured SMTP transport means
+  // verification and password-reset mail never leaves the process while the auth endpoints
+  // answer truthfully that mail is not configured — a silent degradation worth surfacing at
+  // boot rather than discovering at 3am. dev and staging may deliberately run without mail.
+  if (process.env.NODE_ENV === 'production') {
+    const transporter = app.get(SmtpEmailTransporter);
+    if (!transporter.isConfigured()) {
+      winstonLogger.error(
+        'SMTP transporter is not configured in production: EMAIL_HOST, EMAIL_PORT, EMAIL_USER and EMAIL_PASSWORD are missing. Verification and password-reset mail will not be sent.',
+        'Bootstrap',
+      );
+    }
+  }
 
   app.useGlobalPipes(
     new (await import('@nestjs/common')).ValidationPipe({

@@ -11,6 +11,10 @@ import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
 import { RestrictionGuard } from './guards/restriction.guard.ts';
+import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
+import { TransactionalEmailService } from './email/transactional-email.service.ts';
+import { EMAIL_TRANSPORTER } from './email/email-transporter.interface.ts';
+import { AccountRestrictionService } from './services/account-restriction.service.ts';
 import { CacheMetricsController } from './observability/metrics.controller.ts';
 import { CommonModule } from './common.module.ts';
 
@@ -61,6 +65,46 @@ describe('CommonModule wiring', () => {
       // OwnershipGuard)` could not resolve. A factory-only registration would leave the
       // same trap in place.
       expect(providers).toContain(OwnershipGuard);
+    });
+  });
+
+  describe('the single email transport', () => {
+    it.each([
+      ['SmtpEmailTransporter', SmtpEmailTransporter],
+      ['TransactionalEmailService', TransactionalEmailService],
+    ])('provides and exports %s', (_name, provider) => {
+      expect(providers).toContain(provider);
+      expect(exports).toContain(provider);
+    });
+
+    it('binds the transporter behind EMAIL_TRANSPORTER as the same instance', () => {
+      // `useExisting`, not a second `useClass`: two registrations would be two SMTP connections
+      // with two independent pools, which is the second configuration this binding exists to prevent.
+      const binding = providers.find(
+        (provider): provider is { provide: unknown; useExisting: unknown } =>
+          typeof provider === 'object' && provider !== null && 'provide' in provider && 'useExisting' in provider,
+      );
+      expect(binding?.provide).toBe(EMAIL_TRANSPORTER);
+      expect(binding?.useExisting).toBe(SmtpEmailTransporter);
+
+      expect(exports).toContain(EMAIL_TRANSPORTER);
+    });
+
+    it('exports the token so the auth and notifications email paths resolve the SAME instance', () => {
+      // The token is what the consumers inject. Without the export, a global module's provider is
+      // still not reachable from outside it, and the auth flows would either fail to boot or
+      // reintroduce a transport of their own.
+      expect(exports).toContain(EMAIL_TRANSPORTER);
+    });
+  });
+
+  describe('the shared account restriction reader', () => {
+    it('provides and exports AccountRestrictionService', () => {
+      // `RestrictionGuard` and `AuthService` both inject it, so it must be resolvable from outside
+      // this module. Without the export the graph fails at boot; without the export the auth flows
+      // would read the restriction key a second time in their own words.
+      expect(providers).toContain(AccountRestrictionService);
+      expect(exports).toContain(AccountRestrictionService);
     });
   });
 

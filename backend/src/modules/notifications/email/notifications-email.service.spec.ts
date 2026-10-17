@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
-import type {
-  Notification,
-  CreateNotificationInput,
-} from '../interfaces/notifications-repository.interface.ts';
+import type { Notification, CreateNotificationInput } from '../interfaces/notifications-repository.interface.ts';
 import type { User, CreateUserInput } from '../../../common/users/users-repository.interface.ts';
 
 import { NotificationsEmailService } from './notifications-email.service.ts';
@@ -89,6 +86,7 @@ type MockWinstonLoggerService = {
 };
 
 type MockEmailTransporter = {
+  isConfigured: ReturnType<typeof vi.fn<() => boolean>>;
   sendMail: ReturnType<
     typeof vi.fn<
       (options: { from: string; to: string; subject: string; text: string; html?: string }) => Promise<{
@@ -184,6 +182,10 @@ describe('NotificationsEmailService', () => {
     };
 
     transporter = {
+      // The transport moved to `common/email/` and `isConfigured()` joined its contract, so a runner
+      // that only stubs `sendMail` would go down the "not configured" branch and every case here
+      // would pass for the wrong reason.
+      isConfigured: vi.fn<() => boolean>().mockReturnValue(true),
       sendMail: vi.fn().mockResolvedValue({
         accepted: ['user-1@example.com'],
         rejected: [],
@@ -308,6 +310,39 @@ describe('NotificationsEmailService', () => {
       const result = await service.sendNotificationEmail('user-1', 'system', 'Test Subject', 'Test message');
 
       expect(result).toBe(false);
+    });
+
+    it('should not send email when the transport has no SMTP credentials', async () => {
+      // The branch used to be `!this.transporter`, which an interface-typed optional parameter could
+      // never make false: Nest resolved `Object`, found nothing, and supplied undefined in EVERY
+      // deployment — so this path ran always and the send never happened at all. It is now a real
+      // question asked of the shared transport in `common/email/`.
+      vi.mocked(notificationsRepository.findPreferences).mockResolvedValue({
+        emailEnabled: true,
+        pushEnabled: true,
+        storyReactions: true,
+        comments: true,
+        follows: true,
+        mentions: true,
+        messages: true,
+        system: true,
+      });
+      vi.mocked(usersRepository.findById).mockResolvedValue({
+        id: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        username: 'user',
+        accountType: 'reader',
+        passwordHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User);
+      vi.mocked(transporter.isConfigured).mockReturnValue(false);
+
+      const result = await service.sendNotificationEmail('user-1', 'system', 'Test Subject', 'Test message');
+
+      expect(result).toBe(false);
+      expect(transporter.sendMail).not.toHaveBeenCalled();
     });
   });
 });

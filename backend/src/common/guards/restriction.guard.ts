@@ -1,7 +1,8 @@
 import { Injectable, CanActivate, ExecutionContext, HttpException, HttpStatus, Inject } from '@nestjs/common';
 
-import { ValkeyService } from '../../common/services/valkey.service.ts';
-import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+import { AccountRestrictionService } from '../../common/services/account-restriction.service.ts';
+import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { RESTRICTION_TYPE_BAN, RESTRICTION_TYPE_MUTE } from '../constants/restrictions.ts';
 
 /**
  * THE TWO VALUES THAT ACTUALLY RESTRICT AN ACCOUNT.
@@ -16,9 +17,13 @@ import { WinstonLoggerService } from '../services/winston-logger.service.ts';
  * rather than locking every affected account out of the entire API. For a control whose worst error is
  * "a restricted user can still read", failing open is the correct direction; failing closed would mean
  * a typo in one file takes the product down for the people it is meant to protect.
+ *
+ * The values come from `common/constants/restrictions.ts` because `AuthService` asks the same
+ * question ("is this account banned?") before it issues a token. Two readers, one vocabulary
+ * (Principle #9).
  */
-const FULLY_BLOCKED: ReadonlySet<string> = new Set(['ban']);
-const WRITE_DENIED: ReadonlySet<string> = new Set(['mute']);
+const FULLY_BLOCKED: ReadonlySet<string> = new Set([RESTRICTION_TYPE_BAN]);
+const WRITE_DENIED: ReadonlySet<string> = new Set([RESTRICTION_TYPE_MUTE]);
 
 /** Methods that do not mutate. A muted account keeps full read access — that is what "mute" means. */
 const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -36,7 +41,7 @@ const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
 @Injectable()
 export class RestrictionGuard implements CanActivate {
   constructor(
-    @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
+    @Inject(AccountRestrictionService) private readonly restrictions: AccountRestrictionService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
   ) {}
 
@@ -51,11 +56,11 @@ export class RestrictionGuard implements CanActivate {
       return true;
     }
 
-    const restrictionKey = `restriction:${subject}`;
-
-    let hasRestriction: boolean;
+    let restrictionType: string | null;
     try {
-      hasRestriction = await this.valkeyService.exists(restrictionKey);
+      // The same read `AuthService` performs before it mints a token, so the guard and the auth flows
+      // cannot disagree about whether an account is banned.
+      restrictionType = await this.restrictions.readCurrentRestriction(subject);
     } catch (error) {
       // WHY THIS FAILS OPEN. `ValkeyService.exists` already returns false when its client is null, so
       // the ordinary "Valkey is not configured" case needs no handling here. This catch is for a
@@ -63,28 +68,13 @@ export class RestrictionGuard implements CanActivate {
       // otherwise reject and become a 500 on EVERY authenticated request in the product, because this
       // guard is composed into `@Secured`. The trade is deliberate: a cache outage means the
       // restriction is temporarily unenforced for the length of the outage, which is the same posture
-      // the WAF IP blocklist takes, and strictly better than taking the API down. The ban itself is
-      // still in `user_restrictions` and still blocks login, so the account is not simply let loose.
+      // the WAF IP blocklist takes, and strictly better than taking the API down. The ban is also
+      // enforced at the three places that MINT a session — `login`, `refreshTokens` and
+      // `findOrCreateOAuthUser` all refuse a banned account through the same cache read — so the
+      // account cannot simply log in afresh to escape it, and every request it makes afterwards runs
+      // through this guard again.
       this.logger.error(
-        `Restriction lookup failed for ${restrictionKey}; failing open: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        undefined,
-        'RestrictionGuard',
-      );
-      return true;
-    }
-
-    if (!hasRestriction) {
-      return true;
-    }
-
-    let restrictionType: string | null;
-    try {
-      restrictionType = await this.valkeyService.get(restrictionKey);
-    } catch (error) {
-      this.logger.error(
-        `Restriction value read failed for ${restrictionKey}; failing open: ${
+        `Restriction lookup failed for user ${subject}; failing open: ${
           error instanceof Error ? error.message : String(error)
         }`,
         undefined,

@@ -1,14 +1,27 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { resolveEmailFromAddress, EMAIL_TRANSPORTER } from '../../../common/email/email-transporter.interface.ts';
 import type { INotificationsRepository } from '../interfaces/notifications-repository.interface.ts';
 import { NOTIFICATIONS_REPOSITORY } from '../interfaces/notifications-repository.interface.ts';
 import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
 import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
 import { preferenceForType } from '../preference-family.ts';
+import type { EmailTransporter } from '../../../common/email/email-transporter.interface.ts';
 
-import type { EmailTransporter } from './transporter.interface.ts';
-
+/**
+ * The user-facing half of the notification email path.
+ *
+ * WHY THE TRANSPORTER IS NOW INJECTED BY TOKEN INSTEAD OF BY `@Optional()` TYPE. This constructor used
+ * to declare `@Optional() private readonly transporter?: EmailTransporter` with no `@Inject` — a TypeScript
+ * interface, which is erased at runtime, so Nest resolved the `Object` token, found no provider for it
+ * and, because the parameter was optional, quietly supplied `undefined`. The "No email transporter
+ * configured" warning below was therefore printed on every notification email in every deployment,
+ * configured or not: the transport was wired in `NotificationsModule` and reachable by nobody.
+ *
+ * It is now an explicit `EMAIL_TRANSPORTER` injection against the single transport `CommonModule`
+ * provides, which the auth flows consume too (Principle #9 — one transport, one SMTP configuration).
+ */
 @Injectable()
 export class NotificationsEmailService {
   private readonly from: string;
@@ -17,9 +30,9 @@ export class NotificationsEmailService {
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(NOTIFICATIONS_REPOSITORY) private readonly notificationsRepository: INotificationsRepository,
     @Inject(USERS_REPOSITORY) private readonly usersRepository: IUsersRepository,
-    @Optional() private readonly transporter?: EmailTransporter,
+    @Inject(EMAIL_TRANSPORTER) private readonly transporter: EmailTransporter,
   ) {
-    this.from = process.env.EMAIL_FROM || 'noreply@hakawi.com';
+    this.from = resolveEmailFromAddress();
   }
 
   async sendNotificationEmail(userId: string, type: string, title: string, message: string): Promise<boolean> {
@@ -39,7 +52,7 @@ export class NotificationsEmailService {
         return false;
       }
 
-      if (!this.transporter) {
+      if (!this.transporter.isConfigured()) {
         this.logger.warn(
           `No email transporter configured. Skipping email for notification type: ${type}`,
           'NotificationsEmailService',

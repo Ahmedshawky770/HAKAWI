@@ -12,6 +12,7 @@ import { Public } from '../decorators/roles.decorator.ts';
 import { Secured } from '../decorators/secured.decorator.ts';
 import { ValkeyService } from '../services/valkey.service.ts';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+import { AccountRestrictionService } from '../services/account-restriction.service.ts';
 
 import { JwtAuthGuard } from './jwt-auth.guard.ts';
 import { PermissionsGuard } from './permissions.guard.ts';
@@ -30,6 +31,11 @@ import { RolesGuard } from './roles.guard.ts';
  * This suite goes through HTTP and the real `@Secured` composition, so it fails if the guard is not
  * provided, not exported, or absent from `SECURED_GUARDS` — three independent ways for a guard to be
  * inert while its unit tests stay green.
+ *
+ * WHY THE VALKEY DOUBLE IS STILL HERE. The guard stopped reading Valkey itself when the read moved
+ * into `AccountRestrictionService`, which `AuthService` now consumes too — that shared reader is what
+ * makes a ban block login instead of only authenticated requests. The double below stands in for that
+ * service over the same fake cache, so these cases still describe a real restriction in a real store.
  */
 const JWT_SECRET = 'restriction-wiring-spec-secret-at-least-32-chars';
 
@@ -63,8 +69,26 @@ describe('RestrictionGuard is wired into @Secured', () => {
   const tokenFor = (sub: string): Promise<string> =>
     new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email: `${sub}@test.com`, accountType: 'reader' });
 
+  /**
+   * The shared reader, wired over the fake cache exactly the way `CommonModule` wires the real one:
+   * `AccountRestrictionService` reads Valkey, and `RestrictionGuard` reads the restriction through it.
+   * Building it here rather than stubbing it keeps this suite an HTTP test of the real composition.
+   */
+  const buildRestrictionService = (
+    valkeyService: { exists: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> },
+    logger: WinstonLoggerService,
+  ): AccountRestrictionService => new AccountRestrictionService(valkeyService as unknown as ValkeyService, logger);
+
   beforeEach(async () => {
     valkey = { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() };
+    const winstonLogger = {
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+      verbose: vi.fn(),
+    } as unknown as WinstonLoggerService;
 
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true })],
@@ -76,8 +100,12 @@ describe('RestrictionGuard is wired into @Secured', () => {
         PermissionsGuard,
         { provide: ValkeyService, useValue: valkey },
         {
+          provide: AccountRestrictionService,
+          useValue: buildRestrictionService(valkey, winstonLogger),
+        },
+        {
           provide: WinstonLoggerService,
-          useValue: { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+          useValue: winstonLogger,
         },
         { provide: JwtService, useValue: new JwtService({ secret: JWT_SECRET }) },
         // Registered the way `main.ts` registers it, so the order this test proves is the order that
@@ -119,8 +147,9 @@ describe('RestrictionGuard is wired into @Secured', () => {
   it('leaves a @Public() route reachable for a banned account', async () => {
     // `@Public()` returns from JwtAuthGuard and therefore from the whole composed chain, so a banned
     // account can still read public content. That is the intended behaviour: a ban stops account
-    // access, it does not make the public site disappear — and login is separately blocked by
-    // `users.accessBlocked` at the token-issuing step, not here.
+    // access, it does not make the public site disappear — and the routes that MINT a session are
+    // `@Public()` too, which is exactly why `AuthService` refuses a banned account at login, refresh
+    // and OAuth through the same cache read this guard makes, rather than relying on this guard.
     valkey.exists.mockResolvedValue(true);
     valkey.get.mockResolvedValue('ban');
 

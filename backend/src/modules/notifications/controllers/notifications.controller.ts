@@ -1,6 +1,7 @@
 import { Controller, Get, Patch, Delete, Param, Query, UseGuards, Inject, Request, Body } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { NotificationsService } from '../notifications.service.ts';
 import { NotificationPreferencesDto } from '../dto/preferences.dto.ts';
 import { NotificationQueryDto } from '../dto/notifications.dto.ts';
@@ -47,13 +48,13 @@ export class NotificationsController {
     return this.notificationsService.getPreferences(req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch('preferences')
   async updatePreferences(@Request() req: { user: { sub: string } }, @Body() dto: NotificationPreferencesDto) {
     return this.notificationsService.updatePreferences(req.user.sub, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch(':id/read')
   async markAsRead(@Param('id') id: string, @Request() req: { user: { sub: string } }) {
     return this.notificationsService.markAsRead(id, req.user.sub);
@@ -67,14 +68,14 @@ export class NotificationsController {
    * the spelling `backend/test/notifications.integration-spec.ts:88` and the Postman collection
    * already use; no frontend code calls either, so there was no second opinion to weigh.
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch('read-all')
   async markAllAsRead(@Request() req: { user: { sub: string } }) {
     await this.notificationsService.markAllAsRead(req.user.sub);
     return { message: 'All notifications marked as read' };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':id')
   async delete(@Param('id') id: string, @Request() req: { user: { sub: string } }) {
     await this.notificationsService.delete(id, req.user.sub);

@@ -66,6 +66,27 @@ export class ValkeyService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Writes `key` only when it does not exist yet, and reports whether this caller won the write.
+   *
+   * WHY THIS EXISTS. A read-then-write cooldown is not a cooldown: two concurrent requests both read
+   * an absent key, both proceed, and both act. `POST /email-verification/resend-verification` is
+   * `@Public()`, so the race there was an open mail blast against any address — each concurrent
+   * request minting and delivering its own code. `SET key value EX ttl NX` decides the race inside
+   * the store, the same way `incrWithTtl` is the atomic form of a counter-with-expiry.
+   *
+   * When no client is configured this answers `false` rather than throwing: the caller's refusal
+   * ("please wait") is then a degradation of the abuse control, not of the whole request, which is
+   * the posture the rest of this service already takes.
+   */
+  async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+    const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
   async del(key: string): Promise<void> {
     if (!this.client) {
       return;

@@ -20,6 +20,7 @@ import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.i
 
 import { WinstonLoggerService } from './services/winston-logger.service.ts';
 import { ValkeyService } from './services/valkey.service.ts';
+import { AccountRestrictionService } from './services/account-restriction.service.ts';
 import { EventSchemaRegistry } from './events/event-schema-registry.ts';
 import { DLQService } from './events/dlq.service.ts';
 import { EventValidatorService } from './events/event-validator.service.ts';
@@ -28,6 +29,9 @@ import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
 import { RestrictionGuard } from './guards/restriction.guard.ts';
+import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
+import { TransactionalEmailService } from './email/transactional-email.service.ts';
+import { EMAIL_TRANSPORTER } from './email/email-transporter.interface.ts';
 import { PasswordHasher } from './utils/password.util.ts';
 import { JwtHelper, AppleJwksService } from './utils/jwt.util.ts';
 import { EncryptionService } from './utils/encryption.util.ts';
@@ -102,6 +106,7 @@ const appReflector = new Reflector();
   providers: [
     WinstonLoggerService,
     ValkeyService,
+    AccountRestrictionService,
     EventSchemaRegistry,
     DLQService,
     EventValidatorService,
@@ -110,6 +115,13 @@ const appReflector = new Reflector();
     PermissionsGuard,
     OwnershipGuard,
     RestrictionGuard,
+    // THE ONE EMAIL TRANSPORT. Provided here rather than in `NotificationsModule` so the auth flows
+    // can reach it without an Auth → Notifications dependency, which `dependency-rules.md` forbids.
+    // Bound behind `EMAIL_TRANSPORTER` so consumers depend on the contract, and bound with
+    // `useExisting` so the class and the token are one instance and not two.
+    SmtpEmailTransporter,
+    { provide: EMAIL_TRANSPORTER, useExisting: SmtpEmailTransporter },
+    TransactionalEmailService,
     PasswordHasher,
     JwtHelper,
     AppleJwksService,
@@ -163,6 +175,7 @@ const appReflector = new Reflector();
   exports: [
     WinstonLoggerService,
     ValkeyService,
+    AccountRestrictionService,
     EventSchemaRegistry,
     DLQService,
     EventValidatorService,
@@ -192,6 +205,9 @@ const appReflector = new Reflector();
     GeoIpService,
     WafMiddleware,
     ResilientHttpClient,
+    SmtpEmailTransporter,
+    EMAIL_TRANSPORTER,
+    TransactionalEmailService,
   ],
 })
 export class CommonModule {}

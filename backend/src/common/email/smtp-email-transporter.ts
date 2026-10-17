@@ -2,10 +2,28 @@ import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
-import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 
-import type { EmailTransporter } from './transporter.interface.ts';
+import type { EmailTransporter } from './email-transporter.interface.ts';
 
+/**
+ * THE ONE SMTP CONFIGURATION IN THE CODEBASE.
+ *
+ * WHY THIS MOVED HERE. It used to sit in `modules/notifications/email/` and was registered by
+ * `NotificationsModule`. `AuthModule` needs the same transport to deliver the password-reset code,
+ * and dependency-rules.md forbids Auth → Notifications, so the alternative was a second SMTP
+ * configuration with its own credentials, timeouts and pool — two transports that must be kept in
+ * step for the rest of the project's life (Principle #9). The file moved to `common/email/` instead,
+ * unchanged in behaviour; `CommonModule` provides it once and both the notifications email path and
+ * the auth flows consume the same instance.
+ *
+ * `grep -r "nodemailer.createTransport" backend/src` must return exactly one hit. If it returns
+ * more, someone has reintroduced the second configuration this move removed.
+ *
+ * WHY THE PROVIDER BINDING LIVES IN `CommonModule` AND NOT HERE. The provider is registered once in
+ * the global module so a second registration cannot shadow it, and the class stays constructible with
+ * plain `new` for unit tests.
+ */
 @Injectable()
 export class SmtpEmailTransporter implements EmailTransporter {
   private transporter: nodemailer.Transporter | null = null;
@@ -70,11 +88,26 @@ export class SmtpEmailTransporter implements EmailTransporter {
     // Verify connection on startup
     this.transporter.verify((error) => {
       if (error) {
-        this.logger.error('[SmtpEmailTransporter] SMTP connection verification failed', error.message, 'SmtpEmailTransporter');
+        this.logger.error(
+          '[SmtpEmailTransporter] SMTP connection verification failed',
+          error.message,
+          'SmtpEmailTransporter',
+        );
       } else {
         this.logger.info('[SmtpEmailTransporter] SMTP server is ready', 'SmtpEmailTransporter');
       }
     });
+  }
+
+  /**
+   * Whether SMTP credentials were supplied at startup.
+   *
+   * A caller that sends anyway gets a thrown `Error` from `sendMail`, which merges "not configured"
+   * with "the server refused". Reporting the configured case up front is what lets the auth flows
+   * answer truthfully instead of claiming a mail was sent that was never attempted.
+   */
+  isConfigured(): boolean {
+    return this.transporter !== null;
   }
 
   async sendMail(options: {

@@ -17,6 +17,7 @@ import { IpBlocklistService } from '../waf/ip-blocklist.service.ts';
 import { ValkeyService } from '../services/valkey.service.ts';
 import { ValkeyThrottlerStorage } from '../throttler/valkey-throttler.storage.ts';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
+import { AccountRestrictionService } from '../services/account-restriction.service.ts';
 import type { JwtPayload } from '../utils/jwt.util.ts';
 
 import { CacheMetricsController } from './metrics.controller.ts';
@@ -52,6 +53,7 @@ interface DegradationBody {
     readonly degradation?: { readonly degraded?: boolean; readonly degradationCount?: number };
   };
   readonly wafBlocklist?: { readonly available?: boolean | null; readonly consecutiveFailures?: number };
+  readonly restrictionGuard?: { readonly available?: boolean | null; readonly consecutiveFailures?: number };
 }
 
 function bodyAs<T>(response: { body: unknown }): T {
@@ -113,6 +115,16 @@ describe('CacheMetricsController', () => {
         {
           provide: ConfigService,
           useValue: { get: (key: string) => (key === 'jwt.secret' ? SECRET : undefined) },
+        },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            health: vi.fn().mockReturnValue({
+              available: null,
+              consecutiveFailures: 0,
+              lastFailureAtMs: null,
+            }),
+          },
         },
         {
           provide: getStorageToken(),
@@ -213,6 +225,7 @@ describe('CacheMetricsController', () => {
       expect(typeof body.rateLimiter?.probed).toBe('boolean');
       expect(typeof body.rateLimiter?.degradation?.degraded).toBe('boolean');
       expect(typeof body.wafBlocklist?.consecutiveFailures).toBe('number');
+      expect(typeof body.restrictionGuard?.consecutiveFailures).toBe('number');
     });
 
     it('reports the rate limiter as degraded while Valkey is unreachable', async () => {
@@ -234,6 +247,7 @@ describe('CacheMetricsController', () => {
       expect(body.rateLimiter?.probed).toBe(false);
       expect(body.rateLimiter?.degradation?.degradationCount).toBe(0);
       expect(body.wafBlocklist?.available).toBeNull();
+      expect(body.restrictionGuard?.available).toBeNull();
     });
   });
 

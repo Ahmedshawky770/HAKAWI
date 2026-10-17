@@ -11,6 +11,8 @@ import type { ValkeyThrottlerStorage } from '../throttler/valkey-throttler.stora
 import type { CacheMetricsSnapshot } from '../interceptors/cache.interceptor.ts';
 import type { IpBlocklistHealth } from '../waf/ip-blocklist.service.ts';
 import type { ThrottlerStorageHealth } from '../throttler/valkey-throttler.storage.ts';
+import type { AccountRestrictionHealth } from '../services/account-restriction.service.ts';
+import { AccountRestrictionService } from '../services/account-restriction.service.ts';
 
 /**
  * `GET /api/v1/metrics/cache` — cache counters.
@@ -60,6 +62,7 @@ export interface DegradationMetricsResponse {
   readonly component: 'SecurityDegradation';
   readonly rateLimiter: ThrottlerStorageHealth;
   readonly wafBlocklist: IpBlocklistHealth;
+  readonly restrictionGuard: AccountRestrictionHealth;
 }
 
 @Controller('metrics')
@@ -68,6 +71,7 @@ export class CacheMetricsController {
     private readonly metrics: CacheMetrics,
     @Inject(IpBlocklistService) private readonly blocklist: IpBlocklistService,
     @Inject(getStorageToken()) private readonly throttlerStorage: ValkeyThrottlerStorage,
+    @Inject(AccountRestrictionService) private readonly accountRestrictions: AccountRestrictionService,
   ) {}
 
   @Get('cache')
@@ -85,6 +89,7 @@ export class CacheMetricsController {
       component: 'SecurityDegradation',
       rateLimiter: this.throttlerStorage.health(),
       wafBlocklist: this.blocklist.health(),
+      restrictionGuard: this.accountRestrictions.health(),
     };
   }
 }
