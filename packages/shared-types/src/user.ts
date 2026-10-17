@@ -129,6 +129,22 @@ export type UserProfileUpdate = {
   bio?: string | null;
 };
 
+/**
+ * The OAuth providers the sign-in flow supports.
+ *
+ * The backend owns the per-provider secrets and the callback routes, and the frontend owns the
+ * "continue with …" controls — but the LIST is one fact that both sides read, because a provider
+ * added on one side only is a button that 404s or a route nobody navigates to. `isOAuthProvider`
+ * is the runtime guard for the same reason the account types have one: a provider id arriving
+ * from a URL parameter is untrusted input, and an unknown value must be rejected rather than
+ * forwarded to a provider that was never configured.
+ */
+export const OAUTH_PROVIDERS = ['google', 'facebook', 'github', 'apple', 'tiktok'] as const;
+
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
+export const isOAuthProvider = (value: string): value is OAuthProvider => isOneOf(OAUTH_PROVIDERS, value);
+
 export type UserStats = {
   storiesCount: number;
   totalViews: number;
