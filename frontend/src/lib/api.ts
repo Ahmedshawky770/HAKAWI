@@ -58,7 +58,14 @@ import {
   userStatsSchema,
 } from "@/lib/schemas";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+/**
+ * The one API origin in the app. Every request goes through here, and so does the OAuth handshake
+ * (`lib/oauth.ts`): the provider consent screens live on the API's own routes, so the two entry
+ * points into the backend must not be able to name different hosts. It is exported for exactly
+ * that reason and for no other — a caller that needs an API URL reads it from here rather than
+ * repeating the environment lookup and its fallback.
+ */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
 
 const storedUserSchema = z.object({
   id: z.string(),
@@ -739,12 +746,14 @@ export const api = {
     });
   },
 
-  createRental: (bookId: string, durationDays?: number) =>
-    apiRequest(rentalSchema, "/rentals", {
-      method: "POST",
-      body: JSON.stringify({ bookId, durationDays }),
-    }),
-
+  /**
+   * A rental starts by CHARGING for it — `POST /books/:id/rent` returns a checkout, and the
+   * backend creates the rental only when the payment completes. There is deliberately no
+   * `createRental` client for `POST /rentals`: that route created an ACTIVE rental for no money
+   * and was removed. The frontend makes NO call to `POST /rentals` anywhere in this tree —
+   * `grep "POST /rentals" frontend/src` returns only the remove-rental and extend-return routes
+   * under `/rentals/:id/...`, which remain.
+   */
   getMyRentals: (params?: { page?: number; limit?: number; status?: string }) =>
     apiRequest(
       rentalsListResponseSchema,

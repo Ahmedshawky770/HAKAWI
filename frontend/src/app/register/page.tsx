@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { api, setStoredUser } from "@/lib/api";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { OAuthButtons } from "@/components/auth/OAuthButtons";
 import { Button } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input } from "@/components/ui/Input";
@@ -127,6 +128,8 @@ export default function RegisterPage() {
           {strings.auth.registerButton}
         </Button>
       </form>
+
+      <OAuthButtons />
     </AuthShell>
   );
 }

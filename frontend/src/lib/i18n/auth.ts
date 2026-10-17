@@ -23,6 +23,13 @@ export interface AuthStrings {
   confirmPasswordLabel: string;
   confirmPasswordPlaceholder: string;
   passwordsMismatch: string;
+  /** The word between the password form and the provider buttons. Decorative: every button below it names its provider. */
+  oauthDivider: string;
+  oauthGoogle: string;
+  oauthFacebook: string;
+  oauthGithub: string;
+  oauthApple: string;
+  oauthTiktok: string;
   forgotTitle: string;
   forgotDescription: string;
   forgotButton: string;
@@ -83,6 +90,12 @@ export const AR: AuthStrings = {
   confirmPasswordLabel: "تأكيد كلمة المرور",
   confirmPasswordPlaceholder: "••••••••",
   passwordsMismatch: "كلمتا المرور غير متطابقتين",
+  oauthDivider: "أو",
+  oauthGoogle: "المتابعة باستخدام Google",
+  oauthFacebook: "المتابعة باستخدام Facebook",
+  oauthGithub: "المتابعة باستخدام GitHub",
+  oauthApple: "المتابعة باستخدام Apple",
+  oauthTiktok: "المتابعة باستخدام TikTok",
   forgotTitle: "استعادة كلمة المرور",
   forgotDescription: "أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين",
   forgotButton: "إرسال رابط إعادة التعيين",
@@ -144,6 +157,12 @@ export const EN: AuthStrings = {
   confirmPasswordLabel: "Confirm password",
   confirmPasswordPlaceholder: "••••••••",
   passwordsMismatch: "The two passwords don't match",
+  oauthDivider: "or",
+  oauthGoogle: "Continue with Google",
+  oauthFacebook: "Continue with Facebook",
+  oauthGithub: "Continue with GitHub",
+  oauthApple: "Continue with Apple",
+  oauthTiktok: "Continue with TikTok",
   forgotTitle: "Reset your password",
   forgotDescription: "Enter your email and we'll send you a reset link",
   forgotButton: "Send reset link",
