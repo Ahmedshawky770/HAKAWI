@@ -92,6 +92,13 @@ sentry_dsn            = ""
 s3_access_key = ""
 s3_secret_key = ""
 email_from    = "noreply@hakawi.com"
+# The SMTP transport. All four must be filled in for verification and password-reset mail to
+# leave this environment; empty means the backend sends nothing and the auth endpoints say so.
+# Injected at apply time like the payment credentials above.
+email_host     = ""
+email_port     = ""
+email_user     = ""
+email_password = ""
 # Matches infrastructure/helm/backend/values-production.yaml env.apiUrl.
 frontend_api_url = "https://api.hakawi.com/api/v1"
 

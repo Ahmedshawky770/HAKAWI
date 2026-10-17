@@ -326,6 +326,37 @@ variable "email_from" {
   type        = string
 }
 
+# The SMTP transport itself. All four must be present or the backend's transporter stays
+# null and no verification or password-reset mail leaves the process — which is why they are
+# declared here rather than discovered at 3am. Empty means "this environment sends no mail".
+variable "email_host" {
+  description = "SMTP host for outbound mail (mounted as EMAIL_HOST)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_port" {
+  description = "SMTP port for outbound mail (mounted as EMAIL_PORT; 465 selects TLS)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_user" {
+  description = "SMTP user for outbound mail (mounted as EMAIL_USER)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_password" {
+  description = "SMTP password for outbound mail (mounted as EMAIL_PASSWORD)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "frontend_api_url" {
   description = "Public API URL the frontend calls (mounted as NEXT_PUBLIC_API_URL)"
   type        = string

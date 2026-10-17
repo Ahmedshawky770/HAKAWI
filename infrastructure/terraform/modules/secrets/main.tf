@@ -34,6 +34,12 @@ locals {
   # silently merges environments into one namespace. Every consuming module carries the
   # same guard; none of them trusts the caller (Principle #15).
   secret_prefix_scoped = length(regexall("/(${var.environment})(/|$)", var.secret_prefix)) > 0
+
+  # All four SMTP credentials must be present in production, or verification and
+  # password-reset mail never leaves the environment and the auth endpoints answer
+  # truthfully that mail is not configured. dev and staging may leave them empty
+  # (deliberate "no mail" default); production must not.
+  email_credentials_complete = var.email_host != "" && var.email_port != "" && var.email_user != "" && var.email_password != ""
 }
 
 resource "random_password" "jwt_secret" {
@@ -269,6 +275,108 @@ resource "aws_secretsmanager_secret" "email_from" {
 resource "aws_secretsmanager_secret_version" "email_from" {
   secret_id     = aws_secretsmanager_secret.email_from.id
   secret_string = var.email_from
+}
+
+# WHY THESE FOUR EXIST. The transactional mail transport in the backend
+# (`common/email/smtp-email-transporter.ts`) stays null unless EMAIL_HOST, EMAIL_PORT,
+# EMAIL_USER and EMAIL_PASSWORD are ALL present, and the auth flows it serves — email
+# verification and password reset — are the ones that were answering "code sent" while
+# sending nothing. The deployment must be able to configure them or every environment
+# silently runs with mail disabled; `EMAIL_FROM` alone was never the contract.
+#
+# WHY THEY FAIL "OPEN" RATHER THAN CLOSED. Unlike the Paymob credentials above, a missing
+# mail server does not stop the pod: the transport reports itself unconfigured, the send
+# returns a rejection, and the endpoint answers truthfully that the mail could not be
+# delivered. An empty value therefore means "this environment sends no mail", which is the
+# safe default for dev and a deploy-blocking smell for production — which is why it is
+# documented rather than defaulted to a placeholder relay no one owns.
+
+resource "aws_secretsmanager_secret" "email_host" {
+  name                    = "${var.secret_prefix}/email/host"
+  description             = "Hakawi ${var.environment} SMTP host for outbound mail (mounted as EMAIL_HOST)"
+  recovery_window_in_days = var.environment == "production" ? 30 : 0
+
+  tags = merge(var.tags, {
+    Name = "${var.secret_prefix}/email/host"
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.environment != "production" || local.email_credentials_complete
+      error_message = "Production requires email_host to be set. Empty SMTP credentials mean verification and password-reset mail never leaves this environment."
+    }
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "email_host" {
+  secret_id     = aws_secretsmanager_secret.email_host.id
+  secret_string = var.email_host
+}
+
+resource "aws_secretsmanager_secret" "email_port" {
+  name                    = "${var.secret_prefix}/email/port"
+  description             = "Hakawi ${var.environment} SMTP port for outbound mail (mounted as EMAIL_PORT)"
+  recovery_window_in_days = var.environment == "production" ? 30 : 0
+
+  tags = merge(var.tags, {
+    Name = "${var.secret_prefix}/email/port"
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.environment != "production" || local.email_credentials_complete
+      error_message = "Production requires email_port to be set. Empty SMTP credentials mean verification and password-reset mail never leaves this environment."
+    }
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "email_port" {
+  secret_id     = aws_secretsmanager_secret.email_port.id
+  secret_string = var.email_port
+}
+
+resource "aws_secretsmanager_secret" "email_user" {
+  name                    = "${var.secret_prefix}/email/user"
+  description             = "Hakawi ${var.environment} SMTP user for outbound mail (mounted as EMAIL_USER)"
+  recovery_window_in_days = var.environment == "production" ? 30 : 0
+
+  tags = merge(var.tags, {
+    Name = "${var.secret_prefix}/email/user"
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.environment != "production" || local.email_credentials_complete
+      error_message = "Production requires email_user to be set. Empty SMTP credentials mean verification and password-reset mail never leaves this environment."
+    }
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "email_user" {
+  secret_id     = aws_secretsmanager_secret.email_user.id
+  secret_string = var.email_user
+}
+
+resource "aws_secretsmanager_secret" "email_password" {
+  name                    = "${var.secret_prefix}/email/password"
+  description             = "Hakawi ${var.environment} SMTP password for outbound mail (mounted as EMAIL_PASSWORD)"
+  recovery_window_in_days = var.environment == "production" ? 30 : 0
+
+  tags = merge(var.tags, {
+    Name = "${var.secret_prefix}/email/password"
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.environment != "production" || local.email_credentials_complete
+      error_message = "Production requires email_password to be set. Empty SMTP credentials mean verification and password-reset mail never leaves this environment."
+    }
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "email_password" {
+  secret_id     = aws_secretsmanager_secret.email_password.id
+  secret_string = var.email_password
 }
 
 # --- Frontend ----------------------------------------------------------------------

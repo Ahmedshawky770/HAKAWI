@@ -159,6 +159,11 @@ env:
   corsOrigin: "https://app.hakawi.com"
   paymob:
     environment: live
+  # `smtp` = use EMAIL_HOST/PORT verbatim. Other values the backend understands: `gmail`,
+  # `sendgrid`, `mailgun`, `ses` — each of which rewrites the host/port/auth it should use.
+  # With no credentials in the environment's secret store the transport stays null and mail
+  # is disabled: the auth endpoints then answer that a code could not be delivered.
+  emailProvider: smtp
   sentry:
     dsn: ""
   emailFrom: ""

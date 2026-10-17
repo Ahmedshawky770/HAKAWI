@@ -329,7 +329,14 @@ module "secrets" {
   s3_access_key         = var.s3_access_key
   s3_secret_key         = var.s3_secret_key
   email_from            = var.email_from
-  frontend_api_url      = var.frontend_api_url
+  # The four the transactional transport needs to exist at all. `EMAIL_FROM` on its own was
+  # never the contract: with these absent the backend sends no mail and the auth flows say so
+  # truthfully, which is safe for dev and a silent outage for production.
+  email_host     = var.email_host
+  email_port     = var.email_port
+  email_user     = var.email_user
+  email_password = var.email_password
+  frontend_api_url = var.frontend_api_url
 
   tags = var.common_tags
 }

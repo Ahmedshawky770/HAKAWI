@@ -80,6 +80,12 @@ sentry_dsn            = ""
 s3_access_key = ""
 s3_secret_key = ""
 email_from    = "noreply@dev.hakawi.com"
+# Dev sends no mail until these four are set (a local MailHog on 1025 is the usual fill-in);
+# the backend's auth flows then answer that a code could not be delivered instead of lying.
+email_host     = ""
+email_port     = ""
+email_user     = ""
+email_password = ""
 # Matches infrastructure/helm/backend/values.yaml env.apiUrl default.
 frontend_api_url = "https://api.hakawi.com/api/v1"
 

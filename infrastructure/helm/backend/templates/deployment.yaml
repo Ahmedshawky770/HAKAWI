@@ -46,6 +46,10 @@ data:
   READINESS_CHECK_PATH: {{ .Values.env.readinessPath | quote }}
   CORS_ORIGIN: {{ .Values.env.corsOrigin | quote }}
   PAYMOB_ENVIRONMENT: {{ .Values.env.paymob.environment | quote }}
+  # Which provider shape the SMTP transport should assume for its connection defaults. The
+  # credentials themselves are secrets (below); this is the one non-secret knob, and `smtp`
+  # means "use EMAIL_HOST/PORT exactly as given", which is what any real relay wants.
+  EMAIL_PROVIDER: {{ .Values.env.emailProvider | quote }}
 
 ---
 apiVersion: v1
@@ -194,6 +198,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "backend.fullname" . }}-secrets
                   key: s3.secret-key
+            - name: EMAIL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "backend.fullname" . }}-secrets
+                  key: email.host
+            - name: EMAIL_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "backend.fullname" . }}-secrets
+                  key: email.port
+            - name: EMAIL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "backend.fullname" . }}-secrets
+                  key: email.user
+            - name: EMAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "backend.fullname" . }}-secrets
+                  key: email.password
           {{/*
             WHY THREE PROBES AND WHY THEY POINT AT DIFFERENT ROUTES.
             - startupProbe  -> /api/v1/health       : "is the process serving at all yet?"

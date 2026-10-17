@@ -91,6 +91,12 @@ sentry_dsn            = ""
 s3_access_key = ""
 s3_secret_key = ""
 email_from    = "noreply@staging.hakawi.io"
+# Mail is disabled here until the four are filled in — the backend answers truthfully that a
+# code could not be delivered rather than claiming a send that never happened.
+email_host     = ""
+email_port     = ""
+email_user     = ""
+email_password = ""
 # Matches infrastructure/helm/backend/values-staging.yaml env.apiUrl.
 frontend_api_url = "https://staging-api.hakawi.io/api/v1"
 

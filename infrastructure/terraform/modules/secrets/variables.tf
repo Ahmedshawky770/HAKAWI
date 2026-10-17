@@ -169,6 +169,37 @@ variable "email_from" {
   type        = string
 }
 
+# The SMTP transport's credentials. Without all four the backend's transporter stays null and no
+# verification or password-reset mail leaves the process — which is safe (the endpoints answer
+# truthfully) but must be a deliberate choice per environment, so the module owns the keys either way.
+variable "email_host" {
+  description = "SMTP host for outbound mail (mounted as EMAIL_HOST)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_port" {
+  description = "SMTP port for outbound mail (mounted as EMAIL_PORT)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_user" {
+  description = "SMTP user for outbound mail (mounted as EMAIL_USER)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "email_password" {
+  description = "SMTP password for outbound mail (mounted as EMAIL_PASSWORD)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "frontend_api_url" {
   description = "Public API URL the frontend calls (mounted as NEXT_PUBLIC_API_URL)"
   type        = string
