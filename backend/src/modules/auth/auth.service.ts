@@ -12,6 +12,8 @@ import { EncryptionService } from '../../common/utils/encryption.util.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { AccountRestrictionService } from '../../common/services/account-restriction.service.ts';
+import { TransactionalEmailService } from '../../common/email/transactional-email.service.ts';
 import { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.js';
 import { USERS_REPOSITORY, type CreateUserInput } from '../../common/users/users-repository.interface.ts';
 import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
@@ -112,6 +114,12 @@ export class AuthService {
     @Inject(AppleJwksService) private readonly appleJwks: AppleJwksService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(AccountLockoutService) private readonly accountLockout: AccountLockoutService,
+    // The ONE transport, provided by the global `CommonModule`. Auth may not depend on
+    // NotificationsModule (`dependency-rules.md`), which is where the transport used to live.
+    @Inject(TransactionalEmailService) private readonly emailSender: TransactionalEmailService,
+    // The shared reader of "what is this account restricted by". `RestrictionGuard` reads the same
+    // thing, so a ban means the same answer in both places (Principle #9).
+    @Inject(AccountRestrictionService) private readonly accountRestrictions: AccountRestrictionService,
   ) {}
 
   async getAuthorizationUrl(provider: string, state?: string): Promise<string> {
@@ -505,12 +513,32 @@ export class AuthService {
       // providers, because the lookup returned the account and minted tokens without ever
       // looking at `accessBlocked`. `login` has refused a blocked account since the flag
       // existed; this closes the equivalent hole on the OAuth path.
-      if (existingUser.accessBlocked) {
+    if (existingUser.accessBlocked) {
+      // `users.accessBlocked` is a manual database override only — nothing in `backend/src` ever
+      // writes it. It predates moderation's `user_restrictions` + Valkey key, which is what a ban
+      // actually lands in. Kept as a defence-in-depth check so an operator who flips it directly in
+      // Postgres is honoured everywhere the column is read.
+      this.winstonLoggerService.warn(
+        `OAuth sign-in refused: account disabled (user ${existingUser.id}, provider ${provider})`,
+        'AuthService',
+      );
+      throw new UnauthorizedException('Account has been disabled');
+    }
+
+      // WHY this check is separate from the one above: `users.accessBlocked` is a column nothing in
+      // the backend ever writes — moderation does not touch it, and no user DTO exposes it — so
+      // refusing OAuth on that flag alone blocked an account an administrator had disabled in theory
+      // and never in practice. What a moderator actually does when they issue a ban is written by
+      // `ModerationEventHandler` as `restriction:<userId>` holding `'ban'`, with the TTL from
+      // `moderation/restriction-policy.ts`. That key is what `RestrictionGuard` enforces on every
+      // authenticated route, and it is read here through the SAME shared reader, so an account
+      // suspended by a moderator can no longer walk straight back in through a provider callback.
+      if (await this.accountRestrictions.hasActiveBan(existingUser.id)) {
         this.winstonLoggerService.warn(
-          `OAuth sign-in refused: account disabled (user ${existingUser.id}, provider ${provider})`,
+          `OAuth sign-in refused: account is banned (user ${existingUser.id}, provider ${provider})`,
           'AuthService',
         );
-        throw new UnauthorizedException('Account has been disabled');
+        throw new UnauthorizedException('Account has been banned');
       }
       return existingUser;
     }
@@ -563,7 +591,24 @@ export class AuthService {
 
     await this.eventBus.emit('user.registered', new UserRegisteredEvent(user.id, user.email, user.name));
 
-    await this.emailVerificationService.generateToken(dto.email);
+    // WHY THIS NO LONGER BLOCKS THE RESPONSE. The send used to be awaited in front of
+    // `generateTokens`, so `POST /auth/register` answered as slowly as the mail server: the SMTP
+    // pool is five connections with a thirty-second socket timeout, and a slow or hung relay stalled
+    // a public, throttled signup for that long. The response carries the user and the tokens and
+    // does not depend on the delivery outcome, so the mail rides alongside it — the code is already
+    // minted and stored by `generateToken` (Principle #14: a side effect must not become the
+    // request's latency), and the method is documented to swallow its own failures, so the catch
+    // here is a belt-and-braces guard against an unhandled rejection, not the error path.
+    void this.emailVerificationService
+      .generateToken(dto.email)
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.winstonLoggerService.error(
+          `Deferred verification email for ${dto.email} failed: ${reason}`,
+          undefined,
+          'AuthService',
+        );
+      });
 
     const tokens = await this.generateTokens(user);
 
@@ -587,10 +632,7 @@ export class AuthService {
     // Check if account is locked before attempting login
     const lockoutStatus = await this.accountLockout.checkStatus(null, clientIp);
     if (lockoutStatus.isLocked) {
-      this.winstonLoggerService.warn(
-        `Login blocked: IP ${clientIp} is locked out`,
-        'AuthService',
-      );
+      this.winstonLoggerService.warn(`Login blocked: IP ${clientIp} is locked out`, 'AuthService');
       throw new UnauthorizedException(
         `Too many failed attempts. Please try again after ${this.lockoutRemainingMinutes(
           lockoutStatus.lockoutExpiresAt,
@@ -609,10 +651,7 @@ export class AuthService {
     // Check user-specific lockout
     const userLockoutStatus = await this.accountLockout.checkStatus(user.id, clientIp);
     if (userLockoutStatus.isLocked) {
-      this.winstonLoggerService.warn(
-        `Login blocked: user ${user.id} is locked out`,
-        'AuthService',
-      );
+      this.winstonLoggerService.warn(`Login blocked: user ${user.id} is locked out`, 'AuthService');
       throw new UnauthorizedException(
         `Account temporarily locked due to too many failed attempts. Please try again after ${this.lockoutRemainingMinutes(
           userLockoutStatus.lockoutExpiresAt,
@@ -628,8 +667,37 @@ export class AuthService {
     }
 
     if (user.accessBlocked) {
+      // `users.accessBlocked` is a manual database override only — nothing in `backend/src` ever
+      // writes it. It predates moderation's `user_restrictions` + Valkey key. Kept as
+      // defence-in-depth so an operator who flips it directly in Postgres is honoured here too.
       this.winstonLoggerService.warn('Login failed: account disabled', 'AuthService');
       throw new UnauthorizedException('Account has been disabled');
+    }
+
+    // WHY this check is here and not only in `RestrictionGuard`: the guard is composed into
+    // `@Secured`, and the auth routes are `@Public()`, so it never runs on them. A user suspended by
+    // a moderator could therefore log in, refresh tokens and sign in through any of the five OAuth
+    // providers while being refused every authenticated route — a ban that exists only between
+    // requests.
+    //
+    // The old check above is `users.accessBlocked`, and nothing in the backend ever writes that
+    // column: moderation does not touch it and no user DTO exposes it. What a ban actually writes is a
+    // `user_restrictions` row plus the cache key `restriction:<userId>` holding `'ban'`, with the TTL
+    // from `moderation/restriction-policy.ts`. So the ban was enforced everywhere except the places
+    // that mint a session. This reads the same key as `RestrictionGuard`, through the same shared
+    // reader, so there is one answer to "is this account banned" (Principle #9).
+    //
+    // WHY ONLY A `ban` BLOCKS LOGIN. A `mute` is a write restriction — the guard enforces it as 423
+    // on writes and lets reads through — and logging in is how a muted account reaches the content it
+    // is still allowed to read. Treating a mute as a login restriction would turn a mute into the
+    // full lockout it deliberately is not.
+    //
+    // WHY THE CHECK SITS AFTER THE PASSWORD COMPARISON. Before it, the endpoint would refuse a banned
+    // account without a valid password, which is an account-existence signal to an unauthenticated
+    // caller.
+    if (await this.accountRestrictions.hasActiveBan(user.id)) {
+      this.winstonLoggerService.warn(`Login refused: account is banned (user ${user.id})`, 'AuthService');
+      throw new UnauthorizedException('Account has been banned');
     }
 
     // Clear lockout on successful login
@@ -705,9 +773,22 @@ export class AuthService {
     // password check and no event in the log. A ban that a user can walk out of by waiting is
     // not a ban.
     if (user.accessBlocked) {
+      // `users.accessBlocked` is a manual database override only — nothing in `backend/src` ever
+      // writes it. Kept as defence-in-depth so an operator who flips it directly in Postgres is
+      // honoured on the silent refresh path too.
       this.winstonLoggerService.warn(`Refresh refused: account disabled (user ${user.id})`, 'AuthService');
       await this.revokeRefreshToken(presentedToken, user.id);
       throw new UnauthorizedException('Account has been disabled');
+    }
+
+    // The same ban that stops `login` must stop a silent refresh, or a suspended account keeps
+    // minting access tokens for the remaining lifetime of a cookie it already holds. Read through the
+    // shared reader `RestrictionGuard` uses, so the two cannot disagree (Principle #9). A mute does
+    // not block this path — the account is still allowed to read.
+    if (await this.accountRestrictions.hasActiveBan(user.id)) {
+      this.winstonLoggerService.warn(`Refresh refused: account is banned (user ${user.id})`, 'AuthService');
+      await this.revokeRefreshToken(presentedToken, user.id);
+      throw new UnauthorizedException('Account has been banned');
     }
 
     // WHY the order: the previous token is burned *before* the replacement is minted. Issuing
@@ -886,7 +967,64 @@ export class AuthService {
     });
 
     await this.valkeyService.set(`password:reset:${resetToken}`, user.id, 3600);
+
+    // The code was stored and then abandoned: `resetPassword` looks it up in Valkey, but nothing ever
+    // put it in front of the user, so password reset was unreachable end-to-end. It now rides in the
+    // mail body, sent from here — the method that mints it — through the single transport in
+    // `common/email/`.
+    //
+    // WHY THIS ONE DOES NOT BLOCK THE RESPONSE EITHER. `forgotPassword` answers the same generic
+    // sentence whether or not the address exists, so waiting on the transport buys nothing a caller
+    // can observe — it only moves a mail-server stall (thirty-second socket timeout on the shared
+    // pool) onto a public, unauthenticated endpoint, which is exactly the shape Principle #12 exists
+    // to prevent. The token is already stored; the mail is the side effect that catches up.
+    void this.sendPasswordResetEmail(user.email, resetToken).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.winstonLoggerService.error(
+        `Deferred password reset email for ${user.email} failed: ${reason}`,
+        undefined,
+        'AuthService',
+      );
+    });
+
+    // WHY THE TOKEN IS STILL NOT ON THIS EVENT. Events are logged by `EventValidatorService`, parked
+    // in the dead-letter queue when they fail validation, and replayed from there. A reset token on
+    // this payload is a credential in three logs and a queue, which is exactly the leak Principle #15
+    // is about. The event stays an audit signal: "a code was minted for this account".
     await this.eventBus.emit('password.reset.requested', { userId: user.id, email: user.email });
+  }
+
+  /**
+   * Puts the reset code in front of the user.
+   *
+   * WHY THE RESPONSE IS UNCHANGED AND THE FAILURE IS SWALLOWED. `forgotPassword` returns nothing and
+   * answers the same way for an address with no account, which is the anti-enumeration property the
+   * endpoint has: a caller cannot use it to learn which addresses are registered. Surfacing a mail
+   * failure here would break that — an attacker could tell "no such user" from "mail server down" —
+   * so the delivery outcome is logged instead. Sending is a side effect (Principle #14).
+   *
+   * WHY THE CODE IS NEVER LOGGED. Winston output is aggregated, shipped and retained, so a log line
+   * holding a live reset token is a credential leak with a very long half-life. The sender logs the
+   * recipient and the subject, both already present in the request, and the transport's own error.
+   */
+  private async sendPasswordResetEmail(email: string, resetToken: string): Promise<void> {
+    const outcome = await this.emailSender.send({
+      to: email,
+      subject: 'Reset your Hakawi password',
+      text:
+        `Your Hakawi password reset code is ${resetToken}. It expires in 1 hour. ` +
+        'If you did not request a password reset, no action is needed and your password is unchanged.',
+      html:
+        `<p>Your Hakawi password reset code is <strong>${resetToken}</strong>. It expires in 1 hour.</p>` +
+        '<p>If you did not request a password reset, no action is needed and your password is unchanged.</p>',
+    });
+
+    if (outcome.status !== 'sent') {
+      this.winstonLoggerService.warn(
+        `Password reset email for ${email} was not delivered (${outcome.status}); the reset code remains valid until its expiry`,
+        'AuthService',
+      );
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

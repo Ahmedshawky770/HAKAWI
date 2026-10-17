@@ -84,6 +84,54 @@ environment, and `registerAs('jwt', …)` wraps it for the running app.
   who has read this repository can forge.
 - A secret shorter than 32 characters is refused in every environment.
 
+## Bans stop authentication
+
+A moderator's ban was enforced everywhere except the places that mint a session.
+
+`ModerationService.takeAction` writes a `user_restrictions` row and `ModerationEventHandler` writes the
+cache key `restriction:<userId>` holding `'ban'`, with the TTL from `moderation/restriction-policy.ts`.
+`RestrictionGuard` reads that key on every `@Secured` route — but the auth routes are `@Public()`, so
+the guard never runs on them. `AuthService` was instead checking `users.accessBlocked`, and **nothing
+in `backend/src` ever writes that column**: it appears in the Drizzle schema, in two users response
+DTOs and in the auth spec, and in no write anywhere. The result was a banned account locked out of
+every authenticated route that could still log in, refresh its tokens for up to seven days, and sign
+in through any of the five OAuth providers.
+
+`login`, `refreshTokens` and `findOrCreateOAuthUser` now all refuse an account whose **current**
+restriction is `ban`, read through `common/services/account-restriction.service.ts` — the same reader
+`RestrictionGuard` uses, so the two cannot disagree about whether an account is banned (Principle #9).
+
+- **Only `ban` blocks authentication.** A `mute` is a write restriction: the guard enforces it as 423
+  on a write and lets reads through. Logging in is how a muted account reaches the content it is still
+  allowed to read, so treating a mute as a login restriction would turn a mute into the full lockout
+  it deliberately is not.
+- **The check sits after the password comparison** in `login`. Before it, the endpoint would refuse a
+  banned account without a valid password — an account-existence signal to an unauthenticated caller.
+- **`accessBlocked` is still checked.** It is a manual override with no in-app writer today, and
+  removing a column check because it is currently redundant is how a second control quietly
+  disappears.
+- **A Valkey driver failure fails open** and is logged at ERROR with the account id. A cache outage
+  must not become an authentication outage (Principle #12) — the cost is a ban unenforced for the
+  length of the outage, which is the same posture the guard and the WAF blocklist already take, and
+  strictly better than 503-ing every login in the product for a cache fault.
+
+## Password reset mail
+
+`forgotPassword` used to mint a UUID, encrypt it into `users.password_reset_token`, store the raw
+UUID in Valkey and emit a tokenless `password.reset.requested` event that nothing listened to.
+`resetPassword` reads that Valkey key, so the code worked — but no user could ever receive the UUID,
+which made password reset unreachable end-to-end.
+
+The code is now delivered from the method that mints it, through the single transport in
+`common/email/`. The response stays the generic `'If the email exists, a reset email has been sent'`:
+a caller that could distinguish "no such account" from "the mail server refused" could enumerate
+registered addresses through an unauthenticated endpoint. The delivery outcome is logged instead, and
+an SMTP outage never becomes a 500 (Principle #14 — sending is a side effect).
+
+The reset token never appears on an event payload or in a log line. Events are logged,
+dead-lettered and replayed; Winston output is aggregated and retained. A token in either is a
+credential with a very long half-life (Principle #15).
+
 ## Logout
 
 Logout is idempotent: a client with no session still gets `200`. The message distinguishes the two
@@ -99,3 +147,11 @@ is unchanged, and the "no token presented" signal goes to the log as a warning.
   price of failing closed on minting errors.
 - `JwtAuthGuard` separates access from refresh tokens by secret only; it does not reject a payload
   carrying `type: 'refresh'`. With `JWT_SECRET === REFRESH_TOKEN_SECRET` that separation is gone.
+
+## What moderation does NOT write
+
+For anyone re-checking the ban path above: `grep -rn "accessBlocked" backend/src` returns the Drizzle
+schema, the users response DTOs, the shared repository interface, the auth spec and the three
+`AuthService` reads — and no write. `UpdateUserDto` does not expose it, so `PATCH /users/:id` cannot
+set it either. The column is a manual override an operator could populate directly in Postgres; it is
+not what moderation produces.

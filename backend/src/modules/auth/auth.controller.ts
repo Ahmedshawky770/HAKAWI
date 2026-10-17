@@ -140,7 +140,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     await this.authService.forgotPassword(dto.email);
-    return { message: 'If the email exists, a reset link has been sent' };
+    // WHY THE RESPONSE IS NOT MORE SPECIFIC. Whatever the mail transport did, this must stay the same
+    // sentence: a caller that could distinguish "no such account" from "the mail server refused"
+    // would be able to enumerate registered addresses through an unauthenticated endpoint. The
+    // delivery outcome is logged by `AuthService.sendPasswordResetEmail` instead. The wording says
+    // "reset email" rather than "reset link" because that is what is actually sent — the API takes the
+    // code directly, and there is no front-end reset route to link to.
+    return { message: 'If the email exists, a reset email has been sent' };
   }
 
   @Post('reset-password')

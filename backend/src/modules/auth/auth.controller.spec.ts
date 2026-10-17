@@ -170,7 +170,10 @@ describe('AuthController', () => {
     it('should refresh tokens', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: 'refresh-token' })
+        .expect(200);
 
       expect(res.body).toHaveProperty('tokens');
       expect(authService.refreshTokens).toHaveBeenCalled();
@@ -297,7 +300,10 @@ describe('AuthController', () => {
         expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       });
 
-      const res = await request(app.getHttpServer()).get('/auth/session').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       expect(res.body).toHaveProperty('user');
       expect(authService.session).toHaveBeenCalledWith('user-1');
@@ -308,7 +314,10 @@ describe('AuthController', () => {
     it('should logout', async () => {
       vi.mocked(authService.logout).mockResolvedValue({ message: 'Logged out successfully' });
 
-      const res = await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .send({ refreshToken: 'refresh-token' })
+        .expect(200);
 
       expect(res.body).toEqual({ message: 'Logged out successfully' });
       expect(authService.logout).toHaveBeenCalled();
@@ -360,7 +369,10 @@ describe('AuthController', () => {
     it('still clears the cookies when the refresh token is rejected', async () => {
       vi.mocked(authService.logout).mockRejectedValue(new UnauthorizedException('Invalid refresh token'));
 
-      await request(app.getHttpServer()).post('/auth/logout').set('Cookie', 'refresh_token=stale-refresh-token').expect(401);
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Cookie', 'refresh_token=stale-refresh-token')
+        .expect(401);
 
       expect(authService.logout).toHaveBeenCalledWith('stale-refresh-token');
     });
@@ -408,7 +420,10 @@ describe('AuthController', () => {
     it('sets the documented cookies when a session is refreshed', async () => {
       vi.mocked(authService.refreshTokens).mockResolvedValue(payload);
 
-      const res = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'refresh-token' }).expect(200);
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: 'refresh-token' })
+        .expect(200);
 
       await expectDocumentedCookies(res);
     });
@@ -434,7 +449,7 @@ describe('AuthController', () => {
         .send({ email: 'test@example.com' })
         .expect(200);
 
-      expect(res.body).toEqual({ message: 'If the email exists, a reset link has been sent' });
+      expect(res.body).toEqual({ message: 'If the email exists, a reset email has been sent' });
       expect(authService.forgotPassword).toHaveBeenCalledWith('test@example.com');
     });
   });

@@ -8,6 +8,8 @@ import { JwtHelper, JwtPayload, AppleJwksService, fingerprintToken } from '../..
 import { EncryptionService } from '../../common/utils/encryption.util.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { AccountRestrictionService } from '../../common/services/account-restriction.service.ts';
+import { TransactionalEmailService } from '../../common/email/transactional-email.service.ts';
 import type { CircuitBreakerService } from '../../common/resilience/circuit-breaker.service.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import type {
@@ -115,6 +117,29 @@ type MockAccountLockoutService = {
   clearOnSuccess: ReturnType<typeof vi.fn>;
 };
 
+/**
+ * The shared "what is this account restricted by" reader, doubled the way every other dependency here
+ * is. `AuthService` asks it for a ban before it mints a session; `RestrictionGuard` asks it the same
+ * question on every authenticated route. Its own behaviour is pinned by
+ * `common/services/account-restriction.service.spec.ts` — what matters here is that the auth paths
+ * REALLY ASK, and that a `mute` is not treated as a login restriction.
+ */
+type MockAccountRestrictionService = { hasActiveBan: ReturnType<typeof vi.fn<(userId: string) => Promise<boolean>>> };
+
+type MockTransactionalEmailService = { send: ReturnType<typeof vi.fn> };
+
+/**
+ * The keys a Valkey `set` mock was called with, read out of its call log.
+ *
+ * Kept as a typed helper rather than indexing `mock.calls` inline, because the untyped `vi.fn()` this
+ * file builds `valkeyService.set` from reports every argument as `any` — and one cast in a named
+ * helper is easier to read than three inline ones.
+ */
+function valkeyKeysWritten(set: MockValkeyService['set']): string[] {
+  const calls = vi.mocked(set).mock.calls as unknown as Array<readonly [string, string, number?]>;
+  return calls.map((call) => call[0]);
+}
+
 type MockEncryptionService = {
   encrypt: ReturnType<typeof vi.fn>;
   decrypt: ReturnType<typeof vi.fn>;
@@ -138,6 +163,8 @@ describe('AuthService', () => {
   let appleJwks: { resolveKey: ReturnType<typeof vi.fn>; keys: ReturnType<typeof vi.fn> };
   let configService: { get: ReturnType<typeof vi.fn> };
   let accountLockoutService: MockAccountLockoutService;
+  let accountRestrictions: MockAccountRestrictionService;
+  let emailSender: MockTransactionalEmailService;
 
   beforeEach(() => {
     usersRepository = {
@@ -188,7 +215,7 @@ describe('AuthService', () => {
     };
 
     emailVerificationService = {
-      generateToken: vi.fn().mockResolvedValue('12345678'),
+      generateToken: vi.fn().mockResolvedValue('123456'),
     };
 
     accountLockoutService = {
@@ -207,6 +234,16 @@ describe('AuthService', () => {
         nextAttemptDelayMs: 1000,
       }),
       clearOnSuccess: vi.fn().mockResolvedValue(undefined),
+    };
+
+    // Unbanned by default, so a test about something else is not forced to set it. Delivered by
+    // default too, for the same reason. The ban and the mail-outage cases below override them.
+    accountRestrictions = {
+      hasActiveBan: vi.fn<(userId: string) => Promise<boolean>>().mockResolvedValue(false),
+    };
+
+    emailSender = {
+      send: vi.fn().mockResolvedValue({ status: 'sent', to: 'test@example.com' }),
     };
 
     encryptionService = {
@@ -247,6 +284,8 @@ describe('AuthService', () => {
       appleJwks as unknown as AppleJwksService,
       configService as unknown as ConfigService,
       accountLockoutService as unknown as AccountLockoutService,
+      emailSender as unknown as TransactionalEmailService,
+      accountRestrictions as unknown as AccountRestrictionService,
     );
   });
 
@@ -501,6 +540,57 @@ describe('AuthService', () => {
       vi.mocked(passwordHasher.compare).mockResolvedValue(true);
 
       await expect(authService.login(loginDto, '127.0.0.1')).rejects.toThrow('Account has been disabled');
+      // The `accessBlocked` column is a manual override, and the moderator's ban is a separate read.
+      // A caller who has set the column does not get its ban checked afterwards unless it gets past
+      // the first refusal.
+      expect(accountRestrictions.hasActiveBan).toHaveBeenCalledTimes(0);
+    });
+
+    it('should refuse to log in an account that moderation has banned', async () => {
+      // WHY THIS TEST EXISTS. `login` used to check `users.accessBlocked` only — a column NOTHING in
+      // backend/src writes (grep: it appears in the schema, the users DTOs' response shapes and this
+      // spec, never in a write). Moderation writes `user_restrictions` plus the cache key
+      // `restriction:<userId>` holding 'ban', which is what `RestrictionGuard` enforces — but the auth
+      // routes are `@Public()`, so the guard never runs on them. A banned user could therefore log in
+      // normally while being refused every authenticated route.
+      const loginDto = { email: 'test@example.com', password: 'SecurePass123!' };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(passwordHasher.compare).mockResolvedValue(true);
+      vi.mocked(accountRestrictions.hasActiveBan).mockResolvedValue(true);
+
+      await expect(authService.login(loginDto, '127.0.0.1')).rejects.toThrow('Account has been banned');
+      expect(jwtHelper.generateAccessToken).not.toHaveBeenCalled();
+      expect(jwtHelper.generateRefreshToken).not.toHaveBeenCalled();
+      expect(accountRestrictions.hasActiveBan).toHaveBeenCalledWith('user-123');
+    });
+
+    it('should let a MUTED account log in, because a mute is not a login restriction', async () => {
+      // A mute stops writes, not reads; `RestrictionGuard` enforces it with 423 on a write and lets
+      // reads through. Login is how a muted account reaches what it may still read.
+      const loginDto = { email: 'test@example.com', password: 'SecurePass123!' };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(passwordHasher.compare).mockResolvedValue(true);
+      vi.mocked(accountRestrictions.hasActiveBan).mockResolvedValue(false);
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('refresh-token');
+
+      const result = await authService.login(loginDto, '127.0.0.1');
+
+      expect(result.tokens.accessToken).toBe('access-token');
+    });
+
+    it('should check the ban only after the password is validated', async () => {
+      // Order matters: refusing before the password check would tell an unauthenticated caller that
+      // the account exists and is banned, which is an enumeration signal.
+      const loginDto = { email: 'test@example.com', password: 'wrong' };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(passwordHasher.compare).mockResolvedValue(false);
+
+      await expect(authService.login(loginDto, '127.0.0.1')).rejects.toThrow('Invalid email or password');
+      expect(accountRestrictions.hasActiveBan).not.toHaveBeenCalled();
     });
   });
 
@@ -653,6 +743,55 @@ describe('AuthService', () => {
         'revoked',
         expect.any(Number),
       );
+    });
+
+    it('refuses to refresh for an account that moderation has banned', async () => {
+      // WHY THIS TEST EXISTS. Refresh checked `users.accessBlocked`, a column nothing in the backend
+      // writes, so the moderator's ban — written as a `user_restrictions` row plus the cache key
+      // `restriction:<userId>` holding 'ban' — stopped every authenticated route but not the silent
+      // refresh that mints the next access token. A banned account held a live session for as long as
+      // its refresh cookie remained valid, up to seven days, with no login and no password check.
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
+        sub: 'user-123',
+        email: 'test@example.com',
+        accountType: AccountType.READER,
+        type: 'refresh',
+      } as JwtPayload & { type: string });
+      vi.mocked(valkeyService.exists).mockResolvedValue(false);
+      vi.mocked(valkeyService.set).mockResolvedValue(undefined);
+      vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
+      vi.mocked(accountRestrictions.hasActiveBan).mockResolvedValue(true);
+
+      await expect(authService.refreshTokens({ refreshToken: 'old-refresh-token' })).rejects.toThrow(
+        'Account has been banned',
+      );
+      expect(jwtHelper.generateAccessToken).not.toHaveBeenCalled();
+      expect(jwtHelper.generateRefreshToken).not.toHaveBeenCalled();
+      // The same burn as the disabled-account path: the cookie cannot be retried after the refusal.
+      expect(valkeyService.set).toHaveBeenCalledWith(
+        `refresh_token:blacklist:${fingerprintToken('old-refresh-token')}`,
+        'revoked',
+        expect.any(Number),
+      );
+    });
+
+    it('still refreshes for a MUTED account, because a mute does not stop authentication', async () => {
+      vi.mocked(jwtHelper.verifyRefreshToken).mockReturnValue({
+        sub: 'user-123',
+        email: 'test@example.com',
+        accountType: AccountType.READER,
+        type: 'refresh',
+      } as JwtPayload & { type: string });
+      vi.mocked(valkeyService.exists).mockResolvedValue(false);
+      vi.mocked(valkeyService.set).mockResolvedValue(undefined);
+      vi.mocked(usersRepository.findById).mockResolvedValue(refreshableUser());
+      vi.mocked(accountRestrictions.hasActiveBan).mockResolvedValue(false);
+      vi.mocked(jwtHelper.generateAccessToken).mockReturnValue('new-access-token');
+      vi.mocked(jwtHelper.generateRefreshToken).mockReturnValue('new-refresh-token');
+
+      const result = await authService.refreshTokens({ refreshToken: 'old-refresh-token' });
+
+      expect(result.tokens.accessToken).toBe('new-access-token');
     });
 
     it('never reissues a refresh token that a previous rotation already revoked', async () => {
@@ -983,6 +1122,81 @@ describe('AuthService', () => {
     });
   });
 
+  describe('forgotPassword', () => {
+    it('should send the reset code to the address in the mail body', async () => {
+      // WHY THIS TEST EXISTS. `forgotPassword` minted a UUID, encrypted it into
+      // `users.password_reset_token`, stored the raw UUID in Valkey under `password:reset:<uuid>` and
+      // emitted a tokenless `password.reset.requested` event that nothing listened to. `resetPassword`
+      // reads that Valkey key — so the code worked — but no user could ever receive the UUID, which
+      // made password reset unreachable end-to-end. The mail now carries it, sent from here, the
+      // method that mints it.
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(usersRepository.update).mockResolvedValue(refreshableUser());
+
+      await authService.forgotPassword('test@example.com');
+
+      expect(emailSender.send).toHaveBeenCalledTimes(1);
+      const mail = vi.mocked(emailSender.send).mock.calls[0]?.[0] as
+        { to: string; subject: string; text: string; html?: string } | undefined;
+      const resetKey = valkeyKeysWritten(valkeyService.set).find((key) => key.startsWith('password:reset:'));
+
+      expect(resetKey).toBeDefined();
+      expect(mail?.to).toBe('test@example.com');
+      // The raw UUID, not the encrypted form: the decrypt happens server-side in `resetPassword`.
+      expect(mail?.text).toContain(resetKey?.replace('password:reset:', ''));
+    });
+
+    it('should store the reset code and still answer identically when nothing can be sent', async () => {
+      // Anti-enumeration: the endpoint answers the same sentence whether or not the address exists
+      // and whether or not the mail transport is configured, so it cannot be used to enumerate
+      // registered accounts. An SMTP outage must not make this a 500 either (Principle #14).
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(usersRepository.update).mockResolvedValue(refreshableUser());
+      vi.mocked(emailSender.send).mockResolvedValue({ status: 'not-configured', to: 'test@example.com' });
+
+      await expect(authService.forgotPassword('test@example.com')).resolves.toBeUndefined();
+      expect(usersRepository.update).toHaveBeenCalledWith(
+        'user-123',
+        expect.objectContaining({ passwordResetToken: expect.any(String) as unknown as string }),
+      );
+      expect(winstonLoggerService.warn).toHaveBeenCalledWith(
+        expect.stringContaining('was not delivered'),
+        'AuthService',
+      );
+    });
+
+    it('should never put the reset code on an event payload or in a log line', async () => {
+      // Events are logged by `EventValidatorService`, dead-lettered and replayed; Winston output is
+      // aggregated and retained. A reset token in either is a credential with a very long half-life.
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(refreshableUser());
+      vi.mocked(usersRepository.update).mockResolvedValue(refreshableUser());
+
+      await authService.forgotPassword('test@example.com');
+
+      const code =
+        valkeyKeysWritten(valkeyService.set)
+          .find((key) => key.startsWith('password:reset:'))
+          ?.replace('password:reset:', '') ?? '';
+
+      for (const call of vi.mocked(eventValidatorService.emit).mock.calls) {
+        expect(JSON.stringify(call)).not.toContain(code);
+      }
+      for (const call of vi.mocked(winstonLoggerService.info).mock.calls) {
+        expect(call[0]).not.toContain(code);
+      }
+      for (const call of vi.mocked(winstonLoggerService.warn).mock.calls) {
+        expect(call[0]).not.toContain(code);
+      }
+    });
+
+    it('should do nothing for an address with no account, and send no mail', async () => {
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
+
+      await expect(authService.forgotPassword('nobody@example.com')).resolves.toBeUndefined();
+      expect(emailSender.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getAuthorizationUrl', () => {
     // WHY the calls are awaited: the CSRF state is written to Valkey before the redirect URL is
     // returned, so a caller that did not await could send the browser to a provider whose
@@ -1101,6 +1315,32 @@ describe('AuthService', () => {
       );
       expect(jwtHelper.generateAccessToken).not.toHaveBeenCalled();
       expect(jwtHelper.generateRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('refuses OAuth sign-in for an account that moderation has banned', async () => {
+      // WHY THIS TEST EXISTS. The provider lookup used to return the account by its google id and mint
+      // tokens; the only ban flag it consulted was `users.accessBlocked`, which nothing in the backend
+      // writes. A moderator's ban lands in `user_restrictions` and in the cache key
+      // `restriction:<userId>` holding 'ban' — which `RestrictionGuard` enforces everywhere except on
+      // `@Public()` routes, and OAuth's callback is one of those. So a banned account had six ways in:
+      // password login and the five provider callbacks.
+      const state = 'state-123';
+      vi.mocked(valkeyService.get).mockResolvedValue('google');
+      vi.mocked(valkeyService.del).mockResolvedValue(undefined);
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce(oauthResponse({ access_token: 'google-access-token' }))
+        .mockResolvedValueOnce(oauthResponse({ sub: 'google-id-123', email: 'test@example.com', name: 'Test User' }));
+      vi.mocked(usersRepository.findByGoogleId).mockResolvedValue(refreshableUser({ googleId: 'google-id-123' }));
+      vi.mocked(accountRestrictions.hasActiveBan).mockResolvedValue(true);
+
+      await expect(authService.handleOAuthCallback('google', 'valid-code', state)).rejects.toThrow(
+        'Account has been banned',
+      );
+      expect(jwtHelper.generateAccessToken).not.toHaveBeenCalled();
+      expect(jwtHelper.generateRefreshToken).not.toHaveBeenCalled();
+      // No user row is created and no tokens are minted, so the callback cannot be used to enumerate
+      // or to mint a session for a suspended account.
+      expect(usersRepository.create).not.toHaveBeenCalled();
     });
 
     it('should login existing OAuth user and return tokens', async () => {

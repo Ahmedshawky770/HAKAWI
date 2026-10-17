@@ -60,7 +60,13 @@ describe('Email Verification E2E', () => {
         .send({ email: 'e2e-verify@example.com' })
         .expect(200);
 
-      expect(res.body).toEqual({ message: 'Verification email sent' });
+      // The response used to be the constant 'Verification email sent' with no mail ever attempted.
+      // It is now derived from the delivery outcome, so the only contract this endpoint makes is
+      // "the request succeeded"; whether a mail went out is decided by the SMTP configuration the
+      // environment supplies. See the module README's table of outcomes.
+      expect((res.body as { message: string }).message).toMatch(
+        /^(Verification email sent|Verification email could not be sent\. Please try again later or contact support\.)$/,
+      );
     });
   });
 });

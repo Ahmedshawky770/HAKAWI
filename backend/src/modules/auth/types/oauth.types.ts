@@ -1,16 +1,18 @@
 /**
- * WHY this file exists: the provider list, the per-provider user column, and the per-provider
- * placeholder email domain are one fact each, and the auth service used to spell them out at
- * three separate call sites. They are values and types, so they live here (Principle #10) and
- * every consumer reads them from here (Principle #9).
+ * WHY this file exists: the per-provider user column and the per-provider placeholder email domain
+ * are one fact each, and the auth service used to spell them out at three separate call sites. They
+ * are values and types, so they live here (Principle #10) and every consumer reads them from here
+ * (Principle #9).
+ *
+ * The provider LIST itself is not defined here any more: the frontend renders one sign-in control
+ * per provider, so the list is a cross-stack contract and lives in `@hakawi/shared-types` next to
+ * the account types. It is re-exported from here because every backend consumer — including the
+ * guard that rejects an unknown `:provider` path parameter — already imports it from this module,
+ * and a renamed import buys nothing.
  */
-export const OAUTH_PROVIDERS = ['google', 'facebook', 'github', 'apple', 'tiktok'] as const;
+import type { OAuthProvider } from '@hakawi/shared-types';
 
-export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
-
-export function isOAuthProvider(value: string): value is OAuthProvider {
-  return (OAUTH_PROVIDERS as readonly string[]).includes(value);
-}
+export { OAUTH_PROVIDERS, isOAuthProvider, type OAuthProvider } from '@hakawi/shared-types';
 
 /**
  * The users column that holds the provider's account id. Creating a user without filling the
