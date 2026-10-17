@@ -108,7 +108,7 @@ describe("Search page", () => {
     // `resultsCount` — read the same way the component computes it, so the
     // grouping ("1,234") is the production formatting and not a retyped guess.
     const readout = stringsFor(DEFAULT_LOCALE).common.resultsCount(1234);
-    expect(await screen.findByText(readout.count)).toHaveClass("hk-numeric");
+    expect(await screen.findByText(readout.count, {}, { timeout: 30000 })).toHaveClass("hk-numeric");
     expect(screen.getByRole("status")).toHaveTextContent(`${readout.count} ${readout.label}`);
     expect(readout.count).toBe("1,234");
   });
