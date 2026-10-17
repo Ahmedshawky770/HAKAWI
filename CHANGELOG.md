@@ -339,6 +339,65 @@ is untouched, and no `--fix` was run anywhere.
 
 ### Fixed
 
+- **A completed Paymob capture delivered nothing, because the webhook destroyed the only record of
+  what was bought.** `handlePaymobWebhook` wrote `metadata: JSON.stringify(decoded)` — the
+  gateway's raw delivery — over the payment's own `metadata`, which `paymobInitializePayment` had
+  stored as `{ bookId, type: 'purchase' | 'rental', durationDays }`. It did so *before* emitting
+  `payment.completed`, and `LibraryEventHandler` / `RentalsEventHandler` read the row back at that
+  moment to grant the entitlement: they found the webhook payload instead, classified it as
+  "not a purchase" / "not a rental", and returned silently. The money was captured and the shelf
+  stayed empty, and the state was unrecoverable through the API — a redelivery is refused as
+  `already_processed`, and a manual status flip cannot transition `completed → completed`. The
+  update no longer carries `metadata` at all, so the purchased-what survives; the gateway's
+  delivery is recorded verbatim in its own place, a `payment_transactions` row (`type: 'webhook'`,
+  `gateway_response` = the raw body). A regression test asserts the update payload exactly, not
+  with `objectContaining`, so the omission is itself pinned.
+- **Any authenticated account could rent a paid book for free.** `POST /rentals` created an ACTIVE
+  rental with no payment, no price check and no duration validation — the entitlement for the price
+  of one request. The payment-first redesign had routed `POST /books/:id/rent` through a Paymob
+  checkout and left this second door standing, and the test suite kept it greased. The route, the
+  service method, its DTO and request type, and the unused client are removed; `POST /rentals` is
+  pinned to a 404 by both the controller spec and the e2e suite. A rental now exists only after
+  money moved: the checkout's metadata describes what was bought and `RentalsEventHandler` writes
+  the row on `payment.completed`.
+- **Any authenticated account could download the file of any book.** `POST /books/:id/download`
+  authenticated the caller and then returned the file URL of anything in the catalogue — paid or
+  not — because nothing on the route asked what the caller had acquired. The route now sends the
+  caller's identity into the service, and `BooksService.recordDownload` answers the real question
+  before handing anything over: free, owned (a `library` row — read through the library module's
+  own interface), or inside a live rental (answered by `RentalsService.findActiveRentalForBook`,
+  which judges access by the end date rather than by a status word no clock maintains). A refusal
+  names the way out — buy it or rent it — and counts nothing. Ownership-conditional write paths
+  elsewhere are unchanged.
+- **A paid rental never reached the shelf.** `RentalsEventHandler` recorded the rental on
+  `payment.completed`, but no subscriber joined a rental to a `library` row, so `status: 'rented'`
+  was a vocabulary value nothing ever wrote and the book the reader paid for was invisible in
+  "مكتبتي" — and had no row for the access checks to find. `LibraryEventHandler` now subscribes to
+  `rental.created` and writes the entry (idempotent twice over: once for the rental, once for the
+  book, so a replay cannot duplicate and ownership is never demoted into a lease), and withdraws it
+  on `rental.returned` or `rental.expired`, found by the rental's own id through the new
+  `ILibraryRepository.findByRentalId`.
+- **A seven-day ban was lifted after twenty-four hours.** `ModerationService.takeAction` wrote
+  `user_restrictions.expires_at` from the moderator's `durationMinutes`, while
+  `ModerationEventHandler` wrote the enforcement key `restriction:<userId>` in Valkey with a fixed
+  TTL — 24h for a ban, 30d otherwise — and `RestrictionGuard` reads Valkey only. The duration the
+  moderator chose was the duration the audit trail displayed and not the duration that was
+  enforced. Both stores now read their vocabulary and their lifetime from `restriction-policy.ts`:
+  the action carries `durationMinutes` on `moderation.action.taken`, the service's `expires_at` and
+  the handler's TTL are the same computed value by construction, and the handler no longer writes
+  its own audit row — the service is the single writer of `user_restrictions` (Principle #9), which
+  removes the second writer whose expiry rule could never agree with the first.
+- **A soft-deleted account's email or username could never be reused, but the service acted as if
+  it could.** `users_email_unique` and `users_username_unique` are plain UNIQUE indexes on the
+  column, so soft delete keeps both pinned just as firmly as a live row (Principle #6 — no partial,
+  soft-delete-aware index was added). `UsersService.create` and `update` nonetheless gated their
+  uniqueness pre-checks on `!existing.deletedAt`, let a registration or profile edit aimed at a
+  soft-deleted account past the boundary, and lost to the very index the check was told to ignore —
+  surfacing a raw driver error as an opaque 500 where the honest answer is a 409. The pre-checks now
+  treat any existing row — live or soft-deleted — as a conflict, with the same `409` and message for
+  both, so the response never leaks whether the holder was an active or a deleted account. The
+  pre-existing `23505` guard is kept as the race-condition residual, and the repository lookup that
+  still returns soft-deleted rows is unchanged.
 - **Top-level comments were always empty.** `eq(comments.parentId, null)` compiled to
   `parent_id = NULL`, which SQL evaluates to `NULL` and is therefore never true. Now uses
   `isNull(...)`, and the row query and count query share one predicate so page and count cannot
@@ -429,6 +488,194 @@ is untouched, and no `--fix` was run anywhere.
 - The `dev` and `staging` GitHub deployment environments the deploy workflows reference (only
   `production` existed, so `environment: dev`/`environment: staging` resolved to nothing), and the
   `develop` branch that `deploy-dev.yml` triggers on.
+
+### Fixed — critical business-logic defects, verified end to end
+
+Seven defects that made published product behaviour false. Each was confirmed against the current
+tree before it was fixed, and each closes a case where the code asserted one thing and did another.
+
+- **A refund was a payment that bought nothing back.** `PaymentsRefund` reached the gateway,
+  returned the money, moved its row to `processed` — and the reader kept the book forever.
+  `refund.created`/`refund.completed` were events with no producer and no consumer, so nothing on
+  that path asked the library for anything. `refund.completed` is now emitted at the refund's
+  terminal success (never while the gateway still says `pending`, so a not-yet-settled refund
+  cannot revoke access that may have to be restored) and consumed in the two modules that own the
+  answer: `LibraryEventHandler.handleRefundCompleted` removes the `owned` entitlement through the
+  service's existing delete path, and `RentalsEventHandler.handleRefundCompleted` expires the
+  rental, invalidates its cache and emits `rental.expired`. Both are idempotent by a
+  pre-existence check, so a replayed delivery is a no-op rather than a 500. A `rental_extension`
+  refund is deliberately not auto-reverted: undoing it means restoring a prior end date and
+  unwinding another payment's increment, which is reconciliation, not a webhook.
+- **Email verification could never succeed.** The minted token was `randomInt(10000000,
+  100000000)` — always **eight** digits — while `VerifyEmailDto` enforces `@Length(6, 6)` and the
+  global `ValidationPipe` rejects anything else. Every code ever sent to a user failed validation
+  before the verifier ran. The generator now mints exactly six digits, keeping the DTO, the README
+  and the codes in inboxes the contract.
+- **No verification or password-reset email was ever sent.** `email.verification.requested` and
+  `password.reset.requested` carried no token, had no listener, and `forgotPassword` stored a
+  reset token nobody could receive — while both flows answered “sent”. The SMTP transport now
+  lives in `common/email/` behind one `EmailTransporter` token (the duplicate configuration was
+  the bug), the mints send through it directly in the request path, and the response derives from
+  the outcome instead of claiming a delivery that did not happen. Tokens never enter an event
+  payload or a log line. Extracting the token also repaired `NotificationsEmailService`, which
+  had declared `@Optional()` on a bare interface token and therefore resolved to `undefined` —
+  its “not configured” warning had been firing on every notification email in every deployment.
+- **A ban did not block login, only everything after it.** `AuthService` checked
+  `users.accessBlocked`, a column nothing in `backend/src` ever writes; the ban actually lands in
+  `user_restrictions` and the `restriction:<userId>` cache key that `RestrictionGuard` reads.
+  `login`, `refreshTokens` and `findOrCreateOAuthUser` now ask the same reader the guard uses
+  (`AccountRestrictionService`, one implementation for both — Principle #9), and only `ban`
+  refuses authentication: a mute is a write restriction, and refusing login would turn it into an
+  account lockout the moderator did not impose. A Valkey driver error fails open at both points,
+  logged at ERROR and bounded by the outage.
+- **The `content_removal` moderation action removed nothing.** `takeAction` recorded the decision
+  and emitted `moderation.action.taken`, and nothing anywhere deleted or hid the reported story or
+  comment; the delete routes are `JwtAuthGuard + OwnershipGuard`, so a moderator had no path to
+  take it down either. The action now loads the report first (an unknown id answers 404 instead
+  of surfacing the `report_id` foreign key as a 500) and, for a content-bearing target, emits
+  `moderation.content.removed`, which the stories and comments modules consume through their own
+  delete paths — soft delete, counters, cache invalidation and downstream events included — so
+  there is still exactly one code path per module that deletes content, and a moderator's removal
+  reuses it instead of forking it (Principles #7, #9). An absent or already-deleted target is a
+  no-op, not a failure.
+- **Bans and mutes were enforced on the admin surface and on none of the routes users actually
+  write to.** `RestrictionGuard` was reachable through `@Secured` only; every regular-user write
+  route carried raw `@UseGuards(JwtAuthGuard)`, so a banned account kept posting, commenting,
+  reacting, messaging, uploading, following, buying and renting for the whole ban window. The
+  guard now sits after `JwtAuthGuard` (which populates `request.user`) and before `OwnershipGuard`
+  on every authenticated mutating route, with two documented exceptions: the auth bootstrap and
+  account self-service endpoints, where a ban is already refused at login and a mute must not
+  lock a user out of verifying their own email. `restriction-route-coverage.spec.ts` drives the
+  real `CommentsController` and `FollowsController` over HTTP — banned 403, muted 423 on the
+  write and 200 on the read — because a unit test constructs the controller directly and guards
+  never run.
+- **`GET /reading-progress` answered 500 for every reader who had never opened a book.** The
+  total query was `db.select({ count: readingProgress.id })` — the id column aliased as `count`,
+  not an aggregate — so `[{ count }]` destructured the first row's UUID (`Number('<uuid>')` is
+  `NaN`) and an empty result threw `TypeError` from the destructuring. The query is now `count()`,
+  which returns exactly one row (zero for an empty set); the old mock in the suite had been
+  handing back the row shape the buggy query never produced, which is why the suite stayed green
+  while the endpoint 500'd. A new case pins the projection to an aggregate.
+
+### Verification — this batch
+
+| Gate | Result |
+|---|---|
+| Backend unit tests | 3614 passed / 170 files |
+| Backend e2e | 199 tests: 194 passed, **5 pre-existing failures** (2 payments, 1 messages, 2 moderation) |
+| `tsc --noEmit` (backend) | clean |
+| `eslint src/ test/` (backend) | 0 errors, 0 warnings |
+
+The five e2e failures reproduce identically on a pristine `HEAD` worktree with none of this
+change set applied, and none are on a route these fixes touch: two are the `payment_status`
+Postgres enum rejecting the `processing` value the repository has written since `cc7246d0` (the column
+ drifted from `varchar` to a stale enum in the test database), one is a
+stale `participant1` expectation against `getOrCreateConversation`'s response, and two are a 500
+from `GET /moderation/stats`. They are recorded here rather than silently absorbed.
+
+### Fixed — review findings from the same change set
+
+An independent review of the batch above found one deploy-blocking defect and seven edge cases on the
+money and entitlement paths. All eight are fixed here, and so are the seven non-blocking suggestions
+the review raised.
+
+- **The webhook wrote a status the database enum does not have.** `handlePaymobWebhook` recorded its
+  transaction row with `status: status === 'completed' ? 'success' : status`, translating the
+  normalised `completed` back into the gateway's word. `migrations/0024_create_database_enums.sql`
+  makes `payment_transactions.status` the `payment_status` enum, and `success` is not one of its
+  members — so on any migrated database the insert died (22P02) *after* the payment row had already
+  been flipped to `completed` and *before* `payment.completed` was emitted: the webhook answered 500,
+  no library row and no rental were ever granted, and the gateway's retry short-circuits at
+  `already_processed`. The row now records the normalised `status` it already has.
+- **An expired rental kept the paid book forever.** `assertReadAccess` returned on the mere existence
+  of a library row, and nothing retires a lapsed rental on a clock — `checkAndExpireOverdue` has no
+  caller and `rental.expired` is only published by a refund — so a `rented` row past its end date
+  kept granting downloads indefinitely, and the stale row blocked the reader from buying or
+  re-renting the book with a `ConflictException`. An `owned` row is a permanent entitlement and is
+  trusted on its own; every other row is only as good as the rental it records, judged by the end
+  date through `findActiveRentalForBook`. Pinned by two new cases: the stale `rented` row is refused,
+  and an `owned` row still passes without a rental lookup.
+- **A refund could revoke the wrong rental.** `findByUserAndBook` is `limit(1)` with no `ORDER BY`
+  against a plain (non-unique) index, so a reader who rented, was refunded and rented again could
+  resolve their *earlier* `returned`/`expired` row, take the "already ended, this is a replayed
+  revocation" branch and return — leaving the refunded rental still `active` with its shelf entry
+  intact. The query now returns the rental in force (`createdAt desc`), which is what both the
+  access check and the refund path mean by "the rental".
+- **Opening a book demoted its own entitlement.** `POST /library/:id/access` wrote
+  `status: 'reading'` unconditionally, so a `rented` row opened once slipped past both of
+  `BooksService.purchase`'s guards and was charged for a second time, while an `owned` row stopped
+  being recognisable as owned. The access stamp is `lastAccessedAt`, which this route already
+  writes; the status stays what the grant wrote.
+- **The resend cooldown was a read-then-write check on a public route.** `POST
+  /email-verification/resend-verification` is `@Public()`, and the cooldown was read, then armed
+  after the mint and send — so N concurrent requests each passed the check and each delivered their
+  own code. `ValkeyService.setIfAbsent` (`SET key value EX ttl NX`) now decides the race inside the
+  store before the mint, the same atomic shape as `incrWithTtl`, and a failed mint releases the
+  key — which preserves the reason the old ordering existed (a failed send must not lock the caller
+  out for sixty seconds) without the race. The read-then-decide helper it replaced is gone.
+- **A duration-less ban left no durable record.** `takeAction` gated its `user_restrictions` insert
+  on `targetUserId && durationMinutes`, so a `ban` or `mute` issued without a duration was enforced
+  only from the `restriction:<userId>` cache key (which the policy expires on a default) while the
+  table an operator reads stayed empty — and once the key expired, no durable record remained. The
+  gate now also fires for an account restriction with no duration, writing the row with the policy
+  default expiry so the row and the cache key agree.
+- **Rental withdrawal bypassed the service that owns removal.** `withdrawRentalAccess` re-implemented
+  the delete and drifted from `LibraryService.removeFromLibrary` on its first side effect: the
+  service also deletes the `library:<id>` cache key, so a returned or lapsed rental's shelf entry
+  could keep being served from cache, and the copy emitted a second `library.item.removed`. It now
+  goes through `removeBookForRefund`, the same path the refund consumer uses.
+- **Public auth responses waited on the mail server.** `register` and `forgotPassword` awaited the
+  SMTP send even though neither response depends on the delivery outcome — moving a mail-server
+  stall (thirty-second socket timeout on a five-connection pool) onto two public, unauthenticated
+  endpoints. Both sends are now deferred, and so is the one in the users verification flow, whose
+  callers also never see the delivery outcome. `resend` still awaits, because its message is
+  derived from the outcome.
+
+### Fixed — the review's non-blocking suggestions
+
+- The shared restriction reader made two Valkey round trips (`EXISTS` then `GET`) on every mutating
+  request and every login, refresh and OAuth call, on the theory that the guard needed to see "key
+  exists, value unreadable" separately. It receives the resolved value instead, and a single `GET`
+  already returns `null` for both that state and the absent one — which is the guard's documented
+  rule. One read now, and the comment says so.
+- `handleRentalCreated` re-implemented `LibraryService.addToLibrary` — a second copy of the grant
+  sequence, including its own `library.item.added` emit, injected into a handler that already
+  injects the service. The grant now goes through the service; the handler keeps its two guards (a
+  replayed rental is a log line, not an exception) and treats the service's `ConflictException` as
+  the race those guards cannot see.
+- `BooksService.incrementDownloadCount` had been dead since the download route moved to
+  `recordDownload` — a second, unchecked door to the same repository write, kept alive by its own
+  spec and by a mock in `books.service.spec.ts` still asserting `RentalsService.createRental`, the
+  method the free-rental fix deleted. Both are gone; the rent test now asserts the checkout itself
+  rather than the absence of a call to a method that no longer exists.
+- `docs/api-contract/openapi/rest-api-spec.md` still advertised `POST /rentals` after the route was
+  removed, and `docs/c4-model/component/module-boundaries.md` listed it in the rentals row. Both now
+  describe the contract as it stands, with the reason recorded where a reader will look for it.
+- The SMTP credentials the transactional transport needs existed in `.env.example` and the module
+  README but in no deploy manifest — a chart upgrade with no mail server configured simply sends
+  nothing, silently. The Terraform `secrets` module now owns `email/host`, `email/port`, `email/user`
+  and `email/password` under each environment's prefix (with the variables declared and the
+  per-environment tfvars entries following the paymob convention: injected at apply time, empty means
+  "this environment sends no mail"), the chart's ExternalSecret syncs all four keys, the Deployment
+  mounts them, and `EMAIL_PROVIDER` rides in the ConfigMap as the one non-secret knob.
+- The content-removal consumers filtered on hard-coded `'story'` / `'comment'` literals while the
+  producer decides from `CONTENT_BEARING_TARGET_TYPES`, so a rename in the DTO would have turned
+  every removal into a silent no-op with no test noticing. `moderation-content-removal.coverage.spec.ts`
+  now reads both sides and fails when the vocabulary and the consumers drift apart — the
+  consumer-side counterpart of `REGISTERED_WITHOUT_PRODUCER`.
+- `restriction-route-coverage.spec.ts` registered a probe controller it never requested; the muted
+  case now exercises an authenticated read through it alongside the public one, so the
+  "muted accounts keep reading" promise is proven on both shapes.
+
+### Verification — the review fixes
+
+| Gate | Result |
+|---|---|
+| Backend unit tests | 3619 passed / 171 files |
+| Backend e2e | 199 tests: 194 passed, **the same 5 pre-existing failures** as pristine `HEAD` |
+| `tsc --noEmit` (backend) | clean |
+| `eslint src/ test/` (backend) | 0 errors, 0 warnings |
+| Helm chart | `EMAIL_*` added to ConfigMap/ExternalSecret/Deployment (not rendered here — `helm` is not installed in this environment) |
 
 ### Verification
 

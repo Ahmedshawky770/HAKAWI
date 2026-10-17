@@ -157,9 +157,14 @@ plural form. The publisher dashboard routes the previous version omitted are all
 ### Reading Progress — 5 (`reading-progress.controller.ts`)
 `POST /reading-progress` · `GET /reading-progress` · `GET /:id` · `PATCH /:id` · `DELETE /:id`
 
-### Rentals — 6 (`rentals.controller.ts`)
-`POST /rentals` · `GET /rentals` · `GET /rentals/my` · `GET /rentals/:id` ·
+### Rentals — 5 (`rentals.controller.ts`)
+`GET /rentals` · `GET /rentals/my` · `GET /rentals/:id` ·
 `POST /rentals/:id/extend` · `POST /rentals/:id/return` · `GET /rentals/overdue`
+
+`POST /rentals` was removed: it created an ACTIVE rental with no payment, no price check and no
+duration validation — the entitlement for the price of one request — while `POST /books/:id/rent`
+already returns a Paymob checkout. A rental now exists only after money moved, so a rental starts
+from the book, never from this collection.
 
 ### Payments — 7 (`payments.controller.ts`)
 `POST /payments` · `GET /payments/:id` · `PATCH /payments/:id/status` · `POST /payments/:id/refund` ·

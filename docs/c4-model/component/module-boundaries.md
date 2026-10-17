@@ -181,7 +181,7 @@ scheduler.
 | Module | Responsibility | Routes |
 |---|---|---|
 | **Library** | Purchases + rentals for a user; the access grant | `POST/GET /library`, `GET /library/count`, `POST /library/:id/access`, `DELETE /library/:id` |
-| **Rentals** | Rental lifecycle, extensions, expiry, overdue list | `POST /rentals`, `GET /rentals`, `/my`, `/:id`, `POST /:id/extend`, `POST /:id/return`, `GET /overdue` |
+| **Rentals** | Rental lifecycle, extensions, expiry, overdue list | `GET /rentals`, `/my`, `/:id`, `POST /:id/extend`, `POST /:id/return`, `GET /overdue` (a rental is created from `POST /books/:id/rent`, never from this collection — `POST /rentals` granted an active rental for no money and was removed) |
 
 `Library` consumes `payment.completed` and `rental.*`; `Rentals` publishes
 `rental.created`, `rental.extended`, `rental.returned`, `rental.expired`, and
