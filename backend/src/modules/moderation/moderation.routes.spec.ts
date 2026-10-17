@@ -10,6 +10,7 @@ import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
 import { RolesGuard } from '../../common/guards/roles.guard.ts';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { AccountRestrictionService } from '../../common/services/account-restriction.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 import { ModerationController } from './moderation.controller.ts';
@@ -78,10 +79,19 @@ describe('ModerationController route surface', () => {
         { provide: ModerationService, useValue: {} },
         { provide: AdminDashboardService, useValue: { getStats: vi.fn().mockResolvedValue(emptyStats()) } },
         { provide: WinstonLoggerService, useValue: { info: vi.fn(), error: vi.fn() } },
-        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `ValkeyService` and the
-        // logger. This module is hand-built rather than importing `CommonModule`, so both have to
-        // be provided here — the alternative is the whole suite failing at DI resolution.
+        // `SECURED_GUARDS` composes `RestrictionGuard`, which now injects
+        // `AccountRestrictionService` and the logger. This module is hand-built rather than importing
+        // `CommonModule`, so both have to be provided here — the alternative is the whole suite
+        // failing at DI resolution. The guard stopped reading Valkey itself when that read was
+        // extracted for `AuthService`, so the reader is what needs providing.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,
@@ -112,10 +122,19 @@ describe('ModerationController route surface', () => {
         { provide: ModerationService, useValue: {} },
         { provide: AdminDashboardService, useValue: { getStats: vi.fn().mockResolvedValue(emptyStats()) } },
         { provide: WinstonLoggerService, useValue: { info: vi.fn(), error: vi.fn() } },
-        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `ValkeyService` and the
-        // logger. This module is hand-built rather than importing `CommonModule`, so both have to
-        // be provided here — the alternative is the whole suite failing at DI resolution.
+        // `SECURED_GUARDS` composes `RestrictionGuard`, which now injects
+        // `AccountRestrictionService` and the logger. This module is hand-built rather than importing
+        // `CommonModule`, so both have to be provided here — the alternative is the whole suite
+        // failing at DI resolution. The guard stopped reading Valkey itself when that read was
+        // extracted for `AuthService`, so the reader is what needs providing.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,

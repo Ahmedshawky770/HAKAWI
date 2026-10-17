@@ -14,6 +14,7 @@ import { RolesGuard } from '../../common/guards/roles.guard.ts';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
 import { AdminRole, AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
+import { AccountRestrictionService } from '../../common/services/account-restriction.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 
 import { ModerationController } from './moderation.controller.ts';
@@ -119,10 +120,18 @@ describe('ModerationController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
+        // `SECURED_GUARDS` composes `RestrictionGuard`, which injects `AccountRestrictionService`
+        // and the logger.
         // This module is hand-built rather than importing `CommonModule`, so both must be provided —
         // the alternative is the whole suite failing at DI resolution before a single assertion runs.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },

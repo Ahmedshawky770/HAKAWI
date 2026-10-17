@@ -1,6 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { eq } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
@@ -8,40 +7,25 @@ import {
   ModerationActionTakenEvent,
   ModerationReportEscalatedEvent,
 } from '../../../common/events/moderation.events.ts';
-import { userRestrictions } from '../../../db/schema/moderation.schema.ts';
-import { db } from '../../../db/index.ts';
+import { RESTRICTION_TYPE_BY_ACTION, restrictionTtlSeconds } from '../restriction-policy.ts';
 
 /**
- * The two moderation actions that actually restrict an account, and the one vocabulary both stores
- * use.
+ * What this handler enforces, and what it deliberately does not.
  *
- * `ModerationActionDto.action` is `'warn' | 'mute' | 'ban' | 'content_removal' | 'no_action'`, and
- * three of those are not restrictions at all: a `warn` is a note, `content_removal` is a decision
- * about one piece of content, and `no_action` is the absence of a decision.
+ * WHY THE VOCABULARY AND THE TTL COME FROM ELSEWHERE. `restriction-policy.ts` owns both, because
+ * they used to live here and `ModerationService` wrote a different answer for the same action: the
+ * service normalised the action into the table's vocabulary and honoured the moderator's duration,
+ * while this handler wrote the raw action into Valkey under a fixed TTL. `RestrictionGuard` reads
+ * Valkey only, so a seven-day ban was lifted after twenty-four hours and a warned account had a
+ * restriction key at all.
  *
- * `ModerationService` has always normalised the same fact for the `user_restrictions` table — to
- * `mute`, `ban`, or `warning`. This handler did NOT: it wrote the raw action into Valkey, so
- * `restriction:<userId>` held `'warn'` for a warned account. `RestrictionGuard` was never applied to
- * any route, so that mismatch was invisible — but it is the reason the guard could not simply be
- * wired up as written. A guard that treats any present key as a denial would have turned every
- * warning, every content removal and every no-op decision into a total account lockout.
- *
- * Using one vocabulary for both stores is the fix: the table and the cache can no longer disagree
- * about what an action means, and the guard only has to understand two values.
- *
- * The stored vocabulary. Kept as an explicit map rather than a cast so that an action name added to
- * `ModerationActionDto` without a decision here shows up as `undefined` at runtime — a value no
- * consumer treats as a restriction — instead of being written through unchanged.
+ * WHY THIS HANDLER NO LONGER WRITES `user_restrictions`. It was a second writer of that table with
+ * its own expiry rule — never the same rule as the service's, by construction, because it derived
+ * the expiry from the fixed TTLs rather than from the action's duration. Two writers of one row is
+ * how the audit trail ends up contradicting what is enforced. `ModerationService` is now the single
+ * writer, and every decision behind the row — which action restricts, which type it is stored as,
+ * how long it lasts — is read from the shared policy by both sides.
  */
-const STORED_RESTRICTION_TYPE: Readonly<Record<string, string>> = {
-  ban: 'ban',
-  mute: 'mute',
-};
-
-/** A ban expires in a day; every other restriction is treated as a month. */
-const BAN_TTL_SECONDS = 24 * 60 * 60;
-const OTHER_RESTRICTION_TTL_SECONDS = 30 * 24 * 60 * 60;
-
 @Injectable()
 export class ModerationEventHandler {
   constructor(
@@ -56,22 +40,23 @@ export class ModerationEventHandler {
       'ModerationEventHandler',
     );
 
-    // A non-restricting action still records its audit row, so the moderation timeline keeps the
-    // decision. It does NOT touch the restriction cache: leaving a key behind for a `warn` would mean
-    // the next unrelated read by that account met a stale restriction, and `content_removal` is not
-    // about the account at all.
-    const storedType = STORED_RESTRICTION_TYPE[event.action];
+    // A non-restricting action still leaves its decision in `moderation_actions`, which the service
+    // writes for every action, so the moderation timeline keeps it. It does NOT touch the
+    // restriction cache: leaving a key behind for a `warn` would mean the next unrelated read by
+    // that account met a stale restriction, and `content_removal` is not about the account at all.
+    const storedType = RESTRICTION_TYPE_BY_ACTION[event.action];
     if (storedType === undefined) {
       this.logger.info(
         `Moderation action '${event.action}' on user ${event.targetUserId} is not an account restriction; restriction cache untouched`,
         'ModerationEventHandler',
       );
-      await this.recordAuditRow(event);
       return;
     }
 
     const restrictionKey = `restriction:${event.targetUserId}`;
-    const ttlSeconds = event.action === 'ban' ? BAN_TTL_SECONDS : OTHER_RESTRICTION_TTL_SECONDS;
+    // The duration the moderator chose is the TTL; the policy supplies the fallback when the action
+    // carried none. The service writes the same answer into `user_restrictions.expires_at`.
+    const ttlSeconds = restrictionTtlSeconds(event.action, event.durationMinutes);
 
     await this.valkeyService.set(restrictionKey, storedType, ttlSeconds);
 
@@ -84,43 +69,6 @@ export class ModerationEventHandler {
     });
 
     await this.valkeyService.expire(`restriction:${event.targetUserId}:details`, ttlSeconds);
-
-    await this.recordAuditRow(event, storedType, ttlSeconds);
-  }
-
-  /**
-   * Writes the `user_restrictions` audit row.
-   *
-   * The existing row is not replaced — a second action against an already-restricted account leaves
-   * the first decision in place, which is the behaviour before this change and the safer one: an
-   * administrative restriction is lifted deliberately or by expiry, not as a side effect of an
-   * unrelated later decision.
-   */
-  private async recordAuditRow(
-    event: ModerationActionTakenEvent,
-    storedType?: string,
-    ttlSeconds?: number,
-  ): Promise<void> {
-    const expiresAt =
-      ttlSeconds !== undefined
-        ? new Date(Date.now() + ttlSeconds * 1000)
-        : new Date(Date.now() + OTHER_RESTRICTION_TTL_SECONDS * 1000);
-
-    const [existing] = await db.select().from(userRestrictions).where(eq(userRestrictions.userId, event.targetUserId));
-
-    if (existing) {
-      return;
-    }
-
-    await db.insert(userRestrictions).values({
-      userId: event.targetUserId,
-      // `warning` is the vocabulary the table already used for anything that is not a ban or a mute;
-      // a non-restricting action is exactly that, and `storedType` is undefined for all of them.
-      type: storedType ?? 'warning',
-      reason: event.reason,
-      expiresAt,
-      createdBy: event.adminId,
-    });
   }
 
   @OnEvent('moderation.report.escalated')

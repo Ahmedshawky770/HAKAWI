@@ -276,6 +276,7 @@ export const PaymentRefundedSchema = z.object({
 });
 
 export const RefundCompletedSchema = z.object({
+  paymentId: z.string(),
   refundId: z.string(),
 });
 
@@ -341,6 +342,24 @@ export const ModerationActionTakenSchema = z.object({
   reason: z.string(),
 });
 
+/**
+ * The removal of one piece of reported content, as the moderation module announces it.
+ *
+ * WHY EVERY FIELD IS REQUIRED. The consumer has to know which row to remove (`targetType` +
+ * `targetId`) and has to be able to trace the write back to the decision that ordered it
+ * (`reportId` + `adminId`). `targetType` is a plain string rather than the moderation module's
+ * `REPORT_TARGET_TYPES` union because `common/events/` must not import from a feature module — the
+ * boundary runs the other way — and a narrower type here would be a second spelling of that
+ * vocabulary that only a human kept in step (Principle #9).
+ */
+export const ModerationContentRemovedSchema = z.object({
+  reportId: z.string(),
+  targetType: z.string(),
+  targetId: z.string(),
+  adminId: z.string(),
+  reason: z.string(),
+});
+
 export const MfaEnabledSchema = z.object({
   userId: z.string(),
 });
@@ -371,8 +390,11 @@ export const ModerationEscalatedSchema = z.object({
 export const REGISTERED_WITHOUT_PRODUCER: readonly string[] = [
   // Producer belongs to modules/users/users.service.ts; subscriber is users/events/users.event-handler.ts.
   'user.updated',
-  // Producer belongs to modules/payments/payments.service.ts; subscriber is payments/events/payments.event-handler.ts.
-  'refund.completed',
+  // `refund.completed` used to be listed here as an intention with no producer. It now has a real
+  // one: `PaymentsService.submitRefundToGateway` emits it the moment the gateway returns the money,
+  // and the library and rentals `@OnEvent` consumers revoke the entitlement from it. It was removed
+  // from this list because `event-schemas.spec.ts` fails on any name that stays here once a producer
+  // exists — the very drift this list is meant to catch.
 ];
 
 /**
@@ -436,6 +458,11 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'moderation.report.created': { schema: ModerationReportCreatedSchema, version: 'v1' },
   'moderation.report.escalated': { schema: ModerationEscalatedSchema, version: 'v1' },
   'moderation.action.taken': { schema: ModerationActionTakenSchema, version: 'v1' },
+  // Produced by `ModerationService.takeAction` for a `content_removal` action, and consumed by
+  // `ModerationContentRemovalEventHandler` in BOTH the stories and the comments module — each
+  // filters on `targetType`. The producer, not this registry, decides which target types have a
+  // consumer, which is what keeps a registered name from being emitted with nobody listening.
+  'moderation.content.removed': { schema: ModerationContentRemovedSchema, version: 'v1' },
   'refund.created': { schema: PaymentRefundedSchema, version: 'v1' },
   'refund.failed': { schema: RefundFailedSchema, version: 'v1' },
   'user.followed': { schema: FollowCreatedSchema, version: 'v1' },

@@ -4,10 +4,13 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { ModerationActionTakenEvent } from '../../common/events/moderation.events.ts';
 import { reports, moderationActions, userRestrictions } from '../../db/schema/moderation.schema.ts';
 
 import { ModerationService, type Report, type ModerationAction } from './moderation.service.ts';
 import type { CreateReportDto, ModerationActionDto, ReportQueryDto } from './dto/report.dto.ts';
+import { BAN_TTL_SECONDS, restrictionTtlSeconds } from './restriction-policy.ts';
+import { ModerationEventHandler } from './events/moderation.event-handler.ts';
 
 type ChainBuilder = {
   then: (onfulfilled: (value: unknown) => unknown) => Promise<unknown>;
@@ -447,11 +450,20 @@ describe('ModerationService', () => {
   });
 
   describe('takeAction', () => {
+    // WHY EVERY TEST ARRANGES A REPORT ROW. `takeAction` loads the report before it records the
+    // action: an unknown or malformed report id used to reach the `moderation_actions.report_id`
+    // foreign key and surface as an opaque 500, and a `content_removal` needs the report's
+    // `targetType`/`targetId` to ask the owning module to remove anything at all. The read below is
+    // that load; without it every case here would fail on the 404 rather than on what it asserts.
+    beforeEach(() => {
+      db.select.mockReturnValueOnce(makeChain([reportRow()]));
+    });
+
     it('should record the action and return it', async () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(makeChain(undefined));
 
-      const result = await service.takeAction('report-1', 'admin-1', actionDto());
+      const result = await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto());
 
       expect(db.insert).toHaveBeenNthCalledWith(1, moderationActions);
       expect(result.id).toBe('action-1');
@@ -462,10 +474,10 @@ describe('ModerationService', () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(makeChain(undefined));
 
-      await service.takeAction('report-1', 'admin-1', actionDto());
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto());
 
       expect(actionChain.values).toHaveBeenCalledWith({
-        reportId: 'report-1',
+        reportId: '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
         adminId: 'admin-1',
         targetUserId: null,
         action: 'warn',
@@ -479,7 +491,7 @@ describe('ModerationService', () => {
       db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(makeChain(undefined));
 
       await service.takeAction(
-        'report-1',
+        '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
         'admin-1',
         actionDto({ action: 'mute', targetUserId: TARGET_USER_ID, durationMinutes: 60 }),
       );
@@ -501,7 +513,7 @@ describe('ModerationService', () => {
       db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(restrictionChain);
 
       await service.takeAction(
-        'report-1',
+        '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
         'admin-1',
         actionDto({ action, targetUserId: TARGET_USER_ID, durationMinutes: 45 }),
       );
@@ -520,17 +532,113 @@ describe('ModerationService', () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain);
 
-      await service.takeAction('report-1', 'admin-1', actionDto({ targetUserId: TARGET_USER_ID }));
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto({ targetUserId: TARGET_USER_ID }));
 
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(db.insert).not.toHaveBeenCalledWith(userRestrictions);
+    });
+
+    it('should still record a restriction for a duration-less ban or mute', async () => {
+      // The gate used to require a duration, so a ban issued without one was enforced from the
+      // `restriction:<userId>` cache key (the handler applies the policy default) while this table —
+      // the durable record an operator reads — stayed empty, and went stale-with-nothing when the
+      // key expired. A duration-less account restriction is a policy default, not a missing one.
+      const actionChain = makeChain([actionRow({ targetUserId: TARGET_USER_ID })]);
+      const restrictionChain = makeChain(undefined);
+      db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(restrictionChain);
+
+      await service.takeAction(
+        '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
+        'admin-1',
+        actionDto({ action: 'ban', targetUserId: TARGET_USER_ID, durationMinutes: undefined }),
+      );
+
+      expect(db.insert).toHaveBeenCalledWith(userRestrictions);
+      expect(restrictionChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: TARGET_USER_ID, type: 'ban' }),
+      );
+    });
+
+    it('expires the stored row and the enforcement key on the same clock', async () => {
+      // The defect this pins: the service used to write `expires_at` from the moderator's
+      // durationMinutes while the handler wrote the Valkey key `RestrictionGuard` actually reads
+      // from a fixed 24h TTL — so a seven-day ban lifted after a day and the table kept claiming
+      // a week. Both stores now read `restriction-policy.ts`; the row and the key agree by
+      // construction, and this test is what says so in one place.
+      const SEVEN_DAYS_MINUTES = 7 * 24 * 60;
+      const actionChain = makeChain([actionRow()]);
+      const restrictionChain = makeChain(undefined);
+      db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(restrictionChain);
+
+      await service.takeAction(
+        '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
+        'admin-1',
+        actionDto({ action: 'ban', targetUserId: TARGET_USER_ID, durationMinutes: SEVEN_DAYS_MINUTES }),
+      );
+
+      // The stored row expires with the moderator's duration.
+      expect(restrictionChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ expiresAt: new Date(NOW.getTime() + SEVEN_DAYS_MINUTES * 60 * 1000) }),
+      );
+
+      // The policy's answer to "how long is a seven-day ban" is the moderator's week, in seconds —
+      // and it is the answer both stores read.
+      const ttlSeconds = restrictionTtlSeconds('ban', SEVEN_DAYS_MINUTES);
+      expect(ttlSeconds).toBe(SEVEN_DAYS_MINUTES * 60);
+
+      // The handler, fed the event the service emitted for that same action, gives the key the
+      // same lifetime — and not the fixed default it used to impose.
+      const valkey = { set: vi.fn(), hSetMultiple: vi.fn(), expire: vi.fn() };
+      const handler = new ModerationEventHandler(
+        { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as WinstonLoggerService,
+        valkey as unknown as ValkeyService,
+      );
+
+      await handler.handleModerationActionTaken(
+        new ModerationActionTakenEvent(
+          'action-77',
+          '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
+          'admin-1',
+          TARGET_USER_ID,
+          'ban',
+          'First warning',
+          SEVEN_DAYS_MINUTES,
+        ),
+      );
+
+      expect(valkey.set).toHaveBeenCalledWith(`restriction:${TARGET_USER_ID}`, 'ban', ttlSeconds);
+      expect(valkey.expire).toHaveBeenCalledWith(`restriction:${TARGET_USER_ID}:details`, ttlSeconds);
+    });
+
+    it('falls back to the policy default when the action carried no duration', async () => {
+      // A `ban` recorded without a duration still has to expire somewhere; the shared policy's
+      // default is the answer for both stores, which is why they cannot drift on this path either.
+      const valkey = { set: vi.fn(), hSetMultiple: vi.fn(), expire: vi.fn() };
+      const handler = new ModerationEventHandler(
+        { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as WinstonLoggerService,
+        valkey as unknown as ValkeyService,
+      );
+
+      await handler.handleModerationActionTaken(
+        new ModerationActionTakenEvent(
+          'action-77',
+          '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
+          'admin-1',
+          TARGET_USER_ID,
+          'ban',
+          'First warning',
+          null,
+        ),
+      );
+
+      expect(valkey.set).toHaveBeenCalledWith(`restriction:${TARGET_USER_ID}`, 'ban', BAN_TTL_SECONDS);
     });
 
     it('should not create a restriction when the target user is missing', async () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain);
 
-      await service.takeAction('report-1', 'admin-1', actionDto({ durationMinutes: 60 }));
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto({ durationMinutes: 60 }));
 
       expect(db.insert).toHaveBeenCalledTimes(1);
     });
@@ -541,7 +649,7 @@ describe('ModerationService', () => {
 
       await expect(
         service.takeAction(
-          'report-1',
+          '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
           'admin-1',
           actionDto({ targetUserId: TARGET_USER_ID, durationMinutes: 0 as unknown as number }),
         ),
@@ -554,15 +662,16 @@ describe('ModerationService', () => {
       const actionChain = makeChain([actionRow({ id: 'action-77', targetUserId: TARGET_USER_ID })]);
       db.insert.mockReturnValueOnce(actionChain).mockReturnValueOnce(makeChain(undefined));
 
-      await service.takeAction('report-1', 'admin-1', actionDto({ targetUserId: TARGET_USER_ID, durationMinutes: 30 }));
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto({ targetUserId: TARGET_USER_ID, durationMinutes: 30 }));
 
       expect(eventBus.emit).toHaveBeenCalledWith('moderation.action.taken', {
         actionId: 'action-77',
-        reportId: 'report-1',
+        reportId: '9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
         adminId: 'admin-1',
         targetUserId: TARGET_USER_ID,
         action: 'warn',
         reason: 'First warning',
+        durationMinutes: 30,
       });
     });
 
@@ -570,7 +679,7 @@ describe('ModerationService', () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain);
 
-      await service.takeAction('report-1', 'admin-1', actionDto());
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto());
 
       expect(eventBus.emit).toHaveBeenCalledWith(
         'moderation.action.taken',
@@ -582,10 +691,10 @@ describe('ModerationService', () => {
       const actionChain = makeChain([actionRow()]);
       db.insert.mockReturnValueOnce(actionChain);
 
-      await service.takeAction('report-1', 'admin-1', actionDto({ action: 'ban' }));
+      await service.takeAction('9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c', 'admin-1', actionDto({ action: 'ban' }));
 
       expect(logger.info).toHaveBeenCalledWith(
-        'Admin admin-1 taking action ban on report report-1',
+        'Admin admin-1 taking action ban on report 9c8b7a65-4f21-4c3e-9a2b-7d1e6f5a4b3c',
         'ModerationService',
       );
     });
