@@ -99,6 +99,7 @@ describe('BadgesEventHandler', () => {
       targetUserId: 't-1',
       action: 'warn',
       reason: 'because',
+      durationMinutes: null,
     });
 
     expect(badgesService.evaluateForUser).toHaveBeenCalledWith(USER_ID, 'moderation.action.taken');

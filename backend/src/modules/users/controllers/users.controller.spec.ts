@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { UsersService } from '../users.service.ts';
 import { UserVerificationService } from '../services/user-verification.service.ts';
@@ -99,10 +100,18 @@ describe('UsersController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
-        // This module is hand-built rather than importing `CommonModule`, so both must be provided
-        // here or Nest fails at DI resolution before any assertion runs.
+        // `@Secured` composes `RestrictionGuard`, which injects `AccountRestrictionService` and the
+        // logger. This module is hand-built rather than importing `CommonModule`, so every transitive
+        // dependency of the composed chain must be provided here or Nest fails at DI resolution
+        // before any assertion runs.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },

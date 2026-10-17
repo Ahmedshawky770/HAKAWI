@@ -17,6 +17,7 @@ import type { Request as ExpressRequest } from 'express';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { ContestsService } from '../contests.service.ts';
 import {
   CreateContestDto,
@@ -81,7 +82,7 @@ export class ContestsController {
     return this.contestsService.findById(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateContestDto, @Request() req: ExpressRequest & { user: { sub: string } }) {
@@ -95,7 +96,7 @@ export class ContestsController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -105,27 +106,27 @@ export class ContestsController {
     return this.contestsService.update(id, dto, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/start')
   @HttpCode(HttpStatus.OK)
   async start(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
     return this.contestsService.start(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancel(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
     return this.contestsService.cancel(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/complete')
   async complete(@Param('id') id: string, @Request() req: ExpressRequest & { user: { sub: string } }) {
     return this.contestsService.complete(id, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/submissions')
   @HttpCode(HttpStatus.CREATED)
   async submitStory(
@@ -142,7 +143,7 @@ export class ContestsController {
     return this.contestsService.getSubmissions(contestId, query.page ?? 1, query.limit ?? 20);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/votes')
   @HttpCode(HttpStatus.CREATED)
   async castVote(
@@ -159,7 +160,7 @@ export class ContestsController {
     return this.contestsService.getVotes(contestId, query.submissionId, query.page ?? 1, query.limit ?? 20);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/winner')
   async selectWinner(
     @Param('id') contestId: string,
@@ -172,7 +173,7 @@ export class ContestsController {
     return this.contestsService.selectWinner(contestId, dto.submissionId, dto.winnerId, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/submissions/:submissionId/approve')
   @HttpCode(HttpStatus.OK)
   async approveSubmission(
@@ -183,7 +184,7 @@ export class ContestsController {
     return this.contestsService.approveSubmission(submissionId, contestId, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/submissions/:submissionId/reject')
   @HttpCode(HttpStatus.OK)
   async rejectSubmission(
@@ -194,7 +195,7 @@ export class ContestsController {
     return this.contestsService.rejectSubmission(submissionId, contestId, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/prizes')
   @HttpCode(HttpStatus.CREATED)
   async distributePrize(

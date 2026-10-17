@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
 
 import { UploadService } from './upload.service.ts';
@@ -28,7 +29,7 @@ interface AuthenticatedRequest {
 export class UploadController {
   constructor(@Inject(UploadService) private readonly uploadService: UploadService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('image')
   async generateImageUploadUrl(@Body() body: GenerateUploadUrlDto) {
     const filename = this.resolveFilename(body.filename, 'image.png');
@@ -36,7 +37,7 @@ export class UploadController {
     return this.uploadService.generatePresignedUrl(filename, contentType, 'images');
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('pdf')
   async generatePdfUploadUrl(@Body() body: GenerateUploadUrlDto) {
     const filename = this.resolveFilename(body.filename, 'document.pdf');
@@ -53,7 +54,7 @@ export class UploadController {
    * everyone, including the account that just uploaded the file. The presigned PUT goes straight to
    * S3 and never passes through this API, so the application has to be told the upload finished.
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('confirm')
   @HttpCode(HttpStatus.CREATED)
   async confirmUpload(@Body() body: ConfirmUploadDto, @Request() req: AuthenticatedRequest) {
@@ -76,7 +77,7 @@ export class UploadController {
     return this.uploadService.findByStory(storyId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':filename')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteFile(@Param('filename') filename: string, @Request() req: AuthenticatedRequest) {

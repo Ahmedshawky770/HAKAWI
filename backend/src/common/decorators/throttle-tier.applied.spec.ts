@@ -11,7 +11,9 @@ import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 
 import { buildThrottleConfig, THROTTLE_TIERS, type ThrottleTier } from '../../config/throttle.config.ts';
+import { AccountRestrictionService } from '../services/account-restriction.service.ts';
 import { ValkeyService } from '../services/valkey.service.ts';
+import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { ValkeyThrottlerStorage } from '../throttler/valkey-throttler.storage.ts';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.ts';
 import { AuthController } from '../../modules/auth/auth.controller.ts';
@@ -61,6 +63,21 @@ describe('throttle tiers applied to the real controllers', () => {
         { provide: SearchService, useValue: searchService },
         JwtAuthGuard,
         { provide: JwtService, useValue: new JwtService({ secret: 'throttle-tier-spec-secret' }) },
+        // `UploadController`'s write routes now compose `RestrictionGuard`, which reads the account's
+        // restriction through the shared reader below. The tiers are counted by the global
+        // ThrottlerGuard before route guards run, so an unrestricted reader leaves the counting
+        // assertions in this suite about throttling alone.
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
+        {
+          provide: WinstonLoggerService,
+          useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
         {
           provide: ConfigService,
           useValue: { get: (key: string) => (key === 'jwt.secret' ? 'throttle-tier-spec-secret' : undefined) },

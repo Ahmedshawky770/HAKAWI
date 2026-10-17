@@ -5,6 +5,7 @@ import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, Not
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { TransactionalEmailService } from '../../../common/email/transactional-email.service.ts';
 import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
 import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
 
@@ -70,6 +71,11 @@ export interface VerificationStatus {
  * Writes the `users.is_verified` column the DTOs and the public profile already
  * expose. The email-verification module only ever set `email_verified`, so nothing
  * in the codebase could turn the flag on; this service is the only writer.
+ *
+ * TOKEN LENGTH. Read below: this module mints 48 hex characters and
+ * `VerifyUserDto` accepts 16–128 lowercase hexadecimal characters, so the two agree.
+ * The `email-verification` module mints eight digits against a `@Length(6, 6)` DTO and cannot verify
+ * anything at all — that paired defect is fixed in `email-verification.service.ts`.
  */
 @Injectable()
 export class UserVerificationService {
@@ -78,6 +84,9 @@ export class UserVerificationService {
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    // The ONE transport, provided by the global `CommonModule`. The users module may not depend on
+    // NotificationsModule, which is where the transport used to be registered.
+    @Inject(TransactionalEmailService) private readonly emailSender: TransactionalEmailService,
   ) {}
 
   async request(userId: string): Promise<VerificationRequestResult> {
@@ -134,10 +143,53 @@ export class UserVerificationService {
     await this.valkeyService.set(`${USER_VERIFICATION_TOKEN_PREFIX}${token}`, userId, USER_VERIFICATION_TTL_SECONDS);
     await this.valkeyService.set(cooldownKey, '1', USER_VERIFICATION_RESEND_COOLDOWN_SECONDS);
 
+    // The mail is sent where the token is minted. It used to be a tokenless
+    // `email.verification.requested` event that nothing listened to, so a user who asked to be
+    // verified was told a code had been sent and received nothing — the same defect the
+    // email-verification module had, fixed the same way. The token rides in the mail body, never in
+    // the event payload below: events are logged, dead-lettered and replayed, so a token on a payload
+    // is a credential in three logs and a queue (Principle #15).
+    //
+    // WHY THE SEND IS NOT AWAITED. Every caller of this path takes the token (or a cooldown
+    // summary) back and never the delivery outcome, so waiting on the transport adds a mail-server
+    // stall to a request whose answer is already decided. The send is documented to swallow its own
+    // failures; the catch is a guard against an unhandled rejection.
+    void this.sendVerificationEmail(user.email, token).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Deferred verification email for user ${userId} failed: ${reason}`, 'UserVerificationService');
+    });
+
     await this.eventBus.emit('email.verification.requested', { userId, email: user.email });
     this.logger.info(`Verification token issued for user ${userId}`, 'UserVerificationService');
 
     return { kind: 'issued', token };
+  }
+
+  /**
+   * Puts the 48-character code in front of the user.
+   *
+   * WHY IT NEVER THROWS. The token is already minted and stored, so an SMTP outage must not turn a
+   * verification request into a 500 (Principle #14 — sending is a side effect). The outcome is logged
+   * and swallowed: the endpoint's response is a status summary (`alreadyVerified`,
+   * `cooldownSeconds`), not a claim about delivery, so nothing here has to change its contract.
+   *
+   * WHY THE TOKEN IS NOT LOGGED. Winston output is aggregated and retained, so a code in a log line
+   * is a credential leak with a very long half-life.
+   */
+  private async sendVerificationEmail(email: string, token: string): Promise<void> {
+    const outcome = await this.emailSender.send({
+      to: email,
+      subject: 'Verify your Hakawi email address',
+      text: `Your Hakawi verification code is ${token}. It expires in 24 hours.`,
+      html: `<p>Your Hakawi verification code is <strong>${token}</strong>. It expires in 24 hours.</p>`,
+    });
+
+    if (outcome.status !== 'sent') {
+      this.logger.warn(
+        `Verification email for ${email} was not delivered (${outcome.status}); the token remains valid`,
+        'UserVerificationService',
+      );
+    }
   }
 
   async confirm(token: string): Promise<VerificationStatus> {

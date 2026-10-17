@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { ConflictException } from '@nestjs/common';
 
 import type { User, CreateUserInput, UpdateUserInput } from '../../common/users/users-repository.interface.ts';
 import { AccountType } from '../../common/constants/roles.ts';
@@ -490,6 +491,88 @@ describe('UsersService', () => {
       await expect(usersService.create(input)).rejects.toThrow('Username already exists');
     });
 
+    /**
+     * The regression this module was fixed for. A soft-deleted account does NOT release its email:
+     * `users_email_unique` is a plain UNIQUE index on the column, so the row keeps the address
+     * pinned. The old pre-check skipped a soft-deleted holder (`&& !existingEmail.deletedAt`), let
+     * the registration past the service, and lost to the very index — a raw database error rendered
+     * as an opaque 500 where the honest answer is a 409. It now answers the same 409 a live
+     * collision gets, so `create` never reaches the INSERT for a taken address.
+     */
+    it('should throw ConflictException when the email belongs to a soft-deleted user', async () => {
+      const input: CreateUserInput = {
+        email: 'deleted@example.com',
+        username: 'newuser',
+        name: 'New User',
+        password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
+      };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(createMockUser({ deletedAt: new Date() }));
+
+      await expect(usersService.create(input)).rejects.toThrow('Email already exists');
+      // Reaching the repository insert is exactly what surfaced the raw driver error; the boundary
+      // has to stop it before that.
+      expect(usersRepository.create).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The same defect on the username column, which carries the identical UNIQUE index. The deleted
+     * holder is indistinguishable from a live one to the caller — same ConflictException, same
+     * message — so the response never leaks whether the account was deleted.
+     */
+    it('should throw ConflictException when the username belongs to a soft-deleted user', async () => {
+      const input: CreateUserInput = {
+        email: 'new@example.com',
+        username: 'deleteduser',
+        name: 'New User',
+        password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
+      };
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(null);
+      vi.mocked(usersRepository.findByUsername).mockResolvedValue(createMockUser({ deletedAt: new Date() }));
+
+      await expect(usersService.create(input)).rejects.toThrow('Username already exists');
+      expect(usersRepository.create).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The caller-visible contract in one assertion: a soft-deleted holder must be indistinguishable
+     * from a live one. Both answer a ConflictException (NestJS renders it 409) and the message is
+     * byte-for-byte the same, so a reused address never reveals whether the holder was deleted. No
+     * pre-existing test asserted the old permissive behaviour, so this pins the stricter one directly.
+     */
+    it('answers a soft-deleted email exactly as it answers a live one', async () => {
+      const base: CreateUserInput = {
+        email: 'taken@example.com',
+        username: 'newuser',
+        name: 'New User',
+        password: 'SecurePass123!',
+        accountType: AccountType.READER,
+        passwordHash: null,
+      };
+
+      const messageForHolder = async (deletedAt: Date | null): Promise<string> => {
+        vi.mocked(usersRepository.findByEmail).mockResolvedValue(createMockUser({ deletedAt }));
+        try {
+          await usersService.create(base);
+          return `did-not-throw (deletedAt=${String(deletedAt)})`;
+        } catch (error) {
+          await expect(error).toBeInstanceOf(ConflictException);
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+
+      const fromDeleted = await messageForHolder(new Date());
+      const fromLive = await messageForHolder(null);
+
+      expect(fromDeleted).toBe('Email already exists');
+      expect(fromDeleted).toBe(fromLive);
+    });
+
     it('should hash password when provided', async () => {
       const input: CreateUserInput = {
         email: 'new@example.com',
@@ -596,6 +679,51 @@ describe('UsersService', () => {
       vi.mocked(usersRepository.findByEmail).mockResolvedValue(otherUser);
 
       await expect(usersService.update('user-123', input)).rejects.toThrow('Email already exists');
+    });
+
+    /**
+     * The `update` half of the same defect: moving your own email onto one held by a *different*
+     * user is a conflict whether that holder is live or soft-deleted, because `users_email_unique`
+     * still pins the row. Skipping the deleted holder here produced the identical
+     * 500-instead-of-409 path on `PATCH /users/:id`, so the update never reaches the repository and
+     * the deleted holder is refused with the very same ConflictException and message as a live one.
+     */
+    it('should throw ConflictException when updating to a soft-deleted user email', async () => {
+      const input: UpdateUserInput = { email: 'deleted@example.com' };
+      const deletedHolder = createMockUser({ id: 'other-user', email: 'deleted@example.com', deletedAt: new Date() });
+
+      vi.mocked(usersRepository.findByEmail).mockResolvedValue(deletedHolder);
+
+      await expect(usersService.update('user-123', input)).rejects.toThrow(ConflictException);
+      await expect(usersService.update('user-123', input)).rejects.toThrow('Email already exists');
+      expect(usersRepository.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Parity again: the answer must not turn on the holder's `deletedAt`. A caller reaching for
+     * another account's address — live or deleted — must never learn which from the 409, so the
+     * deleted holder is asserted to be the same exception class and message the existing live-holder
+     * test above already pins.
+     */
+    it('answers a soft-deleted holder on update exactly as a live one', async () => {
+      const messageForHolder = async (deletedAt: Date | null): Promise<string> => {
+        vi.mocked(usersRepository.findByEmail).mockResolvedValue(
+          createMockUser({ id: 'other-user', email: 'taken@example.com', deletedAt }),
+        );
+        try {
+          await usersService.update('user-123', { email: 'taken@example.com' });
+          return `did-not-throw (deletedAt=${String(deletedAt)})`;
+        } catch (error) {
+          await expect(error).toBeInstanceOf(ConflictException);
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+
+      const fromDeleted = await messageForHolder(new Date());
+      const fromLive = await messageForHolder(null);
+
+      expect(fromDeleted).toBe('Email already exists');
+      expect(fromDeleted).toBe(fromLive);
     });
 
     it('should allow updating own email', async () => {

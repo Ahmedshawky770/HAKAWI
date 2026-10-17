@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { ReadingProgressService } from '../reading-progress.service.ts';
 import {
   CreateReadingProgressDto,
@@ -26,7 +27,7 @@ import {
 export class ReadingProgressController {
   constructor(@Inject(ReadingProgressService) private readonly readingProgressService: ReadingProgressService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateReadingProgressDto, @Request() req: Request & { user: { sub: string } }) {
@@ -45,7 +46,7 @@ export class ReadingProgressController {
     return this.readingProgressService.findMyProgress(req.user.sub, query);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -55,7 +56,7 @@ export class ReadingProgressController {
     return this.readingProgressService.update(id, req.user.sub, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string, @Request() req: Request & { user: { sub: string } }) {

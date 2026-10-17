@@ -4,6 +4,7 @@ import { BadRequestException, HttpStatus, NotFoundException } from '@nestjs/comm
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { TransactionalEmailService } from '../../../common/email/transactional-email.service.ts';
 import type { IUsersRepository, User } from '../../../common/users/users-repository.interface.ts';
 
 import {
@@ -22,6 +23,8 @@ type MockValkey = {
 };
 
 type MockLogger = { info: Mock; log: Mock; error: Mock; warn: Mock; debug: Mock; verbose: Mock };
+
+type MockEmailSender = { send: Mock<(options: { to: string; subject: string; text: string }) => Promise<unknown>> };
 
 const NOW = new Date('2026-01-01T00:00:00.000Z');
 const USER_ID = '123e4567-e89b-12d3-a456-426614174000';
@@ -66,6 +69,7 @@ describe('UserVerificationService', () => {
   let valkey: MockValkey;
   let eventBus: { emit: Mock<(name: string, payload: unknown) => Promise<void>> };
   let logger: MockLogger;
+  let emailSender: MockEmailSender;
 
   beforeEach(() => {
     usersRepository = {
@@ -82,12 +86,14 @@ describe('UserVerificationService', () => {
     };
     eventBus = { emit: vi.fn<(name: string, payload: unknown) => Promise<void>>().mockResolvedValue(undefined) };
     logger = { info: vi.fn(), log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn() };
+    emailSender = { send: vi.fn().mockResolvedValue({ status: 'sent', to: 'person@example.com' }) };
 
     service = new UserVerificationService(
       usersRepository as unknown as IUsersRepository,
       valkey as unknown as ValkeyService,
       logger as unknown as WinstonLoggerService,
       eventBus as unknown as EventValidatorService,
+      emailSender as unknown as TransactionalEmailService,
     );
   });
 
@@ -119,6 +125,43 @@ describe('UserVerificationService', () => {
         userId: USER_ID,
         email: 'person@example.com',
       });
+    });
+
+    it('should send the minted token to the user in the mail body', async () => {
+      // This module emitted the same tokenless `email.verification.requested` the email-verification
+      // module did, and no listener for it exists anywhere, so a user who asked to be verified was
+      // told a code had been sent and received nothing.
+      const token = await service.issueToken(USER_ID);
+
+      expect(emailSender.send).toHaveBeenCalledTimes(1);
+      const mail = vi.mocked(emailSender.send).mock.calls[0]?.[0];
+      expect(mail).toMatchObject({ to: 'person@example.com' });
+      expect(mail?.text).toContain(token);
+    });
+
+    it('should keep the token out of the event payload and out of the logs', async () => {
+      // Events are logged, dead-lettered and replayed; Winston output is aggregated and retained.
+      // A token in either is a credential with a very long half-life.
+      const token = await service.issueToken(USER_ID);
+      vi.mocked(logger.warn).mockClear();
+
+      for (const call of vi.mocked(eventBus.emit).mock.calls) {
+        expect(JSON.stringify(call)).not.toContain(token);
+      }
+      for (const call of vi.mocked(logger.info).mock.calls) {
+        expect(call[0]).not.toContain(token);
+      }
+    });
+
+    it('should not throw when the mail cannot be sent, because the token is already stored', async () => {
+      // Principle #14: sending is a side effect, so an SMTP outage must not fail the request.
+      vi.mocked(emailSender.send).mockResolvedValue({
+        status: 'not-configured',
+        to: 'person@example.com',
+      });
+
+      await expect(service.request(USER_ID)).resolves.toMatchObject({ alreadyVerified: false });
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('was not delivered'), 'UserVerificationService');
     });
 
     it('should do nothing for a user who is already verified', async () => {
@@ -298,6 +341,20 @@ describe('UserVerificationService', () => {
         USER_ID,
         USER_VERIFICATION_TTL_SECONDS,
       );
+    });
+
+    it('should mint a token whose length VerifyUserDto accepts', async () => {
+      // WHY THIS CASE EXISTS. The neighbouring `email-verification` module mints EIGHT digits against
+      // a `@Length(6, 6)` DTO, so every token it produces is rejected by the global ValidationPipe and
+      // that module cannot verify anything. This module's pair is checked rather than assumed:
+      // `VerifyUserDto` allows 16–128 lowercase hex, and 48 is inside that. The defect is not here.
+      vi.mocked(valkey.get).mockResolvedValue(null);
+
+      const token = await service.issueToken(USER_ID);
+
+      expect(token).toMatch(/^[a-f0-9]{48}$/);
+      expect(token.length).toBeGreaterThanOrEqual(16);
+      expect(token.length).toBeLessThanOrEqual(128);
     });
 
     it('should arm the resend cooldown it now shares with request', async () => {

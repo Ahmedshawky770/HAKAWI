@@ -8,6 +8,7 @@ import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { CommentsService } from '../comments.service.ts';
@@ -96,13 +97,22 @@ describe('CommentsController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
-        // This module is hand-built rather than importing `CommonModule`, so both must be provided
-        // here or Nest fails at DI resolution before any assertion runs.
+        // `@Secured` composes `RestrictionGuard`, which now reads the account's restriction through
+        // the shared `AccountRestrictionService` (the same reader `AuthService` uses for a ban at
+        // login). That service injects `ValkeyService` and the logger, and this module is hand-built
+        // rather than importing `CommonModule`, so all three must be provided here or Nest fails at
+        // DI resolution before any assertion runs. The reader answers "no restriction" by default.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },
+        },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
         },
       ],
     }).compile();

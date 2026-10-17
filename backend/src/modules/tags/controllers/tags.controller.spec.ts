@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
+import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { TagsService } from '../tags.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
@@ -66,10 +67,19 @@ describe('TagsController', () => {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger.
-        // This module is hand-built rather than importing `CommonModule`, so both must be provided
-        // here or Nest fails at DI resolution before any assertion runs.
+        // `@Secured` composes `RestrictionGuard`, which injects `AccountRestrictionService` and the
+        // logger. This module is hand-built rather than importing `CommonModule`, so both must be
+        // provided here or Nest fails at DI resolution before any assertion runs. The guard stopped
+        // reading Valkey itself when that read was extracted for `AuthService` — the same reader now
+        // refuses a banned account at login, refresh and OAuth — so the reader is what needs providing.
         { provide: ValkeyService, useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() } },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
+        },
         {
           provide: WinstonLoggerService,
           useValue: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), log: vi.fn(), verbose: vi.fn() },

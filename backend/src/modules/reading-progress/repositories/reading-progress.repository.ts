@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, count, desc } from 'drizzle-orm';
 
 import { db } from '../../../db/index.ts';
 import { readingProgress } from '../../../db/schema/books.schema.ts';
@@ -47,9 +47,17 @@ export class ReadingProgressRepository implements IReadingProgressRepository {
       .orderBy(desc(readingProgress.lastReadAt))
       .limit(limit)
       .offset(offset);
-    const [{ count }] = await db.select({ count: readingProgress.id }).from(readingProgress).where(whereClause);
+    // WHY IT IS `count()` AND NOT A SELECTED COLUMN ALIASED AS `count`. The old line read
+    // `db.select({ count: readingProgress.id }).from(...)`, which selects the id of EVERY matching
+    // row: `[{ count }]` therefore destructured the first row's UUID, `Number('<uuid>')` is `NaN`,
+    // and a reader with no progress rows at all threw `TypeError: Cannot read properties of
+    // undefined` because the array was empty — so `GET /reading-progress` answered 500 for every
+    // user who had never opened a book and `total: null` for everyone else. An aggregate always
+    // returns exactly one row (zero for an empty set), so the page endpoint now answers 200 with a
+    // truthful total for both cases. Every other count in this codebase already used `count()`.
+    const [countRow] = await db.select({ count: count() }).from(readingProgress).where(whereClause);
 
-    return { progress: data, total: Number(count) };
+    return { progress: data, total: Number(countRow?.count ?? 0) };
   }
 
   async create(data: CreateReadingProgressInput): Promise<ReadingProgress> {

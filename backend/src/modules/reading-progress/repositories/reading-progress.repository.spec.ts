@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { and, desc, eq } from 'drizzle-orm';
+import { SQL, and, desc, eq } from 'drizzle-orm';
 
 import { readingProgress } from '../../../db/schema/books.schema.ts';
 import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
@@ -157,6 +157,24 @@ describe('ReadingProgressRepository', () => {
       control.queue([], [{ count: 0 }]);
 
       await expect(repository.findByUser(USER_ID, {})).resolves.toEqual({ progress: [], total: 0 });
+    });
+
+    // WHY THIS TEST EXISTS. The count query used to be `db.select({ count: readingProgress.id })` —
+    // the id column aliased as `count`, not an aggregate. It returned every matching row, so
+    // `[{ count }]` destructured the first row's UUID and `Number('<uuid>')` was `NaN`; with no rows
+    // at all the destructuring threw a TypeError and `GET /reading-progress` answered 500 for every
+    // reader who had never opened a book. The mock below used to hand back the row shape the buggy
+    // query never produced, which is why the suite stayed green while the endpoint 500'd. Asserting
+    // that the projection is an aggregate is what pins the fix.
+    it('counts rows with an aggregate rather than aliasing a column', async () => {
+      control.queue([], [{ count: 3 }]);
+
+      await repository.findByUser(USER_ID, {});
+
+      const projections = vi.mocked(db.select).mock.calls.map((call) => call[0] as { count: unknown });
+      expect(projections).toHaveLength(2);
+      expect(projections[1].count).toBeInstanceOf(SQL);
+      expect(projections[1].count).not.toBe(readingProgress.id);
     });
   });
 

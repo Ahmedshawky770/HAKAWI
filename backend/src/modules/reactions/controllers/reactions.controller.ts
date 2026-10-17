@@ -15,6 +15,7 @@ import type { Request as ExpressRequest } from 'express';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { ReactionsService } from '../reactions.service.ts';
 import { CreateReactionDto, ReactionPageQueryDto } from '../dto/reactions.dto.ts';
 
@@ -22,7 +23,7 @@ import { CreateReactionDto, ReactionPageQueryDto } from '../dto/reactions.dto.ts
 export class ReactionsController {
   constructor(@Inject(ReactionsService) private readonly reactionsService: ReactionsService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('stories/:storyId')
   async addReaction(
     @Param('storyId', ParseUUIDPipe) storyId: string,
@@ -32,7 +33,7 @@ export class ReactionsController {
     return this.reactionsService.addReaction(req.user.sub, storyId, dto.type);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete('stories/:storyId')
   async removeReaction(
     @Param('storyId', ParseUUIDPipe) storyId: string,

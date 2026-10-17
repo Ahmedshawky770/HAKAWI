@@ -14,6 +14,7 @@ import {
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { FollowsService } from '../follows.service.ts';
 import { FollowUserDto, FollowersQueryDto } from '../dto/follows.dto.ts';
 
@@ -21,13 +22,13 @@ import { FollowUserDto, FollowersQueryDto } from '../dto/follows.dto.ts';
 export class FollowsController {
   constructor(@Inject(FollowsService) private readonly followsService: FollowsService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post()
   async follow(@Body() dto: FollowUserDto, @Request() req: { user: { sub: string } }) {
     return this.followsService.follow(req.user.sub, dto.followingId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Delete(':followingId')
   async unfollow(@Param('followingId', ParseUUIDPipe) followingId: string, @Request() req: { user: { sub: string } }) {
     await this.followsService.unfollow(req.user.sub, followingId);

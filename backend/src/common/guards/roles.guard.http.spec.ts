@@ -11,6 +11,7 @@ import type { INestApplication } from '@nestjs/common';
 import { AccountType, AdminRole } from '../constants/roles.ts';
 import { RequireAdminRole, RequirePermissions } from '../decorators/roles.decorator.ts';
 import { ValkeyService } from '../services/valkey.service.ts';
+import { AccountRestrictionService } from '../services/account-restriction.service.ts';
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { Secured } from '../decorators/secured.decorator.ts';
 import { Permission } from '../permissions/permissions.ts';
@@ -102,11 +103,20 @@ describe('RolesGuard over HTTP', () => {
           provide: ConfigService,
           useValue: { get: () => JWT_SECRET },
         },
-        // `@Secured` composes `RestrictionGuard`, which injects `ValkeyService` and the logger. This
-        // module is hand-built rather than importing `CommonModule`, so both must be provided here.
+        // `@Secured` composes `RestrictionGuard`, which injects `AccountRestrictionService` and the
+        // logger. This module is hand-built rather than importing `CommonModule`, so the reader this
+        // guard now goes through — the same one `AuthService` uses to refuse a banned account — must
+        // be provided here or Nest fails at DI resolution before any assertion runs.
         {
           provide: ValkeyService,
           useValue: { exists: vi.fn().mockResolvedValue(false), get: vi.fn(), set: vi.fn() },
+        },
+        {
+          provide: AccountRestrictionService,
+          useValue: {
+            readCurrentRestriction: vi.fn().mockResolvedValue(null),
+            hasActiveBan: vi.fn().mockResolvedValue(false),
+          },
         },
         {
           provide: WinstonLoggerService,

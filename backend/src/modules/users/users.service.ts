@@ -27,12 +27,14 @@ export const USER_STATS_CACHE_TTL_SECONDS = 120;
 /**
  * Postgres SQLSTATE for `unique_violation`.
  *
- * WHY IT IS NEEDED HERE AND NOT ONLY A PRE-CHECK. `users_email_unique` and `users_username_unique`
- * (`migrations/0000_create_users_table.sql`) are UNCONDITIONAL, while the pre-checks below
- * deliberately ignore a soft-deleted holder so that an address can be reused. That gap is exactly
- * where a 500 was born: the pre-check passed, the insert then lost to the very row the pre-check was
- * told to ignore, and `AllExceptionsFilter` rendered the driver error as an opaque 500 — so a
- * duplicate address answered 500 when the correct answer is 409.
+ * WHY IT IS STILL NEEDED WITH THE PRE-CHECKS IN PLACE. `users_email_unique` and
+ * `users_username_unique` (`migrations/0000_create_users_table.sql`) are UNCONDITIONAL, and the
+ * pre-checks below now refuse every existing row — live or soft-deleted — so they mirror those
+ * indexes. What the pre-checks cannot close is the race between that check and the INSERT, where a
+ * concurrent registration claims the same address in the gap. That residual window is what this
+ * guard covers: without it, `AllExceptionsFilter` would render the driver error as an opaque 500,
+ * so a duplicate address would answer 500 when the correct answer is 409. It is the last line of
+ * defence, not the first.
  */
 const UNIQUE_VIOLATION_SQLSTATE = '23505';
 
@@ -139,14 +141,28 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Registers a new account, refusing any email or username that already has a row — live or
+   * soft-deleted.
+   *
+   * WHY EXISTENCE IS THE TEST AND NOT `!existingEmail.deletedAt`: `users_email_unique` and
+   * `users_username_unique` are ordinary UNIQUE indexes on the bare column (Principle #6 — no
+   * partial, soft-delete-aware index was ever added), so a soft-deleted row pins its email and
+   * username exactly as firmly as a live one. The previous `&& !existingEmail.deletedAt` guard let
+   * a registration aimed at a soft-deleted account past the service, and the INSERT then lost to
+   * the very index the guard was told to ignore — surfacing the driver error as an opaque 500 where
+   * the honest answer is a 409. Reuse is therefore refused here, at the service boundary, with the
+   * same message a colliding live account gets, so the caller is told only that the identity is
+   * taken and never whether the holder was deleted.
+   */
   async create(input: CreateUserInput): Promise<ClientUser> {
     const existingEmail = await this.usersRepository.findByEmail(input.email).catch(() => null);
-    if (existingEmail && !existingEmail.deletedAt) {
+    if (existingEmail !== null) {
       throw new ConflictException('Email already exists');
     }
 
     const existingUsername = await this.usersRepository.findByUsername(input.username).catch(() => null);
-    if (existingUsername && !existingUsername.deletedAt) {
+    if (existingUsername !== null) {
       throw new ConflictException('Username already exists');
     }
 
@@ -178,9 +194,9 @@ export class UsersService {
       if (!isUniqueViolation(error)) {
         throw error;
       }
-      // The pre-checks above deliberately skip a soft-deleted holder, so on a collision the holder is
-      // either a live user the pre-check raced past, or the soft-deleted row the constraint still
-      // protects. Either way the address is taken as far as the database is concerned.
+      // The pre-checks above now refuse every existing row, so a unique violation here is a race:
+      // a concurrent registration claimed the address between the check and this insert. The holder
+      // is there, so the address is genuinely taken either way.
       const held = await this.usersRepository.findByEmail(input.email).catch(() => null);
       throw new ConflictException(held ? 'Email already exists' : 'Username already exists');
     }
@@ -204,16 +220,21 @@ export class UsersService {
    * profile serving the pre-edit name and bio for the full TTL (Principle #11).
    */
   async update(id: string, input: UpdateUserInput): Promise<ClientUser> {
+    // Same boundary as `create`: a row that holds the email or username exists — live or
+    // soft-deleted — so it is pinned by the UNIQUE index and therefore taken. The only row a caller
+    // may keep is their own, which is why the test is "exists under a different id" rather than
+    // "is not deleted"; skipping the deleted holder here produced the same 500-instead-of-409 on
+    // this path (`PATCH /users/:id`).
     if (input.email) {
       const existing = await this.usersRepository.findByEmail(input.email).catch(() => null);
-      if (existing && existing.id !== id && !existing.deletedAt) {
+      if (existing !== null && existing.id !== id) {
         throw new ConflictException('Email already exists');
       }
     }
 
     if (input.username) {
       const existing = await this.usersRepository.findByUsername(input.username).catch(() => null);
-      if (existing && existing.id !== id && !existing.deletedAt) {
+      if (existing !== null && existing.id !== id) {
         throw new ConflictException('Username already exists');
       }
     }
@@ -229,8 +250,9 @@ export class UsersService {
     try {
       user = await this.usersRepository.update(id, updatePayload);
     } catch (error) {
-      // Same shape as `create`: the pre-checks skip a soft-deleted holder, the constraint does not.
-      // Only 23505 becomes a 409; anything else keeps surfacing as the fault it is.
+      // Same shape as `create`: the pre-checks refuse every other user's row, so a unique
+      // violation here is a race against a concurrent edit. Only 23505 becomes a 409; anything else
+      // keeps surfacing as the fault it is.
       if (!isUniqueViolation(error)) {
         throw error;
       }
