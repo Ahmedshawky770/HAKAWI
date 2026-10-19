@@ -139,6 +139,14 @@ describe('User Upgrade Flow E2E', () => {
         .expect(400);
     });
 
+    it('rejects self-upgrade to professional without admin approval', async () => {
+      await request(context.httpServer)
+        .post('/users/me/upgrade')
+        .set('Authorization', `Bearer ${reader.accessToken}`)
+        .send({ target: 'professional' })
+        .expect(400);
+    });
+
     it('rejects upgrade without token', async () => {
       await request(context.httpServer)
         .post('/users/me/upgrade')

@@ -191,7 +191,7 @@ single source of truth (`users.account_type`) and drives permissions through
 
 - **`reader` → `rising_star` (self-service):** `POST /api/v1/users/me/upgrade` with
   `{ target: "rising_star" }`. Requires a verified email. Revokes all refresh tokens so the new
-  claims take effect, and emits `user.upgraded`. Grants writing stories and basic analytics.
+  claims take effect, and emits `user.upgraded`. Grants writing stories, full analytics, and publisher outreach.
 - **`rising_star` → `professional` (points + verification-gated):** professional unlocks selling own
   books and full analytics, so it cannot be self-claimed on metrics alone (impersonation risk).
   Eligibility = objective thresholds (published stories >= 5, story views >= 1,000, story reactions

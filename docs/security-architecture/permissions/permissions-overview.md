@@ -22,7 +22,6 @@ them. There is no second list of roles anywhere in the backend.
 | Role | Description | Implies |
 |------|-------------|---------|
 | `reader` | Consumes content and writes own stories | `reader` |
-| `writer` | Publishes own stories with basic analytics | `reader`, `writer` |
 | `rising_star` | Writer with full analytics and publisher outreach | `reader`, `writer`, `rising_star` |
 | `professional` | Full author features, own book sales | `reader`, `writer`, `professional` |
 | `publisher` | Institution: contests, publisher outreach, sells represented writers' books | `reader`, `writer`, `publisher` |
@@ -225,21 +224,21 @@ export class ModerationController {
 Derived from `PERMISSIONS_BY_ACCOUNT_TYPE` and `PERMISSIONS_BY_ROLE`
 (`backend/src/common/permissions/permissions.ts:168-217`).
 
-| Action | Reader | Writer | Rising Star | Professional | Publisher | Admin |
-|--------|--------|--------|-------------|--------------|-----------|-------|
-| Read published content (`content:read`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Create story (`stories:create`) | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edit own story (`stories:edit:own`) | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Delete own story (`stories:delete:own`) | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edit any story (`stories:edit:all`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Delete any story (`stories:delete:all`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Moderate content (`content:moderate`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (content_moderator, super_admin) |
-| Restrict users (`users:restrict:all`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (super_admin) |
-| Verify users (`users:verify:all`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (verification_officer, super_admin) |
-| Manage finance (`financial:manage:all`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (financial_officer, super_admin) |
-| Manage contests (`contests:*`) | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Sell books (`books:sell:own`) | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Manage settings (`settings:manage`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Action | Reader | Rising Star | Professional | Publisher | Admin |
+|--------|--------|-------------|--------------|-----------|-------|
+| Read published content (`content:read`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Create story (`stories:create`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Edit own story (`stories:edit:own`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Delete own story (`stories:delete:own`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Edit any story (`stories:edit:all`) | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Delete any story (`stories:delete:all`) | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Moderate content (`content:moderate`) | ❌ | ❌ | ❌ | ❌ | ✅ (content_moderator, super_admin) |
+| Restrict users (`users:restrict:all`) | ❌ | ❌ | ❌ | ❌ | ✅ (super_admin) |
+| Verify users (`users:verify:all`) | ❌ | ❌ | ❌ | ❌ | ✅ (verification_officer, super_admin) |
+| Manage finance (`financial:manage:all`) | ❌ | ❌ | ❌ | ❌ | ✅ (financial_officer, super_admin) |
+| Manage contests (`contests:*`) | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Sell books (`books:sell:own`) | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Manage settings (`settings:manage`) | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -312,6 +311,15 @@ A `rising_star` may apply for `professional` only when **all** objective thresho
 `target=professional` requires `approvedByAdmin=true` (only `super_admin` or
 `verification_officer`). On approval, `accountType` becomes `professional`, refresh tokens are
 revoked, cache is invalidated, and `user.upgraded` is emitted.
+
+### Upgrade paths — ✅ implemented
+
+| From | To | Method | Requirements |
+|------|-----|--------|--------------|
+| `reader` | `rising_star` | `POST /users/me/upgrade {target: 'rising_star'}` | Verified email, self-service |
+| `rising_star` | `professional` | `POST /users/me/upgrade {target: 'professional'}` | All thresholds met + verified email + `verification_officer` approval |
+| Any | `publisher` | Admin only (`PATCH /users/:id`) | `super_admin` or `verification_officer` provisions after application review |
+| Any | `admin` | Direct DB / seed only | Never self-service |
 
 ---
 

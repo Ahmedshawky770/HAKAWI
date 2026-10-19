@@ -276,8 +276,8 @@ export class UsersService {
   }
 
   /**
-   * upgrades the caller's account (self-service). Only `writer` / `rising_star` are
-   * self-upgradeable; `professional` / `publisher` require admin provisioning.
+   * upgrades the caller's account (self-service). Only `rising_star` / `professional` are
+   * self-upgradeable; `publisher` requires admin provisioning.
    * Requires a verified email. Revokes refresh tokens so new claims take effect.
    */
   async upgradeAccount(id: string, target: string, approvedByAdmin = false): Promise<ClientUser> {
@@ -294,7 +294,7 @@ export class UsersService {
       throw new BadRequestException('Email must be verified before upgrading');
     }
 
-    if (target !== AccountType.WRITER && target !== AccountType.RISING_STAR && target !== AccountType.PROFESSIONAL) {
+    if (target !== AccountType.RISING_STAR && target !== AccountType.PROFESSIONAL) {
       throw new BadRequestException('Invalid upgrade target');
     }
 

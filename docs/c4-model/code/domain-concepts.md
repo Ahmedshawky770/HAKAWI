@@ -42,8 +42,8 @@ so the domain model and the database cannot silently diverge.
 so an unknown role **loses** privilege.
 
 **Account capabilities** (resolved from `PERMISSIONS_BY_ACCOUNT_TYPE`):
-- `reader` / `writer`: write own stories, read basic analytics.
-- `rising_star`: writer + full analytics + outreach to publishers (`publishing:communicate`).
+- `reader`: write own stories, read basic analytics.
+- `rising_star`: reader + full analytics + outreach to publishers (`publishing:communicate`).
 - `professional`: rising_star + sell/rent own books. Requires objective thresholds
   (published stories >= 5, story views >= 1,000, story reactions >= 100, followers >= 50)
   + verified email + manual approval by `verification_officer`.
@@ -60,6 +60,12 @@ so an unknown role **loses** privilege.
 
 `POST /users/me/professional-request` returns eligibility; `POST /users/me/upgrade` with
 `target=professional` requires `approvedByAdmin=true` (`super_admin` or `verification_officer`).
+
+**Upgrade paths:**
+- `reader` → `rising_star`: self-service after email verification
+- `rising_star` → `professional`: thresholds + verification_officer approval
+- Any → `publisher`: admin only (super_admin/verification_officer)
+- Any → `admin`: seed / direct DB only
 
 **Key attributes → real columns:** `email` (unique), `username` (unique), `name`, `avatar`, `bio`,
 `google_id`/`facebook_id`/`twitter_id`/`github_id`/`apple_id`/`tiktok_id`, `account_type`,

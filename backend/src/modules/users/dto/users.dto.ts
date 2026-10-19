@@ -84,7 +84,7 @@ export class UserResponseDto {
 
 export class UpgradeDto {
   @IsString()
-  @IsIn(['writer', 'rising_star'], { message: 'Invalid upgrade target' })
+  @IsIn(['rising_star', 'professional'], { message: 'Invalid upgrade target' })
   target: string;
 }
 

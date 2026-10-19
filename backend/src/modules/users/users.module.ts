@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../db/database.module.ts';
 import { CommonModule } from '../../common/common.module.ts';
 import { SharedCacheModule } from '../shared/cache/shared-cache.module.ts';
+import { NotificationsModule } from '../notifications/notifications.module.ts';
 
 import { UsersService } from './users.service.ts';
 import { UsersController } from './controllers/users.controller.ts';
@@ -13,7 +14,7 @@ import { UsersRepository } from './repositories/users.repository.ts';
 import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
 
 @Module({
-  imports: [CommonModule, DatabaseModule, SharedCacheModule],
+  imports: [CommonModule, DatabaseModule, SharedCacheModule, NotificationsModule],
   controllers: [UsersController],
   providers: [
     UsersService,
