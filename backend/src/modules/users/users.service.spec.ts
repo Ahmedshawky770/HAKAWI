@@ -348,12 +348,12 @@ describe('UsersService', () => {
      * page. Normalization has to happen before the value is cached, or the poisoned value would
      * also be served from cache for the next five minutes.
      */
-    it('maps a legacy author accountType to writer', async () => {
+    it('maps a legacy author accountType to rising_star', async () => {
       vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: 'author' }));
 
       const profile = await usersService.findPublicProfile('user-123');
 
-      expect(profile.accountType).toBe(AccountType.WRITER);
+      expect(profile.accountType).toBe(AccountType.RISING_STAR);
     });
 
     it('keeps a valid modern accountType as it is', async () => {
@@ -383,7 +383,7 @@ describe('UsersService', () => {
       await usersService.findPublicProfile('user-123');
       const warm = await usersService.findPublicProfile('user-123');
 
-      expect(warm.accountType).toBe(AccountType.WRITER);
+      expect(warm.accountType).toBe(AccountType.RISING_STAR);
     });
 
     it('returns a real Date on a cache hit instead of an ISO string', async () => {
@@ -657,7 +657,7 @@ describe('UsersService', () => {
 
       const result = await usersService.update('user-123', { name: 'Updated Name' });
 
-      expect(result.accountType).toBe(AccountType.WRITER);
+      expect(result.accountType).toBe(AccountType.RISING_STAR);
     });
 
     it('invalidates both the user and the public profile caches', async () => {
@@ -989,9 +989,9 @@ describe('upgradeAccount', () => {
   });
 
   it('returns the same user without changes when already at the target', async () => {
-    vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: AccountType.WRITER }));
+    vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: AccountType.RISING_STAR }));
 
-    await usersService.upgradeAccount('user-123', AccountType.WRITER);
+    await usersService.upgradeAccount('user-123', AccountType.RISING_STAR);
 
     expect(usersRepository.update).not.toHaveBeenCalled();
   });
@@ -999,7 +999,7 @@ describe('upgradeAccount', () => {
   it('rejects an unverified account', async () => {
     vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ emailVerified: false }));
 
-    await expect(usersService.upgradeAccount('user-123', AccountType.WRITER)).rejects.toThrow(
+    await expect(usersService.upgradeAccount('user-123', AccountType.RISING_STAR)).rejects.toThrow(
       'Email must be verified before upgrading',
     );
   });

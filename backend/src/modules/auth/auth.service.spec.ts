@@ -22,6 +22,7 @@ import { EmailVerificationService } from '../email-verification/email-verificati
 
 import { AuthService } from './auth.service.ts';
 import { AccountLockoutService } from './account-lockout.service.ts';
+import { CaptchaService } from './captcha.service.ts';
 
 function oauthResponse(body: unknown, init: { status?: number; statusText?: string } = {}): Response {
   return {
@@ -163,6 +164,7 @@ describe('AuthService', () => {
   let appleJwks: { resolveKey: ReturnType<typeof vi.fn>; keys: ReturnType<typeof vi.fn> };
   let configService: { get: ReturnType<typeof vi.fn> };
   let accountLockoutService: MockAccountLockoutService;
+  let captchaService: { isEnabled: ReturnType<typeof vi.fn>; verify: ReturnType<typeof vi.fn>; shouldRequireCaptcha: ReturnType<typeof vi.fn>; getSiteKey: ReturnType<typeof vi.fn>; getProvider: ReturnType<typeof vi.fn> };
   let accountRestrictions: MockAccountRestrictionService;
   let emailSender: MockTransactionalEmailService;
 
@@ -260,6 +262,14 @@ describe('AuthService', () => {
       keys: vi.fn().mockResolvedValue(new Map()),
     };
 
+    captchaService = {
+      isEnabled: vi.fn().mockReturnValue(false),
+      verify: vi.fn().mockResolvedValue({ success: true }),
+      shouldRequireCaptcha: vi.fn().mockReturnValue(false),
+      getSiteKey: vi.fn().mockReturnValue(''),
+      getProvider: vi.fn().mockReturnValue('none'),
+    };
+
     configService = {
       get: vi.fn((key: string, fallback?: string) => {
         const values: Record<string, string> = {
@@ -284,6 +294,7 @@ describe('AuthService', () => {
       appleJwks as unknown as AppleJwksService,
       configService as unknown as ConfigService,
       accountLockoutService as unknown as AccountLockoutService,
+      captchaService as unknown as CaptchaService,
       emailSender as unknown as TransactionalEmailService,
       accountRestrictions as unknown as AccountRestrictionService,
     );

@@ -19,7 +19,7 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 export const RequireRoles = (...accountTypes: AccountType[]) => SetMetadata(REQUIRED_ROLES_KEY, accountTypes);
 
-export const RequireAdminRole = (role: AdminRole) => SetMetadata(REQUIRED_ADMIN_ROLE_KEY, role);
+export const RequireAdminRole = (...roles: AdminRole[]) => SetMetadata(REQUIRED_ADMIN_ROLE_KEY, roles);
 
 export const RequireMfa = () => SetMetadata(MFA_REQUIRED_KEY, true);
 

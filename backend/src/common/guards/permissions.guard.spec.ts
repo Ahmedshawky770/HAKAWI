@@ -116,10 +116,10 @@ describe('PermissionsGuard', () => {
       expect(guard.canActivate(context)).toBe(true);
     });
 
-    it('allows a writer to create a story', () => {
+    it('allows a rising_star to create a story', () => {
       const context = buildContext({
         permissions: [Permission.STORIES_CREATE],
-        user: createUser({ accountType: AccountType.WRITER }),
+        user: createUser({ accountType: AccountType.RISING_STAR }),
       });
       expect(guard.canActivate(context)).toBe(true);
     });
@@ -157,11 +157,11 @@ describe('PermissionsGuard', () => {
     });
 
     it('requires every listed permission by default, not just one of them', () => {
-      // The defect this pins: `hasPermission` used to be `required.some(...)`, so a WRITER — who
+      // The defect this pins: `hasPermission` used to be `required.some(...)`, so a RISING_STAR — who
       // holds CONTENT_EDIT_OWN but not CONTENT_EDIT_ALL — satisfied a route that asked for both.
       const context = buildContext({
         permissions: [Permission.CONTENT_EDIT_OWN, Permission.CONTENT_EDIT_ALL],
-        user: createUser({ accountType: AccountType.WRITER }),
+        user: createUser({ accountType: AccountType.RISING_STAR }),
       });
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
       expect(() => guard.canActivate(context)).toThrow(
@@ -184,7 +184,7 @@ describe('PermissionsGuard', () => {
      * write, not a requirement assembled by the test.
      */
     describe('requirement mode', () => {
-      const writer = (): Partial<JwtPayload> => ({ accountType: AccountType.WRITER });
+      const writer = (): Partial<JwtPayload> => ({ accountType: AccountType.RISING_STAR });
       const financialOfficer = (): Partial<JwtPayload> => ({
         accountType: AccountType.ADMIN,
         adminRole: AdminRole.FINANCIAL_OFFICER,
@@ -360,7 +360,7 @@ describe('PermissionsGuard', () => {
     it('denies a financial officer without the admin account type from moderating content', () => {
       const context = buildContext({
         permissions: [Permission.CONTENT_MODERATE],
-        user: createUser({ accountType: AccountType.WRITER, adminRole: AdminRole.FINANCIAL_OFFICER }),
+        user: createUser({ accountType: AccountType.RISING_STAR, adminRole: AdminRole.FINANCIAL_OFFICER }),
       });
       expect(() => guard.canActivate(context)).toThrow('Missing required permission: content:moderate');
     });
@@ -368,14 +368,14 @@ describe('PermissionsGuard', () => {
     it('denies a verification officer without the admin account type from managing finances', () => {
       const context = buildContext({
         permissions: [Permission.FINANCIAL_MANAGE_ALL],
-        user: createUser({ accountType: AccountType.WRITER, adminRole: AdminRole.VERIFICATION_OFFICER }),
+        user: createUser({ accountType: AccountType.RISING_STAR, adminRole: AdminRole.VERIFICATION_OFFICER }),
       });
       expect(() => guard.canActivate(context)).toThrow('Missing required permission: financial:manage:all');
     });
 
     it('does not treat an admin typed officer as a super admin', () => {
       expect(isSuperAdmin(AccountType.ADMIN, AdminRole.FINANCIAL_OFFICER)).toBe(false);
-      expect(isSuperAdmin(AccountType.WRITER, AdminRole.SUPER_ADMIN)).toBe(false);
+      expect(isSuperAdmin(AccountType.RISING_STAR, AdminRole.SUPER_ADMIN)).toBe(false);
       expect(isSuperAdmin(AccountType.ADMIN, AdminRole.SUPER_ADMIN)).toBe(true);
     });
 

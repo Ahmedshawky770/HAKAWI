@@ -150,25 +150,23 @@ const READER_PERMISSIONS = [
   Permission.REPORTS_CREATE,
 ] as const satisfies readonly Permission[];
 
-const WRITER_PERMISSIONS = [
+const RISING_STAR_PERMISSIONS = [
   ...READER_PERMISSIONS,
   Permission.ANALYTICS_READ_OWN,
-] as const satisfies readonly Permission[];
-
-const RISING_STAR_PERMISSIONS = [
-  ...WRITER_PERMISSIONS,
   Permission.PUBLISHING_COMMUNICATE,
 ] as const satisfies readonly Permission[];
 
 const PROFESSIONAL_PERMISSIONS = [
-  ...WRITER_PERMISSIONS,
+  ...READER_PERMISSIONS,
+  Permission.ANALYTICS_READ_OWN,
   Permission.BOOKS_READ,
   Permission.BOOKS_SELL_OWN,
   Permission.BOOKS_RENT_OWN,
 ] as const satisfies readonly Permission[];
 
 const PUBLISHER_PERMISSIONS = [
-  ...WRITER_PERMISSIONS,
+  ...READER_PERMISSIONS,
+  Permission.ANALYTICS_READ_OWN,
   Permission.CONTESTS_CREATE,
   Permission.CONTESTS_MANAGE_OWN,
   Permission.CONTESTS_UPDATE_OWN,
@@ -179,7 +177,6 @@ const PUBLISHER_PERMISSIONS = [
 
 export const PERMISSIONS_BY_ACCOUNT_TYPE = {
   [AccountType.READER]: READER_PERMISSIONS,
-  [AccountType.WRITER]: WRITER_PERMISSIONS,
   [AccountType.RISING_STAR]: RISING_STAR_PERMISSIONS,
   [AccountType.PROFESSIONAL]: PROFESSIONAL_PERMISSIONS,
   [AccountType.PUBLISHER]: PUBLISHER_PERMISSIONS,

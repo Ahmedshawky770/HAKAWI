@@ -10,11 +10,12 @@ import { MfaController } from './mfa.controller.ts';
 import { AuthService } from './auth.service.ts';
 import { AccountLockoutService } from './account-lockout.service.ts';
 import { MfaService } from './mfa.service.ts';
+import { CaptchaService } from './captcha.service.ts';
 
 @Module({
   imports: [CommonModule, EmailVerificationModule, EventEmitterModule, ConfigModule],
   controllers: [AuthController, MfaController],
-  providers: [AuthService, AccountLockoutService, MfaService],
-  exports: [AuthService, AccountLockoutService, MfaService],
+  providers: [AuthService, AccountLockoutService, MfaService, CaptchaService],
+  exports: [AuthService, AccountLockoutService, MfaService, CaptchaService],
 })
 export class AuthModule {}

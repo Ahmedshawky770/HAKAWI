@@ -15,7 +15,7 @@ export const AUTH_USER = {
   email: "ahmed@example.com",
   name: "أحمد محمد",
   username: "ahmed",
-  accountType: "writer",
+  accountType: "rising_star",
 } as const;
 
 export const AUTH_RESPONSE: AuthResponse = {

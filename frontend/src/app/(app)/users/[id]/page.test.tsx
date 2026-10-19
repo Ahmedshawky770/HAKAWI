@@ -47,7 +47,7 @@ const mockUser = {
   followersCount: 120,
   followingCount: 45,
   storiesCount: 12,
-  accountType: "writer" as const,
+  accountType: "rising_star" as const,
   createdAt: new Date().toISOString(),
 };
 

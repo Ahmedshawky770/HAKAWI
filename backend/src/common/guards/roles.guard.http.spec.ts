@@ -76,7 +76,7 @@ describe('RolesGuard over HTTP', () => {
     });
 
   const readerToken = (): string => signToken({ sub: 'reader-1', accountType: AccountType.READER });
-  const writerToken = (): string => signToken({ sub: 'writer-1', accountType: AccountType.WRITER });
+  const risingStarToken = (): string => signToken({ sub: 'rising_star-1', accountType: AccountType.RISING_STAR });
   const legacyAuthorToken = (): string => signToken({ sub: 'legacy-1', accountType: 'author' });
   const moderatorToken = (): string =>
     signToken({ sub: 'mod-1', accountType: AccountType.ADMIN, adminRole: AdminRole.CONTENT_MODERATOR });
@@ -168,8 +168,8 @@ describe('RolesGuard over HTTP', () => {
       await request(httpServer).get('/moderation/reports').set('Authorization', `Bearer ${readerToken()}`).expect(403);
     });
 
-    it('returns 403 for a writer', async () => {
-      await request(httpServer).get('/moderation/reports').set('Authorization', `Bearer ${writerToken()}`).expect(403);
+    it('returns 403 for a rising_star', async () => {
+      await request(httpServer).get('/moderation/reports').set('Authorization', `Bearer ${risingStarToken()}`).expect(403);
     });
 
     it('returns 403 for a legacy author', async () => {

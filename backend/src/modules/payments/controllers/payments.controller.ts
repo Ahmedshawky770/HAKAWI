@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
+import { RequireMfa } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { AdminRole } from '../../../common/constants/roles.ts';
@@ -31,16 +32,6 @@ export class PaymentsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createPayment(@Body() dto: CreatePaymentDto, @Request() req: Request & { user: { sub: string } }) {
-    // WHY `initializeGateway: true`: this route is part of the published API contract, and a payment
-    // left in `pending` with no `paymobOrderId` and no checkout URL can never be paid — no webhook
-    // can match an order that was never registered upstream. Initialising here is what makes the
-    // response (which carries the iframe and accept URLs) usable. The alternative — deleting the
-    // route and leaving payment creation to the purchase flow — would contradict
-    // `docs/api-contract/openapi/rest-api-spec.md`.
-    //
-    // The owner is always the authenticated caller; `CreatePaymentDto` has no `userId` field, so a
-    // body cannot name somebody else's account (and the global `forbidNonWhitelisted` pipe would
-    // reject such a request outright rather than silently ignore it).
     return this.paymentsService.createPayment(
       {
         userId: req.user.sub,
@@ -78,6 +69,7 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @RequireMfa()
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: string,
@@ -97,6 +89,7 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @RequireMfa()
   @Post(':id/refund')
   @HttpCode(HttpStatus.CREATED)
   async createRefund(

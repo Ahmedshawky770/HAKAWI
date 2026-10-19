@@ -41,7 +41,7 @@ const mockUser = {
   username: "ahmed",
   avatar: "https://example.com/avatar.jpg",
   bio: "كاتب قصص",
-  accountType: "writer" as const,
+  accountType: "rising_star" as const,
   isVerified: true,
   createdAt: new Date().toISOString(),
 };

@@ -9,3 +9,4 @@ export * from './rentals.schema.ts';
 export * from './library.schema.ts';
 export * from './contests.schema.ts';
 export * from './badges.schema.ts';
+export * from './publisher.schema.ts';

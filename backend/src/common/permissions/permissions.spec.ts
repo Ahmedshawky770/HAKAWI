@@ -22,18 +22,18 @@ const requirement = (
 });
 
 describe('hasPermission', () => {
-  const writer = resolvePermissions({ accountType: AccountType.WRITER });
+  const risingStar = resolvePermissions({ accountType: AccountType.RISING_STAR });
 
   describe("mode 'all' (AND) — the default", () => {
     it('accepts a caller holding every listed permission', () => {
-      expect(hasPermission(writer, requirement([Permission.STORIES_CREATE, Permission.STORIES_EDIT_OWN]))).toBe(true);
+      expect(hasPermission(risingStar, requirement([Permission.STORIES_CREATE, Permission.STORIES_EDIT_OWN]))).toBe(true);
     });
 
     it('rejects a caller holding only one of two', () => {
-      // The escalation this replaces: `required.some(...)` answered true here, so a writer would
+      // The escalation this replaces: `required.some(...)` answered true here, so a rising_star would
       // have passed a route that demanded `stories:create` AND `stories:delete:all`.
-      expect(writer.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
-      expect(hasPermission(writer, requirement([Permission.STORIES_CREATE, Permission.FINANCIAL_MANAGE_ALL]))).toBe(
+      expect(risingStar.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
+      expect(hasPermission(risingStar, requirement([Permission.STORIES_CREATE, Permission.FINANCIAL_MANAGE_ALL]))).toBe(
         false,
       );
     });
@@ -46,19 +46,19 @@ describe('hasPermission', () => {
   describe("mode 'any' (OR) — the explicit opt-in", () => {
     it('accepts a caller holding the first permission alone', () => {
       expect(
-        hasPermission(writer, requirement([Permission.STORIES_CREATE, Permission.FINANCIAL_MANAGE_ALL], 'any')),
+        hasPermission(risingStar, requirement([Permission.STORIES_CREATE, Permission.FINANCIAL_MANAGE_ALL], 'any')),
       ).toBe(true);
     });
 
     it('accepts a caller holding the second permission alone', () => {
       expect(
-        hasPermission(writer, requirement([Permission.FINANCIAL_MANAGE_ALL, Permission.STORIES_CREATE], 'any')),
+        hasPermission(risingStar, requirement([Permission.FINANCIAL_MANAGE_ALL, Permission.STORIES_CREATE], 'any')),
       ).toBe(true);
     });
 
     it('rejects a caller holding neither', () => {
       expect(
-        hasPermission(writer, requirement([Permission.FINANCIAL_MANAGE_ALL, Permission.USERS_MANAGE_ALL], 'any')),
+        hasPermission(risingStar, requirement([Permission.FINANCIAL_MANAGE_ALL, Permission.USERS_MANAGE_ALL], 'any')),
       ).toBe(false);
     });
   });
@@ -152,14 +152,14 @@ describe('normalizePermissionRequirement', () => {
 });
 
 describe('the permission table the modes are evaluated against', () => {
-  it('holds writers back from the platform-wide permissions a conjunction would name', () => {
+  it('holds rising_star back from the platform-wide permissions a conjunction would name', () => {
     // Stated as a table property rather than a guard test so the reason the AND default matters is
     // legible on its own: the two permission families in a two-permission requirement are usually
-    // one a writer has and one it never can.
-    const writer: ReadonlySet<Permission> = new Set(PERMISSIONS_BY_ACCOUNT_TYPE[AccountType.WRITER]);
-    expect(writer.has(Permission.STORIES_CREATE)).toBe(true);
-    expect(writer.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
-    expect(writer.has(Permission.USERS_MANAGE_ALL)).toBe(false);
+    // one a rising_star has and one it never can.
+    const risingStar: ReadonlySet<Permission> = new Set(PERMISSIONS_BY_ACCOUNT_TYPE[AccountType.RISING_STAR]);
+    expect(risingStar.has(Permission.STORIES_CREATE)).toBe(true);
+    expect(risingStar.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
+    expect(risingStar.has(Permission.USERS_MANAGE_ALL)).toBe(false);
   });
 });
 

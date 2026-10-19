@@ -66,20 +66,20 @@ describe('constants/roles barrel', () => {
     expect(isSuperAdmin).toBe(sharedIsSuperAdmin);
   });
 
-  it('publishes exactly the six shared account types', () => {
-    expect(ACCOUNT_TYPES).toEqual(['reader', 'writer', 'rising_star', 'professional', 'publisher', 'admin']);
+  it('publishes exactly the five shared account types', () => {
+    expect(ACCOUNT_TYPES).toEqual(['reader', 'rising_star', 'professional', 'publisher', 'admin']);
   });
 });
 
 describe('legacy database rows still normalize through the shared contract', () => {
-  it('maps the legacy author account type stored in the users table to writer', () => {
-    expect(LEGACY_ACCOUNT_TYPE_MAP.author).toBe(AccountType.WRITER);
-    expect(normalizeAccountType('author')).toBe(AccountType.WRITER);
+  it('maps the legacy author account type stored in the users table to rising_star', () => {
+    expect(LEGACY_ACCOUNT_TYPE_MAP.author).toBe(AccountType.RISING_STAR);
+    expect(normalizeAccountType('author')).toBe(AccountType.RISING_STAR);
   });
 
   it('maps the legacy author account type regardless of casing or padding', () => {
-    expect(normalizeAccountType('AUTHOR')).toBe(AccountType.WRITER);
-    expect(normalizeAccountType('  Author  ')).toBe(AccountType.WRITER);
+    expect(normalizeAccountType('AUTHOR')).toBe(AccountType.RISING_STAR);
+    expect(normalizeAccountType('  Author  ')).toBe(AccountType.RISING_STAR);
   });
 
   it('refuses to admit author as a first class account type', () => {
@@ -87,9 +87,9 @@ describe('legacy database rows still normalize through the shared contract', () 
     expect(ACCOUNT_TYPES).not.toContain('author');
   });
 
-  it('keeps a legacy author inside the reader-writer implication chain', () => {
+  it('keeps a legacy author inside the reader-rising_star implication chain', () => {
     expect(accountTypeAtLeast(normalizeAccountType('author'), AccountType.READER)).toBe(true);
-    expect(accountTypeAtLeast(normalizeAccountType('author'), AccountType.WRITER)).toBe(true);
+    expect(accountTypeAtLeast(normalizeAccountType('author'), AccountType.RISING_STAR)).toBe(true);
     expect(accountTypeAtLeast(normalizeAccountType('author'), AccountType.ADMIN)).toBe(false);
     expect(accountTypeSatisfies(normalizeAccountType('author'), [AccountType.ADMIN])).toBe(false);
   });

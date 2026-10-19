@@ -30,6 +30,10 @@ export class LoginDto {
 
   @IsString()
   password: string;
+
+  @IsOptional()
+  @IsString()
+  captchaToken?: string;
 }
 
 export class RefreshTokenDto {

@@ -217,7 +217,7 @@ describe('UsersController', () => {
         name: 'Public User',
         avatar: null,
         bio: null,
-        accountType: AccountType.WRITER,
+        accountType: AccountType.RISING_STAR,
         isVerified: false,
         createdAt: new Date(),
       });
@@ -242,7 +242,7 @@ describe('UsersController', () => {
         name: 'Public User',
         avatar: null,
         bio: null,
-        accountType: AccountType.WRITER,
+        accountType: AccountType.RISING_STAR,
         isVerified: false,
         createdAt: new Date(),
       });

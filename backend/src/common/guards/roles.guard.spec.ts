@@ -116,8 +116,8 @@ describe('RolesGuard', () => {
   describe('account type checks', () => {
     it('allows a caller whose account type is required', () => {
       const context = buildContext({
-        roles: [AccountType.WRITER],
-        user: createUser({ accountType: AccountType.WRITER }),
+        roles: [AccountType.RISING_STAR],
+        user: createUser({ accountType: AccountType.RISING_STAR }),
       });
       expect(guard.canActivate(context)).toBe(true);
     });
@@ -139,24 +139,24 @@ describe('RolesGuard', () => {
       expect(() => guard.canActivate(context)).toThrow('Insufficient permissions');
     });
 
-    it('denies a writer attempting an admin only route', () => {
+    it('denies a rising_star attempting an admin only route', () => {
       const context = buildContext({
         roles: [AccountType.ADMIN],
-        user: createUser({ accountType: AccountType.WRITER }),
+        user: createUser({ accountType: AccountType.RISING_STAR }),
       });
       expect(() => guard.canActivate(context)).toThrow('Insufficient permissions');
     });
 
     it('accepts any of several required account types', () => {
       const context = buildContext({
-        roles: [AccountType.WRITER, AccountType.ADMIN],
-        user: createUser({ accountType: AccountType.WRITER }),
+        roles: [AccountType.RISING_STAR, AccountType.ADMIN],
+        user: createUser({ accountType: AccountType.RISING_STAR }),
       });
       expect(guard.canActivate(context)).toBe(true);
     });
 
-    it('normalizes the legacy author account type to writer', () => {
-      const context = buildContext({ roles: [AccountType.WRITER], user: createUser({ accountType: 'author' }) });
+    it('normalizes the legacy author account type to rising_star', () => {
+      const context = buildContext({ roles: [AccountType.RISING_STAR], user: createUser({ accountType: 'author' }) });
       expect(guard.canActivate(context)).toBe(true);
     });
 
@@ -281,22 +281,22 @@ describe('RolesGuard', () => {
 
   describe('hierarchy helpers', () => {
     it('treats admin as implying every account type', () => {
-      for (const accountType of [AccountType.READER, AccountType.WRITER, AccountType.ADMIN]) {
+      for (const accountType of [AccountType.READER, AccountType.RISING_STAR, AccountType.ADMIN]) {
         expect(accountTypeAtLeast(AccountType.ADMIN, accountType)).toBe(true);
       }
     });
 
-    it('does not let a reader satisfy a writer requirement', () => {
-      expect(accountTypeAtLeast(AccountType.READER, AccountType.WRITER)).toBe(false);
+    it('does not let a reader satisfy a rising_star requirement', () => {
+      expect(accountTypeAtLeast(AccountType.READER, AccountType.RISING_STAR)).toBe(false);
     });
 
     it('does not let non admin account types satisfy the admin requirement', () => {
       expect(accountTypeAtLeast(AccountType.PUBLISHER, AccountType.ADMIN)).toBe(false);
     });
 
-    it('keeps rising star, professional and publisher peers of writer', () => {
-      expect(accountTypeAtLeast(AccountType.RISING_STAR, AccountType.WRITER)).toBe(true);
-      expect(accountTypeAtLeast(AccountType.PROFESSIONAL, AccountType.RISING_STAR)).toBe(false);
+    it('keeps professional and publisher peers of rising_star', () => {
+      expect(accountTypeAtLeast(AccountType.RISING_STAR, AccountType.RISING_STAR)).toBe(true);
+      expect(accountTypeAtLeast(AccountType.PROFESSIONAL, AccountType.RISING_STAR)).toBe(true);
       expect(accountTypeAtLeast(AccountType.PUBLISHER, AccountType.PROFESSIONAL)).toBe(false);
     });
 
@@ -319,14 +319,13 @@ describe('RolesGuard', () => {
   });
 
   describe('normalization helpers', () => {
-    it('maps the legacy author account type to writer', () => {
-      expect(normalizeAccountType('author')).toBe(AccountType.WRITER);
+    it('maps the legacy author account type to rising_star', () => {
+      expect(normalizeAccountType('author')).toBe(AccountType.RISING_STAR);
     });
 
     it('passes documented account types through unchanged', () => {
       for (const accountType of [
         AccountType.READER,
-        AccountType.WRITER,
         AccountType.RISING_STAR,
         AccountType.PROFESSIONAL,
         AccountType.PUBLISHER,
@@ -342,7 +341,7 @@ describe('RolesGuard', () => {
     });
 
     it('normalizes case and surrounding whitespace', () => {
-      expect(normalizeAccountType('  Writer ')).toBe(AccountType.WRITER);
+      expect(normalizeAccountType('  rising_star ')).toBe(AccountType.RISING_STAR);
     });
 
     it('maps legacy admin roles onto the documented values', () => {

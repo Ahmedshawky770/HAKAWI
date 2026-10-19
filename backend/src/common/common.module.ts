@@ -27,6 +27,7 @@ import { EventValidatorService } from './events/event-validator.service.ts';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.ts';
 import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
+import { MfaGuard } from './guards/mfa.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
 import { RestrictionGuard } from './guards/restriction.guard.ts';
 import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
@@ -113,6 +114,7 @@ const appReflector = new Reflector();
     JwtAuthGuard,
     RolesGuard,
     PermissionsGuard,
+    MfaGuard,
     OwnershipGuard,
     RestrictionGuard,
     // THE ONE EMAIL TRANSPORT. Provided here rather than in `NotificationsModule` so the auth flows
@@ -184,6 +186,7 @@ const appReflector = new Reflector();
     JwtAuthGuard,
     RolesGuard,
     PermissionsGuard,
+    MfaGuard,
     OwnershipGuard,
     RestrictionGuard,
     JwtModule,

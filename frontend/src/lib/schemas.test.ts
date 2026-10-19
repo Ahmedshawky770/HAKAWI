@@ -58,7 +58,7 @@ describe("auth schemas", () => {
       name: "أحمد",
       avatar: null,
       bio: null,
-      accountType: "writer",
+      accountType: "rising_star",
       isVerified: true,
       createdAt: "2026-01-01T00:00:00.000Z",
     };

@@ -1,12 +1,11 @@
 import { isOneOf } from './common.js';
 import type { AuthTokens } from './common.js';
 
-export const ACCOUNT_TYPES = ['reader', 'writer', 'rising_star', 'professional', 'publisher', 'admin'] as const;
+export const ACCOUNT_TYPES = ['reader', 'rising_star', 'professional', 'publisher', 'admin'] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export const AccountType = {
   READER: 'reader',
-  WRITER: 'writer',
   RISING_STAR: 'rising_star',
   PROFESSIONAL: 'professional',
   PUBLISHER: 'publisher',
@@ -28,7 +27,7 @@ export const AdminRole = {
 export const DEFAULT_ACCOUNT_TYPE: AccountType = AccountType.READER;
 
 export const LEGACY_ACCOUNT_TYPE_MAP: Readonly<Partial<Record<string, AccountType>>> = Object.freeze({
-  author: AccountType.WRITER,
+  author: AccountType.RISING_STAR,
 });
 
 export const LEGACY_ADMIN_ROLE_MAP: Readonly<Partial<Record<string, AdminRole>>> = Object.freeze({
@@ -60,10 +59,9 @@ export const normalizeAdminRole = (value: string): AdminRole | undefined => {
 
 export const ACCOUNT_TYPE_IMPLIES: Readonly<Record<AccountType, readonly AccountType[]>> = Object.freeze({
   [AccountType.READER]: [AccountType.READER],
-  [AccountType.WRITER]: [AccountType.READER, AccountType.WRITER],
-  [AccountType.RISING_STAR]: [AccountType.READER, AccountType.WRITER, AccountType.RISING_STAR],
-  [AccountType.PROFESSIONAL]: [AccountType.READER, AccountType.WRITER, AccountType.PROFESSIONAL],
-  [AccountType.PUBLISHER]: [AccountType.READER, AccountType.WRITER, AccountType.PUBLISHER],
+  [AccountType.RISING_STAR]: [AccountType.READER, AccountType.RISING_STAR],
+  [AccountType.PROFESSIONAL]: [AccountType.READER, AccountType.RISING_STAR, AccountType.PROFESSIONAL],
+  [AccountType.PUBLISHER]: [AccountType.READER, AccountType.RISING_STAR, AccountType.PUBLISHER],
   [AccountType.ADMIN]: ACCOUNT_TYPES,
 });
 

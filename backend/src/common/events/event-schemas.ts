@@ -382,6 +382,40 @@ export const ModerationEscalatedSchema = z.object({
 });
 
 /**
+ * Publisher events
+ */
+export const PublisherApplicationSubmittedSchema = z.object({
+  applicationId: z.string(),
+  userId: z.string(),
+  companyName: z.string(),
+});
+
+export const PublisherApplicationReviewedSchema = z.object({
+  applicationId: z.string(),
+  userId: z.string(),
+  status: z.enum(['approved', 'rejected']),
+  reviewedBy: z.string(),
+});
+
+export const PublisherWriterAddedSchema = z.object({
+  linkId: z.string(),
+  publisherId: z.string(),
+  writerId: z.string(),
+  commissionRate: z.number(),
+});
+
+export const PublisherWriterUpdatedSchema = z.object({
+  publisherId: z.string(),
+  writerId: z.string(),
+  updatedFields: z.record(z.string(), z.unknown()),
+});
+
+export const PublisherWriterRemovedSchema = z.object({
+  publisherId: z.string(),
+  writerId: z.string(),
+});
+
+/**
  * Registered names that are correct but have no producer in the codebase yet.
  *
  * A registration with no producer is a promise nothing keeps: `EventValidatorService` never
@@ -480,6 +514,11 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'mfa.enabled': { schema: MfaEnabledSchema, version: 'v1' },
   'mfa.disabled': { schema: MfaDisabledSchema, version: 'v1' },
   'user.upgraded': { schema: UserUpgradedSchema, version: 'v1' },
+  'publisher.application.submitted': { schema: PublisherApplicationSubmittedSchema, version: 'v1' },
+  'publisher.application.reviewed': { schema: PublisherApplicationReviewedSchema, version: 'v1' },
+  'publisher.writer.added': { schema: PublisherWriterAddedSchema, version: 'v1' },
+  'publisher.writer.updated': { schema: PublisherWriterUpdatedSchema, version: 'v1' },
+  'publisher.writer.removed': { schema: PublisherWriterRemovedSchema, version: 'v1' },
 
   // Registered without a producer yet; see REGISTERED_WITHOUT_PRODUCER above.
   'user.updated': { schema: UserUpdatedSchema, version: 'v1' },

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Request } from '@nestjs/common';
 
-import { RequireAdminRole, RequirePermissions } from '../../common/decorators/roles.decorator.ts';
+import { RequireAdminRole, RequirePermissions, RequireMfa } from '../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../common/decorators/secured.decorator.ts';
 import { AccountType, AdminRole, adminRoleAtLeast, normalizeAdminRole } from '../../common/constants/roles.ts';
 import { Permission } from '../../common/permissions/permissions.ts';
@@ -70,6 +70,7 @@ export class ModerationController {
   @Secured(AccountType.ADMIN)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.STATS_VIEW)
+  @RequireMfa()
   @Get('stats')
   async getStats(): Promise<AdminDashboardStatsDto> {
     return this.adminDashboardService.getStats();
@@ -78,6 +79,7 @@ export class ModerationController {
   @Secured(AccountType.ADMIN)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.STATS_VIEW)
+  @RequireMfa()
   @Get('reports/trends')
   async getReportTrends(@Query() query: ReportTrendsQueryInput) {
     return this.adminDashboardService.getReportTrends(parseOrThrow(ReportTrendsQueryDto, query).days);
@@ -106,6 +108,7 @@ export class ModerationController {
   @Secured(AccountType.ADMIN)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.ACTIONS_VIEW)
+  @RequireMfa()
   @Get('actions')
   async getModerationActions(@Query() query: ModerationActionsQueryInput) {
     const parsed = parseOrThrow(ModerationActionsQueryDto, query);

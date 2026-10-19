@@ -18,7 +18,7 @@ import {
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../../common/decorators/secured.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { RequireAdminRole, RequirePermissions } from '../../../common/decorators/roles.decorator.ts';
+import { RequireAdminRole, RequirePermissions, RequireMfa } from '../../../common/decorators/roles.decorator.ts';
 import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
 import { Permission } from '../../../common/permissions/permissions.ts';
 import { CreateUserDto, UpdateUserDto, UpgradeDto, VerifyUserDto } from '../dto/users.dto.ts';
@@ -107,6 +107,7 @@ export class UsersController {
   @Secured(AccountType.ADMIN)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.USERS_MANAGE_ALL)
+  @RequireMfa()
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateUserDto) {
@@ -153,6 +154,7 @@ export class UsersController {
   @Secured(AccountType.ADMIN)
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.USERS_MANAGE_ALL)
+  @RequireMfa()
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id', ParseUUIDPipe) id: string) {

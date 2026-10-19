@@ -24,10 +24,13 @@ export class RolesGuard implements CanActivate {
     }
 
     const requiredRoles = this.reflector.getAllAndOverride<readonly AccountType[]>(REQUIRED_ROLES_KEY, targets);
-    const requiredAdminRole = this.reflector.getAllAndOverride<AdminRole | undefined>(REQUIRED_ADMIN_ROLE_KEY, targets);
+    const requiredAdminRoles = this.reflector.getAllAndOverride<readonly AdminRole[] | AdminRole>(REQUIRED_ADMIN_ROLE_KEY, targets);
 
     const hasRoleRequirement = requiredRoles !== undefined && requiredRoles.length > 0;
-    if (!hasRoleRequirement && requiredAdminRole === undefined) {
+    const adminRoleArray = Array.isArray(requiredAdminRoles) ? requiredAdminRoles : requiredAdminRoles !== undefined ? [requiredAdminRoles] : [];
+    const hasAdminRoleRequirement = adminRoleArray.length > 0;
+
+    if (!hasRoleRequirement && !hasAdminRoleRequirement) {
       return true;
     }
 
@@ -38,9 +41,9 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Access denied');
     }
 
-    if (requiredAdminRole !== undefined) {
+    if (hasAdminRoleRequirement) {
       const adminRole = typeof user.adminRole === 'string' ? normalizeAdminRole(user.adminRole) : undefined;
-      if (adminRole === undefined || !adminRoleAtLeast(adminRole, requiredAdminRole)) {
+      if (adminRole === undefined || !adminRoleArray.some((required) => adminRoleAtLeast(adminRole, required))) {
         throw new ForbiddenException('Insufficient admin privileges');
       }
     }

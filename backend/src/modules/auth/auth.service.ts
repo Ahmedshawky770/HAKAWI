@@ -21,6 +21,7 @@ import { UserRegisteredEvent } from '../../common/events/users.events.ts';
 import { EmailVerificationService } from '../email-verification/email-verification.service.ts';
 
 import { AccountLockoutService } from './account-lockout.service.ts';
+import { CaptchaService } from './captcha.service.ts';
 import {
   appleTokenResponseSchema,
   facebookTokenResponseSchema,
@@ -114,6 +115,7 @@ export class AuthService {
     @Inject(AppleJwksService) private readonly appleJwks: AppleJwksService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(AccountLockoutService) private readonly accountLockout: AccountLockoutService,
+    @Inject(CaptchaService) private readonly captchaService: CaptchaService,
     // The ONE transport, provided by the global `CommonModule`. Auth may not depend on
     // NotificationsModule (`dependency-rules.md`), which is where the transport used to live.
     @Inject(TransactionalEmailService) private readonly emailSender: TransactionalEmailService,
@@ -657,6 +659,25 @@ export class AuthService {
           userLockoutStatus.lockoutExpiresAt,
         )} minutes.`,
       );
+    }
+
+    // Check if CAPTCHA is required based on failed attempts
+    const maxFailedAttempts = Math.max(
+      lockoutStatus.failedAttempts,
+      userLockoutStatus.failedAttempts,
+    );
+    if (this.captchaService.shouldRequireCaptcha(maxFailedAttempts)) {
+      const captchaResult = await this.captchaService.verify(dto.captchaToken, clientIp);
+      if (!captchaResult.success) {
+        this.winstonLoggerService.warn(`Login blocked: CAPTCHA verification failed for user ${user.id}`, 'AuthService');
+        throw new UnauthorizedException({
+          message: 'CAPTCHA verification required',
+          code: 'CAPTCHA_REQUIRED',
+          captchaRequired: true,
+          captchaProvider: this.captchaService.getProvider(),
+          captchaSiteKey: this.captchaService.getSiteKey(),
+        });
+      }
     }
 
     const isPasswordValid = await this.passwordHasher.compare(dto.password, user.passwordHash);
