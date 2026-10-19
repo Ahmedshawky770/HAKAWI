@@ -41,6 +41,26 @@ so the domain model and the database cannot silently diverge.
 `content_moderator`, `finance` → `financial_officer`. Anything unrecognised falls back to `reader`,
 so an unknown role **loses** privilege.
 
+**Account capabilities** (resolved from `PERMISSIONS_BY_ACCOUNT_TYPE`):
+- `reader` / `writer`: write own stories, read basic analytics.
+- `rising_star`: writer + full analytics + outreach to publishers (`publishing:communicate`).
+- `professional`: rising_star + sell/rent own books. Requires objective thresholds
+  (published stories >= 5, story views >= 1,000, story reactions >= 100, followers >= 50)
+  + verified email + manual approval by `verification_officer`.
+- `publisher`: writer + create/manage contests + outreach to publishers + sell books of
+  represented writers (institution, not self-upgradeable).
+- `admin`: all.
+
+**Professional upgrade thresholds** (all must be met before a `verification_officer` may approve):
+- `published_stories >= 5`
+- `story_views >= 1,000` (sum of `view_count` on own published stories)
+- `story_reactions >= 100` (reactions received on own stories)
+- `follower_count >= 50`
+- `is_verified = true`
+
+`POST /users/me/professional-request` returns eligibility; `POST /users/me/upgrade` with
+`target=professional` requires `approvedByAdmin=true` (`super_admin` or `verification_officer`).
+
 **Key attributes → real columns:** `email` (unique), `username` (unique), `name`, `avatar`, `bio`,
 `google_id`/`facebook_id`/`twitter_id`/`github_id`/`apple_id`/`tiktok_id`, `account_type`,
 `admin_role`, `is_verified`, `onboarding_completed`, `access_blocked`, `password_hash`,

@@ -21,11 +21,11 @@ them. There is no second list of roles anywhere in the backend.
 
 | Role | Description | Implies |
 |------|-------------|---------|
-| `reader` | Default account for consuming content | `reader` |
-| `writer` | Can publish stories and texties | `reader`, `writer` |
-| `rising_star` | Emerging author with limited features | `reader`, `writer`, `rising_star` |
-| `professional` | Full author features, book sales | `reader`, `writer`, `professional` |
-| `publisher` | Can create and manage contests | `reader`, `writer`, `publisher` |
+| `reader` | Consumes content and writes own stories | `reader` |
+| `writer` | Publishes own stories with basic analytics | `reader`, `writer` |
+| `rising_star` | Writer with full analytics and publisher outreach | `reader`, `writer`, `rising_star` |
+| `professional` | Full author features, own book sales | `reader`, `writer`, `professional` |
+| `publisher` | Institution: contests, publisher outreach, sells represented writers' books | `reader`, `writer`, `publisher` |
 | `admin` | Platform administration | all six |
 
 The implication lattice is `ACCOUNT_TYPE_IMPLIES` (`packages/shared-types/src/user.ts:62`) and is
@@ -82,8 +82,7 @@ permission is a **compile error**.
 
 ### Count: 51 permissions
 
-`ALL_PERMISSIONS` is `Object.freeze(Object.values(Permission))` — **51** entries, not 49. Verified
-by counting the `Permission` object literal (`backend/src/common/permissions/permissions.ts:62-117`).
+`ALL_PERMISSIONS` is `Object.freeze(Object.values(Permission))` — **53** entries.
 
 Selected examples:
 - `content:read`, `content:create`, `content:edit:own`, `content:edit:all`, `content:delete:own`,
@@ -94,7 +93,8 @@ Selected examples:
 - `users:read`, `users:manage:all`, `users:restrict:all`, `users:verify:all`
 - `reports:create|view|update:all|delete:all`
 - `financial:read:all`, `financial:manage:all`, `verification:read:all`, `verification:manage:all`
-- `settings:manage`, `stats:view`, `search:use`, `notifications:read`
+- `settings:manage`, `stats:view`, `search:use`, `notifications:read`, `publishing:communicate`,
+  `books:sell:represented`.
 
 > Two permissions that the previous version of this document listed do not exist under those names:
 > `users:manage` and `contests:manage`. The real ones are `users:manage:all` and the four
@@ -292,6 +292,26 @@ The requirement below is retained, not implemented:
 **Newly documented (was missing entirely):** the authorization hole that `@Secured()` closed —
 `@RequireAdminRole` was dead metadata and `RolesGuard` was never applied, so any authenticated user
 could read moderation stats.
+
+---
+
+### Professional upgrade thresholds — ✅ implemented
+
+A `rising_star` may apply for `professional` only when **all** objective thresholds are met and a
+`verification_officer` approves the identity check (anti-impersonation):
+
+| Metric | Threshold | Measured from |
+|---|---|---|
+| `published_stories` | `>= 5` | `stories` rows with `status='published'` |
+| `story_views` | `>= 1,000` | `sum(view_count)` over own published stories |
+| `story_reactions` | `>= 100` | reactions received on own stories |
+| `follower_count` | `>= 50` | `follows` rows where the user is followed |
+| `is_verified` | `true` | email verification |
+
+`POST /users/me/professional-request` returns eligibility; `POST /users/me/upgrade` with
+`target=professional` requires `approvedByAdmin=true` (only `super_admin` or
+`verification_officer`). On approval, `accountType` becomes `professional`, refresh tokens are
+revoked, cache is invalidated, and `user.upgraded` is emitted.
 
 ---
 

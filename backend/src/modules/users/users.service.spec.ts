@@ -7,6 +7,8 @@ import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { ConfigService } from '@nestjs/config';
 
 import { USER_CACHE_NAMESPACE, USER_PUBLIC_CACHE_NAMESPACE, UsersService } from './users.service.ts';
 
@@ -161,6 +163,8 @@ describe('UsersService', () => {
   let valkeyService: MockValkeyService;
   let winstonLoggerService: MockWinstonLoggerService;
   let cache: FakeTaggedCache;
+  let eventBus: { emit: Mock };
+  let configService: { get: Mock };
 
   beforeEach(() => {
     usersRepository = {
@@ -210,12 +214,22 @@ describe('UsersService', () => {
 
     cache = new FakeTaggedCache();
 
+    eventBus = {
+      emit: vi.fn(),
+    };
+
+    configService = {
+      get: vi.fn(),
+    };
+
     usersService = new UsersService(
       usersRepository,
       passwordHasher as unknown as PasswordHasher,
       valkeyService as unknown as ValkeyService,
       winstonLoggerService as unknown as WinstonLoggerService,
       cache as unknown as TaggedCacheService,
+      eventBus as unknown as EventValidatorService,
+      configService as unknown as ConfigService,
     );
   });
 
@@ -885,5 +899,116 @@ describe('UsersService', () => {
 
       await expect(usersService.getUserStats('user-123')).rejects.toThrow('User not found');
     });
+  });
+});
+
+
+describe('upgradeAccount', () => {
+  let usersService: UsersService;
+  let usersRepository: MockUsersRepository;
+  let passwordHasher: MockPasswordHasher;
+  let valkeyService: MockValkeyService;
+  let winstonLoggerService: MockWinstonLoggerService;
+  let cache: FakeTaggedCache;
+  let eventBus: { emit: Mock };
+  let configService: { get: Mock };
+
+  const upgradedUser = createMockUser({ accountType: AccountType.RISING_STAR, emailVerified: true });
+
+  beforeEach(() => {
+    usersRepository = {
+      findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
+      findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
+      findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),
+      findByFacebookId: vi.fn<(facebookId: string) => Promise<User | null>>(),
+      findByTwitterId: vi.fn<(twitterId: string) => Promise<User | null>>(),
+      findByGithubId: vi.fn<(githubId: string) => Promise<User | null>>(),
+      findByAppleId: vi.fn<(appleId: string) => Promise<User | null>>(),
+      findByTiktokId: vi.fn<(tiktokId: string) => Promise<User | null>>(),
+      create: vi.fn<(data: CreateUserInput) => Promise<User>>(),
+      update: vi.fn<(id: string, data: Partial<UpdateUserInput>) => Promise<User>>(),
+      softDelete: vi.fn<(id: string) => Promise<void>>(),
+      getUserStats: vi.fn<
+        (id: string) => Promise<{
+          storiesCount: number;
+          totalViews: number;
+          totalReactions: number;
+          followersCount: number;
+          followingCount: number;
+        }>
+      >(),
+    };
+
+    passwordHasher = { hash: vi.fn(), compare: vi.fn() };
+
+    valkeyService = { get: vi.fn(), set: vi.fn(), del: vi.fn(), exists: vi.fn() };
+    winstonLoggerService = { info: vi.fn(), log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn() };
+    cache = new FakeTaggedCache();
+    vi.spyOn(cache, 'invalidateKey').mockResolvedValue(undefined);
+    eventBus = { emit: vi.fn() };
+    configService = { get: vi.fn() };
+
+    usersService = new UsersService(
+      usersRepository,
+      passwordHasher as unknown as PasswordHasher,
+      valkeyService as unknown as ValkeyService,
+      winstonLoggerService as unknown as WinstonLoggerService,
+      cache as unknown as TaggedCacheService,
+      eventBus as unknown as EventValidatorService,
+      configService as unknown as ConfigService,
+    );
+
+    vi.mocked(configService.get).mockReturnValue('7d');
+    vi.mocked(valkeyService.set).mockResolvedValue(undefined);
+    vi.mocked(usersRepository.update).mockResolvedValue(upgradedUser);
+    vi.mocked(usersRepository.findById).mockResolvedValue(upgradedUser);
+    vi.mocked(eventBus.emit).mockResolvedValue(undefined);
+  });
+
+  it('upgrades a verified reader to rising_star, revokes tokens, invalidates cache and emits the event', async () => {
+    vi.mocked(usersRepository.findById)
+      .mockResolvedValueOnce(createMockUser({ emailVerified: true }))
+      .mockResolvedValue(upgradedUser);
+
+    const result = await usersService.upgradeAccount('user-123', AccountType.RISING_STAR);
+
+    expect(usersRepository.update).toHaveBeenCalledWith('user-123', { accountType: AccountType.RISING_STAR });
+    expect(valkeyService.set).toHaveBeenCalledWith(
+      'refresh_token:blacklist:user:user-123',
+      'revoked',
+      expect.any(Number),
+    );
+    expect(cache.invalidateKey).toHaveBeenCalledWith('user', 'user-123', ['users']);
+    expect(eventBus.emit).toHaveBeenCalledWith('user.upgraded', {
+      userId: 'user-123',
+      oldType: AccountType.READER,
+      newType: AccountType.RISING_STAR,
+    });
+    expect(result.accountType).toBe(AccountType.RISING_STAR);
+  });
+
+  it('returns the same user without changes when already at the target', async () => {
+    vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ accountType: AccountType.WRITER }));
+
+    await usersService.upgradeAccount('user-123', AccountType.WRITER);
+
+    expect(usersRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified account', async () => {
+    vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ emailVerified: false }));
+
+    await expect(usersService.upgradeAccount('user-123', AccountType.WRITER)).rejects.toThrow(
+      'Email must be verified before upgrading',
+    );
+  });
+
+  it('rejects a non-self-upgradeable target such as publisher', async () => {
+    vi.mocked(usersRepository.findById).mockResolvedValue(createMockUser({ emailVerified: true }));
+
+    await expect(usersService.upgradeAccount('user-123', AccountType.PUBLISHER)).rejects.toThrow(
+      'Invalid upgrade target',
+    );
   });
 });

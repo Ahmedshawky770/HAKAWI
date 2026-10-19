@@ -8,6 +8,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input, Textarea } from "@/components/ui/Input";
+import { RequireAccount } from "@/components/account/RequireAccount";
 
 /**
  * The create-book form.
@@ -71,8 +72,9 @@ export default function CreateBookPage() {
   };
 
   return (
-    <div>
-      <PageHeader title="إنشاء كتاب" description="أضف كتاباً جديداً إلى كتالوج حكاوي." />
+    <RequireAccount capability="sellBooks" upgradeRoute="/profile">
+      <div>
+        <PageHeader title="إنشاء كتاب" description="أضف كتاباً جديداً إلى كتالوج حكاوي." />
 
       <Card>
         <CardBody>
@@ -225,5 +227,6 @@ export default function CreateBookPage() {
         </CardBody>
       </Card>
     </div>
+    </RequireAccount>
   );
 }

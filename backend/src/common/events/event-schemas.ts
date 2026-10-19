@@ -368,6 +368,12 @@ export const MfaDisabledSchema = z.object({
   userId: z.string(),
 });
 
+export const UserUpgradedSchema = z.object({
+  userId: z.string(),
+  oldType: z.string(),
+  newType: z.string(),
+});
+
 export const ModerationEscalatedSchema = z.object({
   reportId: z.string(),
   targetId: z.string(),
@@ -473,6 +479,7 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'comment.reaction.removed': { schema: CommentReactionDeletedSchema, version: 'v1' },
   'mfa.enabled': { schema: MfaEnabledSchema, version: 'v1' },
   'mfa.disabled': { schema: MfaDisabledSchema, version: 'v1' },
+  'user.upgraded': { schema: UserUpgradedSchema, version: 'v1' },
 
   // Registered without a producer yet; see REGISTERED_WITHOUT_PRODUCER above.
   'user.updated': { schema: UserUpdatedSchema, version: 'v1' },

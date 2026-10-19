@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, Inject, Optional } from '@nestjs/common';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { badges, userBadges } from '../../db/schema/badges.schema.ts';
@@ -7,6 +7,7 @@ import { moderationActions } from '../../db/schema/moderation.schema.ts';
 import { follows } from '../../db/schema/social.schema.ts';
 import { stories } from '../../db/schema/stories.schema.ts';
 import { contests } from '../../db/schema/contests.schema.ts';
+import { reactions } from '../../db/schema/social.schema.ts';
 import { db } from '../../db/index.ts';
 import { NotificationsService } from '../notifications/notifications.service.ts';
 
@@ -257,11 +258,14 @@ export class BadgesService {
         return this.countFollowers(userId);
       case 'moderation_actions':
         return this.countModerationActions(userId);
+      case 'story_views':
+        return this.countStoryViews(userId);
+      case 'story_reactions':
+        return this.countStoryReactions(userId);
       default:
         return 0;
     }
   }
-
   private async countContestWins(userId: string): Promise<number> {
     const [result] = await db.select({ total: count() }).from(contests).where(eq(contests.winnerId, userId));
     return Number(result?.total ?? 0);
@@ -285,6 +289,23 @@ export class BadgesService {
       .select({ total: count() })
       .from(moderationActions)
       .where(eq(moderationActions.adminId, userId));
+    return Number(result?.total ?? 0);
+  }
+
+  private async countStoryViews(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ total: sql<number>`sum(${stories.viewCount})` })
+      .from(stories)
+      .where(and(eq(stories.authorId, userId), eq(stories.status, 'published'), isNull(stories.deletedAt)));
+    return Number(result?.total ?? 0);
+  }
+
+  private async countStoryReactions(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ total: count() })
+      .from(reactions)
+      .innerJoin(stories, eq(stories.id, reactions.storyId))
+      .where(and(eq(stories.authorId, userId), eq(stories.status, 'published'), isNull(stories.deletedAt)));
     return Number(result?.total ?? 0);
   }
 }

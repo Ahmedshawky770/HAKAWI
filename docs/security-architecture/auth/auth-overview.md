@@ -183,6 +183,31 @@ was not carried out.
 - ❌ **Per-route opt-in:** `@RequireMfa()` exists (`decorators/roles.decorator.ts:24`) with **zero
   call sites**; `MfaGuard` also expects an `X-MFA-Token` header that no endpoint issues today
 
+## Account roles and upgrades — ✅ implemented
+
+New accounts always register as `reader` (both password and OAuth paths). The account type is the
+single source of truth (`users.account_type`) and drives permissions through
+`PERMISSIONS_BY_ACCOUNT_TYPE`.
+
+- **`reader` → `rising_star` (self-service):** `POST /api/v1/users/me/upgrade` with
+  `{ target: "rising_star" }`. Requires a verified email. Revokes all refresh tokens so the new
+  claims take effect, and emits `user.upgraded`. Grants writing stories and basic analytics.
+- **`rising_star` → `professional` (points + verification-gated):** professional unlocks selling own
+  books and full analytics, so it cannot be self-claimed on metrics alone (impersonation risk).
+  Eligibility = objective thresholds (published stories >= 5, story views >= 1,000, story reactions
+  >= 100, followers >= 50) + verified email, which unlocks an application. A
+  `verification_officer` reviews the identity and approves/rejects. On approval,
+  `accountType` becomes `professional`, refresh tokens are revoked, and `user.upgraded` is emitted.
+- **`publisher` (institution):** never self-service. Only `super_admin` /
+  `verification_officer` provisions a publisher account (`account_type = publisher`,
+  `is_verified = true`) after reviewing an application. Publishers sell books of represented writers,
+  not their own.
+- **`admin`:** never self-service (seed / direct DB only).
+
+`POST /api/v1/users/:id` (super-admin) and `PATCH /api/v1/users/:id` allow an admin to set
+`account_type` / `admin_role` on another account; a caller can never escalate their own account.
+
+
 ### What exists instead
 
 MFA can be enrolled by any user, including admins, but nothing requires it. Account types include

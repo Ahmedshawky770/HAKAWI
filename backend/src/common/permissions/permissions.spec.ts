@@ -4,6 +4,7 @@ import { AccountType } from '../constants/roles.ts';
 import type { PermissionRequirement } from '../types/permission-requirement.types.ts';
 
 import {
+  ALL_PERMISSIONS,
   PERMISSIONS_BY_ACCOUNT_TYPE,
   Permission,
   describePermissionRequirement,
@@ -159,5 +160,47 @@ describe('the permission table the modes are evaluated against', () => {
     expect(writer.has(Permission.STORIES_CREATE)).toBe(true);
     expect(writer.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
     expect(writer.has(Permission.USERS_MANAGE_ALL)).toBe(false);
+  });
+});
+
+describe('account type grants after the role model change', () => {
+  const grants = (accountType: AccountType): ReadonlySet<Permission> =>
+    new Set(PERMISSIONS_BY_ACCOUNT_TYPE[accountType]);
+
+  it('lets any reader create, edit and delete own stories', () => {
+    const reader = grants(AccountType.READER);
+    expect(reader.has(Permission.STORIES_CREATE)).toBe(true);
+    expect(reader.has(Permission.STORIES_EDIT_OWN)).toBe(true);
+    expect(reader.has(Permission.STORIES_DELETE_OWN)).toBe(true);
+  });
+
+  it('does not let a reader sell own books or reach platform permissions', () => {
+    const reader = grants(AccountType.READER);
+    expect(reader.has(Permission.BOOKS_SELL_OWN)).toBe(false);
+    expect(reader.has(Permission.FINANCIAL_MANAGE_ALL)).toBe(false);
+  });
+
+  it('lets a rising star communicate with publishers', () => {
+    const rising = grants(AccountType.RISING_STAR);
+    expect(rising.has(Permission.PUBLISHING_COMMUNICATE)).toBe(true);
+  });
+
+  it('lets a professional sell own books', () => {
+    const pro = grants(AccountType.PROFESSIONAL);
+    expect(pro.has(Permission.BOOKS_SELL_OWN)).toBe(true);
+  });
+
+  it('lets a publisher sell represented books but not own books', () => {
+    const pub = grants(AccountType.PUBLISHER);
+    expect(pub.has(Permission.BOOKS_SELL_REPRESENTED)).toBe(true);
+    expect(pub.has(Permission.BOOKS_SELL_OWN)).toBe(false);
+    expect(pub.has(Permission.CONTESTS_CREATE)).toBe(true);
+  });
+
+  it('keeps admin on everything', () => {
+    const admin = grants(AccountType.ADMIN);
+    for (const permission of ALL_PERMISSIONS) {
+      expect(admin.has(permission)).toBe(true);
+    }
   });
 });

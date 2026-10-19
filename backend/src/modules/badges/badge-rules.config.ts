@@ -12,7 +12,14 @@ export const BADGE_COMPARATORS = ['gte', 'gt', 'eq'] as const;
 
 export type BadgeComparator = (typeof BADGE_COMPARATORS)[number];
 
-export const BADGE_METRICS = ['contest_wins', 'published_stories', 'follower_count', 'moderation_actions'] as const;
+export const BADGE_METRICS = [
+  'contest_wins',
+  'published_stories',
+  'follower_count',
+  'moderation_actions',
+  'story_views',
+  'story_reactions',
+] as const;
 
 export type BadgeMetric = (typeof BADGE_METRICS)[number];
 

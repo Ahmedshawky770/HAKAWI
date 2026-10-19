@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsBoolean, Matches, IsInt, Min } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsBoolean, Matches, IsInt, Min, IsIn } from 'class-validator';
+import { ACCOUNT_TYPES, ADMIN_ROLES } from '../../../common/constants/roles.ts';
 
 export class CreateUserDto {
   @IsString()
@@ -54,6 +55,16 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   onboardingCompleted?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(ACCOUNT_TYPES, { message: 'Invalid account type' })
+  accountType?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(ADMIN_ROLES, { message: 'Invalid admin role' })
+  adminRole?: string | null;
 }
 
 export class UserResponseDto {
@@ -69,6 +80,12 @@ export class UserResponseDto {
   accessBlocked: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export class UpgradeDto {
+  @IsString()
+  @IsIn(['writer', 'rising_star'], { message: 'Invalid upgrade target' })
+  target: string;
 }
 
 export class UserStatsDto {

@@ -32,6 +32,7 @@ export const PERMISSION_RESOURCES = [
   'verification',
   'search',
   'notifications',
+  'publishing',
 ] as const;
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
@@ -51,11 +52,12 @@ export const PERMISSION_ACTIONS = [
   'view',
   'sell',
   'rent',
+  'communicate',
 ] as const;
 
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export const PERMISSION_SCOPES = ['own', 'all', 'platform'] as const;
+export const PERMISSION_SCOPES = ['own', 'all', 'platform', 'represented'] as const;
 
 export type PermissionScope = (typeof PERMISSION_SCOPES)[number];
 
@@ -116,6 +118,8 @@ export const Permission = {
   VERIFICATION_MANAGE_ALL: 'verification:manage:all',
   SEARCH_USE: 'search:use',
   NOTIFICATIONS_READ: 'notifications:read',
+  PUBLISHING_COMMUNICATE: 'publishing:communicate',
+  BOOKS_SELL_REPRESENTED: 'books:sell:represented',
 } as const satisfies Record<string, PermissionPattern>;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -124,7 +128,13 @@ export const ALL_PERMISSIONS: readonly Permission[] = Object.freeze(Object.value
 
 const READER_PERMISSIONS = [
   Permission.CONTENT_READ,
+  Permission.CONTENT_CREATE,
+  Permission.CONTENT_EDIT_OWN,
+  Permission.CONTENT_DELETE_OWN,
   Permission.STORIES_READ,
+  Permission.STORIES_CREATE,
+  Permission.STORIES_EDIT_OWN,
+  Permission.STORIES_DELETE_OWN,
   Permission.COMMENTS_READ,
   Permission.COMMENTS_CREATE,
   Permission.COMMENTS_EDIT_OWN,
@@ -142,17 +152,12 @@ const READER_PERMISSIONS = [
 
 const WRITER_PERMISSIONS = [
   ...READER_PERMISSIONS,
-  Permission.CONTENT_CREATE,
-  Permission.CONTENT_EDIT_OWN,
-  Permission.CONTENT_DELETE_OWN,
-  Permission.STORIES_CREATE,
-  Permission.STORIES_EDIT_OWN,
-  Permission.STORIES_DELETE_OWN,
+  Permission.ANALYTICS_READ_OWN,
 ] as const satisfies readonly Permission[];
 
 const RISING_STAR_PERMISSIONS = [
   ...WRITER_PERMISSIONS,
-  Permission.ANALYTICS_READ_OWN,
+  Permission.PUBLISHING_COMMUNICATE,
 ] as const satisfies readonly Permission[];
 
 const PROFESSIONAL_PERMISSIONS = [
@@ -168,6 +173,8 @@ const PUBLISHER_PERMISSIONS = [
   Permission.CONTESTS_MANAGE_OWN,
   Permission.CONTESTS_UPDATE_OWN,
   Permission.CONTESTS_DELETE_OWN,
+  Permission.PUBLISHING_COMMUNICATE,
+  Permission.BOOKS_SELL_REPRESENTED,
 ] as const satisfies readonly Permission[];
 
 export const PERMISSIONS_BY_ACCOUNT_TYPE = {

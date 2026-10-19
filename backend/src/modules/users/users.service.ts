@@ -1,7 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, Inject } from '@nestjs/common';
-import { sql, eq, and } from 'drizzle-orm';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
+import { sql, eq, and, isNull, count } from 'drizzle-orm';
 
 import { PasswordHasher } from '../../common/utils/password.util.ts';
+import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { ConfigService } from '@nestjs/config';
+import { parseDurationToMs } from '../auth/auth.service.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
@@ -54,6 +57,8 @@ export class UsersService {
     @Inject(ValkeyService) private readonly valkeyService: ValkeyService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Inject(TaggedCacheService) private readonly cache: TaggedCacheService,
+    @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -268,6 +273,139 @@ export class UsersService {
 
   async updateLastLogin(id: string): Promise<void> {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
+  }
+
+  /**
+   * upgrades the caller's account (self-service). Only `writer` / `rising_star` are
+   * self-upgradeable; `professional` / `publisher` require admin provisioning.
+   * Requires a verified email. Revokes refresh tokens so new claims take effect.
+   */
+  async upgradeAccount(id: string, target: string, approvedByAdmin = false): Promise<ClientUser> {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.accountType === target) {
+      return toClientUser(user);
+    }
+
+    if (!user.emailVerified) {
+      throw new BadRequestException('Email must be verified before upgrading');
+    }
+
+    if (target !== AccountType.WRITER && target !== AccountType.RISING_STAR && target !== AccountType.PROFESSIONAL) {
+      throw new BadRequestException('Invalid upgrade target');
+    }
+
+    if (target === AccountType.PROFESSIONAL && !approvedByAdmin) {
+      throw new BadRequestException('Professional upgrade requires verification officer approval');
+    }
+
+    if (target === AccountType.PROFESSIONAL) {
+      const eligibility = await this.checkProfessionalEligibility(id);
+      if (!eligibility.eligible) {
+        throw new BadRequestException(`Not eligible for professional upgrade: ${eligibility.reasons.join(', ')}`);
+      }
+    }
+
+    await this.usersRepository.update(id, { accountType: target });
+    await this.revokeRefreshTokens(id);
+    await this.invalidateUserCache(id);
+
+    await this.eventBus.emit('user.upgraded', {
+      userId: id,
+      oldType: user.accountType,
+      newType: target,
+    });
+
+    const updated = await this.usersRepository.findById(id);
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+    return toClientUser(updated);
+  }
+
+  /**
+   * Checks whether a user meets the objective thresholds required for a professional upgrade.
+   * All thresholds must be met; email must be verified.
+   */
+  async checkProfessionalEligibility(id: string): Promise<{ eligible: boolean; reasons: string[] }> {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      return { eligible: false, reasons: ['User not found'] };
+    }
+
+    const reasons: string[] = [];
+
+    if (!user.emailVerified) {
+      reasons.push('Email must be verified');
+    }
+
+    const publishedStories = await this.countPublishedStories(id);
+    if (publishedStories < 5) {
+      reasons.push(`At least 5 published stories required (current: ${publishedStories})`);
+    }
+
+    const storyViews = await this.countStoryViews(id);
+    if (storyViews < 1000) {
+      reasons.push(`At least 1,000 story views required (current: ${storyViews})`);
+    }
+
+    const storyReactions = await this.countStoryReactions(id);
+    if (storyReactions < 100) {
+      reasons.push(`At least 100 story reactions required (current: ${storyReactions})`);
+    }
+
+    const followerCount = await this.countFollowers(id);
+    if (followerCount < 50) {
+      reasons.push(`At least 50 followers required (current: ${followerCount})`);
+    }
+
+    return { eligible: reasons.length === 0, reasons };
+  }
+
+  private async countPublishedStories(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ total: count() })
+      .from(stories)
+      .where(and(eq(stories.authorId, userId), eq(stories.status, 'published'), isNull(stories.deletedAt)));
+    return Number(result?.total ?? 0);
+  }
+
+  private async countStoryViews(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ total: sql<number>`sum(${stories.viewCount})` })
+      .from(stories)
+      .where(and(eq(stories.authorId, userId), eq(stories.status, 'published'), isNull(stories.deletedAt)));
+    return Number(result?.total ?? 0);
+  }
+
+  private async countStoryReactions(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ total: count() })
+      .from(reactions)
+      .innerJoin(stories, eq(stories.id, reactions.storyId))
+      .where(and(eq(stories.authorId, userId), eq(stories.status, 'published'), isNull(stories.deletedAt)));
+    return Number(result?.total ?? 0);
+  }
+
+  private async countFollowers(userId: string): Promise<number> {
+    const [result] = await db.select({ total: count() }).from(follows).where(eq(follows.followingId, userId));
+    return Number(result?.total ?? 0);
+  }
+
+  /**
+   * Revokes every refresh token for one user so the new accountType claims take effect.
+   */
+  private async revokeRefreshTokens(userId: string): Promise<void> {
+    const configured = this.configService.get<string>('jwt.refreshExpiry', '7d');
+    const ttlMs = parseDurationToMs(configured) ?? 604_800_000;
+    await this.valkeyService.set(
+      `refresh_token:blacklist:user:${userId}`,
+      'revoked',
+      Math.ceil(ttlMs / 1000),
+    );
   }
 
   async softDelete(id: string): Promise<void> {

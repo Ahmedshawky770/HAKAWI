@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, index, unique, jsonb } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -17,7 +17,11 @@ export const users = pgTable(
     passwordHash: varchar('password_hash', { length: 255 }),
     name: varchar('name', { length: 100 }).notNull(),
     avatar: text('avatar'),
+    cover: text('cover'),
     bio: text('bio'),
+    website: varchar('website', { length: 255 }),
+    phone: varchar('phone', { length: 32 }),
+    socialLinks: jsonb('social_links').$type<Record<string, string> | null>(),
     accountType: varchar('account_type', { length: 20 }).notNull().default('reader'),
     adminRole: varchar('admin_role', { length: 20 }),
     isVerified: boolean('is_verified').default(false),
@@ -31,6 +35,12 @@ export const users = pgTable(
     totpSecretEncrypted: text('totp_secret_encrypted'),
     mfaEnabled: boolean('mfa_enabled').default(false).notNull(),
     mfaEnforcedAt: timestamp('mfa_enforced_at'),
+    isAgent: boolean('is_agent').default(false).notNull(),
+    agencyName: varchar('agency_name', { length: 255 }),
+    agentLicense: varchar('agent_license', { length: 255 }),
+    canRepresentOthers: boolean('can_represent_others').default(false).notNull(),
+    representedById: uuid('represented_by_id'),
+    representationNotes: text('representation_notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -45,6 +55,9 @@ export const users = pgTable(
     accountTypeIdx: index('users_account_type_idx').on(table.accountType),
     emailVerificationTokenIdx: index('users_email_verification_token_idx').on(table.emailVerificationToken),
     passwordResetTokenIdx: index('users_password_reset_token_idx').on(table.passwordResetToken),
+    mfaEnabledIdx: index('users_mfa_enabled_idx').on(table.mfaEnabled),
+    representedByIdIdx: index('users_represented_by_id_idx').on(table.representedById),
+    isAgentIdx: index('users_is_agent_idx').on(table.isAgent),
     usernameUniqueConstraint: unique('users_username_unique').on(table.username),
     emailUniqueConstraint: unique('users_email_unique').on(table.email),
   }),

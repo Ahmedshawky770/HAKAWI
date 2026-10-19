@@ -306,6 +306,16 @@ export const api = {
 
   getUserStats: (id: string) => apiRequest(userStatsSchema, `/users/${id}/stats`),
 
+  professionalRequest: () =>
+    apiRequest(
+      z.object({
+        eligible: z.boolean(),
+        reasons: z.array(z.string()),
+      }),
+      "/users/me/professional-request",
+      { method: "POST" },
+    ),
+
   updateUser: (id: string, data: { name?: string; bio?: string }) =>
     apiRequest(publicUserProfileSchema, `/users/${id}`, {
       method: "PATCH",

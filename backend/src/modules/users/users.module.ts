@@ -7,6 +7,7 @@ import { SharedCacheModule } from '../shared/cache/shared-cache.module.ts';
 import { UsersService } from './users.service.ts';
 import { UsersController } from './controllers/users.controller.ts';
 import { UsersEventHandler } from './events/users.event-handler.ts';
+import { UserUpgradedEventHandler } from './events/user-upgraded.event-handler.ts';
 import { UserVerificationService } from './services/user-verification.service.ts';
 import { UsersRepository } from './repositories/users.repository.ts';
 import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
@@ -19,6 +20,7 @@ import { USERS_REPOSITORY } from './interfaces/users-repository.interface.ts';
     UserVerificationService,
     UsersRepository,
     UsersEventHandler,
+    UserUpgradedEventHandler,
     { provide: USERS_REPOSITORY, useExisting: UsersRepository },
   ],
   exports: [UsersService, UserVerificationService, USERS_REPOSITORY],

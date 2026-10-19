@@ -34,6 +34,8 @@ export type UpdateUserInput = Partial<{
   totpSecretEncrypted: string | null;
   mfaEnabled: boolean;
   mfaEnforcedAt: Date | null;
+  accountType?: string;
+  adminRole?: string | null;
 }>;
 
 export type User = {
