@@ -612,9 +612,9 @@ async updateUser(userId: string, data: UpdateUserDto) {
 | **Password hashing** | bcrypt, cost factor 12 | ✅ Real — `backend/src/common/utils/password.util.ts:7` |
 | **JWT expiration** | 15 min access / 7 d refresh | ✅ Real — `backend/src/config/jwt.config.ts` |
 | **Session timeout** | 24 h (remember me), 1 h (default) | ⛔ **NOT IMPLEMENTED.** There is no session store, no session timeout, and no "remember me". A session is a JWT pair; the only server-side state is the refresh-token blacklist |
-| **MFA support** | TOTP (Google Authenticator) | ✅ **IMPLEMENTED as a per-user option.** TOTP (RFC 6238) + 8 backup codes via `backend/src/modules/auth/mfa.controller.ts` (`GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`); secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029_add_mfa_support.sql`). ⛔ **Not enforced on any route** — `@RequireMfa()` has no call site and `MfaGuard` is mounted nowhere, so an admin account is still protected by authorization only |
+| **MFA support** | TOTP (Google Authenticator) | ✅ **IMPLEMENTED AND ENFORCED as a per-user option.** TOTP (RFC 6238) + 8 backup codes via `backend/src/modules/auth/mfa.controller.ts` (`GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`); secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029_add_mfa_support.sql`). **Enforced on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`)** via `@RequireMfa()`. `MfaGuard` registered in `CommonModule` providers and exports (`common.module.ts:30,117`). |
 | **OAuth providers** | Google, Apple, Facebook, GitHub, TikTok | ✅ All 5 real. ⚠️ the variable names are `FACEBOOK_APP_ID`/`FACEBOOK_APP_SECRET` and `TIKTOK_CLIENT_KEY`, **not** the `FACEBOOK_CLIENT_ID` / `TIKTOK_CLIENT_ID` in `backend/.env.example` |
-| **Account lockout** | — | ⛔ **NOT IMPLEMENTED.** `auth.service.ts` keeps no attempt counter. The only brake on credential stuffing is the `auth` tier: 10/min per IP |
+| **Account lockout** | — | ✅ **IMPLEMENTED.** `AccountLockoutService` (`backend/src/modules/auth/account-lockout.service.ts`) tracks failed attempts per user and per IP with progressive delays, locks after 5 attempts (configurable), 15-min lockout (configurable), clears on success. Used in `auth.service.ts` for both login and registration flows. |
 
 ### Data Protection
 
@@ -791,8 +791,8 @@ is replaced by a status-per-claim table.
 | Security audit | ✅ **CI only** | `npm audit --omit=dev` + `npm audit`. ⛔ No external penetration test |
 | Load testing | ✅ **k6, wired in CI** | `load-tests/k6.conf.js` + the `load-test` job in `ci.yml` (`grafana/k6-action`) |
 | Password hashing | ✅ bcrypt 12 | — |
-| MFA | ✅ **Built (per-user, optional)** | `backend/src/modules/auth/mfa.controller.ts`, `mfa.service.ts`, `migrations/0029_add_mfa_support.sql`. ⛔ Unenforced: `@RequireMfa()` has no call site |
-| Account lockout | ⛔ **Not built** | No attempt counter in `auth.service.ts` |
+| MFA | ✅ **Built AND Enforced (per-user, optional)** | `backend/src/modules/auth/mfa.controller.ts`, `mfa.service.ts`, `migrations/0029_add_mfa_support.sql`. **Enforced on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`)** via `@RequireMfa()`. `MfaGuard` registered in `CommonModule` providers and exports (`common.module.ts:30,117`). |
+| Account lockout | ✅ **Built** | `AccountLockoutService` (`backend/src/modules/auth/account-lockout.service.ts`) tracks failed attempts per user/IP with progressive delays, locks after 5 attempts, 15-min lockout, clears on success. Used in `auth.service.ts` for login and registration. |
 | Session timeout / "remember me" | ⛔ **Not built** | No session store at all |
 | Permission audit trail | ⛔ **Not built** | Zero `audit` hits in `common/permissions/` and `common/guards/` |
 | Read replicas | ⚠️ **Built, unused** | `db/router.ts` + `DB_REPLICA_*`, registered in `database.module.ts`; no module injects it — 26 source files import `db/index.ts` |
@@ -852,7 +852,7 @@ A short and real list:
 | 21 cache rows with hand-written key templates and a `cache.config.ts` | ⚠️ **3 real TTLs** (600/600/300 + 3600 default), tag-based invalidation, no config file |
 | `session:{userId}` with a 7-day TTL | ⛔ **No session cache exists** |
 | WAF block key `waf:block:{ip}` with a 5-minute TTL | ⚠️ A Valkey set; temp TTL 3600s, permanent has no TTL |
-| "MFA support: TOTP (Google Authenticator)" | ✅ **Implemented** — TOTP (RFC 6238) + 8 backup codes, optional per user (`mfa.controller.ts`, migration `0029`). ⚠️ Unenforced: `@RequireMfa()` has no call site, so the claim "admin accounts have MFA" remains false |
+| "MFA support: TOTP (Google Authenticator)" | ✅ **Implemented AND Enforced** — TOTP (RFC 6238) + 8 backup codes, optional per user (`mfa.controller.ts`, migration `0029`). **Enforced on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`)** via `@RequireMfa()`. `MfaGuard` registered in `CommonModule` providers and exports (`common.module.ts:30,117`). |
 | "Session timeout: 24 hours (remember me), 1 hour (default)" | ⛔ No session store, no timeout, no remember-me |
 | "Login rate limits: 5 attempts per minute per IP" | ✅ Rate limiting exists, but at **10/min per IP** |
 | "Password reset: 3 attempts per hour per email" | ⛔ Not implemented |

@@ -266,8 +266,7 @@ POST   /api/v1/auth/mfa/challenge       verify a TOTP or backup code (step-up)
 DELETE /api/v1/auth/mfa                 disable MFA
 ```
 
-⚠️ No endpoint *requires* a second factor yet: `@RequireMfa()` has no call site and `MfaGuard` is
-mounted on no route.
+✅ **Endpoints require a second factor** via `@RequireMfa()`: moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`). `MfaGuard` is registered in `CommonModule` providers and exports (`common.module.ts:30,117`).
 
 ---
 

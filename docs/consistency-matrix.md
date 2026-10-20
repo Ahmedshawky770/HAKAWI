@@ -33,12 +33,7 @@ Reconciled against `backend/src/db/schema/*.ts` on 2026-09-30.
 | **Comments** | Causal | Replies must appear after parent comments | PostgreSQL with a self-referencing `parent_id` and `created_at` ordering |
 | **Analytics** | Eventual | Derived data; eventual consistency is sufficient | Derived at read time by aggregation queries. No analytics store exists |
 
-> ⚠️ **Payments and inventory are classified Strong by intent, not by mechanism.** There is no
-> `SELECT … FOR UPDATE`, no version column, and no optimistic-locking check anywhere in
-> `backend/src`. A concurrent double-submit of the same Paymob transaction is prevented by a
-> `uniqueIndex` on `payments.paymob_transaction_id` — that is the *only* concurrency control on the
-> money path. Two users racing to buy the last copy of a paid book can both be charged. This is a
-> real gap, not a documentation artefact.
+> ⚠️ **Payments and inventory are classified Strong by intent, not fully by mechanism.** `SELECT … FOR UPDATE` is implemented in `PaymentsRepository.reserveRefundCapacity()` and `reconcileRefundCapacity()` (`payments.repository.ts:270`) for refund capacity serialization under a row lock. **Not implemented** for the initial charge path — no row locking or version column on payment creation/completion. A concurrent double-submit of the same Paymob transaction is prevented by a `uniqueIndex` on `payments.paymob_transaction_id` — that is the *only* concurrency control on the charge path. Two users racing to buy the last copy of a paid book can both be charged. This is a real gap, not a documentation artefact.
 
 ---
 
@@ -109,7 +104,7 @@ redeploying.
 |---|---|
 | **Cache hit rate** | ✅ **Live.** `GET /api/v1/metrics/cache` returns `{ hits, misses, hitRate, … }` from `CacheMetrics` (`backend/src/common/interceptors/cache.interceptor.ts:62-72`) |
 | **Consistency-violation detection** | ⛔ **NOT BUILT.** No code compares a cache read against the database to detect divergence |
-| **Replication lag monitoring** | ⚠️ **Built but unused** — `db/router.ts` implements the split (`select` → replica round-robin with primary fallback, writes → primary) and is registered in `database.module.ts`; no module injects the router tokens, and 26 files import the plain `db` from `db/index.ts` |
+| **Replication lag monitoring** | ✅ **Built and active** — `db/router.ts` implements the split (`select` → replica round-robin with primary fallback, writes → primary) and is registered in `database.module.ts`. `db/index.ts` re-exports the routed database, so all imports of `db` from `db/index.ts` (5 files: badges, moderation×2, upload, users) automatically get read/write splitting. Explicit `DATABASE_PRIMARY` and `DATABASE_REPLICA` tokens are available for modules needing direct control. |
 | **Payment double-charge detection** | ⛔ **NOT BUILT.** The `uniqueIndex` on `paymob_transaction_id` prevents duplicate *rows*, not duplicate *charges* |
 | **Event DLQ depth** | ⚠️ A DLQ exists (`dlq.service.ts`) but there is no metric or alert on its size |
 

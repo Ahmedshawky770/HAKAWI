@@ -523,14 +523,9 @@ Shipped early (during Phases 1–2), not in Weeks 15–16.
 - [x] Timeout configuration — `TimeoutService`
 - [x] Fallback strategies — `FallbackService`
 - [x] **Unit tests** for all of the above
-- [ ] ⚠️ Read replica — **built but unwired.** `backend/src/db/router.ts` implements the split
-      (`select()` → replica round-robin with primary fallback, writes/transactions → primary,
-      `DB_REPLICA_*`) and is registered in `database.module.ts`, but no module injects
-      `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA` — 26 files import the plain `db` from
-      `db/index.ts`, so no query is split today
-- [ ] ⛔ Read/write splitting — **code exists, not in effect** — the router above is not injected
-      into any module
-- [ ] ⛔ Replication lag monitoring — **NOT BUILT**
+- [x] ✅ **Read replica — built and ACTIVE.** `backend/src/db/router.ts` implements the split (`select()` → replica round-robin with primary fallback, writes/transactions → primary, `DB_REPLICA_*`) and is registered in `database.module.ts`. `db/index.ts` re-exports the routed database, so all imports of `db` from `db/index.ts` (5 files: badges, moderation×2, upload, users) automatically get read/write splitting. Explicit `DATABASE_PRIMARY` and `DATABASE_REPLICA` tokens available for modules needing direct control.
+- [x] ✅ **Read/write splitting — code exists AND in effect** — the router is used via `db/index.ts` re-export.
+- [ ] ⛔ Replication lag monitoring — NOT BUILT
 
 ### Verification Steps
 ```bash
@@ -540,7 +535,7 @@ npm test --workspace=backend -- \
 
 ### Exit Conditions
 - ✅ Circuit breakers, retry, timeout, fallback — met
-- ⛔ Read replicas — not met, and not scheduled anywhere in the repository
+- ✅ Read replicas — met, active via routed `db` import
 
 ---
 

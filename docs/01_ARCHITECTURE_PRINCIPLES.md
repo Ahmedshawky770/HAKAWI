@@ -756,10 +756,7 @@ enforcement the "Enforcement" section promises.
 
 - ✅ The classification exists and is documented per data type
 - ✅ Notifications, story → Sanity sync, and analytics reads are genuinely eventual
-- ⛔ **"Strong consistency for payments, auth, inventory" is not implemented as a mechanism.** There
-  is no `SELECT … FOR UPDATE`, no version column, and no optimistic-locking check anywhere in
-  `backend/src`. The only concurrency control on the money path is a `uniqueIndex` on
-  `payments.paymob_transaction_id` — which prevents duplicate *rows*, not duplicate *charges*
+- ⛔ **"Strong consistency for payments, auth, inventory" is not fully implemented as a mechanism.** `SELECT … FOR UPDATE` is implemented in `PaymentsRepository.reserveRefundCapacity()` and `reconcileRefundCapacity()` (`payments.repository.ts:270`) for refund capacity serialization under a row lock. **Not implemented** for the initial charge path — no row locking or version column on payment creation/completion. The only concurrency control on the charge path is a `uniqueIndex` on `payments.paymob_transaction_id` — which prevents duplicate *rows*, not duplicate *charges*. Auth uses rate limiting (IP-based), not row locking.
 - ⛔ **Inventory does not exist** as an entity. There is no stock count to be consistent about
 - ⚠️ Availability-over-consistency is a real consequence: the throttler storage **fails open** and
   the cache fails open, so an overload or an outage degrades protection rather than refusing
@@ -800,10 +797,9 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
 - ✅ Valkey-backed IP blocklist with temp/permanent blocks and TTL auto-unblock
 - ✅ `X-RateLimit-*` and `X-Waf-*` response headers
 - ✅ The catastrophic rule that 403'd ordinary Arabic and English prose is **gone**
-- ⛔ **Admin operations endpoints do not exist.** `GET /admin/waf/blocked-ips`,
-  `POST /admin/waf/unblock-ip`, `POST /admin/waf/clear-counters` and `POST /admin/waf/clear-blocks`
-  are all absent. An operator blocked by the WAF has no supported way out except direct Valkey
-  manipulation
+- ✅ **Admin operations endpoints exist.** `GET /admin/waf/blocked-ips`,
+  `POST /admin/waf/block-ip`, `POST /admin/waf/unblock-ip`, `POST /admin/waf/clear-counters` and `POST /admin/waf/clear-blocks`
+  are implemented in `backend/src/modules/admin/admin-waf.controller.ts` behind `JwtAuthGuard` + `RolesGuard` + `@RequireAdminRole(SUPER_ADMIN)`.
 - ⛔ **No WAF metrics endpoint.** No WAF counters and no WAF dashboard — the app's three
   observability routes are the public Prometheus scrape endpoint `GET /api/v1/metrics`
   (`backend/src/common/observability/prometheus.controller.ts`) plus the two super-admin JSON routes
@@ -817,7 +813,7 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
   is recorded in the comment block at the top of `monitoring/prometheus/rules/hakawi-alerts.yml`
   instead, where it costs nothing and can be checked. ⛔ Still no cluster applies any rule
 - ⛔ **No XML injection (XXE) rule**
-- ⛔ **No `Content-Security-Policy`** is emitted
+- ✅ **`Content-Security-Policy` is emitted** — `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` via `SECURITY_HEADERS` in `backend/src/main.ts:26`.
 
 **Layer 3 — Input validation: ⚠️ partial**
 - ✅ A global `ValidationPipe` with `whitelist` and `forbidNonWhitelisted`
@@ -925,11 +921,11 @@ capability inventory.
 
 | Feature | Which principle assumes it | Reality |
 |---|---|---|
-| **MFA / TOTP + backup codes** | #15 (proactive defense), #9 (SSOT for auth state) | ✅ **Built for enrolment, not enforcement.** TOTP (RFC 6238, `speakeasy`) + 8 one-time backup codes, optional per user: `GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa` (`mfa.controller.ts`). Secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029`). ⛔ Still unenforced: `@RequireMfa()` has no call site and `MfaGuard` is in no module's `providers`, so an admin account is still protected by authorization only |
-| **Account lockout after failed logins** | #15 | ⛔ **Not built.** `auth.service.ts` keeps no attempt counter. The only brake is the `auth` rate-limit tier: 10/min per IP — a brake on the *IP*, not the account |
+| **MFA / TOTP + backup codes** | #15 (proactive defense), #9 (SSOT for auth state) | ✅ **Built for enrolment AND enforcement.** TOTP (RFC 6238, `speakeasy`) + 8 one-time backup codes, optional per user: `GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa` (`mfa.controller.ts`). Secret AES-256-GCM encrypted into `users.totp_secret_encrypted` (migration `0029`). `@RequireMfa()` decorator is applied on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`). `MfaGuard` is registered in `CommonModule` providers and exports (`common.module.ts:30,117`). |
+| **Account lockout after failed logins** | #15 | ✅ **Built.** `AccountLockoutService` (`backend/src/modules/auth/account-lockout.service.ts`) tracks failed attempts per user and per IP with progressive delays, locks after 5 attempts (configurable), 15-min lockout (configurable), and clears on success. Used in `auth.service.ts` for both login and registration flows. |
 | **Session store** | #11 (Valkey for sessions), #16 | ⛔ **Not built.** No session table, no session key in Valkey, no device/IP capture, no concurrent-session cap. `session:{userId}` in the cache table is fictional. A session is a signed JWT pair; the only server-side token state is the refresh-token blacklist |
 | **Permission-decision audit trail** | #9 (SSOT), #15 | ⛔ **Not built.** Zero `audit` hits in `backend/src/common/permissions/` and `backend/src/common/guards/`. Moderation *actions* are recorded, but not authorization decisions |
-| **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ⚠️ **Router built, unused.** `db/router.ts` splits reads/writes and reads `DB_REPLICA_*`; registered in `database.module.ts`. ⛔ No module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA` and 26 files import the plain `db` from `db/index.ts`, so no query is split today. See `system-architecture/infrastructure/read-replicas.md` |
+| **Read replicas / read-write splitting** | #12 (reduce synchronization), #14 (AP default) | ✅ **Router built and active.** `db/router.ts` splits reads/writes and reads `DB_REPLICA_*`; registered in `database.module.ts`. `db/index.ts` re-exports the routed database, so all imports of `db` from `db/index.ts` (5 files: badges, moderation×2, upload, users) automatically get read/write splitting. Explicit `DATABASE_PRIMARY` and `DATABASE_REPLICA` tokens are available for modules needing direct control. See `system-architecture/infrastructure/read-replicas.md` |
 | **Backup automation** | #6 (minimize migrations: "backup before migrations"), #16 (disaster recovery) | 🔄 **Automated via GitHub Actions.** `.github/workflows/backup.yml` runs `pg_dump` daily at 2 AM UTC and uploads as an artifact. ⛔ No PITR or restore drill |
 | **Resource quotas per user/tenant** | #15 | ⛔ **Not built.** No tiers, no balances, no counters that deduct. The throttler limits a 60-second window; it is a rate limit, not a quota |
 | **Write-through caching + cache warming** | #11 | ⛔ **Not built.** The write path invalidates. `@CacheWarmTags` exists with no caller |
@@ -952,15 +948,14 @@ capability inventory.
 > 5 seconds. The same reduction was applied to
 > `monitoring/grafana/dashboards/hakawi-overview.json`, whose panels on uninstrumented metrics were
 > deleted rather than left as empty graphs.
-| **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⛔ **Not built.** No `SELECT … FOR UPDATE`, no version column. The only money-path concurrency control is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges* |
+| **Pessimistic / optimistic locking** | #14 (strong consistency for payments) | ⚠️ **Partial.** `SELECT … FOR UPDATE` is implemented in `PaymentsRepository.reserveRefundCapacity()` and `reconcileRefundCapacity()` (`payments.repository.ts:270`) for refund capacity serialization under a row lock. **Not implemented** for the initial charge path — no row locking or version column on payment creation/completion. The only money-path concurrency control for charges is a `uniqueIndex` on `payments.paymob_transaction_id`, which prevents duplicate *rows*, not duplicate *charges*. |
 | **User documentation** | #4, #5 | ⛔ **Not built.** No user-facing docs exist outside `docs/` |
 | ~~**CHANGELOG**~~ | #4 (explicitly listed as a documentation type) | ✅ **Built — this entry is retracted.** `CHANGELOG.md` exists at the repository root (commit `febf264`), following Keep a Changelog 1.1.0 with an `[Unreleased]` section. The previous version of this table said "⛔ Not built. No CHANGELOG file in the repository", which was false |
 | **Email delivery** | #15, #9 | ✅ **Built.** `SmtpEmailTransporter` (nodemailer; SendGrid/Mailgun/SES) is registered and exported by `notifications.module.ts`; `EMAIL_*` config feeds it |
 
-**10 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true,
-**Email delivery is now built**, and read replicas and monitoring/alerting exist in the repo but are
-unwired or undeployed; MFA is built but still unenforced (`@RequireMfa()` has no call site), and
-backup automation runs in CI.
+**7 of the 16 remain unbuilt** — the CHANGELOG row is struck through because it is no longer true,
+**Email delivery is now built**, **Account lockout is now built**, **MFA enforcement is now built**, **Admin WAF endpoints are now built**, **CSP is now emitted**, **Read replicas are now active**, and **Pessimistic locking for refunds is now built**; read replicas and monitoring/alerting exist in the repo but are
+undeployed; backup automation runs in CI.
 All are tracked in `docs/roadmap/phases/implementation-roadmap.md` → *Open Items*.
 
 And one defect is materially worse than anything in that table:

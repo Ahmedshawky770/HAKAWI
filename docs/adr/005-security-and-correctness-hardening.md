@@ -513,6 +513,4 @@ tests that had never executed were failing once the suite could run.
 
 That gap is **closed for MFA**: `MfaController`/`MfaService` ship TOTP (RFC 6238) + 8 backup codes
 under `/api/v1/auth/mfa`, backed by migration `0029_add_mfa_support.sql`. Account lockout is also
-closed (`AccountLockoutService`). Enforcement is still open — `@RequireMfa()` has no call site and
-`MfaGuard` is mounted on no route — which is recorded in
-`docs/security-architecture/auth/auth-overview.md`.
+closed (`AccountLockoutService`). **MFA enforcement is now implemented** — `@RequireMfa()` is applied on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`). `MfaGuard` is registered in `CommonModule` providers and exports (`common.module.ts:30,117`).

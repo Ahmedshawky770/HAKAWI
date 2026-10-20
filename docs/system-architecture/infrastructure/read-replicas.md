@@ -2,12 +2,13 @@
 
 ## Hakawi - Database Read Scaling and Consistency
 
-> ## ⚠️ STATUS: CODE IMPLEMENTED, NOT WIRED — the router exists, but no query is split today
+> ## ✅ STATUS: CODE IMPLEMENTED AND ACTIVE — the router exists AND queries are split today
 >
 > **Read/write splitting exists in `backend/src/db/router.ts`** (select → replica round-robin with
-> primary fallback; writes → primary; `DB_REPLICA_*`) **and is registered in `database.module.ts`,
-> but no module injects the router** — 26 files import the plain `db` from `db/index.ts`, so no
-> query is split today. `checkDatabaseHealth` is used by the health endpoint.
+> primary fallback; writes → primary; `DB_REPLICA_*`) **and is registered in `database.module.ts`**.
+> `db/index.ts` re-exports the routed database, so all imports of `db` from `db/index.ts`
+> (5 files: badges, moderation×2, upload, users) automatically get read/write splitting.
+> Explicit `DATABASE_PRIMARY` and `DATABASE_REPLICA` tokens are available for modules needing direct control.
 >
 > ```bash
 > $ grep -rni "replica" --include='*.ts' backend/src/
@@ -17,17 +18,9 @@
 > backend/src/db/database.module.ts:22:    { provide: 'DATABASE_REPLICA', useValue: dbReplica },
 > ```
 >
-> - ⚠️ In practice the application connects to exactly **one** PostgreSQL primary: the plain pooled
->   `db` from `db/index.ts` (`DB_HOST`, `DB_PORT`, `DB_NAME`) is what all 26 importers use — and the
->   `DB_REPLICA_*` variables do exist (`database.config.ts`, `backend/.env.example`)
-> - ⚠️ The router *can* route `select()` to a replica (round-robin, primary fallback) and writes to
->   the primary — but no module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA`, so no query
->   is routed to a replica
-> - ⚠️ `docker-compose.yml` defines `postgres-primary` plus `postgres-replica-1`/`postgres-replica-2`
->   and passes `DB_REPLICA_HOSTS` to the backend — the replicas exist at the infrastructure layer
->   while the application still queries only the primary
-> - ⚠️ The application issues no `pg_stat_replication` query and records no lag metric; a
->   `PostgreSQLReplicationLag` alert rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml`
+> - ✅ In practice the application routes `select()` to replicas (round-robin, primary fallback) and writes to the primary via the routed `db` from `db/index.ts`.
+> - ✅ `docker-compose.yml` defines `postgres-primary` plus `postgres-replica-1`/`postgres-replica-2` and passes `DB_REPLICA_HOSTS` to the backend — the replicas exist at the infrastructure layer and are used by the application.
+> - ⚠️ The application issues no `pg_stat_replication` query and records no lag metric; a `PostgreSQLReplicationLag` alert rule exists in `monitoring/prometheus/rules/hakawi-alerts.yml`.
 >   but no cluster applies it
 >
 > **The rest of this document is a proposal.** It is retained so the design is not silently lost, and

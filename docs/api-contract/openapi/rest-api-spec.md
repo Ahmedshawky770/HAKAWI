@@ -83,8 +83,7 @@ All paths are relative to `/api/v1`.
 
 Optional per user: TOTP (RFC 6238) + 8 backup codes; the secret is AES-256-GCM encrypted into
 `users.totp_secret_encrypted` (migration `0029_add_mfa_support.sql`). There is no bare
-`POST /auth/mfa`. ⚠️ No route *enforces* MFA: `@RequireMfa()` has no call site and `MfaGuard`
-appears in no module's `providers`.
+`POST /auth/mfa`. ✅ **MFA is enforced** on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`) via `@RequireMfa()`. `MfaGuard` is registered in `CommonModule` providers and exports (`common.module.ts:30,117`).
 
 ### Users — 11 (`users.controller.ts`)
 `GET :id/stats` :38 · `GET me` :43 · `PATCH me` :48 · `GET me/verification` :54 ·

@@ -147,10 +147,9 @@ Routes are shown **without** the `/api/v1` prefix, which `app.setGlobalPrefix('a
   `POST /auth/mfa/challenge` (:83) · `POST /auth/mfa/backup-codes` (:95) · `DELETE /auth/mfa` (:105) —
   all JWT-guarded, all on the `auth` throttle tier
 
-✅ **MFA exists** (`mfa.controller.ts`, `mfa.service.ts`, migration `0029_add_mfa_support.sql`):
+✅ **MFA exists AND is enforced** (`mfa.controller.ts`, `mfa.service.ts`, migration `0029_add_mfa_support.sql`):
 optional per user, TOTP (RFC 6238) + 8 backup codes, secret AES-256-GCM encrypted into
-`users.totp_secret_encrypted`. ⚠️ No route *enforces* it — `@RequireMfa()` has no call site and
-`MfaGuard` is in no module's `providers`.
+`users.totp_secret_encrypted`. `@RequireMfa()` is applied on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`). `MfaGuard` is registered in `CommonModule` providers and exports (`common.module.ts:30,117`).
 
 **Dependencies:** the Users repository interface (read/write for user lookup and creation); Valkey
 for the refresh-token blacklist and the password-reset TTL; `CircuitBreakerService` for the OAuth

@@ -841,16 +841,10 @@ Everything the roadmap claims and the repository does not contain:
      the `EmailTransporter` behind `notifications-email.service.ts`. ⛔ It stays inert until
      `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD` are set, and no delivery has been
      exercised against a live provider
-12. **MFA enforcement** — enrolment and verification are shipped (`GET /api/v1/auth/mfa/status`,
-    `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`;
-    `backend/src/modules/auth/mfa.service.ts`, migration `0029_add_mfa_support.sql`). Still open:
-    `@RequireMfa()` has no call site and `MfaGuard` is mounted on no route, so no endpoint requires a
-    second factor — see `docs/security-architecture/auth/auth-overview.md`
-13. **Account lockout** after failed logins — see the same document
+12. **MFA enforcement** — ✅ **DONE**. Enrolment and verification shipped (`GET /api/v1/auth/mfa/status`, `POST /setup`, `/verify`, `/challenge`, `/backup-codes`, `DELETE /auth/mfa`; `backend/src/modules/auth/mfa.service.ts`, migration `0029_add_mfa_support.sql`). **Enforcement now implemented** — `@RequireMfa()` applied on moderation routes (`moderation.controller.ts`), payments refund routes (`payments.controller.ts`), and user management routes (`users.controller.ts`). `MfaGuard` registered in `CommonModule` providers and exports (`common.module.ts:30,117`).
+13. **Account lockout** after failed logins — ✅ **DONE**. `AccountLockoutService` (`backend/src/modules/auth/account-lockout.service.ts`) tracks failed attempts per user and per IP with progressive delays, locks after 5 attempts (configurable), 15-min lockout (configurable), clears on success. Used in `auth.service.ts` for both login and registration flows.
 14. **Permission-decision audit trail** — see `docs/security-architecture/permissions/permissions-overview.md`
-15. **WAF admin operations endpoints** — ✅ they exist: `backend/src/modules/admin/admin-waf.controller.ts`
-     (`@Controller('admin/waf')`, registered in `admin.module.ts`) serves `GET blocked-ips`,
-     `POST block-ip`, `POST unblock-ip`, `POST clear-counters` and `POST clear-blocks`
+15. **WAF admin operations endpoints** — ✅ **DONE**: `backend/src/modules/admin/admin-waf.controller.ts` (`@Controller('admin/waf')`, registered in `admin.module.ts`) serves `GET blocked-ips`, `POST block-ip`, `POST unblock-ip`, `POST clear-counters` and `POST clear-blocks`
 16. **Machine-readable error codes** and custom exception classes — see `docs/api-contract/error-handling.md`
 17. **Frontend coverage** at the 80% target — ⚠️ currently **S 68.39 / B 68.75 / F 70.97 / L 68.17**,
       with the CI gate set to 38/33/33/38, so it certifies ~68% instead of holding the line at 80%
