@@ -14,6 +14,7 @@ import {
 } from './schema/social.schema.ts';
 import { uploads } from './schema/upload.schema.ts';
 import { reports, moderationActions, userRestrictions } from './schema/moderation.schema.ts';
+import { adminRoleAssignments } from './schema/admin-role-assignments.schema.ts';
 
 @Module({
   providers: [
@@ -38,6 +39,7 @@ import { reports, moderationActions, userRestrictions } from './schema/moderatio
     { provide: 'REPORTS_SCHEMA', useValue: reports },
     { provide: 'MODERATION_ACTIONS_SCHEMA', useValue: moderationActions },
     { provide: 'USER_RESTRICTIONS_SCHEMA', useValue: userRestrictions },
+    { provide: 'ADMIN_ROLE_ASSIGNMENTS_SCHEMA', useValue: adminRoleAssignments },
   ],
   exports: [
     'DATABASE',
@@ -61,6 +63,7 @@ import { reports, moderationActions, userRestrictions } from './schema/moderatio
     'REPORTS_SCHEMA',
     'MODERATION_ACTIONS_SCHEMA',
     'USER_RESTRICTIONS_SCHEMA',
+    'ADMIN_ROLE_ASSIGNMENTS_SCHEMA',
   ],
 })
 export class DatabaseModule {}

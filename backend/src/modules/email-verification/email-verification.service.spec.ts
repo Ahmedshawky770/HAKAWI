@@ -10,6 +10,7 @@ import { EmailVerificationService } from './email-verification.service.ts';
 
 type MockUsersRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<User | null>>>;
+  findByIds: ReturnType<typeof vi.fn<(ids: readonly string[]) => Promise<User[]>>>;
   findByEmail: ReturnType<typeof vi.fn<(email: string) => Promise<User | null>>>;
   findByUsername: ReturnType<typeof vi.fn<(username: string) => Promise<User | null>>>;
   findByGoogleId: ReturnType<typeof vi.fn<(googleId: string) => Promise<User | null>>>;
@@ -93,6 +94,7 @@ describe('EmailVerificationService', () => {
   beforeEach(() => {
     usersRepository = {
       findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByIds: vi.fn<(ids: readonly string[]) => Promise<User[]>>(),
       findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
       findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
       create: vi.fn<(data: CreateUserInput) => Promise<User>>(),

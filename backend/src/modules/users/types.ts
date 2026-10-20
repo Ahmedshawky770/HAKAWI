@@ -57,6 +57,15 @@ export type UpdateUserInput = Partial<{
   onboardingCompleted: boolean;
   accessBlocked: boolean;
   lastLoginAt: Date;
+  emailVerified: boolean;
+  emailVerificationToken: string | null;
+  passwordResetToken: string | null;
+  totpSecretEncrypted: string | null;
+  mfaEnabled: boolean;
+  mfaEnforcedAt: Date | null;
+  accountType: string;
+  adminRole: string | null;
+  adminRoleExpiresAt: Date | null;
 }>;
 
 export type UserStats = {

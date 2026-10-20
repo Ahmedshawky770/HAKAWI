@@ -12,6 +12,7 @@ import { UsersEventHandler } from './users.event-handler.ts';
 
 type MockUsersRepository = {
   findById: Mock<(id: string) => Promise<User | null>>;
+  findByIds: Mock<(ids: readonly string[]) => Promise<User[]>>;
   findByEmail: Mock<(email: string) => Promise<User | null>>;
   findByUsername: Mock<(username: string) => Promise<User | null>>;
   findByGoogleId: Mock<(googleId: string) => Promise<User | null>>;
@@ -63,6 +64,7 @@ describe('UsersEventHandler', () => {
   beforeEach(() => {
     usersRepository = {
       findById: vi.fn(),
+      findByIds: vi.fn(),
       findByEmail: vi.fn(),
       findByUsername: vi.fn(),
       findByGoogleId: vi.fn(),

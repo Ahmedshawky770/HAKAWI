@@ -77,6 +77,7 @@ class FakeTaggedCache {
 
 type MockUsersRepository = {
   findById: Mock<(id: string) => Promise<User | null>>;
+  findByIds: Mock<(ids: readonly string[]) => Promise<User[]>>;
   findByEmail: Mock<(email: string) => Promise<User | null>>;
   findByUsername: Mock<(username: string) => Promise<User | null>>;
   findByGoogleId: Mock<(googleId: string) => Promise<User | null>>;
@@ -169,6 +170,7 @@ describe('UsersService', () => {
   beforeEach(() => {
     usersRepository = {
       findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByIds: vi.fn<(ids: readonly string[]) => Promise<User[]>>(),
       findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
       findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
       findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),
@@ -918,6 +920,7 @@ describe('upgradeAccount', () => {
   beforeEach(() => {
     usersRepository = {
       findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByIds: vi.fn<(ids: readonly string[]) => Promise<User[]>>(),
       findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
       findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
       findByGoogleId: vi.fn<(googleId: string) => Promise<User | null>>(),

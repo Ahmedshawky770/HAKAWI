@@ -63,6 +63,7 @@ type MockNotificationsRepository = {
 
 type MockUsersRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<User | null>>>;
+  findByIds: ReturnType<typeof vi.fn<(ids: readonly string[]) => Promise<User[]>>>;
   findByEmail: ReturnType<typeof vi.fn<(email: string) => Promise<User | null>>>;
   findByUsername: ReturnType<typeof vi.fn<(username: string) => Promise<User | null>>>;
   create: ReturnType<typeof vi.fn<(data: CreateUserInput) => Promise<User>>>;
@@ -159,6 +160,7 @@ describe('NotificationsEmailService', () => {
 
     usersRepository = {
       findById: vi.fn<(id: string) => Promise<User | null>>(),
+      findByIds: vi.fn<(ids: readonly string[]) => Promise<User[]>>(),
       findByEmail: vi.fn<(email: string) => Promise<User | null>>(),
       findByUsername: vi.fn<(username: string) => Promise<User | null>>(),
       create: vi.fn<(data: CreateUserInput) => Promise<User>>(),

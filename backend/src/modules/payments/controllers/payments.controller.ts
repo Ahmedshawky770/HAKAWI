@@ -18,9 +18,14 @@ import {
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { RequireMfa } from '../../../common/decorators/roles.decorator.ts';
+import { RequireAdminRole } from '../../../common/decorators/roles.decorator.ts';
+import { RequirePermissions } from '../../../common/decorators/roles.decorator.ts';
+import { Secured } from '../../../common/decorators/secured.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
 import { AdminRole } from '../../../common/constants/roles.ts';
+import { Permission } from '../../../common/permissions/permissions.ts';
+import { AccountType } from '../../../common/constants/roles.ts';
 import { PaymentsService } from '../payments.service.ts';
 import { CreatePaymentDto, UpdatePaymentStatusDto, CreateRefundDto, PaymentsQueryDto } from '../dto/payments.dto.ts';
 
@@ -28,7 +33,8 @@ import { CreatePaymentDto, UpdatePaymentStatusDto, CreateRefundDto, PaymentsQuer
 export class PaymentsController {
   constructor(@Inject(PaymentsService) private readonly paymentsService: PaymentsService) {}
 
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @Secured()
+  @UseGuards(RestrictionGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createPayment(@Body() dto: CreatePaymentDto, @Request() req: Request & { user: { sub: string } }) {
@@ -44,51 +50,43 @@ export class PaymentsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured()
   @Get(':id')
   async findById(@Param('id') id: string, @Request() req: { user: { sub: string; adminRole?: string } }) {
     const payment = await this.paymentsService.findById(id);
 
     const isOwner = payment.userId === req.user.sub;
-    const isAdmin =
-      req.user.adminRole === AdminRole.SUPER_ADMIN ||
-      req.user.adminRole === AdminRole.MODERATOR ||
-      req.user.adminRole === AdminRole.FINANCE;
+    const isFinanceAdmin = req.user.adminRole === AdminRole.FINANCIAL_OFFICER || req.user.adminRole === AdminRole.SUPER_ADMIN;
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isFinanceAdmin) {
       throw new ForbiddenException('You can only view your own payments');
     }
 
     return payment;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured()
   @Get()
   async findAll(@Query() query: PaymentsQueryDto, @Request() req: Request & { user: { sub: string } }) {
     return this.paymentsService.findAll({ ...query, userId: req.user.sub });
   }
 
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.FINANCIAL_OFFICER, AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.FINANCIAL_MANAGE_ALL)
   @RequireMfa()
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePaymentStatusDto,
-    @Request() req: { user: { sub: string; adminRole?: string } },
+    @Request() req: { user: { sub: string } },
   ) {
-    const isAdmin =
-      req.user.adminRole === AdminRole.SUPER_ADMIN ||
-      req.user.adminRole === AdminRole.MODERATOR ||
-      req.user.adminRole === AdminRole.FINANCE;
-
-    if (!isAdmin) {
-      throw new ForbiddenException('Only admins can update payment status');
-    }
-
     return this.paymentsService.updateStatus(id, dto.status);
   }
 
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.FINANCIAL_OFFICER, AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.FINANCIAL_MANAGE_ALL)
   @RequireMfa()
   @Post(':id/refund')
   @HttpCode(HttpStatus.CREATED)
@@ -100,21 +98,27 @@ export class PaymentsController {
     const payment = await this.paymentsService.findById(id);
 
     const isOwner = payment.userId === req.user.sub;
-    const isAdmin =
-      req.user.adminRole === AdminRole.SUPER_ADMIN ||
-      req.user.adminRole === AdminRole.MODERATOR ||
-      req.user.adminRole === AdminRole.FINANCE;
+    const isFinanceAdmin = req.user.adminRole === AdminRole.FINANCIAL_OFFICER || req.user.adminRole === AdminRole.SUPER_ADMIN;
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isFinanceAdmin) {
       throw new ForbiddenException('You can only request refunds for your own payments');
     }
 
     return this.paymentsService.createRefund(id, dto.amount, dto.reason);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Secured()
   @Get(':id/refunds')
-  async getRefunds(@Param('id') id: string) {
+  async getRefunds(@Param('id') id: string, @Request() req: { user: { sub: string; adminRole?: string } }) {
+    const payment = await this.paymentsService.findById(id);
+
+    const isOwner = payment.userId === req.user.sub;
+    const isFinanceAdmin = req.user.adminRole === AdminRole.FINANCIAL_OFFICER || req.user.adminRole === AdminRole.SUPER_ADMIN;
+
+    if (!isOwner && !isFinanceAdmin) {
+      throw new ForbiddenException('You can only view refunds for your own payments');
+    }
+
     return this.paymentsService.getRefunds(id);
   }
 

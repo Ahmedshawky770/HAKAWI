@@ -527,4 +527,12 @@ export class UsersService {
     await this.cache.invalidateKey(USER_CACHE_NAMESPACE, id, [USERS_CACHE_TAG]);
     await this.cache.invalidateKey(USER_PUBLIC_CACHE_NAMESPACE, id, [USERS_CACHE_TAG]);
   }
+
+  async findByIds(ids: readonly string[]): Promise<ClientUser[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const users = await this.usersRepository.findByIds(ids);
+    return users.map(toClientUser);
+  }
 }

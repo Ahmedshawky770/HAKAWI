@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 import { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../interfaces/users-repository.interface.ts';
 import { users } from '../../../db/schema/users.schema.ts';
@@ -22,6 +22,14 @@ export class UsersRepository implements IUsersRepository {
       }
       throw error;
     }
+  }
+
+  async findByIds(ids: readonly string[]): Promise<User[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    this.logger.debug(`Finding users by ids: ${ids.join(', ')}`);
+    return db.select().from(users).where(inArray(users.id, ids));
   }
 
   async findByEmail(email: string): Promise<User | null> {

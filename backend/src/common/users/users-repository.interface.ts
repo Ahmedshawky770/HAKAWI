@@ -71,6 +71,7 @@ export type User = {
 
 export interface IUsersRepository {
   findById(id: string): Promise<User | null>;
+  findByIds(ids: readonly string[]): Promise<User[]>;
   findByEmail(email: string): Promise<User | null>;
   findByUsername(username: string): Promise<User | null>;
   findByGoogleId(googleId: string): Promise<User | null>;
