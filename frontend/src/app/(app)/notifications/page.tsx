@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
+import { useMutation } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
@@ -11,102 +12,84 @@ import {
   NotificationListSkeleton,
   NotificationRow,
 } from "@/components/social/NotificationRow";
-import type { Notification } from "@/types/api";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { classifyError } from "@/lib/errors";
+import {
+  isFailedLoad,
+  useInvalidation,
+  useNotifications,
+  useUnreadNotificationCount,
+} from "@/lib/queries";
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState<number | null>(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [markingId, setMarkingId] = useState<string | null>(null);
-  const [markError, setMarkError] = useState("");
+  const strings = useStrings();
+  const invalidate = useInvalidation();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.getNotifications({ page: 1, limit: 20 });
-      setNotifications(data.notifications);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذّر تحميل الإشعارات");
-      setLoading(false);
-      return;
-    }
+  const listQuery = useNotifications({ page: 1, limit: 20 });
+  const unreadQuery = useUnreadNotificationCount();
 
-    // The unread counter is a convenience, not the page: it lives on a separate
-    // endpoint that can fail on its own (an older backend, a gateway hiccup), so
-    // its failure is recorded as "unknown" and never as zero. Claiming zero would
-    // hide unread notifications behind a counter that says everything is fine.
-    try {
-      const unread = await api.getUnreadNotificationCount();
-      setUnreadCount(unread.count);
-    } catch {
-      setUnreadCount(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const markMutation = useMutation({
+    mutationFn: (id: string) => api.markNotificationAsRead(id),
+    onSuccess: async () => {
+      await invalidate.notifications();
+    },
+  });
 
-  useEffect(() => {
-    // Fire-and-forget; the retry below calls this same `load`.
-    async function initialLoad() {
-      await load();
-    }
-    void initialLoad();
-  }, [load]);
-
-  const handleMarkAsRead = async (id: string) => {
-    setMarkingId(id);
-    setMarkError("");
-    try {
-      await api.markNotificationAsRead(id);
-      setNotifications(notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-      setUnreadCount((current) => (current === null ? null : Math.max(0, current - 1)));
-    } catch (err) {
-      setMarkError(err instanceof Error ? err.message : "تعذّر تعليم الإشعار كمقروء");
-    } finally {
-      setMarkingId(null);
-    }
-  };
-
-  if (loading) {
+  if (listQuery.isLoading) {
     return (
       <>
-        <PageHeader title="الإشعارات" />
+        <PageHeader title={strings.social.notificationsTitle} />
         <p role="status" className="sr-only">
-          جارٍ التحميل…
+          {strings.common.loading}
         </p>
         <NotificationListSkeleton />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={() => void load()} title="تعذّر تحميل الإشعارات" />;
+  if (isFailedLoad(listQuery)) {
+    return (
+      <ErrorMessage
+        error={strings.errors[classifyError(listQuery.error)]}
+        title={strings.social.notificationsLoadFailed}
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
   }
+
+  const notifications = listQuery.data?.notifications ?? [];
+  // The counter is a convenience, not the page: it lives on a separate endpoint
+  // that can fail on its own (an older backend, a gateway hiccup), so its
+  // failure is reported as "unknown" and never as zero. Claiming zero would
+  // hide unread notifications behind a counter that says everything is fine.
+  const unreadCount = unreadQuery.isError ? null : (unreadQuery.data?.count ?? 0);
 
   return (
     <div className="animate-rise">
       <PageHeader
-        title="الإشعارات"
+        title={strings.social.notificationsTitle}
         action={
           unreadCount === null ? (
             <span className="flex items-center gap-1.5 text-sm text-ink-muted">
               <Icon name="warning" size="sm" />
-              تعذّر جلب العدد
+              {strings.social.notificationsUnreadCountFailed}
             </span>
           ) : unreadCount > 0 ? (
             <span className="flex items-center gap-1.5 text-sm text-ink-muted">
               <Icon name="bell" size="sm" />
               <span className="hk-numeric">{unreadCount}</span>
-              <span>إشعار غير مقروء</span>
+              <span>{strings.social.notificationsUnreadLabel}</span>
             </span>
           ) : undefined
         }
       />
 
-      {markError && (
+      {markMutation.isError && (
         <div className="mb-4">
-          <ErrorMessage error={markError} title="تعذّر تعليم الإشعار كمقروء" />
+          <ErrorMessage
+            error={strings.errors[classifyError(markMutation.error)]}
+            title={strings.social.notificationMarkAsReadFailed}
+          />
         </div>
       )}
 
@@ -118,8 +101,8 @@ export default function NotificationsPage() {
             <li key={notification.id}>
               <NotificationRow
                 notification={notification}
-                onMarkAsRead={(id) => void handleMarkAsRead(id)}
-                isPending={markingId === notification.id}
+                onMarkAsRead={(id) => markMutation.mutate(id)}
+                isPending={markMutation.isPending && markMutation.variables === notification.id}
               />
             </li>
           ))}

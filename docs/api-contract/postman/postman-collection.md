@@ -175,7 +175,7 @@ Hakawi API
     "Authorization": "Bearer {{accessToken}}"
   },
   "body": {
-    "paymentMethodId": "pm_123456"
+    "paymentMethod": "card"
   }
 }
 ```

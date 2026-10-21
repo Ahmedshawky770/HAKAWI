@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ListRowSkeleton } from "@/components/ui/Skeleton";
-import { useLocale } from "@/components/providers/LocaleProvider";
+import { useLocale, useStrings } from "@/components/providers/LocaleProvider";
 import { formatDateTime } from "@/lib/i18n";
 import type { Notification } from "@/types/api";
 
@@ -15,7 +15,7 @@ import type { Notification } from "@/types/api";
  * A notification row.
  *
  * The unread state is carried by three things, not by one: an accent border on
- * the inline-start edge, the accent background, and the word "جديد". Colour on
+ * the inline-start edge, the accent background, and the word "New". Colour on
  * its own is not an accessible signal — roughly one reader in twelve cannot
  * separate the amber edge from the surface it sits on — so the text is the
  * state and the colour is the emphasis.
@@ -40,6 +40,7 @@ export function NotificationRow({
   isPending?: boolean;
 }) {
   const { intl } = useLocale();
+  const strings = useStrings();
   const unread = !notification.isRead;
 
   return (
@@ -52,7 +53,7 @@ export function NotificationRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-ink">{notification.title}</h3>
-            {unread && <Badge tone="accent">جديد</Badge>}
+            {unread && <Badge tone="accent">{strings.social.notificationNewBadge}</Badge>}
           </div>
           <p className="mt-1 text-sm leading-7 text-ink-muted">{notification.message}</p>
           <p className="hk-numeric mt-2 text-xs text-ink-faint">
@@ -68,7 +69,7 @@ export function NotificationRow({
             loading={isPending}
             onClick={() => onMarkAsRead(notification.id)}
           >
-            تعليم كمقروء
+            {strings.social.notificationMarkAsRead}
           </Button>
         )}
       </div>
@@ -110,11 +111,13 @@ export function NotificationListSkeleton({ count = 5 }: { count?: number }) {
 }
 
 export function NotificationListEmpty() {
+  const strings = useStrings();
+
   return (
     <EmptyState
       icon="bell"
-      title="لا توجد إشعارات بعد."
-      description="سيصلك هنا كل تفاعل وتعليق ومتابعة على قصصك."
+      title={strings.social.notificationsEmptyTitle}
+      description={strings.social.notificationsEmptyDescription}
     />
   );
 }

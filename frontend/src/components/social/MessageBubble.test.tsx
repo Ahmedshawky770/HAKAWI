@@ -2,8 +2,9 @@
 
 import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
+import { renderWithProviders } from "@/test-utils/render";
 import { MessageBubble } from "@/components/social/MessageBubble";
 import { formatTime } from "@/lib/i18n";
 import type { Message } from "@/types/api";
@@ -20,7 +21,7 @@ const MESSAGE: Message = {
 
 describe("MessageBubble", () => {
   it("gives the reader's own message the accent pair and labels it", () => {
-    const { container } = render(<MessageBubble message={MESSAGE} isOwn intl="ar-EG" />);
+    const { container } = renderWithProviders(<MessageBubble message={MESSAGE} isOwn intl="ar-EG" />);
     const bubble = container.querySelector("li > div");
 
     expect(bubble?.className).toContain("bg-accent-fill");
@@ -29,7 +30,7 @@ describe("MessageBubble", () => {
   });
 
   it("gives anyone else's message the raised surface", () => {
-    const { container } = render(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
+    const { container } = renderWithProviders(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
     const bubble = container.querySelector("li > div");
 
     expect(bubble?.className).toContain("bg-surface-raised");
@@ -38,15 +39,15 @@ describe("MessageBubble", () => {
   });
 
   it("aligns by flex justification rather than a physical side", () => {
-    const own = render(<MessageBubble message={MESSAGE} isOwn intl="ar-EG" />);
+    const own = renderWithProviders(<MessageBubble message={MESSAGE} isOwn intl="ar-EG" />);
     expect(own.container.querySelector("li")?.className).toContain("justify-end");
 
-    const other = render(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
+    const other = renderWithProviders(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
     expect(other.container.querySelector("li")?.className).toContain("justify-start");
   });
 
   it("renders the content and a locale-aware time", () => {
-    const { container } = render(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
+    const { container } = renderWithProviders(<MessageBubble message={MESSAGE} isOwn={false} intl="ar-EG" />);
 
     expect(screen.getByText(MESSAGE.content)).toBeInTheDocument();
     expect(container.querySelector(".hk-numeric")?.textContent).toBe(

@@ -46,7 +46,7 @@ describe("contest detail page", () => {
   });
 
   it("requests the contest of the route parameter", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(CONTEST));
+    fetchMock.mockImplementation(async () => jsonResponse(CONTEST));
 
     renderWithProviders(<ContestDetailPage />);
 
@@ -55,7 +55,7 @@ describe("contest detail page", () => {
   });
 
   it("renders the title as the one level one heading", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(CONTEST));
+    fetchMock.mockImplementation(async () => jsonResponse(CONTEST));
 
     renderWithProviders(<ContestDetailPage />);
 
@@ -63,7 +63,7 @@ describe("contest detail page", () => {
   });
 
   it("renders a submission form", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(CONTEST));
+    fetchMock.mockImplementation(async () => jsonResponse(CONTEST));
 
     renderWithProviders(<ContestDetailPage />);
 
@@ -72,7 +72,7 @@ describe("contest detail page", () => {
   });
 
   it("offers a way back to the contests list", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(CONTEST));
+    fetchMock.mockImplementation(async () => jsonResponse(CONTEST));
 
     renderWithProviders(<ContestDetailPage />);
 
@@ -80,13 +80,18 @@ describe("contest detail page", () => {
   });
 
   it("reports a failed load with a retry", async () => {
+    // The contest and its votes are two queries, so the first answer is the one
+    // the contest reads and every later answer is the same contest again.
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ message: "Contest not found" }, 404))
-      .mockResolvedValueOnce(jsonResponse(CONTEST));
+      .mockImplementationOnce(async () => jsonResponse({ message: "Contest not found" }, 404))
+      .mockImplementation(async () => jsonResponse(CONTEST));
 
     renderWithProviders(<ContestDetailPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Contest not found");
+    // The reader is told what happened in their own language; the server's own
+    // wording never reaches the screen.
+    expect(await screen.findByRole("alert")).toHaveTextContent("لم نعثر على ما تبحث عنه.");
+    expect(screen.queryByText("Contest not found")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "أعد المحاولة" }));
 
@@ -94,7 +99,7 @@ describe("contest detail page", () => {
   });
 
   it("does not reach for a stock palette", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(CONTEST));
+    fetchMock.mockImplementation(async () => jsonResponse(CONTEST));
 
     const { container } = renderWithProviders(<ContestDetailPage />);
     await screen.findByText(CONTEST.title);

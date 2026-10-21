@@ -6,6 +6,7 @@ import { BadRequestException, ServiceUnavailableException } from '@nestjs/common
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { requireValue } from '../../test/helpers/require-value.ts';
 import { type PaymobConfig } from '../../config/paymob.config.ts';
 
 import { PaymentsService } from './payments.service.ts';
@@ -659,6 +660,33 @@ describe('PaymentsService', () => {
       await paymentsService.paymobInitializePayment('user-123', 1000, 'egp');
 
       expect(paymobGateway.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ currency: 'EGP' }));
+    });
+
+    /**
+     * THE INSTRUMENT, ON THE WAY TO THE GATEWAY.
+     *
+     * The resolved Paymob method id is what makes the reader's choice real: without it the payment
+     * frame asks the customer which instrument to use, whatever the checkout panel said.
+     */
+    it('forwards the resolved instrument to the gateway', async () => {
+      await paymentsService.paymobInitializePayment('user-123', 1000, 'EGP', { type: 'purchase' }, '7');
+
+      expect(paymobGateway.createCheckout).toHaveBeenCalledWith({
+        amountCents: 1000,
+        currency: 'EGP',
+        merchantOrderId: 'payment-new',
+        paymentMethodId: '7',
+      });
+    });
+
+    it('says nothing about the instrument when there is none, so the gateway asks the customer', async () => {
+      await paymentsService.paymobInitializePayment('user-123', 1000, 'EGP');
+
+      const call = requireValue(
+        vi.mocked(paymobGateway.createCheckout).mock.calls[0],
+        'createCheckout call args',
+      );
+      expect(call[0]).not.toHaveProperty('paymentMethodId');
     });
 
     it('rejects a non integer amount without calling the gateway', async () => {

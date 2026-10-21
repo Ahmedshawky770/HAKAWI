@@ -1,19 +1,18 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 
-import { api } from "@/lib/api";
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Select } from "@/components/ui/Input";
 import { StoryCardCompact, StoryFeedSkeleton } from "@/components/story/StoryCard";
+import { StoryLoadMore } from "@/components/story/StoryFeed";
 import { storyCategoryFilterOptions } from "@/components/story/StoryCategoryOptions";
 import { useLocale } from "@/components/providers/LocaleProvider";
-import type { Story } from "@/types/api";
-
-const STORY_LIST_LIMIT = 20;
+import { classifyError } from "@/lib/errors";
+import { flattenStories, isFailedLoad, useStoriesFeed } from "@/lib/queries";
 
 /**
  * The story index: the whole catalogue, filterable by category.
@@ -30,38 +29,21 @@ const STORY_LIST_LIMIT = 20;
  * product. Selecting a category refetches with that filter and nothing else
  * changes: the request, the limit and the response handling are the ones this page
  * always made.
+ *
+ * THE UNFILTERED LIST IS THE DASHBOARD'S LIST. With no category selected the
+ * filters are the empty object, so the query key is the one the dashboard reads:
+ * one cache entry, one request, and the two surfaces cannot disagree.
  */
 export default function StoriesPage() {
   const { locale, strings } = useLocale();
-  const [stories, setStories] = useState<Story[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [category, setCategory] = useState("");
 
-  const load = useCallback(() => {
-    api
-      .listStories({
-        page: 1,
-        limit: STORY_LIST_LIMIT,
-        category: category || undefined,
-      })
-      .then(
-        (data) => setStories(data.stories),
-        (failure) => setError(failure instanceof Error ? failure.message : "فشل تحميل القصص"),
-      )
-      .finally(() => setLoading(false));
-  }, [category]);
+  const feed = useStoriesFeed(category ? { category } : {});
+  const stories = flattenStories(feed.data);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  /** Retry owns the "start again" state, so the mounting effect stays async-only. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    void load();
-  }
+  // A failed BACKGROUND REFETCH leaves the stories the reader is already
+  // looking at in place; only a load that never arrived is a failed page.
+  const failed = isFailedLoad(feed);
 
   return (
     <div>
@@ -84,13 +66,13 @@ export default function StoriesPage() {
         />
       </div>
 
-      {error ? (
+      {failed ? (
         <ErrorMessage
-          error={error}
+          error={strings.errors[classifyError(feed.error)]}
           title={strings.story.storiesLoadFailed}
-          onRetry={retry}
+          onRetry={() => void feed.refetch()}
         />
-      ) : loading ? (
+      ) : feed.isLoading ? (
         <div aria-busy="true">
           <span role="status" className="sr-only">
             {strings.common.loading}
@@ -113,13 +95,23 @@ export default function StoriesPage() {
           }
         />
       ) : (
-        <ul className="space-y-4">
-          {stories.map((story) => (
-            <li key={story.id}>
-              <StoryCardCompact story={story} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-4">
+            {stories.map((story) => (
+              <li key={story.id}>
+                <StoryCardCompact story={story} />
+              </li>
+            ))}
+          </ul>
+
+          {feed.hasNextPage && (
+            <StoryLoadMore
+              variant="compact"
+              isFetching={feed.isFetchingNextPage}
+              onLoadMore={() => void feed.fetchNextPage()}
+            />
+          )}
+        </>
       )}
     </div>
   );

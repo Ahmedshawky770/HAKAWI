@@ -83,7 +83,9 @@ describe("books page", () => {
 
     renderWithProviders(<BooksPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
+    // The browser's own "Failed to fetch" is classified as what it is — the
+    // reader is offline — and said in their language.
+    expect(await screen.findByRole("alert")).toHaveTextContent("تعذّر الاتصال بالإنترنت");
 
     await userEvent.click(screen.getByRole("button", { name: "أعد المحاولة" }));
 

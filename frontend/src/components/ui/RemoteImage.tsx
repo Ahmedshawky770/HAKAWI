@@ -13,8 +13,16 @@ import React from "react";
  * thumbnail, because a disable directive repeated at eight call sites drifts the
  * moment the justification changes — and when it does, this is the single file to
  * edit before deleting the directive.
+ *
+ * `alt` DEFAULTS TO EMPTY, AND THAT IS A DECISION PER CALL SITE. An empty `alt`
+ * marks the image as decorative, which is right for a thumbnail that sits next
+ * to the title it repeats and wrong for a cover that IS the content: a book
+ * detail page renders the cover outside the card, with the title beside it, and
+ * a screen-reader user is told nothing about the book they are looking at. So
+ * the caller that shows the image as content passes the book's title; the
+ * callers that repeat a nearby label do not.
  */
-export function RemoteImage({ src, className }: { src: string; className?: string }) {
+export function RemoteImage({ src, alt = "", className }: { src: string; alt?: string; className?: string }) {
   // eslint-disable-next-line @next/next/no-img-element -- runtime-configured remote host cannot be allowlisted
-  return <img src={src} alt="" className={className} loading="lazy" decoding="async" />;
+  return <img src={src} alt={alt} className={className} loading="lazy" decoding="async" />;
 }

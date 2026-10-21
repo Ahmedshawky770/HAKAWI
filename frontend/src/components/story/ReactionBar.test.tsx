@@ -6,7 +6,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { REACTION_TYPES } from "@hakawi/shared-types";
-import { ReactionBar, reactionKeys } from "@/components/story/ReactionBar";
+import { ReactionBar } from "@/components/story/ReactionBar";
+import { reactionKeys } from "@/lib/queries";
 import { createTestQueryClient, renderWithProviders } from "@/test-utils/render";
 
 const STORY_ID = "story-1";
@@ -110,8 +111,10 @@ describe("ReactionBar", () => {
     await user.click(await screen.findByRole("button", { name: /أعجبني/ }));
 
     // A silent revert reads as a bug; the toast is what makes it legible.
+    // The toast says what happened in the reader's language, not in the
+    // server's: "Unauthorized" becomes "your session has ended".
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Unauthorized");
+    expect(alert).toHaveTextContent("انتهت جلستك");
     await waitFor(() => expect(queryClient.getQueryData(reactionKeys.counts(STORY_ID))).toEqual({ like: 5 }));
   });
 

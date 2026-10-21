@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 import { RENTAL_STATUSES } from "@hakawi/shared-types";
 
-import { rentalStateView, RENTAL_OVERDUE_STATE, RENTAL_STATUS_LABELS } from "@/components/rental/rentalState";
+import { rentalStateView, RENTAL_OVERDUE_STATE } from "@/components/rental/rentalState";
+import { AR, EN } from "@/lib/i18n/rentals";
 
 /**
  * Overdue is not a status, and that is the whole point of this suite.
@@ -15,6 +16,11 @@ import { rentalStateView, RENTAL_OVERDUE_STATE, RENTAL_STATUS_LABELS } from "@/c
  *
  * `now` is passed explicitly rather than read from the clock, so every case here is
  * deterministic instead of depending on the day the suite runs.
+ *
+ * THE WORD IS NOT DERIVED HERE. This module answers "which state is this?", and
+ * the dictionary answers "what is that state called?" — so the assertions below
+ * are about the state, and the coverage of the vocabulary is a separate promise
+ * the dictionary keeps.
  */
 const NOW = new Date("2026-03-10T08:00:00.000Z");
 
@@ -23,7 +29,6 @@ describe("rentalStateView", () => {
     const view = rentalStateView({ status: "active", endDate: "2026-04-01T00:00:00.000Z" }, NOW);
 
     expect(view.state).toBe("active");
-    expect(view.label).toBe("نشط");
     expect(view.tone).toBe("success");
     expect(view.overdue).toBe(false);
   });
@@ -32,7 +37,6 @@ describe("rentalStateView", () => {
     const view = rentalStateView({ status: "active", endDate: "2026-03-01T00:00:00.000Z" }, NOW);
 
     expect(view.state).toBe(RENTAL_OVERDUE_STATE);
-    expect(view.label).toBe("متأخر");
     expect(view.tone).toBe("error");
     expect(view.overdue).toBe(true);
   });
@@ -46,15 +50,19 @@ describe("rentalStateView", () => {
     const view = rentalStateView({ status: "expired", endDate: "2026-01-01T00:00:00.000Z" }, NOW);
 
     expect(view.state).toBe("expired");
-    expect(view.label).toBe("منتهي");
     expect(view.overdue).toBe(false);
   });
 
-  it("labels every status the contract declares, in Arabic", () => {
+  it("names every state the contract declares, in both locales", () => {
     for (const status of RENTAL_STATUSES) {
-      expect(RENTAL_STATUS_LABELS[status], status).toBeTruthy();
-      expect(rentalStateView({ status, endDate: "2026-12-01T00:00:00.000Z" }, NOW).label).not.toBe(status);
+      expect(AR.statusLabels[status], status).toBeTruthy();
+      expect(EN.statusLabels[status], status).toBeTruthy();
     }
+    // The derived state is named too, or the pill would fall back to the raw
+    // identifier and the reader would be shown "overdue" in an English
+    // interface.
+    expect(AR.statusLabels[RENTAL_OVERDUE_STATE], RENTAL_OVERDUE_STATE).toBeTruthy();
+    expect(EN.statusLabels[RENTAL_OVERDUE_STATE], RENTAL_OVERDUE_STATE).toBeTruthy();
   });
 
   it("passes an unknown status through rather than inventing a label for it", () => {
@@ -62,7 +70,7 @@ describe("rentalStateView", () => {
     // import guard in Badge.tsx catches the missing tone on the shared side.
     const view = rentalStateView({ status: "archived-2099", endDate: "2026-12-01T00:00:00.000Z" }, NOW);
 
-    expect(view.label).toBe("archived-2099");
+    expect(view.state).toBe("archived-2099");
     expect(view.tone).toBe("neutral");
   });
 

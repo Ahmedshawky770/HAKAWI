@@ -93,14 +93,16 @@ export class BooksController {
     @Body() dto: PurchaseBookDto,
     @Request() req: Request & { user: { sub: string } },
   ) {
-    return this.booksService.purchase(req.user.sub, id, dto.paymentMethodId);
+    // The reader's CHOICE, not a gateway handle: `PurchaseBookDto.paymentMethod` is "card" or
+    // "wallet", and the service resolves it to this merchant's Paymob method id.
+    return this.booksService.purchase(req.user.sub, id, dto.paymentMethod);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post(':id/rent')
   @HttpCode(HttpStatus.CREATED)
   async rent(@Param('id') id: string, @Body() dto: RentBookDto, @Request() req: Request & { user: { sub: string } }) {
-    return this.booksService.rent(req.user.sub, id, dto.durationDays);
+    return this.booksService.rent(req.user.sub, id, dto.durationDays, dto.paymentMethod);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)

@@ -6,8 +6,9 @@ import { screen } from "@testing-library/react";
 import { LIBRARY_ITEM_STATUSES } from "@hakawi/shared-types";
 
 import { renderWithProviders } from "@/test-utils/render";
-import { LIBRARY_STATUS_LABELS, LibraryStatusBadge } from "@/components/library/LibraryStatusBadge";
+import { LibraryStatusBadge } from "@/components/library/LibraryStatusBadge";
 import { LIBRARY_STATUS_TONES, toneFor } from "@/components/ui/Badge";
+import { AR, EN } from "@/lib/i18n/library";
 
 /** The class each tone paints its pill with, so the wiring can be asserted without copying the map. */
 const TONE_CLASS = {
@@ -21,9 +22,10 @@ const TONE_CLASS = {
 } as const;
 
 describe("LibraryStatusBadge", () => {
-  it("labels every status the API can send, in Arabic", () => {
+  it("names every status the API can send, in the dictionary", () => {
     for (const status of LIBRARY_ITEM_STATUSES) {
-      expect(LIBRARY_STATUS_LABELS[status]).toBeTruthy();
+      expect(AR.statusLabels[status], status).toBeTruthy();
+      expect(EN.statusLabels[status], status).toBeTruthy();
     }
   });
 
@@ -31,7 +33,7 @@ describe("LibraryStatusBadge", () => {
     for (const status of LIBRARY_ITEM_STATUSES) {
       const { unmount } = renderWithProviders(<LibraryStatusBadge status={status} />);
 
-      const badge = screen.getByText(LIBRARY_STATUS_LABELS[status]);
+      const badge = screen.getByText(AR.statusLabels[status]);
       expect(badge.className).toContain(TONE_CLASS[toneFor(LIBRARY_STATUS_TONES, status)]);
       unmount();
     }
@@ -40,7 +42,7 @@ describe("LibraryStatusBadge", () => {
   it("takes the tone from the shared map rather than a table of its own", () => {
     renderWithProviders(<LibraryStatusBadge status="reading" />);
 
-    const badge = screen.getByText(LIBRARY_STATUS_LABELS.reading);
+    const badge = screen.getByText(AR.statusLabels.reading);
     expect(badge.className).toContain(TONE_CLASS[toneFor(LIBRARY_STATUS_TONES, "reading")]);
     expect(badge.className).not.toMatch(/bg-(white|gray|green|yellow|blue)-\d/);
   });

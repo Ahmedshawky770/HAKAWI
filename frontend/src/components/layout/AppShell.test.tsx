@@ -71,7 +71,7 @@ describe("AppShell", () => {
     expect(start.className).toContain("lg:block");
     expect(start.className).toContain("w-60");
     expect(end.className).toContain("xl:block");
-    expect(end.className).toContain("w-70");
+    expect(end.className).toContain("w-[17.5rem]");
   });
 
   it("keeps both sidebars pinned under the sticky header", () => {

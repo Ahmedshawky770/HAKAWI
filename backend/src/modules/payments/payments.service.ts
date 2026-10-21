@@ -473,11 +473,22 @@ export class PaymentsService {
     } as RefundCreatedEvent);
   }
 
+  /**
+   * Creates the payment and registers the checkout at the gateway.
+   *
+   * `paymentMethodId` is the RESOLVED instrument — the merchant's own Paymob method id for the one
+   * the reader chose. It is resolved by the caller that owns the choice (the books service, which
+   * owns the `paymentMethod` DTO field) and passed down as an id, so this module stays a gateway
+   * caller: it does not know the reader's vocabulary and does not need to. It is OPTIONAL, and an
+   * absent id means the gateway asks the customer which instrument to use — the behaviour this
+   * module had before the reader could choose.
+   */
   async paymobInitializePayment(
     userId: string,
     amount: number,
     currency: string,
     metadata?: Record<string, unknown>,
+    paymentMethodId?: string,
   ): Promise<PaymobCheckoutResponse> {
     this.logger.info(`Initializing Paymob payment for user: ${userId}, amount: ${amount}`);
 
@@ -491,7 +502,12 @@ export class PaymentsService {
     });
 
     const validatedCurrency = this.validateCurrency(payment.currency);
-    const initialized = await this.registerPaymobCheckout(payment, payment.amount, validatedCurrency);
+    const initialized = await this.registerPaymobCheckout(
+      payment,
+      payment.amount,
+      validatedCurrency,
+      paymentMethodId,
+    );
     return initialized.checkout;
   }
 
@@ -499,6 +515,7 @@ export class PaymentsService {
     payment: Payment,
     amountCents: number,
     currency: string,
+    paymentMethodId?: string,
   ): Promise<{ readonly payment: Payment; readonly checkout: PaymobCheckoutResponse }> {
     let checkout: Awaited<ReturnType<PaymobGateway['createCheckout']>>;
     try {
@@ -506,6 +523,10 @@ export class PaymentsService {
         amountCents,
         currency,
         merchantOrderId: payment.id,
+        // THE INSTRUMENT, WHEN THERE IS ONE. The key is left out entirely when there is not, so the
+        // gateway is asked to let the customer choose — which is what it did before the reader's
+        // choice reached it.
+        ...(paymentMethodId === undefined ? {} : { paymentMethodId }),
       });
     } catch (error) {
       await this.failPaymentAfterGatewayError(payment.id, 'checkout', error);

@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 
 import { api } from "@/lib/api";
+import { stringsFor } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
@@ -30,6 +32,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     getUser: vi.fn(),
+    getUserStats: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -54,6 +57,13 @@ const mockUser = {
 describe("Public user page", () => {
   beforeEach(() => {
     mockedApi.getUser.mockResolvedValue(mockUser);
+    mockedApi.getUserStats.mockResolvedValue({
+      storiesCount: 12,
+      totalViews: 900,
+      totalReactions: 30,
+      followersCount: 120,
+      followingCount: 45,
+    });
     mockedApi.logout.mockResolvedValue({ message: "تم تسجيل الخروج" });
   });
 
@@ -80,17 +90,22 @@ describe("Public user page", () => {
 
   it("renders follow and following links", async () => {
     renderWithProviders(<PublicUserPage />);
-    expect(await screen.findByRole("link", { name: "المتابعون" })).toHaveAttribute(
+    // The links carry the counts the stats endpoint reports, so the reader sees
+    // how big each list is before opening it.
+    expect(await screen.findByRole("link", { name: /المتابعون/ })).toHaveAttribute(
       "href",
       "/users/user-1/followers",
     );
-    expect(screen.getByRole("link", { name: "المتابَعون" })).toHaveAttribute("href", "/users/user-1/following");
+    expect(screen.getByRole("link", { name: /المتابَعون/ })).toHaveAttribute("href", "/users/user-1/following");
   });
 
   it("handles error when user not found", async () => {
     mockedApi.getUser.mockRejectedValue(new Error("User not found"));
     renderWithProviders(<PublicUserPage />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("User not found");
+    // The failure is classified before it reaches the reader.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      stringsFor(DEFAULT_LOCALE).errors.notFound,
+    );
   });
 
   it("handles loading state", () => {

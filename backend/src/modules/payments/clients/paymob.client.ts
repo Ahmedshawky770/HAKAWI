@@ -40,6 +40,13 @@ export type PaymobCheckoutRequest = {
   readonly billingEmail?: string;
   readonly billingPhoneNumber?: string;
   readonly expirationSeconds?: number;
+  /**
+   * The instrument the reader chose, as the merchant's Paymob method id.
+   *
+   * OPTIONAL, and its absence is the documented "let the customer choose" case — see
+   * `paymobCheckoutInputSchema`.
+   */
+  readonly paymentMethodId?: string | number;
 };
 
 export type PaymobRefundRequestInput = {
@@ -117,6 +124,15 @@ export class PaymobClient implements PaymobGateway {
       expiration: request.expirationSeconds,
       lock_order_when_paid: true,
       billing_email: request.billingEmail ?? DEFAULT_BILLING_EMAIL,
+      // THE READER'S CHOICE, REACHING THE GATEWAY AT LAST.
+      //
+      // The key is added ONLY when the checkout carries an instrument, because Paymob reads its
+      // ABSENCE as "let the customer choose inside the payment frame" — which is what this gateway
+      // did before the reader could choose, and what it still does for a deployment that has not
+      // configured a method id. Sending `payment_method_id: undefined` would be the same absence on
+      // the wire, but the key is simply not built, so the request this module makes when it has no
+      // instrument is byte-for-byte the request it made before the choice existed.
+      ...(request.paymentMethodId === undefined ? {} : { payment_method_id: request.paymentMethodId }),
     });
 
     const paymentKey = await this.call('payment key request', paymobPaymentKeyResponseSchema, {

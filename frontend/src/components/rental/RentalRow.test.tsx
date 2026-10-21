@@ -9,14 +9,14 @@ import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { BOOK } from "@/test-utils/fixtures";
 import {
-  EXTENSION_DURATION_OPTIONS,
+  extensionDurationOptions,
   RentalListSkeleton,
   RentalRow,
   RentalRowSkeleton,
   type RentalWithBook,
 } from "@/components/rental/RentalRow";
-import { RENTAL_STATUSES } from "@hakawi/shared-types";
-import { RENTAL_STATUS_LABELS } from "@/components/rental/RentalStatusBadge";
+import { RENTAL_DURATION_DAYS, RENTAL_STATUSES } from "@hakawi/shared-types";
+import { AR as AR_RENTALS } from "@/lib/i18n/rentals";
 import type { Rental } from "@/types/api";
 
 vi.mock("next/link", () => ({
@@ -85,7 +85,7 @@ describe("RentalRow", () => {
   it("offers the details link to the rental", () => {
     renderRow(rental());
 
-    expect(screen.getByRole("link", { name: "عرض التفاصيل" })).toHaveAttribute("href", "/rentals/rental-1");
+    expect(screen.getByRole("link", { name: AR_RENTALS.detailsAction })).toHaveAttribute("href", "/rentals/rental-1");
   });
 
   it("states both dates and the extension count in numeric figures", () => {
@@ -99,7 +99,7 @@ describe("RentalRow", () => {
   it("labels each rental state in Arabic and colours it from the design system", () => {
     for (const status of RENTAL_STATUSES) {
       const { unmount } = renderRow(rental({ status }));
-      expect(screen.getByText(RENTAL_STATUS_LABELS[status])).toBeInTheDocument();
+      expect(screen.getByText(AR_RENTALS.statusLabels[status])).toBeInTheDocument();
       unmount();
     }
   });
@@ -107,7 +107,7 @@ describe("RentalRow", () => {
   it("marks an expired rental with the error tone rather than a stock red", () => {
     renderRow(rental({ status: "expired" }));
 
-    const badge = screen.getByText(RENTAL_STATUS_LABELS.expired);
+    const badge = screen.getByText(AR_RENTALS.statusLabels.expired);
     expect(badge.className).toContain("bg-error-soft");
     expect(badge.className).not.toMatch(/red-\d/);
   });
@@ -115,7 +115,7 @@ describe("RentalRow", () => {
   it("offers the extension lengths the shared rental vocabulary allows", () => {
     renderRow(rental());
 
-    const select = screen.getByRole("combobox", { name: "مدة التمديد" });
+    const select = screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel });
     const values = Array.from(select.querySelectorAll("option")).map((option) => option.value);
     expect(values).toEqual(["", "7", "14", "30"]);
   });
@@ -125,9 +125,9 @@ describe("RentalRow", () => {
     const onExtendDaysChange = vi.fn();
     const { rerender } = renderRow(rental(), { onExtend, onExtendDaysChange });
 
-    expect(screen.getByRole("button", { name: "تمديد" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: AR_RENTALS.extendAction })).toBeDisabled();
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "مدة التمديد" }), "14");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel }), "14");
     expect(onExtendDaysChange).toHaveBeenCalledWith(14);
     expect(onExtend).not.toHaveBeenCalled();
 
@@ -141,7 +141,7 @@ describe("RentalRow", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "تمديد" }));
+    await userEvent.click(screen.getByRole("button", { name: AR_RENTALS.extendAction }));
     expect(onExtend).toHaveBeenCalledTimes(1);
   });
 
@@ -149,7 +149,7 @@ describe("RentalRow", () => {
     const onExtendDaysChange = vi.fn();
     renderRow(rental(), { onExtendDaysChange });
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "مدة التمديد" }), "30");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel }), "30");
 
     expect(onExtendDaysChange).toHaveBeenCalledWith(30);
   });
@@ -158,28 +158,28 @@ describe("RentalRow", () => {
     renderRow(rental({ extendedCount: 3, maxExtensions: 3 }));
 
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "تمديد" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "إرجاع" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: AR_RENTALS.extendAction })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: AR_RENTALS.returnAction })).toBeInTheDocument();
   });
 
   it("offers no actions at all once the rental is returned", () => {
     renderRow(rental({ status: "returned", returnedAt: "2026-01-20T00:00:00.000Z" }));
 
-    expect(screen.queryByRole("button", { name: "تمديد" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "إرجاع" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: AR_RENTALS.extendAction })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: AR_RENTALS.returnAction })).not.toBeInTheDocument();
   });
 
   it("states the return date once the book is back", () => {
     renderRow(rental({ status: "returned", returnedAt: "2026-01-20T00:00:00.000Z" }));
 
-    expect(screen.getByText("تاريخ الإرجاع:")).toBeInTheDocument();
+    expect(screen.getByText(AR_RENTALS.returnedAtLabel)).toBeInTheDocument();
   });
 
   it("reports a return when the return button is pressed", async () => {
     const onReturn = vi.fn();
     renderRow(rental(), { onReturn });
 
-    await userEvent.click(screen.getByRole("button", { name: "إرجاع" }));
+    await userEvent.click(screen.getByRole("button", { name: AR_RENTALS.returnAction }));
 
     expect(onReturn).toHaveBeenCalledTimes(1);
   });
@@ -190,7 +190,7 @@ describe("RentalRow", () => {
 
     renderRow(withoutBook);
 
-    expect(screen.getByRole("link", { name: "كتاب" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: AR_RENTALS.unknownBookTitle })).toBeInTheDocument();
   });
 
   it("uses design system tokens rather than a stock palette", () => {
@@ -200,14 +200,24 @@ describe("RentalRow", () => {
   });
 });
 
-describe("EXTENSION_DURATION_OPTIONS", () => {
+describe("extensionDurationOptions", () => {
   it("offers a placeholder and the three extension lengths the API accepts", () => {
-    expect(EXTENSION_DURATION_OPTIONS).toEqual([
-      { value: "", label: "مدة التمديد" },
-      { value: "7", label: "أسبوع واحد" },
-      { value: "14", label: "أسبوعان" },
-      { value: "30", label: "شهر واحد" },
+    expect(extensionDurationOptions(AR_RENTALS)).toEqual([
+      { value: "", label: AR_RENTALS.extensionDurationLabel },
+      { value: "7", label: AR_RENTALS.extensionOptions["7"] },
+      { value: "14", label: AR_RENTALS.extensionOptions["14"] },
+      { value: "30", label: AR_RENTALS.extensionOptions["30"] },
     ]);
+  });
+
+  it("offers only lengths the shared rental vocabulary allows", () => {
+    const values = extensionDurationOptions(AR_RENTALS)
+      .map((option) => Number(option.value))
+      .filter((days) => days > 0);
+
+    for (const days of values) {
+      expect(RENTAL_DURATION_DAYS).toContain(days);
+    }
   });
 });
 

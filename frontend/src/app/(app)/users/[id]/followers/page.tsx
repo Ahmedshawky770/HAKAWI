@@ -1,38 +1,32 @@
 import { Metadata } from "next";
 
-import { PageHeader } from "@/components/ui/Card";
-import { FollowListEmpty, FollowListRow } from "@/components/social/FollowListRow";
-import { api } from "@/lib/api";
+import { stringsFor } from "@/lib/i18n";
+
+import { FollowersList } from "./FollowersList";
 
 interface Props {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * The metadata is the default locale's.
+ *
+ * The reader's language is a preference in `localStorage`, which the server
+ * cannot read, so the tab title is the Arabic one — the same trade every
+ * server-rendered title in the product makes. The page BODY is not: the list
+ * is a client component and follows the language toggle.
+ */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
+  const strings = stringsFor("ar");
   return {
-    title: `المتابعون - المستخدم ${id}`,
-    description: "قائمة متابعي المستخدم",
+    title: strings.social.followersPageTitle(id),
+    description: strings.social.followersDescription,
   };
 }
 
 export default async function UserFollowersPage({ params }: Props) {
   const { id } = await params;
 
-  const data = await api.getFollowers(id, { page: 1, limit: 20 }).catch(() => null);
-
-  return (
-    <div>
-      <PageHeader title="المتابعون" description="من يتابع هذا الحساب" />
-      {!data || data.followers.length === 0 ? (
-        <FollowListEmpty />
-      ) : (
-        <div className="space-y-3">
-          {data.followers.map((follow) => (
-            <FollowListRow key={follow.id} follow={follow} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <FollowersList userId={id} />;
 }

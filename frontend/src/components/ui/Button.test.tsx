@@ -76,7 +76,10 @@ describe("Button", () => {
   it("keeps every size at or above the 44px touch target", () => {
     expect(renderAndClassName(<Button size="md">Medium</Button>)).toContain("min-h-11");
     expect(renderAndClassName(<Button size="lg">Large</Button>)).toContain("min-h-12");
-    expect(renderAndClassName(<Button size="sm">Small</Button>)).toContain("min-h-9");
+    // `sm` is 44px too: it used to be 36px, on the strength of a padding that
+    // belonged to the row rather than to the target.
+    expect(renderAndClassName(<Button size="sm">Small</Button>)).toContain("min-h-11");
+    expect(renderAndClassName(<Button size="sm">Small</Button>)).not.toContain("min-h-9");
   });
 
   it("stretches to the container when block is set", () => {

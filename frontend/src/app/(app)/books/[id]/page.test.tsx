@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { AnchorLink } from "@/test-utils/navigation-mock";
+import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { createDeferred, jsonResponse } from "@/test-utils/support";
 import { BOOK } from "@/test-utils/fixtures";
@@ -18,34 +18,53 @@ vi.mock("next/link", () => ({
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "book-1" }),
+  useRouter: () => router,
 }));
 
 const fetchMock = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>();
-const assign = vi.fn();
 const originalLocation = Object.getOwnPropertyDescriptor(window, "location");
 
 const CHECKOUT = {
   paymentId: "payment-1",
   orderId: "order-1",
-  checkoutUrl: "https://paymob.test/checkout/abc",
-  acceptUrl: "https://accept.paymob.test/abc",
+  checkoutUrl: "https://accept.paymob.com/acceptance/iframes/abc",
+  acceptUrl: "https://accept.paymob.com/acceptance/accepts/abc",
   status: "pending",
 };
 
 beforeEach(() => {
   fetchMock.mockReset();
-  assign.mockReset();
-  Object.defineProperty(window, "location", { configurable: true, writable: true, value: { assign } });
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: { assign: vi.fn() },
+  });
   vi.stubGlobal("fetch", fetchMock);
+  window.localStorage.setItem(
+    "hakawi_user",
+    JSON.stringify({ id: "user-1", email: "a@b.c", name: "أحمد" }),
+  );
 });
 
 afterEach(() => {
   if (originalLocation) Object.defineProperty(window, "location", originalLocation);
+  window.localStorage.clear();
 });
 
 function lastCall(): { input: string; init?: RequestInit } | undefined {
   const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
   return call ? { input: call[0], init: call[1] } : undefined;
+}
+
+/**
+ * The body of the call that went to a given path.
+ *
+ * Not "the last call": starting a payment invalidates the book, so a refetch
+ * follows it, and the last call is the refetch.
+ */
+function bodySentTo(path: string): string {
+  const call = fetchMock.mock.calls.find(([input]) => String(input).includes(path));
+  return String(call?.[1]?.body ?? "");
 }
 
 describe("book detail page", () => {
@@ -116,50 +135,80 @@ describe("book detail page", () => {
     expect(values).toEqual(["1", "3", "7", "14", "30", "90"]);
   });
 
-  it("refuses to charge without a payment method and says so inline", async () => {
+  it("never asks the reader for a payment-method identifier", async () => {
     fetchMock.mockResolvedValue(jsonResponse(BOOK));
 
     renderWithProviders(<BookDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.click(screen.getByRole("button", { name: "شراء الكتاب" }));
-
-    expect(await screen.findAllByText("الرجاء إدخال معرّف طريقة الدفع")).not.toHaveLength(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The identifier is a fact about the GATEWAY. A reader has never seen one
+    // and cannot know one, so the field is gone rather than optional.
+    expect(screen.queryByLabelText("معرّف طريقة الدفع")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("pm_123456")).not.toBeInTheDocument();
   });
 
-  it("sends the reader to the gateway with the checkout it was given", async () => {
+  it("opens a checkout that asks how the reader wants to pay", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(BOOK));
+
+    renderWithProviders(<BookDetailPage />);
+    await screen.findByRole("heading", { level: 1, name: BOOK.title });
+
+    await userEvent.click(screen.getByRole("button", { name: "اشترِ الكتاب" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /بطاقة ائتمانية/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /محفظة إلكترونية/ })).toBeInTheDocument();
+  });
+
+  it("charges the chosen method and opens the gateway", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(BOOK));
     fetchMock.mockResolvedValueOnce(jsonResponse(BOOK)).mockResolvedValueOnce(jsonResponse(CHECKOUT));
 
     renderWithProviders(<BookDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.type(screen.getByLabelText("معرّف طريقة الدفع"), "pm_123456");
-    await userEvent.click(screen.getByRole("button", { name: "شراء الكتاب" }));
+    await userEvent.click(screen.getByRole("button", { name: "اشترِ الكتاب" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /محفظة إلكترونية/ }));
+    await userEvent.click(screen.getByRole("button", { name: "متابعة الدفع" }));
 
     await waitFor(() => {
-      expect(assign).toHaveBeenCalledWith(CHECKOUT.checkoutUrl);
+      expect(bodySentTo("/purchase")).not.toBe("");
     });
-    expect(lastCall()?.init?.body).toContain("pm_123456");
+    // WHAT THE PAGE IS RESPONSIBLE FOR: the reader's CHOICE reaches the API — "card" or
+    // "wallet", never a gateway identifier the reader could not know. The KEY the body carries it
+    // under belongs to the API client (`src/lib/api.ts`), so the assertion is on the value.
+    const purchaseBody = JSON.parse(bodySentTo("/purchase")) as Record<string, unknown>;
+    expect(purchaseBody.paymentMethod ?? purchaseBody.paymentMethodId).toBe("wallet");
+    // The gateway is a FRAME: `checkoutUrl` is Paymob's iframe target, and the
+    // hosted page is offered beside it for a browser that refuses the frame.
+    const frame = await screen.findByTitle("بوابة الدفع");
+    expect(frame).toHaveAttribute("src", CHECKOUT.checkoutUrl);
+    expect(screen.getByRole("link", { name: /افتح صفحة الدفع/ })).toHaveAttribute(
+      "href",
+      CHECKOUT.acceptUrl,
+    );
   });
 
   it("rents with the chosen length and the same gateway contract", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(BOOK));
     fetchMock.mockResolvedValueOnce(jsonResponse(BOOK)).mockResolvedValueOnce(jsonResponse(CHECKOUT));
 
     renderWithProviders(<BookDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "مدة الإيجار" }), "7");
-    await userEvent.type(screen.getByLabelText("معرّف طريقة الدفع"), "pm_123456");
     await userEvent.click(screen.getByRole("button", { name: "استئجار الكتاب" }));
+    await userEvent.click(await screen.findByRole("button", { name: "متابعة الدفع" }));
 
     await waitFor(() => {
-      expect(assign).toHaveBeenCalledWith(CHECKOUT.checkoutUrl);
+      expect(bodySentTo("/rent")).toContain('"durationDays":7');
     });
-    expect(lastCall()?.init?.body).toContain('"durationDays":7');
+    const frame = await screen.findByTitle("بوابة الدفع");
+    expect(frame).toHaveAttribute("src", CHECKOUT.checkoutUrl);
   });
 
-  it("surfaces a refused purchase inline and in a toast, never in an alert dialog", async () => {
+  it("surfaces a refused payment inline and in a toast, never in an alert dialog", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(BOOK))
       .mockResolvedValueOnce(jsonResponse({ message: "Payment method declined" }, 402));
@@ -167,12 +216,12 @@ describe("book detail page", () => {
     renderWithProviders(<BookDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.type(screen.getByLabelText("معرّف طريقة الدفع"), "pm_123456");
-    await userEvent.click(screen.getByRole("button", { name: "شراء الكتاب" }));
+    await userEvent.click(screen.getByRole("button", { name: "اشترِ الكتاب" }));
+    await userEvent.click(await screen.findByRole("button", { name: "متابعة الدفع" }));
 
     const alerts = await screen.findAllByRole("alert");
-    expect(alerts.some((alert) => alert.textContent?.includes("Payment method declined"))).toBe(true);
-    expect(assign).not.toHaveBeenCalled();
+    expect(alerts.some((alert) => alert.textContent?.includes("لم تكتمل عملية الدفع"))).toBe(true);
+    expect(screen.queryByTitle("بوابة الدفع")).not.toBeInTheDocument();
   });
 
   it("reports a failed load with a retry", async () => {
@@ -182,11 +231,30 @@ describe("book detail page", () => {
 
     renderWithProviders(<BookDetailPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Book not found");
+    expect(await screen.findByRole("alert")).toHaveTextContent("لم نعثر على ما تبحث عنه");
 
     await userEvent.click(screen.getByRole("button", { name: "أعد المحاولة" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: BOOK.title })).toBeInTheDocument();
+  });
+
+  it("makes the owner delete two steps, and says what is about to happen", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(BOOK));
+
+    renderWithProviders(<BookDetailPage />);
+    await screen.findByRole("heading", { level: 1, name: BOOK.title });
+
+    // The first press arms the control; nothing is deleted yet.
+    await userEvent.click(screen.getByRole("button", { name: /حذف الكتاب/ }));
+    expect(screen.getByRole("button", { name: /تأكيد الحذف/ })).toBeInTheDocument();
+    expect(screen.getByText("سيُحذف الكتاب نهائياً. لا يمكن التراجع عن هذه الخطوة.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: /تأكيد الحذف/ }));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => call[1]?.method === "DELETE")).toBe(true);
+    });
   });
 
   it("does not reach for a stock palette", async () => {

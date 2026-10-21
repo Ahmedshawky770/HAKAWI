@@ -14,33 +14,33 @@ import { Select } from "@/components/ui/Input";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/i18n";
+import type { RentalsStrings } from "@/lib/i18n/rentals";
 import type { Book, Rental } from "@/types/api";
 
 /** A rental plus the book it points at, when that book could be fetched. */
 export type RentalWithBook = Rental & { book?: Book };
 
-/** Arabic labels for the offered extensions. Presentation only. */
-const EXTENSION_LABELS_AR: Record<number, string> = {
-  7: "أسبوع واحد",
-  14: "أسبوعان",
-  30: "شهر واحد",
-};
-
 /**
- * The lengths a reader may extend by.
+ * The lengths a reader may extend by, in the reader's language.
  *
  * The DAYS come from `RENTAL_DURATION_DAYS`, the same list `RentalsService.extendRental` validates
  * against, and this page offers the three of them that make sense as an extension of a rental someone
  * already holds. Declaring the numbers here instead would be a second source of truth for a contract
  * the API enforces with a 400.
+ *
+ * The LABELS come from the dictionary, because the option a reader reads is product copy and the
+ * English reader has to be able to choose a length too. The set of lengths is the intersection of the
+ * two: what the API accepts, and what the copy names.
  */
-export const EXTENSION_DURATION_OPTIONS = [
-  { value: "", label: "مدة التمديد" },
-  ...RENTAL_DURATION_DAYS.filter((days) => days in EXTENSION_LABELS_AR).map((days) => ({
-    value: String(days),
-    label: EXTENSION_LABELS_AR[days],
-  })),
-];
+export function extensionDurationOptions(strings: RentalsStrings): { value: string; label: string }[] {
+  return [
+    { value: "", label: strings.extensionDurationLabel },
+    ...RENTAL_DURATION_DAYS.filter((days) => String(days) in strings.extensionOptions).map((days) => ({
+      value: String(days),
+      label: strings.extensionOptions[String(days)],
+    })),
+  ];
+}
 
 /**
  * One rental: what it is, when it runs, how many extensions it has left, and what the reader can do
@@ -54,7 +54,7 @@ export const EXTENSION_DURATION_OPTIONS = [
  * - **The extend control is hidden, not disabled, once the guard closes.** `canExtend` is
  *   `extendedCount < maxExtensions` on an active rental, and a greyed-out control next to a form the
  *   reader cannot submit is a question they have to ask.
- * - **The "تمديد" button is `disabled` until a length is chosen**, so pressing it cannot send
+ * - **The "extend" button is `disabled` until a length is chosen**, so pressing it cannot send
  *   `extensionDays: 0` — the guard the API enforces anyway, but the reader should not have to
  *   discover it by failing.
  */
@@ -75,7 +75,8 @@ export function RentalRow({
   onExtend: () => void;
   onReturn: () => void;
 }) {
-  const { intl } = useLocale();
+  const { intl, strings } = useLocale();
+  const { rentals } = strings;
   const book = rental.book;
   // `active` is what the server stores; whether it is still running is derived from
   // the end date (see rentalState.ts). The extension and return actions follow the
@@ -92,7 +93,7 @@ export function RentalRow({
         <div className="flex flex-col gap-4 sm:flex-row">
           {book?.coverImage ? (
             <Link href={`/books/${book.id}`} className="shrink-0 self-start rounded-md focus-visible:outline-2">
-              <RemoteImage src={book.coverImage} className="h-36 w-24 rounded-md object-cover" />
+              <RemoteImage src={book.coverImage} alt={book.title} className="h-36 w-24 rounded-md object-cover" />
             </Link>
           ) : (
             <div className="grid h-36 w-24 shrink-0 place-items-center rounded-md bg-surface-raised text-ink-faint">
@@ -105,7 +106,7 @@ export function RentalRow({
               <div className="min-w-0">
                 <h3 className="truncate text-lg font-semibold text-ink">
                   <Link href={`/books/${rental.bookId}`} className="transition-colors hover:text-accent-ink">
-                    {book?.title || "كتاب"}
+                    {book?.title || rentals.unknownBookTitle}
                   </Link>
                 </h3>
                 <p className="mt-1 text-sm text-ink-muted">{book?.author || ""}</p>
@@ -116,24 +117,21 @@ export function RentalRow({
             <dl className="grid gap-2 text-sm text-ink-muted sm:grid-cols-2">
               <div className="flex items-center gap-2">
                 <Icon name="calendar" size="sm" />
-                <dt className="sr-only">تاريخ البدء</dt>
-                <span>تاريخ البدء:</span>
+                <dt>{rentals.startDateLabel}</dt>
                 <dd className="hk-numeric">{formatDate(rental.startDate, intl)}</dd>
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="clock" size="sm" />
-                <dt className="sr-only">{state.overdue ? "تأخر عن موعد الانتهاء" : "تاريخ الانتهاء"}</dt>
                 {/* An overdue rental's end date is a date in the past, which reads
                     as ordinary; naming it says why the row is flagged. */}
-                <span>{state.overdue ? "تأخر عن موعد الانتهاء:" : "تاريخ الانتهاء:"}</span>
+                <dt>{state.overdue ? rentals.overdueEndDateLabel : rentals.endDateLabel}</dt>
                 <dd className={`hk-numeric ${state.overdue ? "font-medium text-error-ink" : ""}`}>
                   {formatDate(rental.endDate, intl)}
                 </dd>
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="plus" size="sm" />
-                <dt className="sr-only">التمديدات</dt>
-                <span>التمديدات:</span>
+                <dt>{rentals.extensionsLabel}</dt>
                 <dd className="hk-numeric">
                   {rental.extendedCount} / {rental.maxExtensions}
                 </dd>
@@ -141,8 +139,7 @@ export function RentalRow({
               {rental.returnedAt && (
                 <div className="flex items-center gap-2">
                   <Icon name="check" size="sm" />
-                  <dt className="sr-only">تاريخ الإرجاع</dt>
-                  <span>تاريخ الإرجاع:</span>
+                  <dt>{rentals.returnedAtLabel}</dt>
                   <dd className="hk-numeric">{formatDate(rental.returnedAt, intl)}</dd>
                 </div>
               )}
@@ -153,17 +150,17 @@ export function RentalRow({
                 {canExtend && (
                   <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
                     <Select
-                      aria-label="مدة التمديد"
+                      aria-label={rentals.extensionDurationLabel}
                       value={extendDays === "" ? "" : String(extendDays)}
                       onChange={(event) =>
                         onExtendDaysChange(event.target.value ? Number(event.target.value) : "")
                       }
-                      options={EXTENSION_DURATION_OPTIONS}
-                      className="text-sm"
+                      options={extensionDurationOptions(rentals)}
+                      className="min-h-11 text-sm"
                       wrapperClassName="sm:w-44"
                     />
                     <Button size="sm" disabled={!extendDays || extending} loading={extending} onClick={onExtend}>
-                      تمديد
+                      {rentals.extendAction}
                     </Button>
                   </div>
                 )}
@@ -174,7 +171,7 @@ export function RentalRow({
                   onClick={onReturn}
                   className={canExtend ? "" : "sm:flex-1"}
                 >
-                  إرجاع
+                  {rentals.returnAction}
                 </Button>
               </div>
             )}
@@ -184,7 +181,7 @@ export function RentalRow({
 
       <CardFooter>
         <ButtonLink href={`/rentals/${rental.id}`} size="sm">
-          عرض التفاصيل
+          {rentals.detailsAction}
         </ButtonLink>
       </CardFooter>
     </Card>

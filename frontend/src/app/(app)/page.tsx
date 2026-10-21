@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
-import { api } from "@/lib/api";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -10,19 +9,24 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { StoryCard, StoryFeedSkeleton } from "@/components/story/StoryCard";
+import { StoryLoadMore } from "@/components/story/StoryFeed";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { formatCount } from "@/lib/i18n/common";
-import type { Story } from "@/types/api";
-
-const DASHBOARD_STORY_LIMIT = 20;
+import { classifyError } from "@/lib/errors";
+import { flattenStories, isFailedLoad, useStoriesFeed } from "@/lib/queries";
 
 /**
  * The dashboard.
  *
- * Three totals, then the twenty most recent stories. Both halves come from the
- * same single `GET /stories?page=1&limit=20` response, which is why the totals are
- * the sum of the list rather than a second aggregate endpoint: one request, one
- * truth, and a dashboard that cannot show 20 cards above a count of 19.
+ * ONE FEED, TWO SURFACES. The dashboard and the stories grid read the SAME
+ * `useStoriesFeed()` entry — one key, one cache, one request — so the home page
+ * and the list page cannot show two different answers to the same question, and
+ * a story published in one of them appears in the other without a refresh.
+ *
+ * Three totals, then the most recent stories. The totals are the sum of the
+ * list ON SCREEN, not a second aggregate endpoint: one request, one truth, and
+ * a dashboard whose counters cannot disagree with the cards above them. The
+ * list grows when the reader asks for more, and the counters grow with it.
  *
  * The four states of the list are all implemented — a shaped skeleton while the
  * request is in flight, the semantic error surface with a retry when it fails, an
@@ -31,32 +35,16 @@ const DASHBOARD_STORY_LIMIT = 20;
  * failure, so the page does not jump under the reader when the data lands.
  */
 export default function DashboardPage() {
-  const { shell } = useStrings();
-  const [stories, setStories] = useState<Story[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const strings = useStrings();
+  const { dashboard } = strings;
+  const feed = useStoriesFeed();
+  const stories = flattenStories(feed.data);
 
-  const load = useCallback(() => {
-    api
-      .listStories({ page: 1, limit: DASHBOARD_STORY_LIMIT })
-      .then(
-        (data) => setStories(data.stories),
-        (failure) => setError(failure instanceof Error ? failure.message : "فشل تحميل القصص"),
-      )
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  /** The retry control's own handler: it owns the "start again" state, so the
-   *  effect that mounts the page never sets state synchronously. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    void load();
-  }
+  // A FAILED REFETCH IS NOT A FAILED PAGE. `isError` is also true when a
+  // background refetch fails while the reader is looking at data that is still
+  // there — blanking the dashboard in that case would take away stories the
+  // reader can already read, over a request whose result they never asked for.
+  const failed = isFailedLoad(feed);
 
   const views = stories.reduce((sum, story) => sum + story.views, 0);
   const reactions = stories.reduce((sum, story) => sum + story.reactions, 0);
@@ -64,26 +52,25 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="لوحة التحكم"
-        description="نظرة سريعة على ما منشور وما تفاعل معه القرّاء."
+        title={dashboard.pageTitle}
+        description={dashboard.pageDescription}
         action={
           <ButtonLink href="/stories/create" variant="primary">
-            اكتب قصة
+            {strings.shell.createStory}
           </ButtonLink>
         }
       />
 
-      {error ? (
+      {failed ? (
         <ErrorMessage
-          error={error}
-          title="تعذّر تحميل لوحة التحكم"
-          onRetry={retry}
-          retryLabel="أعد المحاولة"
+          error={strings.errors[classifyError(feed.error)]}
+          title={dashboard.loadFailedTitle}
+          onRetry={() => void feed.refetch()}
         />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {loading ? (
+            {feed.isLoading ? (
               <>
                 <StatSkeleton />
                 <StatSkeleton />
@@ -96,49 +83,53 @@ export default function DashboardPage() {
                     the raw call hydrates one set of digits and renders another
                     (and renders Arabic-Indic digits in an Arabic browser,
                     against the convention every other figure follows). */}
-                <StatCard label="إجمالي القصص" value={formatCount(stories.length)} icon="book" />
-                <StatCard label="إجمالي المشاهدات" value={formatCount(views)} icon="eye" />
-                <StatCard label="إجمالي التفاعلات" value={formatCount(reactions)} icon="heart" />
+                <StatCard label={dashboard.statStoriesLabel} value={formatCount(stories.length)} icon="book" />
+                <StatCard label={dashboard.statViewsLabel} value={formatCount(views)} icon="eye" />
+                <StatCard label={dashboard.statReactionsLabel} value={formatCount(reactions)} icon="heart" />
               </>
             )}
           </div>
 
           <section className="mt-8" aria-labelledby="latest-stories-heading">
             <h2 id="latest-stories-heading" className="mb-4 text-xl font-semibold text-ink">
-              أحدث القصص
+              {dashboard.latestStoriesHeading}
             </h2>
 
-            {loading ? (
+            {feed.isLoading ? (
               <div aria-busy="true">
                 <span role="status" className="sr-only">
-                  جارٍ التحميل…
+                  {strings.common.loading}
                 </span>
                 <StoryFeedSkeleton count={3} />
               </div>
             ) : stories.length === 0 ? (
               <EmptyState
                 icon="book"
-                // The one string on this page that has a dictionary key, read
-                // from it: the same sentence on the stories list page used to
-                // carry a full stop here and none there, which is how one
-                // sentence becomes two renderings. The rest of this page is
-                // still Arabic literals — see the scope note in `lib/i18n/shell.ts`.
-                title={shell.noStories}
-                description="لوحة التحكم تجمع ما تنشره هنا. اكتب أول قصة لتبدأ العدادات."
+                title={strings.shell.noStories}
+                description={dashboard.emptyDescription}
                 action={
                   <ButtonLink href="/stories/create" variant="primary">
-                    اكتب قصة
+                    {strings.shell.createStory}
                   </ButtonLink>
                 }
               />
             ) : (
-              <ul className="space-y-6">
-                {stories.map((story) => (
-                  <li key={story.id}>
-                    <StoryCard story={story} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-6">
+                  {stories.map((story) => (
+                    <li key={story.id}>
+                      <StoryCard story={story} />
+                    </li>
+                  ))}
+                </ul>
+
+                {feed.hasNextPage && (
+                  <StoryLoadMore
+                    isFetching={feed.isFetchingNextPage}
+                    onLoadMore={() => void feed.fetchNextPage()}
+                  />
+                )}
+              </>
             )}
           </section>
         </>

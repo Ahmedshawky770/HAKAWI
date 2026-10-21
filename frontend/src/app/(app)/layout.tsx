@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+
 import { AppShell } from "@/components/layout/AppShell";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
@@ -30,6 +33,43 @@ import { useAuthGuard } from "@/lib/auth-guard";
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const { status, retry } = useAuthGuard();
   const { auth } = useStrings();
+  const queryClient = useQueryClient();
+
+  /**
+   * THE CACHE IS EMPTIED WHEN THE SESSION ENDS — AND NOT ONE MOMENT EARLIER.
+   *
+   * The cache holds every conversation, library entry, payment and unread count
+   * the reader fetched, under keys that carry no account identity: the fact
+   * being cached is "this reader's conversations", and the reader is whoever is
+   * signed in. It lives in the root layout, so it survives the redirect to the
+   * sign-in screen — and the next person to sign in on this tab would be served
+   * the previous reader's private lists.
+   *
+   * WHY IT IS EMPTIED HERE AND NOT WHEN THE 401 ARRIVES. The obvious place to
+   * empty it is the moment the server answers "unauthorized" — and doing that
+   * is a trap: emptying the cache DESTROYS the queries, and destroying a query
+   * whose request is still in flight CANCELS that request. The error the server
+   * sent would then never reach the component that was waiting for it, and that
+   * component would sit in the loading state for ever, on every page, with no
+   * error and no retry. That is not a corner case: the header fetches an
+   * unread count on every route, so one expired token froze the whole product.
+   *
+   * So the cache is emptied HERE, where the session is declared over, and this
+   * effect runs AFTER the shell above has been torn down — the signed-out
+   * branch renders nothing, which unmounts every page that was reading the
+   * cache. Nothing observes those queries any more, so destroying them now
+   * cannot swallow an error anybody is waiting for: the requests are simply
+   * cancelled, and the data is gone.
+   *
+   * The other half of the guarantee lives at the session's other boundary: the
+   * sign-in screen empties the cache before the next session's first byte
+   * (`app/login/page.tsx`), and signing out empties it too
+   * (`components/layout/LogoutButton.tsx`).
+   */
+  useEffect(() => {
+    if (status !== "unauthenticated") return;
+    queryClient.clear();
+  }, [status, queryClient]);
 
   if (status === "loading") {
     return (

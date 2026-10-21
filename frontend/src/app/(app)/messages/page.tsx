@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
-import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import {
@@ -10,61 +9,56 @@ import {
   ConversationListSkeleton,
   ConversationRow,
 } from "@/components/social/ConversationRow";
-import type { Conversation } from "@/types/api";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, useConversations, useUnreadMessageCount } from "@/lib/queries";
 
 export default function MessagesPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const strings = useStrings();
+  const conversationsQuery = useConversations();
+  const { data, isLoading, error, refetch } = conversationsQuery;
+  /*
+   * THE UNREAD TOTAL IS DERIVED ONCE.
+   *
+   * The registry already owns this fact: `useUnreadMessageCount` sums the same
+   * conversations and feeds the sidebar badge and the bottom-navigation badge.
+   * The page kept its own sum, so the badge and the sentence under the heading
+   * were two answers to one question — and they could disagree, because one of
+   * them guarded its sum with `?? 0` and the other did not.
+   */
+  const unreadTotal = useUnreadMessageCount();
 
-  const load = useCallback(async () => {
-    try {
-      const data = await api.getConversations();
-      setConversations(data.conversations);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذّر تحميل المحادثات");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Fire-and-forget; the retry below calls this same `load`.
-    async function initialLoad() {
-      await load();
-    }
-    void initialLoad();
-  }, [load]);
-
-  const retry = () => {
-    setLoading(true);
-    setError("");
-    void load();
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
       <>
-        <PageHeader title="الرسائل" />
+        <PageHeader title={strings.social.messagesTitle} />
         <p role="status" className="sr-only">
-          جارٍ التحميل…
+          {strings.common.loading}
         </p>
         <ConversationListSkeleton />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={retry} title="تعذّر تحميل المحادثات" />;
+  if (isFailedLoad(conversationsQuery)) {
+    return (
+      <ErrorMessage
+        error={strings.errors[classifyError(error)]}
+        title={strings.social.messagesLoadFailed}
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
-  const unreadTotal = conversations.reduce((total, conversation) => total + conversation.unreadCount, 0);
+  const conversations = data?.conversations ?? [];
 
   return (
     <div className="animate-rise">
       <PageHeader
-        title="الرسائل"
-        description={unreadTotal > 0 ? `لديك ${unreadTotal} رسالة غير مقروءة.` : undefined}
+        title={strings.social.messagesTitle}
+        description={
+          unreadTotal > 0 ? strings.social.messagesUnreadDescription(unreadTotal) : undefined
+        }
       />
 
       {conversations.length === 0 ? (

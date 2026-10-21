@@ -9,6 +9,8 @@ import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 
 import PaymentsPage from "@/app/(app)/payments/page";
+import { AR as AR_PAYMENTS, EN as EN_PAYMENTS } from "@/lib/i18n/payments";
+import { AR as AR_COMMON } from "@/lib/i18n/common";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -52,6 +54,8 @@ const mockPayments = [
 
 describe("Payments page", () => {
   beforeEach(() => {
+    // The locale lives on the document, so every suite starts from the default.
+    document.documentElement.setAttribute("lang", "ar");
     mockedApi.getPaymentHistory.mockResolvedValue({
       payments: mockPayments,
       total: 1,
@@ -63,7 +67,7 @@ describe("Payments page", () => {
   it("renders the page title", async () => {
     renderWithProviders(<PaymentsPage />);
     await waitFor(() => {
-      expect(screen.getByRole("heading", { level: 1, name: "سجل المدفوعات" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: AR_PAYMENTS.pageTitle })).toBeInTheDocument();
     });
   });
 
@@ -75,12 +79,23 @@ describe("Payments page", () => {
 
   it("handles loading state", () => {
     renderWithProviders(<PaymentsPage />);
-    expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
+    expect(screen.getByRole("status")).toHaveTextContent(AR_COMMON.loading);
   });
 
   it("displays payments when available", async () => {
     renderWithProviders(<PaymentsPage />);
-    expect(await screen.findByText("1000 EGP")).toBeInTheDocument();
+    // The amount is in PIASTRES: 1000 piastres is 10.00 EGP, not "1000 EGP".
+    expect(await screen.findByText("10.00 ج.م")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /pay-1/ })).toHaveAttribute("href", "/payments/pay-1");
+  });
+
+  it("speaks the reader's language", async () => {
+    // The locale is read from the document, so setting it is how the product
+    // switches. Every word on this surface comes from the dictionary.
+    document.documentElement.setAttribute("lang", "en");
+
+    renderWithProviders(<PaymentsPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: EN_PAYMENTS.pageTitle })).toBeInTheDocument();
   });
 });

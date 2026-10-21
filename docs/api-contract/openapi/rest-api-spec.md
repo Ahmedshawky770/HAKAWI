@@ -310,7 +310,11 @@ Content-Type: application/json
 ```http
 POST /api/v1/books/:id/purchase
 Content-Type: application/json
-{ "paymentMethodId": "pm_123" }        // PurchaseBookDto — the ONLY field, and it is @IsOptional()
+{ "paymentMethod": "card" }            // PurchaseBookDto — 'card' | 'wallet', the READER'S CHOICE.
+//                                         It is NOT a gateway id: the server resolves the choice
+//                                         to this merchant's own Paymob method id, and a
+//                                         deployment that has configured none lets the gateway
+//                                         ask the customer. The field is @IsOptional().
 ```
 
 ```http

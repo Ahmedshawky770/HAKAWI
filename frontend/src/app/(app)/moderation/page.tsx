@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Loading";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { useToast } from "@/components/providers/ToastProvider";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, useInvalidation, useModerationQueue } from "@/lib/queries";
 import type { Report } from "@/types/api";
 
 /**
@@ -17,127 +21,96 @@ import type { Report } from "@/types/api";
  * act on reports, and view the actions that have already been taken. The three
  * backend routes that serve this data are wired here so the moderator does not
  * have to navigate three pages.
+ *
+ * WHY THE STATISTICS TAB IS STILL A PLACEHOLDER. The query registry
+ * (`lib/queries.ts`) has hooks for the moderation surface — `useModerationQueue`
+ * and `useUserRestrictions` — but none for the statistics, and that is not an
+ * oversight in the registry: the client HAS the call, `api.getModerationStats`,
+ * and it parses the backend's admin dashboard DTO (`totalReports`,
+ * `openReports`, `totalActions`, …) with the PUBLISHER's schema, which is a
+ * different set of fields, so the request can never satisfy it. The schema
+ * belongs to `lib/schemas.ts` and the call to `lib/api.ts` — neither is this
+ * surface's file to change — and a tab that always showed an error would be
+ * worse than one that tells the moderator the numbers are not available yet.
  */
 export default function ModerationDashboardPage() {
+  const strings = useStrings();
   const { notify } = useToast();
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const invalidate = useInvalidation();
   const [activeTab, setActiveTab] = useState<"queue" | "actions" | "stats">("queue");
-  // Bumped by `retry` to re-arm the load effect. The queue load owns its own loading/error
-  // transitions, so there is no longer an out-of-band flag to reset (see the load below).
-  const [attempt, setAttempt] = useState(0);
 
-  /**
-   * WHY THE LOAD OWNS ITS OWN STATE.
-   *
-   * This was `loadQueue`, a `useCallback` that swallowed every failure in a bare `catch {}` and
-   * never touched `loading`. `retry` called it directly, so on failure `loading` stayed `true`
-   * forever (the button spins, the error branch is never reachable) and the queue simply never
-   * populated. The load now sets `loading` and `error` around the request the same way the book
-   * detail page does, and `retry` re-arms it through the `attempt` counter rather than reaching
-   * around it.
-   */
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        const data = await api.getModerationQueue();
-        if (active) setReports(data.reports);
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "فشل تحميل لوحة الاعتدال");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
+  const queueQuery = useModerationQueue();
 
   /**
    * A moderation action failure is surfaced twice, on purpose: inline where the moderator is
    * looking, and as a toast, because the control they pressed scrolls with the queue. A silent
    * revert of the status chip is indistinguishable from a bug.
    */
-  const handleModerate = async (reportId: string, status: "open" | "in_review" | "resolved" | "dismissed") => {
-    setActionLoading(true);
-    setActionError("");
-    try {
-      await api.moderateItem(reportId, { status });
-      setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status } : r)));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "تعذّر تحديث البلاغ";
-      setActionError(message);
-      notify(message, "error");
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  const moderateMutation = useMutation({
+    mutationFn: ({ reportId, status }: { reportId: string; status: Report["status"] }) =>
+      api.moderateItem(reportId, { status }),
+    onSuccess: async () => {
+      await invalidate.moderation();
+    },
+    onError: (err) => {
+      notify(strings.errors[classifyError(err)], "error");
+    },
+  });
 
-  const retry = () => {
-    setLoading(true);
-    setError("");
-    setAttempt((n) => n + 1);
-  };
-
-  if (loading) {
+  if (queueQuery.isLoading) {
     return (
       <>
-        <PageHeader title="لوحة الاعتدال" />
+        <PageHeader title={strings.moderation.dashboardTitle} />
         <Loading />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={retry} title="فشل تحميل لوحة الاعتدال" />;
+  if (isFailedLoad(queueQuery)) {
+    return (
+      <ErrorMessage
+        error={strings.errors[classifyError(queueQuery.error)]}
+        title={strings.moderation.dashboardLoadFailed}
+        onRetry={() => void queueQuery.refetch()}
+      />
+    );
   }
+
+  const reports = queueQuery.data?.reports ?? [];
+
+  const tabButton = (tab: "queue" | "actions" | "stats", label: string) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      aria-current={activeTab === tab ? "true" : undefined}
+      className={`min-h-11 px-4 py-2 text-sm font-medium ${
+        activeTab === tab ? "border-b-2 border-ink text-ink" : "text-ink-muted"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="space-y-6">
-      <PageHeader title="لوحة الاعتدال" description="راقب البلاغات واتخذ الإجراءات المناسبة." />
+      <PageHeader title={strings.moderation.dashboardTitle} description={strings.moderation.dashboardDescription} />
 
       <div className="flex gap-2 border-b border-line">
-        <button
-          type="button"
-          onClick={() => setActiveTab("queue")}
-          className={`px-4 py-2 text-sm font-medium ${
-            activeTab === "queue" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
-          }`}
-        >
-          طابور البلاغات
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("actions")}
-          className={`px-4 py-2 text-sm font-medium ${
-            activeTab === "actions" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
-          }`}
-        >
-          الإجراءات
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("stats")}
-          className={`px-4 py-2 text-sm font-medium ${
-            activeTab === "stats" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
-          }`}
-        >
-          الإحصائيات
-        </button>
+        {tabButton("queue", strings.moderation.tabQueue)}
+        {tabButton("actions", strings.moderation.tabActions)}
+        {tabButton("stats", strings.moderation.tabStats)}
       </div>
 
       {activeTab === "queue" && (
         <div className="space-y-3">
-          {actionError && <ErrorMessage error={actionError} title="تعذّر تحديث البلاغ" />}
+          {moderateMutation.isError && (
+            <ErrorMessage
+              error={strings.errors[classifyError(moderateMutation.error)]}
+              title={strings.moderation.moderateFailed}
+            />
+          )}
           {reports.length === 0 ? (
-            <p className="text-sm text-ink-muted">لا توجد بلاغات معلّقة.</p>
+            <p className="text-sm text-ink-muted">{strings.moderation.queueEmpty}</p>
           ) : (
             <ul className="space-y-3">
               {reports.map((report) => (
@@ -145,39 +118,58 @@ export default function ModerationDashboardPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-ink">
-                        معرّف الهدف: {report.targetId}
+                        {strings.moderation.reportTargetId(report.targetId)}
                       </p>
-                      <p className="text-sm text-ink-muted">النوع: {report.targetType}</p>
-                      <p className="text-sm text-ink-muted">السبب: {report.reason}</p>
+                      <p className="text-sm text-ink-muted">
+                        {strings.moderation.reportTargetType(
+                          strings.moderation.targetTypeLabels[report.targetType] ?? report.targetType,
+                        )}
+                      </p>
+                      <p className="text-sm text-ink-muted">{strings.moderation.reportReason(report.reason)}</p>
                       {report.description && (
-                        <p className="text-sm text-ink-muted">الوصف: {report.description}</p>
+                        <p className="text-sm text-ink-muted">
+                          {strings.moderation.reportDescription(report.description)}
+                        </p>
                       )}
-                      <p className="text-sm text-ink-muted">الحالة: {report.status}</p>
+                      <p className="text-sm text-ink-muted">
+                        {strings.moderation.reportStatus(
+                          strings.moderation.statusLabels[report.status] ?? report.status,
+                        )}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
-                        loading={actionLoading}
-                        onClick={() => handleModerate(report.id, "in_review")}
+                        loading={moderateMutation.isPending && moderateMutation.variables?.reportId === report.id}
+                        disabled={moderateMutation.isPending}
+                        onClick={() =>
+                          moderateMutation.mutate({ reportId: report.id, status: "in_review" })
+                        }
                       >
-                        قيد المراجعة
+                        {strings.moderation.moderateInReview}
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
-                        loading={actionLoading}
-                        onClick={() => handleModerate(report.id, "resolved")}
+                        loading={moderateMutation.isPending && moderateMutation.variables?.reportId === report.id}
+                        disabled={moderateMutation.isPending}
+                        onClick={() =>
+                          moderateMutation.mutate({ reportId: report.id, status: "resolved" })
+                        }
                       >
-                        حلّ
+                        {strings.moderation.moderateResolve}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        loading={actionLoading}
-                        onClick={() => handleModerate(report.id, "dismissed")}
+                        loading={moderateMutation.isPending && moderateMutation.variables?.reportId === report.id}
+                        disabled={moderateMutation.isPending}
+                        onClick={() =>
+                          moderateMutation.mutate({ reportId: report.id, status: "dismissed" })
+                        }
                       >
-                        رفض
+                        {strings.moderation.moderateDismiss}
                       </Button>
                     </div>
                   </div>
@@ -189,11 +181,11 @@ export default function ModerationDashboardPage() {
       )}
 
       {activeTab === "actions" && (
-        <p className="text-sm text-ink-muted">الإجراءات تظهر هنا بعد اتخاذها.</p>
+        <p className="text-sm text-ink-muted">{strings.moderation.actionsPlaceholder}</p>
       )}
 
       {activeTab === "stats" && (
-        <p className="text-sm text-ink-muted">الإحصائيات تظهر هنا عند توفرها.</p>
+        <p className="text-sm text-ink-muted">{strings.moderation.statsPlaceholder}</p>
       )}
     </div>
   );

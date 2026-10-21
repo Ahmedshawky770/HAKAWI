@@ -1,9 +1,8 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -12,9 +11,8 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchResultCard, SearchResultsSkeleton } from "@/components/social/SearchResultCard";
 import { useStrings } from "@/components/providers/LocaleProvider";
-import type { SearchResult } from "@/types/api";
-
-type SearchPhase = "idle" | "searching" | "done";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, useSearch } from "@/lib/queries";
 
 /**
  * WHY THE PAGE IS SPLIT IN TWO.
@@ -69,63 +67,67 @@ function ResultsCount({ count }: { count: number }) {
 }
 
 function SearchClient() {
-  const { shell, common } = useStrings();
+  const strings = useStrings();
+  const { shell, common } = strings;
   const params = useSearchParams();
   const urlQuery = (params.get("q") ?? "").trim();
 
   const [query, setQuery] = useState(urlQuery);
-  const [submittedQuery, setSubmittedQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [phase, setPhase] = useState<SearchPhase>("idle");
-  const [error, setError] = useState("");
+  const [term, setTerm] = useState(urlQuery);
+  const [lastUrl, setLastUrl] = useState(urlQuery);
 
-  const runSearch = useCallback(
-    async (term: string) => {
-      setSubmittedQuery(term);
-      setPhase("searching");
-      setError("");
-      try {
-        const data = await api.search({ query: term });
-        setResults(data.results);
-      } catch (err) {
-        setResults([]);
-        setError(err instanceof Error ? err.message : shell.searchFailed);
-      } finally {
-        setPhase("done");
-      }
-    },
-    [shell.searchFailed],
-  );
+  /*
+   * THE URL IS WHAT A LINK MEANS. `q` is the search the page was opened with,
+   * so a change of it re-arms the search; a term the reader typed stays until
+   * the URL says otherwise. The state is adjusted DURING the render rather than
+   * in an effect, which is the pattern React documents for "a value from
+   * outside changed" — an effect would render the page twice for every URL.
+   */
+  if (urlQuery !== lastUrl) {
+    setLastUrl(urlQuery);
+    setTerm(urlQuery);
+    setQuery(urlQuery);
+  }
+
+  /*
+   * THE SEARCH IS A CACHE ENTRY, NOT A CALL. The URL's parameter is `q` and the
+   * API's is `query` — the difference is deliberate and is explained in
+   * `lib/api.ts` — and the hook owns the translation between them.
+   */
+  const search = useSearch({ query: term });
+  const results = search.data?.results ?? [];
+  const idle = term.trim().length === 0;
+  // A failed BACKGROUND REFETCH leaves the results in place; only a load that
+  // never arrived is a failed search.
+  const failed = isFailedLoad(search);
+  // The three states a search can be in: still arriving, refused, or settled —
+  // with or without results.
+  const loading = !idle && search.isLoading;
+  const settled = !idle && !loading && !failed;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    void runSearch(query);
+    const next = query.trim();
+    if (!next) return;
+    /*
+     * THE SAME TERM IS A NEW SEARCH, NOT A NO-OP.
+     *
+     * The query key is the term, so searching for a term the page already
+     * holds reuses the same cache entry — and with the app-wide stale time
+     * that entry is still fresh, so nothing was fetched and the reader saw the
+     * same results with no explanation. A reader who searches again is asking
+     * for the results again, so the request is made again.
+     */
+    if (next === term) {
+      void search.refetch();
+      return;
+    }
+    setTerm(next);
   };
 
-  /*
-   * Run the search the URL asks for, once per distinct query. The ref is what
-   * makes this safe under React's strict double-invocation of effects: without
-   * it, a remount in development fires the same request twice and the second one
-   * wins the race.
-   */
-  const searchedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!urlQuery || searchedRef.current === urlQuery) return;
-    searchedRef.current = urlQuery;
-    setQuery(urlQuery);
-    void runSearch(urlQuery);
-  }, [urlQuery, runSearch]);
-
-  const retry = () => {
-    if (!submittedQuery) return;
-    setPhase("searching");
-    void runSearch(submittedQuery);
-  };
-
-  const pickTerm = (term: string) => {
-    setQuery(term);
-    void runSearch(term);
+  const pickTerm = (suggestion: string) => {
+    setQuery(suggestion);
+    setTerm(suggestion);
   };
 
   return (
@@ -156,7 +158,15 @@ function SearchClient() {
         <Button type="submit">{common.search}</Button>
       </form>
 
-      {phase === "searching" && (
+      {idle && (
+        <EmptyState
+          icon="search"
+          title={shell.searchLabel}
+          description={shell.searchIdleDescription}
+        />
+      )}
+
+      {loading && (
         <>
           <p role="status" className="mb-4 text-sm text-ink-muted">
             {shell.searching}
@@ -165,11 +175,15 @@ function SearchClient() {
         </>
       )}
 
-      {phase === "done" && error && (
-        <ErrorMessage error={error} onRetry={retry} title={shell.searchFailed} />
+      {failed && (
+        <ErrorMessage
+          error={strings.errors[classifyError(search.error)]}
+          onRetry={() => void search.refetch()}
+          title={shell.searchFailed}
+        />
       )}
 
-      {phase === "done" && !error && results.length === 0 && (
+      {settled && results.length === 0 && (
         <div>
           <p role="status" className="mb-4 text-sm text-ink-muted">
             {common.noResults}
@@ -178,16 +192,16 @@ function SearchClient() {
             icon="search"
             title={shell.noMatchesTitle}
             description={shell.noMatchesDescription}
-            action={shell.searchSuggestions.map((term) => (
-              <Button key={term} variant="secondary" size="sm" onClick={() => pickTerm(term)}>
-                {term}
+            action={shell.searchSuggestions.map((suggestion) => (
+              <Button key={suggestion} variant="secondary" size="sm" onClick={() => pickTerm(suggestion)}>
+                {suggestion}
               </Button>
             ))}
           />
         </div>
       )}
 
-      {phase === "done" && !error && results.length > 0 && (
+      {settled && results.length > 0 && (
         <>
           <p role="status" className="mb-4 text-sm text-ink-muted">
             <ResultsCount count={results.length} />
@@ -198,14 +212,6 @@ function SearchClient() {
             ))}
           </ul>
         </>
-      )}
-
-      {phase === "idle" && (
-        <EmptyState
-          icon="search"
-          title={shell.searchLabel}
-          description={shell.searchIdleDescription}
-        />
       )}
     </div>
   );

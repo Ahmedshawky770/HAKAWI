@@ -730,7 +730,7 @@ describe('BooksController (e2e)', () => {
         .post(`/books/${bookId}/purchase`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          paymentMethodId: 'pm_123'
+          paymentMethod: 'card'
         })
         .expect(200)
         .expect((res) => {

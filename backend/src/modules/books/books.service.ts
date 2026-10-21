@@ -6,7 +6,9 @@ import {
   BadRequestException,
   InternalServerErrorException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   RENTAL_CURRENCY,
   RENTAL_DURATION_DAYS,
@@ -17,6 +19,12 @@ import {
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import {
+  PAYMOB_CONFIG_NAMESPACE,
+  resolvePaymobPaymentMethodId,
+  type PaymobConfig,
+  type PaymobPaymentMethodChoice,
+} from '../../config/paymob.config.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type {
   BookCreatedEvent,
@@ -61,6 +69,19 @@ export class BooksService {
     // purchase guard reads it through the library module's own repository interface rather than
     // querying `library` from the books module (Principle #7).
     @Inject(LIBRARY_REPOSITORY) private readonly libraryRepository: ILibraryRepository,
+    // THE PAYMOB CONFIGURATION, FOR THE READER'S CHOICE OF INSTRUMENT.
+    //
+    // WHY THE CONFIG SERVICE AND NOT THE `PAYMOB_CONFIG` TOKEN. The token is provided inside the
+    // payments module and is not exported from it, so it cannot be injected here — and the
+    // configuration itself is reachable in exactly one other way: `ConfigModule.forFeature(paymob)`
+    // merges the resolved configuration into the shared config host under the `paymob` namespace,
+    // which is the same object the token's factory reads with `configService.get('paymob')`. So this
+    // is the SAME resolved configuration, parsed from the environment ONCE at boot — not a second
+    // parse of `process.env` at request time.
+    //
+    // It is optional so a service built by hand (a unit test) still works: with no configuration
+    // there is no method id, and the gateway asks the customer which instrument to use.
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   async create(userId: string, input: CreateBookInput): Promise<Book> {
@@ -235,7 +256,11 @@ export class BooksService {
     return updated;
   }
 
-  async purchase(userId: string, bookId: string, paymentMethodId?: string): Promise<BookCheckoutResponse> {
+  async purchase(
+    userId: string,
+    bookId: string,
+    paymentMethod?: PaymobPaymentMethodChoice,
+  ): Promise<BookCheckoutResponse> {
     const book = await this.booksRepository.findById(bookId);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
@@ -272,12 +297,47 @@ export class BooksService {
     // entries or the next GET serves the pre-purchase count. Targeted invalidation — one DEL per
     // key — instead of a `books` sweep that evicted every other book in the deployment.
     await this.invalidateBookCache(bookId, book.isbn);
-    const checkout = await this.paymentsService.paymobInitializePayment(userId, book.price ?? 0, 'EGP', {
-      bookId,
-      type: 'purchase',
+
+    // THE READER'S CHOICE, RESOLVED TO A GATEWAY INSTRUMENT — OR TO NOTHING.
+    //
+    // The choice is SEMANTIC: "card" or "wallet", the two words the reader picked on the checkout
+    // panel. The gateway wants this merchant's own numeric id for that instrument, and only this
+    // deployment knows it, so the translation happens here — through the ONE resolver both sides
+    // share — and the id travels down to the gateway as an id.
+    //
+    // WHY AN ABSENT CONFIGURATION IS NOT A FAILURE. A deployment that has not configured a method id
+    // gets `undefined`, and the gateway is then told nothing about the instrument, which is
+    // Paymob's own "let the customer choose" case — exactly the behaviour the product had before
+    // the reader could choose. Refusing the purchase over an optional convenience would cost a
+    // reader a book because an operator had not filled in a number.
+    const paymentMethodId = resolvePaymobPaymentMethodId(this.paymobConfig(), paymentMethod);
+
+    const checkout = await this.paymentsService.paymobInitializePayment(
+      userId,
+      book.price ?? 0,
+      'EGP',
+      {
+        bookId,
+        type: 'purchase',
+        // The SEMANTIC value is what the payment record keeps. "card" / "wallet" is what the reader
+        // chose and what an analyst reconciles on; the gateway's numeric id is a fact about this
+        // merchant's dashboard and never reaches the stored record.
+        ...(paymentMethod === undefined ? {} : { paymentMethod }),
+      },
       paymentMethodId,
-    });
+    );
     return BooksService.toCheckoutResponse(checkout);
+  }
+
+  /**
+   * The resolved Paymob configuration, or `undefined` when this service was built without one.
+   *
+   * Read per call rather than cached in the constructor: the configuration is merged into the shared
+   * config host when the payments module is initialised, and a service that read it once at
+   * construction time could be handed an empty host depending on module order.
+   */
+  private paymobConfig(): PaymobConfig | undefined {
+    return this.configService?.get<PaymobConfig>(PAYMOB_CONFIG_NAMESPACE);
   }
 
   /**
@@ -289,7 +349,12 @@ export class BooksService {
    * rental row when `payment.completed` arrives. Access is therefore always downstream of payment, and
    * the two paths cannot diverge again.
    */
-  async rent(userId: string, bookId: string, durationDays: number): Promise<BookCheckoutResponse> {
+  async rent(
+    userId: string,
+    bookId: string,
+    durationDays: number,
+    paymentMethod?: PaymobPaymentMethodChoice,
+  ): Promise<BookCheckoutResponse> {
     const book = await this.booksRepository.findById(bookId);
     if (!book || book.deletedAt) {
       throw new NotFoundException('Book not found');
@@ -338,11 +403,23 @@ export class BooksService {
       throw new InternalServerErrorException('Rental pricing is misconfigured');
     }
 
-    const checkout = await this.paymentsService.paymobInitializePayment(userId, amount, RENTAL_CURRENCY, {
-      bookId,
-      type: 'rental',
-      durationDays,
-    });
+    const checkout = await this.paymentsService.paymobInitializePayment(
+      userId,
+      amount,
+      RENTAL_CURRENCY,
+      {
+        bookId,
+        type: 'rental',
+        durationDays,
+        // The SEMANTIC value, for the same reason the purchase records it: it
+        // is what the reader chose, and it is what the stored record says.
+        ...(paymentMethod === undefined ? {} : { paymentMethod }),
+      },
+      // The RESOLVED id, for the same reason the purchase passes it: the
+      // gateway is the only thing that can act on it, and it is the only thing
+      // that must not learn a number the reader could have typed.
+      resolvePaymobPaymentMethodId(this.paymobConfig(), paymentMethod),
+    );
 
     return BooksService.toCheckoutResponse(checkout);
   }

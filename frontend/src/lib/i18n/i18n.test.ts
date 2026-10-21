@@ -1,13 +1,13 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { formatDate, formatDateTime, formatLongDate, formatTime, intlLocale, stringsFor } from "@/lib/i18n";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
-import { AR as AR_AUTH, EN as EN_AUTH } from "@/lib/i18n/auth";
-import { AR as AR_COMMON, EN as EN_COMMON } from "@/lib/i18n/common";
-import { AR as AR_SHELL, EN as EN_SHELL } from "@/lib/i18n/shell";
-import { AR as AR_STORY, EN as EN_STORY, storyCategoryLabel } from "@/lib/i18n/story";
+import { storyCategoryLabel } from "@/lib/i18n/story";
 
 /**
  * WHAT THIS SUITE EXISTS TO HOLD STILL.
@@ -30,22 +30,87 @@ import { AR as AR_STORY, EN as EN_STORY, storyCategoryLabel } from "@/lib/i18n/s
  *    in the dictionary has nothing to pin it, so the table itself is walked for
  *    Arabic-Indic digits and for `undefined`.
  */
-describe("dictionary key parity", () => {
-  const namespaces: [string, Record<string, unknown>, Record<string, unknown>][] = [
-    ["shell", AR_SHELL as unknown as Record<string, unknown>, EN_SHELL as unknown as Record<string, unknown>],
-    ["common", AR_COMMON as unknown as Record<string, unknown>, EN_COMMON as unknown as Record<string, unknown>],
-    ["auth", AR_AUTH as unknown as Record<string, unknown>, EN_AUTH as unknown as Record<string, unknown>],
-    ["story", AR_STORY as unknown as Record<string, unknown>, EN_STORY as unknown as Record<string, unknown>],
-  ];
+/**
+ * The leaf key paths of a namespace, so two locales can be compared by NAME and
+ * not only at the top level.
+ *
+ * A namespace is a tree — `contests.facts.category`, `contests.statusLabels.draft`
+ * — and a key that exists in one locale's tree and not in the other's is the
+ * failure this suite exists to catch. Comparing `Object.keys` of the namespace
+ * alone would miss it.
+ */
+function keyPaths(value: unknown, prefix = ""): string[] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [prefix];
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+    keyPaths(child, prefix ? `${prefix}.${key}` : key),
+  );
+}
 
-  it.each(namespaces)("%s: Arabic and English declare the same keys, in the same order", (_name, ar, en) => {
-    expect(Object.keys(en)).toEqual(Object.keys(ar));
+/**
+ * The namespaces the dictionary MUST carry, whatever else it grows to carry.
+ *
+ * A FLOOR, NOT A LIST. The dictionary's shape grows with every surface that
+ * claims a namespace, so the list is asserted as a SUBSET: a namespace that
+ * disappears is caught, and a namespace that is added does not break the
+ * suite. `expect(namespaces).toEqual([...])` would be the stronger assertion
+ * and the wrong one — it would fail on every new surface, and the engineer who
+ * added the surface would delete the entry instead of thinking about it.
+ */
+const REQUIRED_NAMESPACES: string[] = [
+  "shell",
+  "common",
+  "auth",
+  "story",
+  "errors",
+  "account",
+  "library",
+  "rentals",
+  "payments",
+  "contests",
+  "moderation",
+  "social",
+  "profile",
+  "books",
+  "checkout",
+  "dashboard",
+];
+
+/**
+ * The namespace FILES that live beside this test.
+ *
+ * Read from the directory rather than written out as a second list of names:
+ * a namespace file that is never wired into `AppStrings` is a file of copy the
+ * product can never show, and this is the assertion that catches it — the
+ * count of namespaces the dictionary exposes cannot be smaller than the count
+ * of namespace files that exist.
+ */
+function namespaceFileCount(): number {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return readdirSync(here).filter(
+    (name) => name.endsWith(".ts") && name !== "index.ts" && !name.endsWith(".test.ts"),
+  ).length;
+}
+
+describe("dictionary key parity", () => {
+  const namespaces = Object.keys(stringsFor("ar"));
+
+  it.each(namespaces)("%s: Arabic and English declare the same keys, in the same order", (name) => {
+    const ar = keyPaths((stringsFor("ar") as unknown as Record<string, unknown>)[name]);
+    const en = keyPaths((stringsFor("en") as unknown as Record<string, unknown>)[name]);
+    expect(en).toEqual(ar);
   });
 
   it("exposes both locales through every namespace of AppStrings", () => {
-    const namespaces = Object.keys(stringsFor("ar"));
-    expect(namespaces).toEqual(["shell", "common", "auth", "story"]);
+    // The list of namespaces is the dictionary's own shape and it grows with
+    // every surface that claims one, so it is compared between the two locales
+    // rather than pinned to a list that a new surface would silently break —
+    // and the floor of the known namespaces is asserted as a subset, so a
+    // namespace that is LOST is caught.
+    expect(namespaces).toEqual(expect.arrayContaining(REQUIRED_NAMESPACES));
     expect(Object.keys(stringsFor("en"))).toEqual(namespaces);
+    // The floor is only a floor if the count it is compared against is real.
+    expect(namespaceFileCount()).toBeGreaterThan(0);
+    expect(namespaces.length).toBeGreaterThanOrEqual(namespaceFileCount());
   });
 
   it("holds no empty string in either locale", () => {

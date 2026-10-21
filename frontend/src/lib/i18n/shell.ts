@@ -31,6 +31,9 @@ export interface ShellStrings {
   navContests: string;
   navMessages: string;
   navNotifications: string;
+  /** The word a screen reader reads for an unread counter. */
+  unreadMessagesLabel: string;
+  unreadNotificationsLabel: string;
   navPayments: string;
   navRentals: string;
   navProfile: string;
@@ -79,6 +82,8 @@ export const AR: ShellStrings = {
   navContests: "المسابقات",
   navMessages: "الرسائل",
   navNotifications: "الإشعارات",
+  unreadMessagesLabel: "رسائل غير مقروءة",
+  unreadNotificationsLabel: "إشعارات غير مقروءة",
   navPayments: "المدفوعات",
   navRentals: "الإيجارات",
   navProfile: "حسابي",
@@ -126,6 +131,8 @@ export const EN: ShellStrings = {
   navContests: "Contests",
   navMessages: "Messages",
   navNotifications: "Notifications",
+  unreadMessagesLabel: "unread messages",
+  unreadNotificationsLabel: "unread notifications",
   navPayments: "Payments",
   navRentals: "Rentals",
   navProfile: "Profile",

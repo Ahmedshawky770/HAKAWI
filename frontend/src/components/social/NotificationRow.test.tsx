@@ -101,7 +101,7 @@ describe("NotificationListSkeleton", () => {
 
 describe("NotificationListEmpty", () => {
   it("says there is no notification yet, in Arabic", () => {
-    render(<NotificationListEmpty />);
+    renderWithProviders(<NotificationListEmpty />);
     expect(screen.getByRole("heading", { name: "لا توجد إشعارات بعد." })).toBeInTheDocument();
   });
 });

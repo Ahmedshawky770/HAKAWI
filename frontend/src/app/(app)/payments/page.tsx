@@ -1,62 +1,53 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
-import { api } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, usePayments } from "@/lib/queries";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { PaymentListEmpty, PaymentListSkeleton, PaymentRow } from "@/components/commerce/PaymentRow";
-import type { Payment } from "@/types/api";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
+/**
+ * The reader's payment history.
+ *
+ * The history is ONE cache entry (`usePayments`), so the list on this page and
+ * the row on any other surface that shows a payment agree about it, and
+ * returning to the page does not re-request what is already known.
+ */
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const strings = useStrings();
+  const { payments: copy } = strings;
+  const history = usePayments();
 
-  const load = useCallback(async () => {
-    try {
-      const data = await api.getPaymentHistory();
-      setPayments(data.payments);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل تحميل المدفوعات");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Fire-and-forget; the retry below calls this same `load`.
-    async function initialLoad() {
-      await load();
-    }
-    void initialLoad();
-  }, [load]);
-
-  const retry = () => {
-    setLoading(true);
-    setError("");
-    void load();
-  };
-
-  if (loading) {
+  if (history.isLoading) {
     return (
       <>
-        <PageHeader title="سجل المدفوعات" />
+        <PageHeader title={copy.pageTitle} />
         <p role="status" className="sr-only">
-          جارٍ التحميل…
+          {strings.common.loading}
         </p>
         <PaymentListSkeleton />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={retry} title="فشل تحميل المدفوعات" />;
+  if (isFailedLoad(history)) {
+    return (
+      <ErrorMessage
+        error={strings.errors[classifyError(history.error)]}
+        title={copy.loadFailedTitle}
+        onRetry={() => void history.refetch()}
+      />
+    );
   }
+
+  const payments = history.data?.payments ?? [];
 
   return (
     <div className="animate-rise">
-      <PageHeader title="سجل المدفوعات" description="كل عمليات الشراء والاشتراك في حكاوي." />
+      <PageHeader title={copy.pageTitle} description={copy.pageDescription} />
 
       {payments.length === 0 ? (
         <PaymentListEmpty />

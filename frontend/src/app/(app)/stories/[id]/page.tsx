@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
-import { api, getStoredUser } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useViewerId } from "@/lib/use-stored-user";
+import { classifyError } from "@/lib/errors";
 import { sanitizeHtml } from "@/lib/sanitize-html";
+import { isFailedLoad, useInvalidation, useStory } from "@/lib/queries";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,31 +19,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { useToast } from "@/components/providers/ToastProvider";
 import { useLocale } from "@/components/providers/LocaleProvider";
 import { ReactionBar } from "@/components/story/ReactionBar";
+import { ReadingProgress } from "@/components/story/ReadingProgress";
 import { StoryByline, StoryCategory, StoryDate } from "@/components/story/StoryMeta";
 import type { Story } from "@/types/api";
-
-/** Nothing in this page's lifetime changes the signed-in user; the guard
- *  navigates away when the session ends. */
-const noopSubscribe = () => () => undefined;
-
-/**
- * The signed-in reader's id, or `null` when nobody is signed in.
- *
- * Read through `useSyncExternalStore` rather than during render or in an effect:
- * local storage does not exist on the server, so a render-time read renders the
- * owner controls on the client that are missing from the HTML React hydrated, and
- * an effect that sets state afterwards is a cascading render for a value that is
- * already known by the time the page paints. The store gives the server `null`
- * and the client the real id, which is the same pattern `LocaleProvider` uses for
- * `<html lang>`.
- */
-function useViewerId(): string | null {
-  return useSyncExternalStore(
-    noopSubscribe,
-    () => getStoredUser()?.id ?? null,
-    () => null,
-  );
-}
 
 /**
  * The reading surface.
@@ -69,14 +50,21 @@ export default function StoryDetailPage() {
   const router = useRouter();
   const { notify } = useToast();
   const { intl, strings } = useLocale();
+  const invalidate = useInvalidation();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const [story, setStory] = useState<Story | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const storyQuery = useStory(id);
+  const story: Story | null = storyQuery.data ?? null;
+  const loading = storyQuery.isLoading;
+  const error = isFailedLoad(storyQuery) ? strings.errors[classifyError(storyQuery.error)] : "";
+
+  // The signed-in reader's id, from the shared session store — the store gives
+  // the server `null` and the client the real id, so the owner controls below
+  // are not rendered against two different readers. See
+  // `lib/use-stored-user.ts`.
   const viewerId = useViewerId();
 
   // The raw body, normalised to a string so the memo below has a single, primitive dependency.
@@ -104,27 +92,6 @@ export default function StoryDetailPage() {
   const viewsReadout = story ? strings.story.views(story.views) : null;
   const reactionsReadout = story ? strings.story.reactions(story.reactions) : null;
 
-  const load = useCallback(() => {
-    api
-      .getStory(id)
-      .then(
-        (data) => setStory(data),
-        (failure) => setError(failure instanceof Error ? failure.message : "فشل تحميل القصة"),
-      )
-      .finally(() => setLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  /** Retry owns the "start again" state, so the mounting effect stays async-only. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    void load();
-  }
-
   const isOwner = story !== null && viewerId !== null && story.author.id === viewerId;
 
   async function handleDelete() {
@@ -133,9 +100,12 @@ export default function StoryDetailPage() {
     try {
       await api.deleteStory(story.id);
       notify(strings.story.storyDeleteSucceeded, "success");
+      // The story is gone: the feed, the dashboard and the trending rail are all
+      // stale, and the reader has just been told so by the toast above.
+      await invalidate.stories(story.id);
       router.push("/stories");
     } catch (err) {
-      notify(err instanceof Error ? err.message : strings.story.storyDeleteFailed, "error");
+      notify(strings.errors[classifyError(err)], "error");
       setDeleteArmed(false);
       setDeleting(false);
     }
@@ -177,16 +147,16 @@ export default function StoryDetailPage() {
         <ErrorMessage
           error={error}
           title={strings.story.storyOpenFailed}
-          onRetry={retry}
+          onRetry={() => void storyQuery.refetch()}
         />
       ) : !story ? (
         <EmptyState
           icon="book"
-          title="القصة غير موجودة"
-          description="ربما حُذفت أو تغيّر رابطها."
+          title={strings.story.storyNotFound}
+          description={strings.story.storyNotFoundDescription}
           action={
             <ButtonLink href="/stories" variant="secondary">
-              العودة للقصص
+              {strings.story.backToStories}
             </ButtonLink>
           }
         />
@@ -222,7 +192,12 @@ export default function StoryDetailPage() {
             </div>
           </header>
 
-          <div className="hk-prose mt-8">
+          {/* How far through the story the reader is, and how much is left. The
+              body below is the longest text in the product and it was the one
+              surface that could not say where the reader was in it. */}
+          <ReadingProgress content={content} targetId="story-body" />
+
+          <div className="hk-prose mt-8" id="story-body">
             {story.content ? (
               // `story.content` is author-supplied HTML, so it is sanitized to an allowlist before
               // it reaches `dangerouslySetInnerHTML`. Rendering it raw let a story whose body is
@@ -232,7 +207,7 @@ export default function StoryDetailPage() {
               // the body on a reaction or a toast was the cost that memo removes.
               <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
             ) : (
-              <p className="italic text-ink-muted">لا يوجد محتوى</p>
+              <p className="italic text-ink-muted">{strings.story.noContent}</p>
             )}
           </div>
 
@@ -253,11 +228,13 @@ export default function StoryDetailPage() {
                     onClick={() => (deleteArmed ? void handleDelete() : setDeleteArmed(true))}
                   >
                     <Icon name="trash" size="sm" />
-                    {deleteArmed ? "تأكيد الحذف" : "حذف القصة"}
+                    {deleteArmed
+                      ? strings.story.deleteStoryConfirmButton
+                      : strings.story.deleteStoryButton}
                   </Button>
                   {deleteArmed && (
                     <Button variant="ghost" size="sm" onClick={() => setDeleteArmed(false)}>
-                      تراجع
+                      {strings.story.deleteStoryUndoButton}
                     </Button>
                   )}
                 </div>

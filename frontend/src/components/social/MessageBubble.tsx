@@ -4,6 +4,7 @@ import React from "react";
 
 import type { Message } from "@/types/api";
 import { formatTime } from "@/lib/i18n";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 /**
  * One message bubble.
@@ -17,12 +18,12 @@ import { formatTime } from "@/lib/i18n";
  * physical direction: in an RTL container `end` is the left edge, so these stay
  * correct without a `left`/`right` anywhere.
  *
- * AUTHOR METADATA, AND WHY IT IS ONLY EVER "أنت". `MessagesListResponse`
+ * AUTHOR METADATA, AND WHY THE OWN SIDE IS ALL IT NAMES. `MessagesListResponse`
  * carries `senderId` and no author summary, so the thread cannot name the other
  * participant without a second request (`api.getConversation` does not exist),
  * and this migration keeps the request set unchanged. The reader's own messages
- * are labelled instead; the other side is named by the conversation it belongs
- * to.
+ * are labelled instead ("You", in the reader's language); the other side is
+ * named by the conversation it belongs to.
  */
 export function MessageBubble({
   message,
@@ -33,6 +34,8 @@ export function MessageBubble({
   isOwn: boolean;
   intl: string;
 }) {
+  const strings = useStrings();
+
   return (
     <li className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
       <div
@@ -40,7 +43,7 @@ export function MessageBubble({
           isOwn ? "bg-accent-fill text-on-accent" : "bg-surface-raised text-ink"
         }`}
       >
-        {isOwn && <p className="mb-1 text-xs font-medium text-on-accent/80">أنت</p>}
+        {isOwn && <p className="mb-1 text-xs font-medium text-on-accent/80">{strings.social.messageOwnLabel}</p>}
         <p className="whitespace-pre-wrap break-words text-sm leading-7">{message.content}</p>
         <p className={`hk-numeric mt-1 text-xs ${isOwn ? "text-on-accent/80" : "text-ink-muted"}`}>
           {formatTime(message.createdAt, intl)}

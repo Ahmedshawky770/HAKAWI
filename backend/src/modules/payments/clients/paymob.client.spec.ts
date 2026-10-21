@@ -350,6 +350,50 @@ describe('PaymobClient', () => {
       });
     });
 
+    /**
+     * THE INSTRUMENT THE READER CHOSE, REACHING THE GATEWAY.
+     *
+     * This is the whole point of the reader's choice: Paymob's `payment_keys` endpoint accepts a
+     * `payment_method_id`, and without it the payment frame asks the customer which instrument to
+     * use — so a choice that stops at our own database is a choice the reader never made.
+     */
+    it('names the instrument the reader chose when the checkout carries one', async () => {
+      const { client, calls } = buildHarness();
+
+      await client.createCheckout({ ...CHECKOUT, paymentMethodId: '7' });
+
+      const keyCall = calls.find((call) => call.url.endsWith('/acceptance/payment_keys'));
+      expect(keyCall?.body).toMatchObject({ payment_method_id: '7' });
+    });
+
+    it('says NOTHING about the instrument when the checkout carries none', async () => {
+      // The absence is Paymob's own "let the customer choose" case, and it is the behaviour this
+      // gateway had before the reader could choose — so the key must not be sent as an empty value.
+      const { client, calls } = buildHarness();
+
+      await client.createCheckout(CHECKOUT);
+
+      const keyCall = calls.find((call) => call.url.endsWith('/acceptance/payment_keys'));
+      expect(keyCall?.body).not.toHaveProperty('payment_method_id');
+    });
+
+    it('accepts a numeric instrument id as well as a numeric string', async () => {
+      const { client, calls } = buildHarness();
+
+      await client.createCheckout({ ...CHECKOUT, paymentMethodId: 7 });
+
+      const keyCall = calls.find((call) => call.url.endsWith('/acceptance/payment_keys'));
+      expect(keyCall?.body).toMatchObject({ payment_method_id: 7 });
+    });
+
+    it('refuses an instrument id that is not a positive integer, before any network call', async () => {
+      const { client, fetchImpl } = buildHarness();
+
+      await expect(client.createCheckout({ ...CHECKOUT, paymentMethodId: 'card' })).rejects.toBeInstanceOf(ZodError);
+      await expect(client.createCheckout({ ...CHECKOUT, paymentMethodId: '0' })).rejects.toBeInstanceOf(ZodError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
     it('rejects a payment key response with a null token', async () => {
       const { client } = buildHarness((call) => {
         if (call.url.endsWith('/auth/tokens')) {

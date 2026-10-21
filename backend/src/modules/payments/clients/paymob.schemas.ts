@@ -58,6 +58,16 @@ export const paymobPaymentKeyRequestSchema = z.object({
   lock_order_when_paid: z.boolean().optional(),
   billing_email: z.string().min(3).max(255).optional(),
   billing_phone_number: z.string().min(6).max(32).optional(),
+  /**
+   * The merchant's own id for the instrument the reader chose — a card, a mobile wallet.
+   *
+   * OPTIONAL, AND THE ABSENCE IS MEANINGFUL. Paymob treats a request without this field as "let the
+   * customer choose inside the payment frame", which is the behaviour this gateway had before the
+   * reader's choice existed. So the field is only ever sent when the deployment has configured the
+   * id, and omitting it is never a silent loss of the reader's choice — it is the documented
+   * "the gateway asks" case.
+   */
+  payment_method_id: paymobNumericIdSchema.optional(),
 });
 
 export const paymobPaymentKeyResponseSchema = z.object({
@@ -101,6 +111,12 @@ export const paymobCheckoutInputSchema = z.object({
   billingEmail: z.string().min(3).max(255).optional(),
   billingPhoneNumber: z.string().min(6).max(32).optional(),
   expirationSeconds: z.number().int().positive().optional(),
+  /**
+   * The instrument the reader chose, as the MERCHANT'S Paymob id — not as the word the reader
+   * picked. The choice ("card" / "wallet") is resolved to this id before it reaches the gateway,
+   * and it is OPTIONAL: absent means the gateway asks the customer which instrument to use.
+   */
+  paymentMethodId: paymobNumericIdSchema.optional(),
 });
 
 export const paymobRefundInputSchema = z.object({

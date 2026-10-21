@@ -7,6 +7,7 @@ import { screen } from "@testing-library/react";
 import { StoryCard, StoryCardCompact, formatCompact } from "@/components/story/StoryCard";
 import { renderWithProviders } from "@/test-utils/render";
 import { STORY } from "@/test-utils/fixtures";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 
 const COVER = "https://cdn.example.com/cover.webp";
 
@@ -60,7 +61,7 @@ describe("StoryCard", () => {
     const { container } = renderWithProviders(<StoryCard story={STORY} />);
     const figures = Array.from(container.querySelectorAll(".hk-numeric")).map((node) => node.textContent);
     expect(figures).toContain("42");
-    expect(figures).toContain(formatCompact(STORY.views));
+    expect(figures).toContain(formatCompact(STORY.views, DEFAULT_LOCALE));
   });
 
   it("gives the counts a name, so a screen reader does not hear two bare numbers", () => {
@@ -87,26 +88,35 @@ describe("StoryCardCompact", () => {
 
 describe("formatCompact", () => {
   it("leaves small numbers exact", () => {
-    expect(formatCompact(0)).toBe("0");
-    expect(formatCompact(42)).toBe("42");
-    expect(formatCompact(999)).toBe("999");
+    expect(formatCompact(0, "ar")).toBe("0");
+    expect(formatCompact(42, "ar")).toBe("42");
+    expect(formatCompact(999, "ar")).toBe("999");
   });
 
   it("rounds thousands, because a view count is a magnitude", () => {
-    expect(formatCompact(1000)).toBe("1 ألف");
-    expect(formatCompact(1204)).toBe("1.2 ألف");
-    expect(formatCompact(1500)).toBe("1.5 ألف");
-    expect(formatCompact(12_000)).toBe("12 ألف");
+    expect(formatCompact(1000, "ar")).toBe("1 ألف");
+    expect(formatCompact(1204, "ar")).toBe("1.2 ألف");
+    expect(formatCompact(1500, "ar")).toBe("1.5 ألف");
+    expect(formatCompact(12_000, "ar")).toBe("12 ألف");
   });
 
   it("rounds millions the same way", () => {
-    expect(formatCompact(1_000_000)).toBe("1 مليون");
-    expect(formatCompact(2_450_000)).toBe("2.5 مليون");
-    expect(formatCompact(24_000_000)).toBe("24 مليون");
+    expect(formatCompact(1_000_000, "ar")).toBe("1 مليون");
+    expect(formatCompact(2_450_000, "ar")).toBe("2.5 مليون");
+    expect(formatCompact(24_000_000, "ar")).toBe("24 مليون");
   });
 
   it("keeps one decimal only while it carries information", () => {
-    expect(formatCompact(10_400)).toBe("10 ألف");
-    expect(formatCompact(10_900)).toBe("11 ألف");
+    expect(formatCompact(10_400, "ar")).toBe("10 ألف");
+    expect(formatCompact(10_900, "ar")).toBe("11 ألف");
+  });
+
+  it("writes the magnitude the way the reader's language does", () => {
+    // Arabic writes the word after the figure with a space; English writes the
+    // suffix against it. The joining is copy, so it lives in the dictionary.
+    expect(formatCompact(1204, "en")).toBe("1.2K");
+    expect(formatCompact(12_000, "en")).toBe("12K");
+    expect(formatCompact(2_450_000, "en")).toBe("2.5M");
+    expect(formatCompact(999, "en")).toBe("999");
   });
 });

@@ -605,6 +605,30 @@ export const publisherStatsSchema = z.object({
   totalPrizes: z.number(),
 });
 
+/**
+ * The moderation dashboard's counters.
+ *
+ * WHY IT IS NOT `publisherStatsSchema`. It was: `getModerationStats` validated
+ * the moderation dashboard's answer against the PUBLISHER's counters, and the
+ * two have nothing in common — `totalReports` and `totalContests` are
+ * different facts about different things, so the answer could never satisfy
+ * the schema and the call could only ever fail. The shape here is the
+ * dashboard's own (`backend/src/modules/moderation/dto/admin-dashboard.dto.ts`),
+ * which is the only place that decides what those counters are.
+ */
+export const moderationStatsSchema = z.object({
+  totalReports: z.number(),
+  openReports: z.number(),
+  escalatedReports: z.number(),
+  inReviewReports: z.number(),
+  resolvedReports: z.number(),
+  dismissedReports: z.number(),
+  totalActions: z.number(),
+  totalRestrictions: z.number(),
+  activeRestrictions: z.number(),
+  avgResolutionMinutes: z.number().nullable(),
+});
+
 export const publisherSubmissionSchema = z.object({
   id: z.string(),
   storyId: z.string(),

@@ -29,6 +29,7 @@ import {
   messageOnlySchema,
   messageSchema,
   messagesListResponseSchema,
+  moderationStatsSchema,
   notificationSchema,
   notificationsListResponseSchema,
   paymentSchema,
@@ -57,6 +58,7 @@ import {
   userBadgesResponseSchema,
   userStatsSchema,
 } from "@/lib/schemas";
+import { ApiError } from "@/lib/errors";
 
 /**
  * The one API origin in the app. Every request goes through here, and so does the OAuth handshake
@@ -66,6 +68,25 @@ import {
  * repeating the environment lookup and its fallback.
  */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+
+/**
+ * How the reader is paying.
+ *
+ * TWO WORDS, NOT A HANDLE. The gateway's own identifier for a stored payment
+ * instrument is a number the merchant's dashboard knows and the reader has
+ * never seen, so it was never something the client could ask for — the earlier
+ * free-text field asked the reader to type one, and the only outcome that
+ * produced was a failed checkout. What the client can ask is the question the
+ * reader can answer: card or wallet. The SERVER resolves the answer to this
+ * merchant's gateway id, and a deployment that has not configured one simply
+ * lets the gateway ask the customer, exactly as it did before the question
+ * existed.
+ *
+ * The type lives here, in the module that speaks to the API, so that the wire
+ * format and the dialog cannot drift apart: the dialog's `CheckoutMethod` is
+ * this type under another name.
+ */
+export type PaymentMethodChoice = "card" | "wallet";
 
 const storedUserSchema = z.object({
   id: z.string(),
@@ -114,6 +135,50 @@ export function clearStoredUser() {
   localStorage.removeItem("hakawi_tokens");
 }
 
+/**
+ * WHAT HAPPENS WHEN THE SESSION IS LOST.
+ *
+ * A 401 is not only an error on a screen: it means the reader who was signed
+ * in is no longer signed in, and everything the client cached for them belongs
+ * to somebody else now. The cache is cleared on an explicit sign-out
+ * (`LogoutButton`), but a session can also end by itself — a revoked token, an
+ * expired refresh token, a server-side session deletion — and then the reader
+ * is redirected to the login screen while the previous reader's conversations,
+ * library, payments and unread counts are still sitting in the shared
+ * `QueryClient`, which lives in the root layout and survives the redirect.
+ *
+ * The next person to sign in on the same tab would be served that cache.
+ *
+ * So the client announces the loss of a session, and whoever owns the cache
+ * empties it. `Providers` registers the one listener that matters.
+ */
+type SessionLostListener = () => void;
+
+const sessionLostListeners = new Set<SessionLostListener>();
+
+/** Tell the application that the session is gone. */
+export function notifySessionLost(): void {
+  for (const listener of sessionLostListeners) {
+    try {
+      listener();
+    } catch {
+      // A listener that fails must not turn a 401 into an unhandled error.
+    }
+  }
+}
+
+/**
+ * Subscribe to the loss of a session.
+ *
+ * @returns the function that cancels the subscription.
+ */
+export function onSessionLost(listener: SessionLostListener): () => void {
+  sessionLostListeners.add(listener);
+  return () => {
+    sessionLostListeners.delete(listener);
+  };
+}
+
 const storedTokensSchema = z.object({
   refreshToken: z.string(),
 });
@@ -131,7 +196,21 @@ export function getStoredRefreshToken(): string | null {
   }
 }
 
-const apiErrorMessageSchema = z.union([z.string(), z.array(z.string())]);
+/**
+ * The shape of the server's error body.
+ *
+ * NestJS answers an exception with `{message, error, statusCode}`, and
+ * `message` is sometimes a STRING ("Invalid email or password") and sometimes
+ * an OBJECT that carries its own `message` ("CAPTCHA verification required").
+ * The object form used to fail the whole parse, so the server's own wording
+ * was lost and the client had nothing to classify — which is why the error
+ * classifier in `lib/errors.ts` never saw the reason a request was refused.
+ */
+const apiErrorMessageSchema = z.union([
+  z.string(),
+  z.array(z.string()),
+  z.object({ message: z.string() }).passthrough(),
+]);
 
 const apiErrorSchema = z.object({
   message: apiErrorMessageSchema.optional(),
@@ -149,11 +228,22 @@ const apiErrorSchema = z.object({
 function firstMessage(value: z.infer<typeof apiErrorMessageSchema> | null): string | null {
   if (value === null) return null;
   if (typeof value === "string") return value;
-  const [first] = value;
-  return first ?? null;
+  if (Array.isArray(value)) {
+    const [first] = value;
+    return first ?? null;
+  }
+  return value.message;
 }
 
-function readErrorMessage(payload: unknown): string {
+/**
+ * The server's own words, or `null` when it said nothing usable.
+ *
+ * `null` and not a generic sentence: the caller decides what a missing reason
+ * means. A 401 without a body means the session is gone; a 500 without a body
+ * means the server is unwell. One generic string for both is what made the
+ * client's answer to a wrong password wrong.
+ */
+function readErrorMessage(payload: unknown): string | null {
   const parsed = apiErrorSchema.safeParse(payload);
   if (parsed.success) {
     const [firstDetail] = parsed.data.details ?? [];
@@ -166,7 +256,7 @@ function readErrorMessage(payload: unknown): string {
     const error = firstMessage(parsed.data.error ?? null);
     if (error) return error;
   }
-  return "An error occurred";
+  return null;
 }
 
 function decodeBody(text: string): unknown {
@@ -225,20 +315,34 @@ async function handleResponse<S extends z.ZodTypeAny>(
   schema: S,
   endpoint: string,
 ): Promise<z.infer<S>> {
-  if (response.status === 401) {
-    clearStoredUser();
-    throw new Error("Unauthorized");
-  }
-
+  // The body is read FIRST, and always. A 401 is the one answer whose wording
+  // decides what the reader is told: "Invalid email or password",
+  // "Account has been disabled" and "Invalid session" are three different
+  // facts, and they are all the same status. Throwing before the body was read
+  // turned every one of them into "Unauthorized", which the classifier in
+  // `lib/errors.ts` then read as an expired session — so a wrong password was
+  // answered with "your session has ended".
   const payload: unknown = decodeBody(await response.text());
 
+  if (response.status === 401) {
+    clearStoredUser();
+    notifySessionLost();
+    // The status travels with the failure: a 401 is a lost session, and the
+    // classifier in `lib/errors.ts` has to be able to say so even when the
+    // server words it in a sentence this client has never heard.
+    throw new ApiError(readErrorMessage(payload) ?? "Unauthorized", 401);
+  }
+
   if (!response.ok) {
-    throw new Error(readErrorMessage(payload));
+    throw new ApiError(readErrorMessage(payload) ?? "An error occurred", response.status);
   }
 
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
-    throw new Error(describeInvalidPayload(parsed.error, endpoint, payload));
+    // A body the schema refuses is the server's contract breaking, not an
+    // HTTP failure: there is no status to report, and the message says which
+    // endpoint broke it.
+    throw new ApiError(describeInvalidPayload(parsed.error, endpoint, payload), 502);
   }
   return parsed.data;
 }
@@ -332,7 +436,17 @@ export const api = {
       }),
     ),
 
-  getStory: (id: string) => apiRequest(storyResponseSchema, `/stories/${id}`),
+  /**
+   * One story.
+   *
+   * The optional signal exists for the SERVER-side reads — the metadata of a
+   * story, the link preview of a story — where the request happens while a
+   * response is being held open. An unbounded fetch there turns an API that
+   * is slow or down into a page that hangs until the proxy gives up, instead
+   * of a page that degrades to the product's own title.
+   */
+  getStory: (id: string, options?: { signal?: AbortSignal }) =>
+    apiRequest(storyResponseSchema, `/stories/${id}`, options),
 
   createStory: (data: StoryMutationInput) =>
     apiRequest(storyRecordResponseSchema, "/stories", {
@@ -363,10 +477,20 @@ export const api = {
 
   getBook: (id: string) => apiRequest(bookResponseSchema, `/books/${id}`),
 
-  purchaseBook: (id: string, paymentMethodId?: string) =>
+  /**
+   * Buys a book.
+   *
+   * WHAT TRAVELS IN THE BODY IS THE READER'S CHOICE, NOT A GATEWAY HANDLE.
+   * The body carries `"card"` or `"wallet"` — the two words the reader picked —
+   * and the SERVER resolves them to this merchant's own Paymob method id. The
+   * reader never sees a gateway handle, and the API never accepts one: a
+   * free-form `paymentMethodId` on the wire is a number the client could
+   * invent, and the server would have had to trust it.
+   */
+  purchaseBook: (id: string, paymentMethod?: PaymentMethodChoice) =>
     apiRequest(purchaseResultSchema, `/books/${id}/purchase`, {
       method: "POST",
-      body: JSON.stringify({ paymentMethodId }),
+      body: JSON.stringify({ paymentMethod }),
     }),
 
   /**
@@ -376,8 +500,13 @@ export const api = {
    * ACTIVE rental, granted with no payment. The API now returns the same checkout contract as
    * `purchaseBook`, and `RentalsEventHandler` creates the rental when `payment.completed` arrives, so
    * the customer is sent to Paymob rather than handed access.
+   *
+   * The instrument travels here too, and for the same reason it does for a
+   * purchase: the panel asks the reader which instrument they are using, and a
+   * rental that silently dropped the answer would be a question the product
+   * asked and then ignored.
    */
-  rentBook: (id: string, data: { durationDays: number }) =>
+  rentBook: (id: string, data: { durationDays: number; paymentMethod?: PaymentMethodChoice }) =>
     apiRequest(bookCheckoutSchema, `/books/${id}/rent`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -809,5 +938,5 @@ export const api = {
       }),
     ),
 
-  getModerationStats: () => apiRequest(publisherStatsSchema, "/moderation/stats"),
+  getModerationStats: () => apiRequest(moderationStatsSchema, "/moderation/stats"),
 };

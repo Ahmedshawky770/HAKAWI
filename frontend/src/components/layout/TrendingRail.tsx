@@ -32,7 +32,11 @@ export function TrendingRail() {
   return (
     <aside
       aria-label={strings.shell.trendingRailLabel}
-      className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-70 shrink-0 overflow-y-auto border-s border-line bg-surface/40 xl:block"
+      // 280px, written as an arbitrary value. `w-70` is NOT a Tailwind v4
+      // utility — the default scale stops at `w-64`/`w-72` — so the class was
+      // dropped and the rail rendered at the width its neighbour happened to
+      // have, which is not the 280px the design system documents.
+      className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-[17.5rem] shrink-0 overflow-y-auto border-s border-line bg-surface/40 xl:block"
     >
       <div className="flex flex-col gap-5 p-4">
         <div className="rounded-xl border border-accent/30 bg-accent-soft p-5">

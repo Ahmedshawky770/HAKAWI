@@ -2,15 +2,12 @@
 
 import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
+import { renderWithProviders } from "@/test-utils/render";
 import { PAYMENT_STATUS_TONES } from "@/components/ui/Badge";
-import {
-  PAYMENT_STATUS_LABELS,
-  PaymentStatusBadge,
-  paymentStatusLabel,
-  paymentStatusTone,
-} from "@/components/commerce/PaymentStatusBadge";
+import { PaymentStatusBadge, paymentStatusTone } from "@/components/commerce/PaymentStatusBadge";
+import { AR, EN } from "@/lib/i18n/payments";
 
 const TONE_CLASS: Record<string, string> = {
   neutral: "text-ink-muted",
@@ -40,9 +37,9 @@ describe("paymentStatusTone", () => {
   });
 });
 
-describe("paymentStatusLabel", () => {
-  it("translates every status PAYMENT_STATUSES can send", () => {
-    expect(Object.keys(PAYMENT_STATUS_LABELS)).toEqual([
+describe("PaymentStatusBadge", () => {
+  it("names every status the API can send, in the dictionary", () => {
+    expect(Object.keys(AR.statusLabels)).toEqual([
       "pending",
       "processing",
       "completed",
@@ -50,24 +47,23 @@ describe("paymentStatusLabel", () => {
       "cancelled",
       "refunded",
     ]);
-    expect(paymentStatusLabel("pending")).toBe("قيد المراجعة");
-    expect(paymentStatusLabel("failed")).toBe("فشلت");
-    expect(paymentStatusLabel("refunded")).toBe("مستردّة");
+    for (const status of Object.keys(AR.statusLabels)) {
+      expect(EN.statusLabels[status as keyof typeof EN.statusLabels], status).toBeTruthy();
+    }
   });
 
-  it("shows an unknown status unchanged", () => {
-    expect(paymentStatusLabel("disputed-2099")).toBe("disputed-2099");
-  });
-});
-
-describe("PaymentStatusBadge", () => {
-  it("renders the Arabic label in the resolved tone", () => {
-    render(<PaymentStatusBadge status="processing" />);
-    expect(screen.getByText("قيد المعالجة").className).toContain(TONE_CLASS.info);
+  it("renders the dictionary's label in the resolved tone", () => {
+    renderWithProviders(<PaymentStatusBadge status="processing" />);
+    expect(screen.getByText(AR.statusLabels.processing).className).toContain(TONE_CLASS.info);
   });
 
   it("renders a failed payment in the error tone", () => {
-    render(<PaymentStatusBadge status="failed" />);
-    expect(screen.getByText("فشلت").className).toContain(TONE_CLASS.error);
+    renderWithProviders(<PaymentStatusBadge status="failed" />);
+    expect(screen.getByText(AR.statusLabels.failed).className).toContain(TONE_CLASS.error);
+  });
+
+  it("shows an unknown status unchanged", () => {
+    renderWithProviders(<PaymentStatusBadge status="disputed-2099" />);
+    expect(screen.getByText("disputed-2099")).toBeInTheDocument();
   });
 });

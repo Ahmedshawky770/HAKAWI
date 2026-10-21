@@ -1,13 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { useToast } from "@/components/providers/ToastProvider";
+import { classifyError } from "@/lib/errors";
+import { useInvalidation } from "@/lib/queries";
 
 /**
  * The report-filing form.
@@ -17,94 +21,105 @@ import { useToast } from "@/components/providers/ToastProvider";
  * rules. A reader who sees a rule-breaking story, comment or user needs a first-class
  * path to surface it, with enough structured data that a moderator can act without
  * a follow-up conversation.
+ *
+ * WHY A SUCCESSFUL REPORT INVALIDATES THE MODERATION CACHE. The report that was
+ * just filed is now in the moderator's queue, and the reporter's own screens read
+ * the same fact — so the queue is refetched instead of being left to show a
+ * report the server has already recorded.
  */
 export default function ReportPage() {
+  const strings = useStrings();
+  const { notify } = useToast();
+  const invalidate = useInvalidation();
+
   const [targetId, setTargetId] = useState("");
   const [targetType, setTargetType] = useState<"story" | "comment" | "user">("story");
   const [reason, setReason] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { notify } = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await api.createReport({
+  const reportMutation = useMutation({
+    mutationFn: () =>
+      api.createReport({
         targetId,
         targetType,
         reason,
         description: description || undefined,
-      });
-      notify("تم إرسال التقرير بنجاح", "success");
+      }),
+    onSuccess: async () => {
+      notify(strings.moderation.reportSubmitted, "success");
       setTargetId("");
       setReason("");
       setDescription("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل إرسال التقرير");
-    } finally {
-      setLoading(false);
-    }
-  };
+      await invalidate.moderation();
+    },
+  });
 
   return (
     <div>
-      <PageHeader title="إبلاغ عن محتوى" description="ساعدنا في الحفاظ على بيئة آمنة من خلال الإبلاغ عن المحتوى المخالف." />
+      <PageHeader title={strings.moderation.reportPageTitle} description={strings.moderation.reportPageDescription} />
 
       <Card>
         <CardBody>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <ErrorMessage error={error} title="تعذّر إرسال التقرير" />}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              reportMutation.mutate();
+            }}
+            className="space-y-5"
+          >
+            {reportMutation.isError && (
+              <ErrorMessage
+                error={strings.errors[classifyError(reportMutation.error)]}
+                title={strings.moderation.reportFailed}
+              />
+            )}
 
             <Select
-              label="نوع الهدف"
+              label={strings.moderation.reportTargetTypeLabel}
               value={targetType}
               onChange={(e) => setTargetType(e.target.value as "story" | "comment" | "user")}
               options={[
-                { value: "story", label: "قصة" },
-                { value: "comment", label: "تعليق" },
-                { value: "user", label: "مستخدم" },
+                { value: "story", label: strings.moderation.reportTargetTypeStory },
+                { value: "comment", label: strings.moderation.reportTargetTypeComment },
+                { value: "user", label: strings.moderation.reportTargetTypeUser },
               ]}
             />
 
             <Input
-              label="معرّف الهدف"
+              label={strings.moderation.reportTargetIdLabel}
               type="text"
               required
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              placeholder="معرّف القصة أو التعليق أو المستخدم"
+              placeholder={strings.moderation.reportTargetIdPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="السبب"
+              label={strings.moderation.reportReasonLabel}
               type="text"
               required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="مثال: محتوى مسيء"
+              placeholder={strings.moderation.reportReasonPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Textarea
-              label="وصف إضافي"
+              label={strings.moderation.reportDescriptionLabel}
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="أضف أي تفاصيل تساعد فريق الاعتدال على فهم الحالة."
+              placeholder={strings.moderation.reportDescriptionPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <div className="flex flex-wrap gap-3">
-              <Button type="submit" loading={loading}>
-                إرسال التقرير
+              <Button type="submit" loading={reportMutation.isPending}>
+                {strings.moderation.reportSubmitButton}
               </Button>
               <ButtonLink href="/" variant="ghost">
-                إلغاء
+                {strings.moderation.reportCancelButton}
               </ButtonLink>
             </div>
           </form>

@@ -27,6 +27,9 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: {
+    // The page names the story in its heading, so it reads the story — the
+    // same one request the page's metadata reads, memoised per request.
+    getStory: vi.fn(),
     getReactions: vi.fn(),
     addReaction: vi.fn(),
     removeReaction: vi.fn(),
@@ -48,6 +51,22 @@ const mockReactions = {
 describe("Story reactions page", () => {
   beforeEach(() => {
     mockedApi.getReactions.mockResolvedValue(mockReactions);
+    mockedApi.getStory.mockResolvedValue({
+      id: "story-1",
+      title: "قصة مميزة",
+      slug: "story-1",
+      excerpt: null,
+      content: "<p>محتوى</p>",
+      coverImage: null,
+      status: "published",
+      category: "fiction",
+      tags: [],
+      views: 0,
+      reactions: 0,
+      author: { id: "user-1", name: "أحمد" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
   });
 
   it("renders the story reactions heading", async () => {

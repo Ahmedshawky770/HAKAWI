@@ -32,9 +32,17 @@ import {
   LibraryItemAddedSchema,
   ModerationActionTakenSchema,
   ModerationEscalatedSchema,
+  AdminRoleAssignedSchema,
+  AdminRoleRevokedSchema,
+  AdminRoleBreakGlassSchema,
   EVENT_SCHEMAS,
   REGISTERED_WITHOUT_PRODUCER,
 } from './event-schemas.ts';
+import {
+  AdminRoleAssignedEvent,
+  AdminRoleRevokedEvent,
+  AdminRoleBreakGlassEvent,
+} from './admin.events.ts';
 
 /**
  * Walks `backend/src` and returns every `.ts` file that is neither a spec nor a declaration.
@@ -194,6 +202,87 @@ describe('event-schemas', () => {
 
     it('should reject an escalation without the previous audit fields', () => {
       const result = ModerationEscalatedSchema.safeParse({ reportId: 'report-1', targetId: 'target-1' });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  /**
+   * THE PRIVILEGED-ACCESS EVENTS.
+   *
+   * WHY THESE ARE CHECKED AGAINST THE PRODUCER'S OWN CLASS. `AdminRolesService`
+   * emits these three through `EventValidatorService`, and that service
+   * REFUSES to deliver a name that is not registered in `EVENT_SCHEMAS` — the
+   * payload is dead-lettered instead. The three names were not registered, so
+   * every role grant, every revocation and every break-glass had been written
+   * to the dead-letter queue and lost, while the audit row existed and the
+   * reader's role had changed.
+   *
+   * The payload here is built with the SAME CLASS the service constructs, so
+   * this case fails if a field is added to the event and the schema is not
+   * taught about it. A test that copied the payload field by field would have
+   * kept passing through exactly that change.
+   */
+  describe('the admin-role events', () => {
+    it('should accept the payload admin-roles.service emits for an assignment', () => {
+      const payload = new AdminRoleAssignedEvent(
+        'user-1',
+        'content_moderator',
+        'admin-1',
+        'covering the moderator leave',
+        new Date('2026-06-01T00:00:00.000Z').toISOString(),
+      );
+
+      const result = AdminRoleAssignedSchema.safeParse(payload);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept the payload admin-roles.service emits for a revocation', () => {
+      const payload = new AdminRoleRevokedEvent('user-1', 'content_moderator', 'admin-1', 'no longer needed');
+
+      const result = AdminRoleRevokedSchema.safeParse(payload);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept the payload admin-roles.service emits for a break-glass', () => {
+      const payload = new AdminRoleBreakGlassEvent(
+        'user-1',
+        'financial_officer',
+        'user-1',
+        'an incident needed the role',
+        new Date('2026-05-01T00:15:00.000Z').toISOString(),
+        15,
+      );
+
+      const result = AdminRoleBreakGlassSchema.safeParse(payload);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should read an expiresAt that came back from the dead-letter queue as a string', () => {
+      // A replayed payload has been through JSON, so its timestamp is a string
+      // again. A schema that only accepted a Date would refuse to replay the
+      // very events it had parked.
+      const result = AdminRoleAssignedSchema.safeParse({
+        userId: 'user-1',
+        adminRole: 'content_moderator',
+        assignedBy: 'admin-1',
+        reason: 'covering the moderator leave',
+        expiresAt: '2026-06-01T00:00:00.000Z',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should refuse an assignment that does not say who granted it', () => {
+      const result = AdminRoleAssignedSchema.safeParse({
+        userId: 'user-1',
+        adminRole: 'content_moderator',
+        reason: 'covering the moderator leave',
+        expiresAt: '2026-06-01T00:00:00.000Z',
+      });
+
       expect(result.success).toBe(false);
     });
   });

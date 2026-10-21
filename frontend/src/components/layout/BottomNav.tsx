@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { useUnreadMessageCount } from "@/lib/queries";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { UnreadBadge } from "./UnreadBadge";
 
 const ITEMS: { href: string; icon: IconName; key: keyof ReturnType<typeof useStrings>["shell"] }[] = [
   { href: AUTHENTICATED_HOME_ROUTE, icon: "home", key: "navHome" },
@@ -30,6 +32,7 @@ const ITEMS: { href: string; icon: IconName; key: keyof ReturnType<typeof useStr
 export function BottomNav() {
   const pathname = usePathname();
   const strings = useStrings();
+  const unreadMessages = useUnreadMessageCount();
 
   const isActive = (href: string) =>
     href === AUTHENTICATED_HOME_ROUTE ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -42,7 +45,13 @@ export function BottomNav() {
       // indistinguishable to a screen reader — the rule `TrendingRail` states
       // for the rail. The bar is the phone's navigation, so it says so.
       aria-label={strings.shell.bottomNavigation}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/95 backdrop-blur-md lg:hidden"
+      // `pb-[env(safe-area-inset-bottom)]`: on a phone with a home indicator
+      // the bar's own bottom edge is under the system bar, and the last row of
+      // items sat exactly where the reader's thumb swipes to go home. The
+      // padding is the inset, so the items keep their 44px and the bar grows
+      // by the height of the indicator rather than covering it. `env()` is
+      // zero on every device without an inset, so nothing else moves.
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-around">
         {ITEMS.map((item) => {
@@ -57,7 +66,12 @@ export function BottomNav() {
                   active ? "text-accent-ink" : "text-ink-muted hover:text-ink"
                 }`}
               >
-                <Icon name={item.icon} size="md" />
+                <span className="relative flex size-5 items-center justify-center">
+                  <Icon name={item.icon} size="md" />
+                  {item.href === "/messages" && (
+                    <UnreadBadge count={unreadMessages} label={strings.shell.unreadMessagesLabel} />
+                  )}
+                </span>
                 <span className="truncate">{label}</span>
               </Link>
             </li>

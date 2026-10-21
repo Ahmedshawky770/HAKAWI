@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
@@ -36,6 +37,18 @@ vi.mock("@/components/layout/AppShell", () => ({
 }));
 
 const SESSION = SESSION_RESPONSE;
+
+/**
+ * A cache that keeps what it is given.
+ *
+ * The shared test client collects its entries as soon as nothing observes them
+ * (`gcTime: 0`), and a cache that empties itself is not what these cases are
+ * about: the question is whether the frame EMPTIES the cache, and a cache that
+ * has already emptied itself would answer the question wrongly.
+ */
+function persistentClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+}
 
 describe("(app) layout auth guard", () => {
   beforeEach(() => {
@@ -97,6 +110,76 @@ describe("(app) layout auth guard", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE));
     expect(screen.queryByText("محتوى محمي")).toBeNull();
     expect(screen.queryByRole("navigation")).toBeNull();
+  });
+
+  /**
+   * THE SENTENCE THE SERVER ACTUALLY SENDS.
+   *
+   * `backend/src/common/guards/jwt-auth.guard.ts` answers an expired access
+   * token with `UnauthorizedException('Invalid or expired token')`, and that
+   * sentence was not in the classifier's table. An expired token was therefore
+   * not recognised as a lost session: the reader was sent to the error surface
+   * with a retry button instead of the sign-in screen, and the retry could
+   * never succeed because nothing refreshes the token. The access token lives
+   * for fifteen minutes, so this was not an edge case — it was what happened
+   * to every reader, every quarter of an hour.
+   */
+  it("treats the server's own expired-token sentence as a signed-out visitor", async () => {
+    vi.spyOn(api, "getSession").mockRejectedValue(new Error("Invalid or expired token"));
+
+    renderWithProviders(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+    );
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE));
+    expect(screen.queryByText("محتوى محمي")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /**
+   * THE CACHE IS EMPTIED WHEN THE SESSION ENDS.
+   *
+   * The reader's conversations, library, payments and unread counts are cached
+   * under keys that carry no account identity, and the cache lives in the root
+   * layout, so it survives the redirect to the sign-in screen. The next person
+   * to sign in on this tab would be served the previous reader's data.
+   *
+   * The frame is what empties it — once it has torn down the pages that were
+   * reading the cache, so that emptying it cannot cancel a request that is
+   * still in flight and swallow the error the server sent.
+   */
+  it("empties the cache once the reader is signed out", async () => {
+    vi.spyOn(api, "getSession").mockRejectedValue(new Error("Unauthorized"));
+    const queryClient = persistentClient();
+    queryClient.setQueryData(["messages", "conversations"], { conversations: [] });
+    expect(queryClient.getQueryData(["messages", "conversations"])).toBeDefined();
+
+    renderWithProviders(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+      { queryClient },
+    );
+
+    await waitFor(() => expect(queryClient.getQueryData(["messages", "conversations"])).toBeUndefined());
+  });
+
+  it("keeps the cache while the reader is signed in", async () => {
+    vi.spyOn(api, "getSession").mockResolvedValue(SESSION);
+    const queryClient = persistentClient();
+    queryClient.setQueryData(["messages", "conversations"], { conversations: [] });
+
+    renderWithProviders(
+      <AppLayout params={Promise.resolve({})}>
+        <p>محتوى محمي</p>
+      </AppLayout>,
+      { queryClient },
+    );
+
+    await screen.findByText("محتوى محمي");
+    expect(queryClient.getQueryData(["messages", "conversations"])).toBeDefined();
   });
 
   it("offers a retry when the probe fails for a reason other than the session", async () => {

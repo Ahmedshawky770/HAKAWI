@@ -10,7 +10,10 @@ import { renderWithProviders } from "@/test-utils/render";
 import { createDeferred, jsonResponse } from "@/test-utils/support";
 import { BOOK } from "@/test-utils/fixtures";
 import RentalDetailPage from "@/app/(app)/rentals/[id]/page";
-import { RENTAL_STATUS_LABELS } from "@/components/rental/RentalStatusBadge";
+import { AR as AR_RENTALS } from "@/lib/i18n/rentals";
+import { AR as AR_LIBRARY } from "@/lib/i18n/library";
+import { AR as AR_ERRORS } from "@/lib/i18n/errors";
+import { AR as AR_COMMON } from "@/lib/i18n/common";
 import type { ReadingProgress, Rental } from "@/types/api";
 
 vi.mock("next/link", () => ({
@@ -49,14 +52,55 @@ const PROGRESS: ReadingProgress = {
 
 const fetchMock = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>();
 
-function respondWith(options: { rental?: Rental; progress?: ReadingProgress[] } = {}) {
-  return (input: string) => {
+/**
+ * A rental that behaves like a server: it is returned, extended and quoted the
+ * way the endpoints say it is, so the page's cache ends up holding the server's
+ * answer rather than the reader's guess.
+ */
+function rentalServer(options: { rental?: Rental; progress?: ReadingProgress[] } = {}) {
+  let rental = options.rental ?? RENTAL;
+
+  return (input: string, init?: RequestInit) => {
     const url = String(input);
+
     if (url.includes("/reading-progress")) {
       const progress = options.progress ?? [];
       return Promise.resolve(jsonResponse({ progress, total: progress.length, page: 1, limit: 20 }));
     }
-    if (url.includes("/rentals/rental-1")) return Promise.resolve(jsonResponse(options.rental ?? RENTAL));
+
+    if (url.includes("/extend/quote")) {
+      const days = Number(new URL(url, "http://localhost").searchParams.get("days") ?? "0");
+      return Promise.resolve(
+        jsonResponse({
+          rentalId: rental.id,
+          bookId: rental.bookId,
+          extensionDays: days,
+          amount: days * 1000,
+          currency: "EGP",
+        }),
+      );
+    }
+
+    if (init?.method === "POST" && url.includes("/return")) {
+      rental = { ...rental, status: "returned", returnedAt: "2026-01-20T00:00:00.000Z" };
+      return Promise.resolve(jsonResponse(rental));
+    }
+
+    if (init?.method === "POST" && url.includes("/extend")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { extensionDays?: number };
+      const days = body.extensionDays ?? 0;
+      rental = {
+        ...rental,
+        extendedCount: rental.extendedCount + 1,
+        endDate: new Date(Date.parse(rental.endDate) + days * 24 * 60 * 60 * 1000).toISOString(),
+      };
+      return Promise.resolve(jsonResponse(rental));
+    }
+
+    if (url.includes("/rentals/rental-1")) {
+      return Promise.resolve(jsonResponse(rental));
+    }
+
     return Promise.resolve(jsonResponse(BOOK));
   };
 }
@@ -91,79 +135,100 @@ describe("rental detail page", () => {
 
     renderWithProviders(<RentalDetailPage />);
 
-    expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
+    expect(screen.getByText(AR_COMMON.loading)).toBeInTheDocument();
   });
 
   it("renders the book as the one level one heading, with the rental status", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: BOOK.title })).toBeInTheDocument();
-    expect(screen.getByText(RENTAL_STATUS_LABELS.active)).toBeInTheDocument();
-    expect(screen.getByText(`بواسطة ${BOOK.author}`)).toBeInTheDocument();
+    expect(screen.getByText(AR_RENTALS.statusLabels.active)).toBeInTheDocument();
+    expect(screen.getByText(AR_RENTALS.authorByline(BOOK.author))).toBeInTheDocument();
   });
 
   it("states the dates and the extension count in numeric figures", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    expect(screen.getByText("تاريخ البدء:")).toBeInTheDocument();
-    expect(screen.getByText("تاريخ الانتهاء:")).toBeInTheDocument();
+    expect(screen.getByText(AR_RENTALS.startDateLabel)).toBeInTheDocument();
+    expect(screen.getByText(AR_RENTALS.endDateLabel)).toBeInTheDocument();
     expect(screen.getByText("0 / 3")).toHaveClass("hk-numeric");
   });
 
   it("shows reading progress when there is some", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [PROGRESS] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [PROGRESS] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    expect(screen.getByRole("progressbar", { name: "تقدم القراءة" })).toHaveAttribute("aria-valuenow", "15");
-    expect(screen.getByRole("link", { name: "تحديث القراءة من مكتبتي" })).toHaveAttribute("href", "/library");
+    // The progress card is the library surface's, so its words are the library
+    // namespace's — the rental page borrows the card, not its copy.
+    expect(screen.getByRole("progressbar", { name: AR_LIBRARY.progressLabel })).toHaveAttribute(
+      "aria-valuenow",
+      "15",
+    );
+    expect(screen.getByRole("link", { name: AR_RENTALS.updateFromLibrary })).toHaveAttribute("href", "/library");
   });
 
   it("omits the progress card entirely when the reader has not started", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "تحديث القراءة من مكتبتي" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: AR_RENTALS.updateFromLibrary })).not.toBeInTheDocument();
   });
 
-  it("extends by the chosen length", async () => {
-    fetchMock.mockImplementation((input, init) => {
-      const url = String(input);
-      if (init?.method === "POST" && url.includes("/extend")) {
-        return Promise.resolve(jsonResponse({ ...RENTAL, extendedCount: 1, endDate: "2026-01-22T00:00:00.000Z" }));
-      }
-      return respondWith({ progress: [] })(url);
-    });
+  it("quotes the price of an extension before the reader commits to it", async () => {
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "مدة التمديد" }), "14");
-    await userEvent.click(screen.getByRole("button", { name: "تمديد الإيجار" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel }),
+      "14",
+    );
+
+    // 14 days at 1000 piastres a day is 14000 piastres: 140.00 EGP.
+    expect(await screen.findByText("140.00 ج.م")).toHaveClass("hk-numeric");
+  });
+
+  it("extends by the chosen length", async () => {
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
+
+    renderWithProviders(<RentalDetailPage />);
+    await screen.findByRole("heading", { level: 1, name: BOOK.title });
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel }),
+      "14",
+    );
+    await userEvent.click(screen.getByRole("button", { name: AR_RENTALS.extendRentalAction }));
 
     await waitFor(() => {
       expect(screen.getByText("1 / 3")).toBeInTheDocument();
     });
-    const extendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/extend"));
+    // The quote is a read and the extension is the write; only the write carries
+    // the length the reader chose.
+    const extendCall = fetchMock.mock.calls.find(
+      ([url, init]) => String(url).includes("/extend") && !String(url).includes("/quote") && init?.method === "POST",
+    );
     expect(String(extendCall?.[1]?.body)).toContain('"extensionDays":14');
   });
 
   it("will not extend until a length is chosen", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    expect(screen.getByRole("button", { name: "تمديد الإيجار" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: AR_RENTALS.extendRentalAction })).toBeDisabled();
   });
 
   it("says why a refused extension failed", async () => {
@@ -172,65 +237,65 @@ describe("rental detail page", () => {
       if (init?.method === "POST" && url.includes("/extend")) {
         return Promise.resolve(jsonResponse({ message: "Invalid extension duration" }, 400));
       }
-      return respondWith({ progress: [] })(url);
+      return rentalServer({ progress: [] })(input, init);
     });
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "مدة التمديد" }), "14");
-    await userEvent.click(screen.getByRole("button", { name: "تمديد الإيجار" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: AR_RENTALS.extensionDurationLabel }),
+      "14",
+    );
+    await userEvent.click(screen.getByRole("button", { name: AR_RENTALS.extendRentalAction }));
 
-    expect(await screen.findByText("Invalid extension duration")).toBeInTheDocument();
+    // The client now classifies by the STATUS as well as by the wording, so a
+    // 400 is "validation" and the reader is told to check what they sent
+    // instead of being told that something went wrong.
+    expect(await screen.findByText(AR_ERRORS.validation)).toBeInTheDocument();
   });
 
   it("returns the rental and stops offering the actions", async () => {
-    fetchMock.mockImplementation((input, init) => {
-      const url = String(input);
-      if (init?.method === "POST" && url.includes("/return")) {
-        return Promise.resolve(jsonResponse({ ...RENTAL, status: "returned" }));
-      }
-      return respondWith({ progress: [] })(url);
-    });
+    fetchMock.mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
-    await userEvent.click(screen.getByRole("button", { name: "إرجاع الكتاب" }));
+    await userEvent.click(screen.getByRole("button", { name: AR_RENTALS.returnBookAction }));
 
     await waitFor(() => {
-      expect(screen.getByText(RENTAL_STATUS_LABELS.returned)).toBeInTheDocument();
+      expect(screen.getByText(AR_RENTALS.statusLabels.returned)).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: "إرجاع الكتاب" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "إجراءات" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: AR_RENTALS.returnBookAction })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: AR_RENTALS.actionsHeading })).not.toBeInTheDocument();
   });
 
   it("hides the extension control once the cap is reached", async () => {
-    fetchMock.mockImplementation(respondWith({ rental: { ...RENTAL, extendedCount: 3 }, progress: [] }));
+    fetchMock.mockImplementation(rentalServer({ rental: { ...RENTAL, extendedCount: 3 }, progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });
 
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "إرجاع الكتاب" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: AR_RENTALS.returnBookAction })).toBeInTheDocument();
   });
 
   it("reports a failed load with a retry", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ message: "Rental not found" }, 404))
-      .mockImplementation(respondWith({ progress: [] }));
+      .mockImplementation(rentalServer({ progress: [] }));
 
     renderWithProviders(<RentalDetailPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Rental not found");
+    expect(await screen.findByRole("alert")).toHaveTextContent(AR_ERRORS.notFound);
 
-    await userEvent.click(screen.getByRole("button", { name: "أعد المحاولة" }));
+    await userEvent.click(screen.getByRole("button", { name: AR_COMMON.retry }));
 
     expect(await screen.findByRole("heading", { level: 1, name: BOOK.title })).toBeInTheDocument();
   });
 
   it("does not reach for a stock palette", async () => {
-    fetchMock.mockImplementation(respondWith({ progress: [PROGRESS] }));
+    fetchMock.mockImplementation(rentalServer({ progress: [PROGRESS] }));
 
     const { container } = renderWithProviders(<RentalDetailPage />);
     await screen.findByRole("heading", { level: 1, name: BOOK.title });

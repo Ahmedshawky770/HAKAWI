@@ -381,7 +381,7 @@ curl -X POST http://localhost:3001/api/v1/books \
 curl -X POST http://localhost:3001/api/v1/books/<id>/purchase \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
-  -d '{"paymentMethodId":"pm_123"}'
+  -d '{"paymentMethod":"card"}'
 
 curl -X POST http://localhost:3001/api/v1/books/<id>/rent \
   -H "Authorization: Bearer <accessToken>" \
@@ -392,10 +392,12 @@ curl http://localhost:3001/api/v1/library \
   -H "Authorization: Bearer <accessToken>"
 ```
 
-> ⚠️ Two corrections to the previous version: the purchase body is `{ paymentMethodId }` only
-> (the doc invented a `duration` field and used `"one_week"`, an enum value that does not exist —
-> rentals take `durationDays` as an **integer** in `[1,3,7,14,30,90]`, not the string
-> `"one_week"`), and the port is 3001.
+> ⚠️ Three corrections to the previous version: the purchase body is `{ paymentMethod }` only,
+> and its value is the reader's CHOICE (`"card"` or `"wallet"`) rather than a gateway identifier —
+> the server resolves the choice to this merchant's own Paymob method id. The doc also invented a
+> `duration` field and used `"one_week"`, an enum value that does not exist — rentals take
+> `durationDays` as an **integer** in `[1,3,7,14,30,90]`, not the string `"one_week"`. And the
+> port is 3001.
 
 ### Exit Conditions — met, with two caveats:
 - ⛔ **No live-sandbox verification.** The Paymob client is unit-tested against Zod-validated

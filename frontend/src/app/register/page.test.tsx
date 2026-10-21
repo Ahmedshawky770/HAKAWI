@@ -195,7 +195,7 @@ describe("register page", () => {
     expect(router.push).not.toHaveBeenCalledWith("/dashboard");
   });
 
-  it("renders the server rejection of a duplicate account", async () => {
+  it("says a duplicate account in the reader's language, not the server's", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.register.mockRejectedValue(new Error("Email already registered"));
     renderWithProviders(<RegisterPage />);
@@ -203,11 +203,14 @@ describe("register page", () => {
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
 
-    expect(await screen.findByText("Email already registered")).toBeInTheDocument();
+    // The server's English wording is a fact about the API. The reader is told
+    // what it means for them, in their language.
+    expect(await screen.findByText(/هذا البريد الإلكتروني مسجّل بالفعل/)).toBeInTheDocument();
+    expect(screen.queryByText("Email already registered")).not.toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it("renders the first field validation message of a rejected payload", async () => {
+  it("falls back to a readable sentence for a failure it does not recognise", async () => {
     const user = userEvent.setup({ delay: null });
     mockedApi.register.mockRejectedValue(new Error("password"));
     renderWithProviders(<RegisterPage />);
@@ -215,7 +218,8 @@ describe("register page", () => {
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
 
-    expect(await screen.findByText("password")).toBeInTheDocument();
+    expect(await screen.findByText(/تعذّر إتمام العملية/)).toBeInTheDocument();
+    expect(screen.queryByText("password")).not.toBeInTheDocument();
   });
 
   it("disables the submit button while the request is in flight", async () => {
@@ -245,12 +249,12 @@ describe("register page", () => {
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
-    expect(await screen.findByText("Email already registered")).toBeInTheDocument();
+    expect(await screen.findByText(/هذا البريد الإلكتروني مسجّل بالفعل/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("Email already registered")).not.toBeInTheDocument();
+      expect(screen.queryByText(/هذا البريد الإلكتروني مسجّل بالفعل/)).not.toBeInTheDocument();
     });
   });
 });

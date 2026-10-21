@@ -360,6 +360,55 @@ export const ModerationContentRemovedSchema = z.object({
   reason: z.string(),
 });
 
+/**
+ * THE ADMIN-ROLE EVENTS.
+ *
+ * WHY THEY ARE HERE AND NOT IN THE ADMIN MODULE. `EventSchemaRegistry` rejects
+ * any name absent from `EVENT_SCHEMAS`, and the rejection is not a warning: an
+ * unregistered payload is dead-lettered and NEVER DELIVERED. These three names
+ * were emitted by `AdminRolesService` and were not registered, so every role
+ * grant, every revocation and every break-glass had been written to the
+ * dead-letter queue instead of reaching a subscriber — the audit row existed,
+ * the reader's role had changed, and the event had been quietly lost.
+ *
+ * WHY THE SCHEMAS ARE LOOSE WHERE THE PRODUCER IS LOOSE, AND TIGHT WHERE IT
+ * IS NOT. `adminRole` is a plain string here and not the admin module's enum,
+ * because `common/events/` must not import from a feature module — the
+ * boundary runs the other way — and a narrower type here would be a second
+ * spelling of that vocabulary that only a human kept in step (Principle #9).
+ * Everything else is required, because a consumer that cannot tell WHO was
+ * given power, by WHOM, or WHY cannot answer the question the event exists to
+ * answer.
+ *
+ * WHY `expiresAt` ACCEPTS A DATE AND A STRING. The payload travels through
+ * JSON — to the dead-letter queue, to another process, to a replay — and a
+ * `Date` comes back from that round trip as a string. `z.coerce.date()` reads
+ * both, so a replayed event is not rejected by the shape of its own timestamp.
+ */
+export const AdminRoleAssignedSchema = z.object({
+  userId: z.string(),
+  adminRole: z.string(),
+  assignedBy: z.string(),
+  reason: z.string(),
+  expiresAt: z.coerce.date().nullable(),
+});
+
+export const AdminRoleRevokedSchema = z.object({
+  userId: z.string(),
+  adminRole: z.string(),
+  revokedBy: z.string(),
+  reason: z.string(),
+});
+
+export const AdminRoleBreakGlassSchema = z.object({
+  userId: z.string(),
+  adminRole: z.string(),
+  invokedBy: z.string(),
+  reason: z.string(),
+  expiresAt: z.coerce.date(),
+  durationMinutes: z.number(),
+});
+
 export const MfaEnabledSchema = z.object({
   userId: z.string(),
 });
@@ -519,6 +568,12 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'publisher.writer.added': { schema: PublisherWriterAddedSchema, version: 'v1' },
   'publisher.writer.updated': { schema: PublisherWriterUpdatedSchema, version: 'v1' },
   'publisher.writer.removed': { schema: PublisherWriterRemovedSchema, version: 'v1' },
+
+  // The privileged-access events. These were emitted and NOT registered, which
+  // meant they were dead-lettered rather than delivered — see the schemas.
+  'admin_role.assigned': { schema: AdminRoleAssignedSchema, version: 'v1' },
+  'admin_role.revoked': { schema: AdminRoleRevokedSchema, version: 'v1' },
+  'admin_role.break_glass': { schema: AdminRoleBreakGlassSchema, version: 'v1' },
 
   // Registered without a producer yet; see REGISTERED_WITHOUT_PRODUCER above.
   'user.updated': { schema: UserUpdatedSchema, version: 'v1' },

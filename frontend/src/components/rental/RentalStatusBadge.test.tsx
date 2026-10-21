@@ -6,8 +6,9 @@ import { screen } from "@testing-library/react";
 import { RENTAL_STATUSES } from "@hakawi/shared-types";
 
 import { renderWithProviders } from "@/test-utils/render";
-import { RENTAL_STATUS_LABELS, RentalStatusBadge } from "@/components/rental/RentalStatusBadge";
+import { RENTAL_OVERDUE_STATE, RentalStatusBadge } from "@/components/rental/RentalStatusBadge";
 import { RENTAL_STATUS_TONES, toneFor } from "@/components/ui/Badge";
+import { AR } from "@/lib/i18n/rentals";
 
 /** Pinned: the pill derives "overdue" from the end date against the clock. */
 const NOW = new Date("2026-03-10T08:00:00.000Z");
@@ -32,9 +33,9 @@ describe("RentalStatusBadge", () => {
     vi.useRealTimers();
   });
 
-  it("labels every status the API can send, in Arabic", () => {
+  it("labels every status the API can send, in the dictionary", () => {
     for (const status of RENTAL_STATUSES) {
-      expect(RENTAL_STATUS_LABELS[status]).toBeTruthy();
+      expect(AR.statusLabels[status], status).toBeTruthy();
     }
   });
 
@@ -42,7 +43,7 @@ describe("RentalStatusBadge", () => {
     for (const status of RENTAL_STATUSES) {
       const { unmount } = renderWithProviders(<RentalStatusBadge status={status} />);
 
-      const badge = screen.getByText(RENTAL_STATUS_LABELS[status]);
+      const badge = screen.getByText(AR.statusLabels[status]);
       expect(badge.className).toContain(TONE_CLASS[toneFor(RENTAL_STATUS_TONES, status)]);
       unmount();
     }
@@ -51,7 +52,7 @@ describe("RentalStatusBadge", () => {
   it("marks a live rental with the success tone", () => {
     renderWithProviders(<RentalStatusBadge status="active" />);
 
-    const badge = screen.getByText(RENTAL_STATUS_LABELS.active);
+    const badge = screen.getByText(AR.statusLabels.active);
     expect(badge.className).toContain(TONE_CLASS[toneFor(RENTAL_STATUS_TONES, "active")]);
     expect(badge.className).toContain("text-success-ink");
   });
@@ -59,7 +60,7 @@ describe("RentalStatusBadge", () => {
   it("marks an expired rental with the error tone", () => {
     renderWithProviders(<RentalStatusBadge status="expired" />);
 
-    expect(screen.getByText(RENTAL_STATUS_LABELS.expired).className).toContain(
+    expect(screen.getByText(AR.statusLabels.expired).className).toContain(
       TONE_CLASS[toneFor(RENTAL_STATUS_TONES, "expired")],
     );
   });
@@ -67,17 +68,17 @@ describe("RentalStatusBadge", () => {
   it("flags an active rental whose end date has passed, though the API still says active", () => {
     renderWithProviders(<RentalStatusBadge status="active" endDate="2026-03-01T00:00:00.000Z" />);
 
-    const badge = screen.getByText("متأخر");
+    const badge = screen.getByText(AR.statusLabels[RENTAL_OVERDUE_STATE]);
     expect(badge.className).toContain(TONE_CLASS.error);
     expect(badge.className).toContain("text-error-ink");
-    expect(badge).toHaveAttribute("data-state", "overdue");
+    expect(badge).toHaveAttribute("data-state", RENTAL_OVERDUE_STATE);
   });
 
   it("leaves a running rental alone", () => {
     renderWithProviders(<RentalStatusBadge status="active" endDate="2026-04-01T00:00:00.000Z" />);
 
-    expect(screen.getByText("نشط").className).toContain(TONE_CLASS.success);
-    expect(screen.getByText("نشط")).toHaveAttribute("data-state", "active");
+    expect(screen.getByText(AR.statusLabels.active).className).toContain(TONE_CLASS.success);
+    expect(screen.getByText(AR.statusLabels.active)).toHaveAttribute("data-state", "active");
   });
 
   it("shows a state it has no label for as it came, rather than blanking it", () => {

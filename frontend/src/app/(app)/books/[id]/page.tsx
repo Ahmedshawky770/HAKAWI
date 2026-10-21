@@ -1,17 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import React, { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   DEFAULT_RENTAL_DURATION_DAYS,
   RENTAL_DURATION_DAYS,
   rentalPriceForDays,
+  type RentalDurationDays,
 } from "@hakawi/shared-types";
 
-import { api, getStoredUser } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useViewerId } from "@/lib/use-stored-user";
+import { classifyError } from "@/lib/errors";
 import { formatBookPrice } from "@/components/books/BookCard";
-import { formatRentalQuote } from "@/lib/money";
+import { formatRentalQuote, formatPrice } from "@/lib/money";
+import { isFailedLoad, useBook, useInvalidation } from "@/lib/queries";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useLocale, useStrings } from "@/components/providers/LocaleProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,17 +25,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Input, Select } from "@/components/ui/Input";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Loading } from "@/components/ui/Loading";
-import type { Book } from "@/types/api";
-
-/** Arabic labels for the offered rental lengths. Presentation only — never the source of truth. */
-const RENTAL_DURATION_LABELS_AR: Record<number, string> = {
-  1: "يوم واحد",
-  3: "3 أيام",
-  7: "أسبوع",
-  14: "أسبوعين",
-  30: "شهر",
-  90: "3 أشهر",
-};
+import { CheckoutDialog, type CheckoutMethod, type CheckoutSession } from "@/components/commerce/CheckoutDialog";
 
 /**
  * What a rental of this length costs, from the same rate the backend charges.
@@ -43,121 +38,129 @@ const RENTAL_DURATION_LABELS_AR: Record<number, string> = {
  * created, so this is a quote for the reader, not the authority. The checkout is
  * where the money is decided.
  */
-function formatRentPrice(days: number): string {
-  return formatRentalQuote(rentalPriceForDays(days), days);
+function formatRentPrice(days: number, locale: "ar" | "en"): string {
+  return formatRentalQuote(rentalPriceForDays(days), days, locale);
 }
 
 /**
- * Rendered from the shared list rather than six hard-coded options, so the lengths a reader can pick
- * from and the lengths the API accepts cannot drift — `RentalsService` validates against the same
- * array.
+ * The rental lengths a reader can pick, labelled in the reader's language.
+ *
+ * Rendered from the shared list rather than six hard-coded options, so the
+ * lengths a reader can pick from and the lengths the API accepts cannot drift —
+ * `RentalsService` validates against the same array.
  */
-const RENTAL_DURATION_OPTIONS = RENTAL_DURATION_DAYS.map((days) => ({
-  value: String(days),
-  label: RENTAL_DURATION_LABELS_AR[days] ?? `${days} يوم`,
-}));
+function rentalDurationOptions(t: (days: RentalDurationDays) => string) {
+  return RENTAL_DURATION_DAYS.map((days) => ({
+    value: String(days),
+    label: t(days),
+  }));
+}
 
 /**
- * The product page for one book: what it is, what it costs, and the two ways of paying for it.
+ * The product page for one book: what it is, what it costs, and the two ways
+ * of paying for it.
  *
- * Both money paths return a CHECKOUT, not a receipt, so both send the reader to the gateway with
- * `window.location.assign` and the entitlement only ever arrives with `payment.completed`. A failure
- * is reported twice, on purpose: inline on the card that carries the action, where the reader is
- * looking, and as a toast, because the action they pressed may be several sections up the page.
+ * BOTH MONEY PATHS RETURN A CHECKOUT, NOT A RECEIPT, so both send the reader to
+ * the gateway and the entitlement only ever arrives with `payment.completed`. A
+ * failure is reported twice, on purpose: inline on the card that carries the
+ * action, where the reader is looking, and as a toast, because the action they
+ * pressed may be several sections up the page.
+ *
+ * THE CHECKOUT IS A PANEL, NOT A TEXT FIELD. The page used to ask for a
+ * "payment method identifier" — a gateway handle, typed free-hand — before a
+ * purchase would start, and `handleRent` ignored it while `handlePurchase`
+ * demanded it: two money paths on one page behaving differently, neither of
+ * them understandable to the reader. The reader now picks "card" or "wallet",
+ * and the panel takes it from there.
+ *
+ * THE DELETE IS TWO-STEP, like the story's. A single button that removes a
+ * book forever, on a page that also has "archive" one button away, is one
+ * mis-tap from an unrecoverable loss. The first click arms the control and says
+ * what is about to happen; the second commits.
  */
 export default function BookDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = typeof params.id === "string" ? params.id : "";
+  const strings = useStrings();
+  const { locale } = useLocale();
   const { notify } = useToast();
+  const invalidate = useInvalidation();
 
-  const [book, setBook] = useState<Book | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [paymentMethodError, setPaymentMethodError] = useState("");
   const [rentalDays, setRentalDays] = useState<number>(DEFAULT_RENTAL_DURATION_DAYS);
   const [isbn, setIsbn] = useState("");
   const [isbnError, setIsbnError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
-  const currentUserId = getStoredUser()?.id ?? null;
+  /** Which money path the checkout panel was opened for. */
+  const [checkoutKind, setCheckoutKind] = useState<"purchase" | "rental" | null>(null);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutPending, setCheckoutPending] = useState(false);
+  const [session, setSession] = useState<CheckoutSession | null>(null);
+
+  const bookQuery = useBook(id);
+  const book = bookQuery.data ?? null;
+
+  const currentUserId = useViewerId();
   // Ownership is an id equality, not a display-name comparison. `book.author` is a human-readable
   // string (Principle: an id is the only thing that identifies an account, `docs/03_ids_as_strings.md`);
   // comparing it to the signed-in user's id never matched, so publish/archive/delete stayed dead for
   // every owner. `ownerId` is the account id surfaced by the books response (migration 0021/0028).
   const isOwner = currentUserId != null && book != null && book.ownerId === currentUserId;
 
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        const data = await api.getBook(id);
-        if (active) setBook(data);
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "فشل تحميل الكتاب");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [id, attempt]);
-
-  /** Re-arms the same request; the reset lives here so the effect only awaits. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    setAttempt((n) => n + 1);
-  }
-
   const reportFailure = (message: string) => {
     setActionError(message);
     notify(message, "error");
   };
 
-  const handlePurchase = async () => {
-    if (!paymentMethodId) {
-      setPaymentMethodError("الرجاء إدخال معرّف طريقة الدفع");
-      notify("الرجاء إدخال معرّف طريقة الدفع", "error");
-      return;
-    }
-    setActionLoading(true);
-    setActionError("");
-    try {
-      // The response is a CHECKOUT, not a receipt. This used to ignore it and report success, so the
-      // customer was told they had bought the book while never being sent to Paymob — and the
-      // entitlement, which arrives on `payment.completed`, never happened either.
-      const checkout = await api.purchaseBook(id, paymentMethodId);
-      window.location.assign(checkout.checkoutUrl);
-    } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل الشراء");
-      setActionLoading(false);
-    }
+  const closeCheckout = () => {
+    setCheckoutKind(null);
+    setSession(null);
+    setCheckoutError("");
   };
 
-  const handleRent = async () => {
-    if (!paymentMethodId) {
-      setPaymentMethodError("الرجاء إدخال معرّف طريقة الدفع");
-      notify("الرجاء إدخال معرّف طريقة الدفع", "error");
-      return;
-    }
-    setActionLoading(true);
-    setActionError("");
+  /**
+   * Start the payment.
+   *
+   * WHAT TRAVELS TO THE API IS THE READER'S CHOICE, NOT AN IDENTIFIER. What goes
+   * into the request is "card" or "wallet" — the two words the reader picked —
+   * and the SERVER resolves them to this merchant's own Paymob method id. The
+   * reader never sees a gateway handle, and the payment record says which
+   * instrument was chosen without pretending to know the gateway's numbering.
+   *
+   * A deployment that has NOT configured a method id is a normal case, not an
+   * error: the gateway then asks the customer which instrument to use inside
+   * the payment frame, exactly as it did before the choice existed. So the
+   * choice is honoured wherever the gateway can honour it, and never blocks a
+   * purchase.
+   *
+   * The response is a CHECKOUT, not a receipt: the panel opens the gateway, and
+   * the entitlement arrives later, on the webhook.
+   */
+  const startCheckout = async (method: CheckoutMethod) => {
+    if (!book) return;
+    setCheckoutPending(true);
+    setCheckoutError("");
     try {
-      // Same contract as the purchase: a checkout to send the customer to, not an active rental.
-      // The rental row is created when the webhook confirms the payment.
-      const checkout = await api.rentBook(id, { durationDays: rentalDays });
-      window.location.assign(checkout.checkoutUrl);
+      const checkout =
+        checkoutKind === "rental"
+          ? await api.rentBook(book.id, { durationDays: rentalDays, paymentMethod: method })
+          : await api.purchaseBook(book.id, method);
+
+      setSession({ checkoutUrl: checkout.checkoutUrl, acceptUrl: checkout.acceptUrl });
+      // The PAYMENT is the fact that changed — it exists from this moment, even
+      // though the entitlement only arrives with the webhook. The book itself
+      // is not touched yet, so its cache entry is left alone.
+      invalidate.payments();
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل الاستئجار");
-      setActionLoading(false);
+      const message = strings.errors[classifyError(err)];
+      setCheckoutError(message);
+      notify(message, "error");
+    } finally {
+      setCheckoutPending(false);
     }
   };
 
@@ -167,9 +170,10 @@ export default function BookDetailPage() {
     setActionError("");
     try {
       await api.claimLibraryItem({ bookId: id });
-      notify("تمت إضافة الكتاب إلى مكتبتك", "success");
+      notify(strings.books.claimFreeSucceeded, "success");
+      invalidate.library();
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل الحصول على الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
     } finally {
       setActionLoading(false);
     }
@@ -180,10 +184,10 @@ export default function BookDetailPage() {
     setActionError("");
     try {
       await api.publishBook(id);
-      setBook((prev) => (prev ? { ...prev, status: "published" } : prev));
-      notify("تم نشر الكتاب", "success");
+      notify(strings.books.publishSucceeded, "success");
+      invalidate.books(id);
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل نشر الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
     } finally {
       setActionLoading(false);
     }
@@ -194,23 +198,33 @@ export default function BookDetailPage() {
     setActionError("");
     try {
       await api.archiveBook(id);
-      setBook((prev) => (prev ? { ...prev, status: "archived" } : prev));
-      notify("تم أرشفة الكتاب", "success");
+      notify(strings.books.archiveSucceeded, "success");
+      invalidate.books(id);
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل أرشفة الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
     } finally {
       setActionLoading(false);
     }
   };
 
+  /**
+   * Delete the book — the second step of a two-step control.
+   *
+   * The first click arms the button; this function is the second. Nothing is
+   * deleted until the reader has been shown what is about to happen and asked
+   * to confirm it.
+   */
   const handleDelete = async () => {
     setActionLoading(true);
     setActionError("");
     try {
       await api.deleteBook(id);
-      notify("تم حذف الكتاب", "success");
+      notify(strings.books.deleteSucceeded, "success");
+      invalidate.books(id);
+      router.push("/books");
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل حذف الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
+      setDeleteArmed(false);
     } finally {
       setActionLoading(false);
     }
@@ -218,17 +232,17 @@ export default function BookDetailPage() {
 
   const handleIsbnLookup = async () => {
     if (!isbn) {
-      setIsbnError("الرجاء إدخال ISBN");
+      setIsbnError(strings.books.isbnRequired);
       return;
     }
     setActionLoading(true);
     setActionError("");
     try {
       const data = await api.findBookByIsbn(isbn);
-      setBook(data);
-      notify("تم جلب تفاصيل الكتاب", "success");
+      router.push(`/books/${data.id}`);
+      notify(strings.books.isbnLookupSucceeded, "success");
     } catch (err) {
-      reportFailure(err instanceof Error ? err.message : "فشل جلب الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
     } finally {
       setActionLoading(false);
     }
@@ -243,20 +257,24 @@ export default function BookDetailPage() {
         window.location.assign(downloadUrl);
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "فشل تحميل الكتاب");
+      reportFailure(strings.errors[classifyError(err)]);
       setDownloading(false);
     }
   };
 
-  if (loading) return <Loading />;
+  if (bookQuery.isLoading) return <Loading />;
 
-  if (error) {
+  if (isFailedLoad(bookQuery)) {
     return (
       <div className="space-y-4">
-        <ErrorMessage error={error} onRetry={retry} />
+        <ErrorMessage
+          error={strings.errors[classifyError(bookQuery.error)]}
+          title={strings.books.loadFailedTitle}
+          onRetry={() => void bookQuery.refetch()}
+        />
         <ButtonLink href="/books" variant="ghost" size="sm">
           <Icon name="chevron" size="sm" />
-          العودة للكتب
+          {strings.books.backToBooks}
         </ButtonLink>
       </div>
     );
@@ -266,22 +284,30 @@ export default function BookDetailPage() {
     return (
       <EmptyState
         icon="book"
-        title="الكتاب غير موجود"
-        description="ربما حُذف الكتاب أو تغيّر رابطه."
-        action={<ButtonLink href="/books">تصفح الكتب</ButtonLink>}
+        title={strings.books.notFoundTitle}
+        description={strings.books.notFoundDescription}
+        action={<ButtonLink href="/books">{strings.books.listTitle}</ButtonLink>}
       />
     );
   }
+
+  const rentalPrice = rentalPriceForDays(rentalDays);
+  const checkoutTitle =
+    checkoutKind === "rental" ? strings.checkout.rentalTitle : strings.checkout.purchaseTitle;
+  const checkoutAmount =
+    checkoutKind === "rental"
+      ? formatPrice(rentalPrice)
+      : formatPrice(book.price ?? 0);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={book.title}
-        description={`بواسطة ${book.author}`}
+        description={strings.books.byAuthor(book.author)}
         action={
           <ButtonLink href="/books" variant="ghost" size="sm">
             <Icon name="chevron" size="sm" />
-            العودة للكتب
+            {strings.books.backToBooks}
           </ButtonLink>
         }
       />
@@ -290,7 +316,11 @@ export default function BookDetailPage() {
         <CardBody>
           <div className="flex flex-col gap-6 sm:flex-row">
             {book.coverImage ? (
-              <RemoteImage src={book.coverImage} className="h-56 w-40 shrink-0 self-start rounded-lg object-cover" />
+              <RemoteImage
+                src={book.coverImage}
+                alt={book.title}
+                className="h-56 w-40 shrink-0 self-start rounded-lg object-cover"
+              />
             ) : (
               <div className="grid h-56 w-40 shrink-0 place-items-center self-start rounded-lg bg-surface-raised text-ink-faint">
                 <Icon name="library" size="lg" />
@@ -305,15 +335,15 @@ export default function BookDetailPage() {
               {book.pageCount != null && (
                 <p className="flex items-center gap-2 text-sm text-ink-muted">
                   <Icon name="book" size="sm" />
-                  عدد الصفحات: <span className="hk-numeric">{book.pageCount}</span>
+                  {strings.books.pageCountLabel}: <span className="hk-numeric">{book.pageCount}</span>
                 </p>
               )}
 
-              <h2 className="pt-1 text-lg font-semibold text-ink">نبذة عن الكتاب</h2>
+              <h2 className="pt-1 text-lg font-semibold text-ink">{strings.books.aboutHeading}</h2>
               {book.description ? (
                 <p className="whitespace-pre-line leading-8 text-ink-muted">{book.description}</p>
               ) : (
-                <p className="text-sm text-ink-muted">لا يوجد وصف لهذا الكتاب بعد.</p>
+                <p className="text-sm text-ink-muted">{strings.books.noDescription}</p>
               )}
             </div>
           </div>
@@ -322,102 +352,133 @@ export default function BookDetailPage() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-xl font-semibold text-ink">الشراء أو الإيجار</h2>
+          <h2 className="text-xl font-semibold text-ink">{strings.books.buyOrRentHeading}</h2>
         </CardHeader>
         <CardBody>
           <div className="space-y-5">
-            {actionError && <ErrorMessage error={actionError} title="تعذّر إتمام العملية" />}
+            {actionError && <ErrorMessage error={actionError} title={strings.books.buyOrRentFailed} />}
 
             {book.isFree && (
               <Button onClick={handleClaimFree} loading={actionLoading} variant="secondary">
-                الحصول على الكتاب مجاناً
+                {strings.books.claimFreeButton}
               </Button>
             )}
 
             {isOwner && (
-              <div className="flex flex-wrap gap-3">
-                {book.status !== "published" && (
-                  <Button onClick={handlePublish} loading={actionLoading} variant="secondary">
-                    نشر الكتاب
+              <div className="space-y-3 border-t border-line pt-5">
+                <p className="text-sm font-medium text-ink-muted">{strings.books.ownerActionsHeading}</p>
+                <div className="flex flex-wrap gap-3">
+                  {book.status !== "published" && (
+                    <Button onClick={handlePublish} loading={actionLoading} variant="secondary">
+                      {strings.books.publishButton}
+                    </Button>
+                  )}
+                  {book.status !== "archived" && (
+                    <Button onClick={handleArchive} loading={actionLoading} variant="ghost">
+                      {strings.books.archiveButton}
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => (deleteArmed ? void handleDelete() : setDeleteArmed(true))}
+                    loading={actionLoading}
+                    variant={deleteArmed ? "danger" : "ghost"}
+                  >
+                    <Icon name="trash" size="sm" />
+                    {deleteArmed ? strings.books.deleteConfirmButton : strings.books.deleteButton}
                   </Button>
-                )}
-                {book.status !== "archived" && (
-                  <Button onClick={handleArchive} loading={actionLoading} variant="ghost">
-                    أرشفة الكتاب
-                  </Button>
-                )}
-                <Button onClick={handleDelete} loading={actionLoading} variant="danger">
-                  حذف الكتاب
-                </Button>
+                  {deleteArmed && (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={() => setDeleteArmed(false)}>
+                        {strings.books.deleteCancelButton}
+                      </Button>
+                      <p role="alert" className="w-full text-sm text-error-ink">
+                        {strings.books.deleteWarning}
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
             <div className="border-t border-line pt-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <Select
-                  label="مدة الإيجار"
+                  label={strings.books.rentalDurationLabel}
                   value={String(rentalDays)}
                   onChange={(event) => setRentalDays(Number(event.target.value))}
-                  options={RENTAL_DURATION_OPTIONS}
+                  options={rentalDurationOptions(
+                    (days) => strings.books.rentalDurationLabels[days] ?? `${days}`,
+                  )}
                   wrapperClassName="sm:w-48"
                 />
-                <Button variant="secondary" onClick={handleRent} loading={actionLoading}>
-                  استئجار الكتاب
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setCheckoutKind("rental");
+                    setSession(null);
+                    setCheckoutError("");
+                  }}
+                >
+                  {strings.books.rentButton}
                 </Button>
               </div>
-              <p className="mt-3 text-sm text-ink-muted">{formatRentPrice(rentalDays)}</p>
+              <p className="hk-numeric mt-3 text-sm text-ink-muted">{formatRentPrice(rentalDays, locale)}</p>
             </div>
 
-            <div className="border-t border-line pt-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <Input
-                  label="معرّف طريقة الدفع"
-                  type="text"
-                  value={paymentMethodId}
-                  onChange={(event) => {
-                    setPaymentMethodId(event.target.value);
-                    if (paymentMethodError) setPaymentMethodError("");
+            {!book.isFree && (
+              <div className="border-t border-line pt-5">
+                <Button
+                  onClick={() => {
+                    setCheckoutKind("purchase");
+                    setSession(null);
+                    setCheckoutError("");
                   }}
-                  placeholder="pm_123456"
-                  error={paymentMethodError}
-                  hint="معرّف طريقة الدفع المحفوظة في بوابة الدفع."
-                  wrapperClassName="sm:max-w-sm"
-                />
-                <Button onClick={handlePurchase} loading={actionLoading}>
-                  شراء الكتاب
+                >
+                  {strings.books.purchaseButton}
                 </Button>
               </div>
-            </div>
+            )}
 
             <div className="border-t border-line pt-5 space-y-3">
-              <p className="text-sm font-medium text-ink-muted">البحث عن طريق ISBN</p>
+              <p className="text-sm font-medium text-ink-muted">{strings.books.isbnHeading}</p>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <Input
-                  label="ISBN"
+                  label={strings.books.isbnLabel}
                   type="text"
                   value={isbn}
                   onChange={(event) => {
                     setIsbn(event.target.value);
                     if (isbnError) setIsbnError("");
                   }}
-                  placeholder="978-3-16-148410-0"
+                  placeholder={strings.books.isbnPlaceholder}
                   error={isbnError}
                   wrapperClassName="sm:max-w-sm"
                 />
                 <Button variant="secondary" onClick={handleIsbnLookup} loading={actionLoading}>
-                  جلب التفاصيل
+                  {strings.books.isbnLookupButton}
                 </Button>
               </div>
             </div>
 
             <div className="border-t border-line pt-5">
               <Button variant="secondary" onClick={handleDownload} loading={downloading}>
-                تحميل الكتاب
+                {strings.books.downloadButton}
               </Button>
             </div>
           </div>
         </CardBody>
       </Card>
+
+      <CheckoutDialog
+        open={checkoutKind !== null}
+        title={checkoutTitle}
+        amount={checkoutAmount}
+        pending={checkoutPending}
+        error={checkoutError}
+        session={session}
+        onConfirm={(method) => void startCheckout(method)}
+        onClose={closeCheckout}
+      />
     </div>
   );
 }

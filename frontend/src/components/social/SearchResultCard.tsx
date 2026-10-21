@@ -26,7 +26,8 @@ import type { SearchResult } from "@/types/api";
  * card is itself a control.
  */
 export function SearchResultCard({ result }: { result: SearchResult }) {
-  const { intl } = useLocale();
+  const { intl, strings } = useLocale();
+  const { social } = strings;
 
   return (
     <li>
@@ -35,7 +36,7 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <h2 className="text-lg font-bold text-ink">{result.title}</h2>
             <Badge tone={result.status === "published" ? "success" : "neutral"}>
-              {result.status === "published" ? "منشورة" : "غير منشورة"}
+              {result.status === "published" ? social.searchPublished : social.searchUnpublished}
             </Badge>
           </div>
 
@@ -44,17 +45,17 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
           )}
 
           <p className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-xs text-ink-muted">
-            <span>{result.author?.name ?? "مؤلف مجهول"}</span>
+            <span>{result.author?.name?.trim() || social.searchUnknownAuthor}</span>
             <span aria-hidden="true">·</span>
             <span className="flex items-center gap-1">
               <Icon name="eye" size="sm" />
               <span className="hk-numeric">{result.views}</span>
-              <span className="sr-only">مشاهدة</span>
+              <span className="sr-only">{social.searchViewsLabel}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="heart" size="sm" />
               <span className="hk-numeric">{result.reactions}</span>
-              <span className="sr-only">تفاعل</span>
+              <span className="sr-only">{social.searchReactionsLabel}</span>
             </span>
             <span aria-hidden="true">·</span>
             <span className="hk-numeric">{formatDate(result.createdAt, intl)}</span>

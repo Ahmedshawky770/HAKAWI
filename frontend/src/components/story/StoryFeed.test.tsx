@@ -7,6 +7,8 @@ import userEvent from "@testing-library/user-event";
 
 import { StoryFeed } from "@/components/story/StoryFeed";
 import { flattenStories, nextPageFrom, STORY_FEED_PAGE_SIZE } from "@/lib/queries";
+import { stringsFor } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/preferences";
 import { jsonResponse } from "@/test-utils/support";
 import { renderWithProviders } from "@/test-utils/render";
 import { STORY, STORY_RECORD } from "@/test-utils/fixtures";
@@ -96,7 +98,11 @@ describe("StoryFeed", () => {
 
     renderWithProviders(<StoryFeed />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unauthorized");
+    // The failure is classified before it is shown, so the reader is told what
+    // happened to them and not what the server said.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      stringsFor(DEFAULT_LOCALE).errors.sessionExpired,
+    );
     expect(screen.getByRole("button", { name: "أعد المحاولة" })).toBeInTheDocument();
   });
 

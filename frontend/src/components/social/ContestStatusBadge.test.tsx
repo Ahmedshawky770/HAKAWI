@@ -2,15 +2,16 @@
 
 import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import { CONTEST_STATUS_TONES } from "@/components/ui/Badge";
 import {
-  CONTEST_STATUS_LABELS,
   ContestStatusBadge,
   contestStatusLabel,
   contestStatusTone,
 } from "@/components/social/ContestStatusBadge";
+import { renderWithProviders } from "@/test-utils/render";
+import { AR as AR_CONTESTS } from "@/lib/i18n/contests";
 
 /**
  * The mapping is a contract between the backend vocabulary
@@ -50,28 +51,28 @@ describe("contestStatusTone", () => {
 
 describe("contestStatusLabel", () => {
   it("translates every status the API can send", () => {
-    expect(Object.keys(CONTEST_STATUS_LABELS).length).toBeGreaterThanOrEqual(5);
-    expect(contestStatusLabel("active")).toBe("جارية");
-    expect(contestStatusLabel("voting")).toBe("مرحلة التصويت");
-    expect(contestStatusLabel("completed")).toBe("مكتملة");
-    expect(contestStatusLabel("cancelled")).toBe("ملغاة");
-    expect(contestStatusLabel("draft")).toBe("مسودة");
+    expect(Object.keys(AR_CONTESTS.statusLabels).length).toBeGreaterThanOrEqual(5);
+    expect(contestStatusLabel("active", AR_CONTESTS)).toBe("جارية");
+    expect(contestStatusLabel("voting", AR_CONTESTS)).toBe("مرحلة التصويت");
+    expect(contestStatusLabel("completed", AR_CONTESTS)).toBe("مكتملة");
+    expect(contestStatusLabel("cancelled", AR_CONTESTS)).toBe("ملغاة");
+    expect(contestStatusLabel("draft", AR_CONTESTS)).toBe("مسودة");
   });
 
   it("shows an unknown status unchanged instead of swallowing it", () => {
-    expect(contestStatusLabel("archived-2099")).toBe("archived-2099");
+    expect(contestStatusLabel("archived-2099", AR_CONTESTS)).toBe("archived-2099");
   });
 });
 
 describe("ContestStatusBadge", () => {
   it("renders the Arabic label in the tone the mapping resolves", () => {
-    render(<ContestStatusBadge status="active" />);
+    renderWithProviders(<ContestStatusBadge status="active" />);
     const badge = screen.getByText("جارية");
     expect(badge.className).toContain(TONE_CLASS.success);
   });
 
   it("renders a neutral pill for a cancelled contest", () => {
-    render(<ContestStatusBadge status="cancelled" />);
+    renderWithProviders(<ContestStatusBadge status="cancelled" />);
     expect(screen.getByText("ملغاة").className).toContain(TONE_CLASS.error);
   });
 });

@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
+import type { StoryPatchInput } from "@hakawi/shared-types";
 
 import { api } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, useInvalidation, useStory } from "@/lib/queries";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -26,6 +30,10 @@ const TITLE_LIMIT = 120;
  * (there is nothing to edit); a failure of the SAVE is announced at the top of the
  * form, which is still full of the reader's work.
  *
+ * The story comes from the shared cache (`useStory`), so the page and the story
+ * itself read the same entry: opening the editor does not fetch a second copy of
+ * a story the reader may already have on screen.
+ *
  * The category list gains the story's own category when it is not one of the four
  * known values. A `<select>` can only show its own options, so a story filed under
  * any other category used to display the first option while submitting the real
@@ -33,93 +41,14 @@ const TITLE_LIMIT = 120;
  * of the two the server would store.
  *
  * Submission is unchanged: the same `api.updateStory` payload, the same redirect to
- * the story.
+ * the story — and the story's own cache entry is invalidated on the way out, so
+ * the page the reader lands on shows what the server stored.
  */
 export default function EditStoryPage() {
   const params = useParams();
-  const router = useRouter();
-  const { locale, strings } = useLocale();
+  const { strings } = useLocale();
   const id = typeof params.id === "string" ? params.id : "";
-
-  const [story, setStory] = useState<Story | null>(null);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [category, setCategory] = useState("fiction");
-  const [tags, setTags] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [formError, setFormError] = useState("");
-
-  // The load is keyed on the story id alone: `strings` changes object identity
-  // when the locale flips, so a `load` that depended on the copy would re-run on
-  // a language toggle and refetch the story — discarding whatever the writer had
-  // typed since. The fallback message is read through a ref kept in step by the
-  // effect below instead, the same pattern `auth/callback/page.tsx` uses for its
-  // one-shot completion effect.
-  const editLoadFailed = strings.story.storyEditLoadFailed;
-  const editLoadFailedRef = useRef(editLoadFailed);
-
-  useEffect(() => {
-    editLoadFailedRef.current = editLoadFailed;
-  }, [editLoadFailed]);
-
-  const load = useCallback(() => {
-    api
-      .getStory(id)
-      .then(
-        (data) => {
-          setStory(data);
-          setTitle(data.title);
-          setContent(data.content || "");
-          setCategory(data.category ?? "");
-          setTags((data.tags || []).join(", "));
-        },
-        (failure) => setLoadError(failure instanceof Error ? failure.message : editLoadFailedRef.current),
-      )
-      .finally(() => setLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  /** Retry owns the "start again" state, so the mounting effect stays async-only. */
-  function retry() {
-    setLoading(true);
-    setLoadError("");
-    void load();
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setFormError("");
-
-    try {
-      await api.updateStory(id, {
-        title,
-        content,
-        category,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      });
-      router.push(`/stories/${id}`);
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : strings.story.storyEditUpdateFailed);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remaining = TITLE_LIMIT - title.trim().length;
-  const categories = storyCategories(locale);
-  const options =
-    category && !categories.some((option) => option.value === category)
-      ? [...categories, { value: category, label: category }]
-      : categories;
+  const query = useStory(id);
 
   return (
     <div>
@@ -128,7 +57,7 @@ export default function EditStoryPage() {
         description={strings.story.editPageDescription}
       />
 
-      {loading ? (
+      {query.isLoading ? (
         <div aria-busy="true">
           <span role="status" className="sr-only">
             {strings.common.loading}
@@ -154,13 +83,13 @@ export default function EditStoryPage() {
             </div>
           </Card>
         </div>
-      ) : loadError ? (
+      ) : isFailedLoad(query) ? (
         <ErrorMessage
-          error={loadError}
+          error={strings.errors[classifyError(query.error)]}
           title={strings.story.storyEditOpenFailed}
-          onRetry={retry}
+          onRetry={() => void query.refetch()}
         />
-      ) : !story ? (
+      ) : !query.data ? (
         <EmptyState
           icon="book"
           title={strings.story.storyNotFound}
@@ -172,59 +101,116 @@ export default function EditStoryPage() {
           }
         />
       ) : (
-        <Card>
-          <CardBody>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {formError && <ErrorMessage error={formError} title={strings.story.storyEditSaveFailed} />}
-
-              <Input
-                label={strings.story.titleLabel}
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                hint={
-                  remaining <= 0
-                    ? strings.story.titleLimitReached
-                    : strings.story.titleRemaining(remaining)
-                }
-              />
-
-              <Textarea
-                label={strings.story.contentLabel}
-                rows={10}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                hint={strings.story.contentEditHint}
-              />
-
-              <Select
-                label={strings.story.storiesCategoryLabel}
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                options={options}
-              />
-
-              <Input
-                label={strings.story.tagsLabel}
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                hint={strings.story.tagsHint}
-              />
-
-              <div className="flex flex-wrap gap-3">
-                <Button type="submit" loading={saving}>
-                  {strings.story.editSubmitButton}
-                </Button>
-                <ButtonLink href={`/stories/${id}`} variant="ghost">
-                  {strings.story.cancelButton}
-                </ButtonLink>
-              </div>
-            </form>
-          </CardBody>
-        </Card>
+        // Keyed by the story: a different story is a different form, and the
+        // fields start from that story's own values rather than from the last
+        // story's leftovers.
+        <EditStoryForm key={query.data.id} story={query.data} />
       )}
     </div>
+  );
+}
+
+/**
+ * The form itself, with the story's values as its starting state.
+ *
+ * It is a separate component on purpose: the fields are seeded ONCE, when the
+ * form mounts, so a refetch of the story in the background cannot overwrite what
+ * the writer has typed since.
+ */
+function EditStoryForm({ story }: { story: Story }) {
+  const router = useRouter();
+  const { locale, strings } = useLocale();
+  const invalidation = useInvalidation();
+  const [title, setTitle] = useState(story.title);
+  const [content, setContent] = useState(story.content || "");
+  const [category, setCategory] = useState(story.category ?? "");
+  const [tags, setTags] = useState((story.tags || []).join(", "));
+
+  const updateStory = useMutation({
+    mutationFn: (payload: StoryPatchInput) => api.updateStory(story.id, payload),
+    onSuccess: async () => {
+      await invalidation.stories(story.id);
+      router.push(`/stories/${story.id}`);
+    },
+  });
+
+  const remaining = TITLE_LIMIT - title.trim().length;
+  const categories = storyCategories(locale);
+  const options =
+    category && !categories.some((option) => option.value === category)
+      ? [...categories, { value: category, label: category }]
+      : categories;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateStory.mutate({
+      title,
+      content,
+      category,
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    });
+  };
+
+  return (
+    <Card>
+      <CardBody>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {updateStory.isError && (
+            <ErrorMessage
+              error={strings.errors[classifyError(updateStory.error)]}
+              title={strings.story.storyEditSaveFailed}
+            />
+          )}
+
+          <Input
+            label={strings.story.titleLabel}
+            type="text"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            hint={
+              remaining <= 0
+                ? strings.story.titleLimitReached
+                : strings.story.titleRemaining(remaining)
+            }
+          />
+
+          <Textarea
+            label={strings.story.contentLabel}
+            rows={10}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            hint={strings.story.contentEditHint}
+          />
+
+          <Select
+            label={strings.story.storiesCategoryLabel}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            options={options}
+          />
+
+          <Input
+            label={strings.story.tagsLabel}
+            type="text"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            hint={strings.story.tagsHint}
+          />
+
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" loading={updateStory.isPending}>
+              {strings.story.editSubmitButton}
+            </Button>
+            <ButtonLink href={`/stories/${story.id}`} variant="ghost">
+              {strings.story.cancelButton}
+            </ButtonLink>
+          </div>
+        </form>
+      </CardBody>
+    </Card>
   );
 }

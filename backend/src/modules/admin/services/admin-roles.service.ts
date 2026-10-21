@@ -4,6 +4,11 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
+import {
+  AdminRoleAssignedEvent,
+  AdminRoleBreakGlassEvent,
+  AdminRoleRevokedEvent,
+} from '../../../common/events/admin.events.ts';
 import { UsersService } from '../../users/users.service.ts';
 import { AccountType, AdminRole, isAdminRole } from '../../../common/constants/roles.ts';
 import { parseOrThrow } from '../../shared/validation/zod-validation.util.ts';
@@ -26,10 +31,6 @@ import {
   type AdminRoleStatsResponse,
   type BreakGlassResponse,
 } from '../dto/admin-roles.dto.ts';
-
-type AdminRoleAssignmentEvent =
-  | { type: 'admin_role.assigned'; userId: string; adminRole: string; assignedBy: string; reason: string; expiresAt: string | null }
-  | { type: 'admin_role.revoked'; userId: string; adminRole: string; revokedBy: string; reason: string };
 
 const DEFAULT_EXPIRY_DAYS = 365;
 const EXPIRY_WARNING_DAYS = 30;
@@ -103,13 +104,17 @@ export class AdminRolesService {
       adminRoleExpiresAt: finalExpiresAt,
     });
 
-    await this.eventBus.emit('admin_role.assigned', {
-      userId: input.userId,
-      adminRole: input.adminRole,
-      assignedBy: assignedById,
-      reason: input.reason,
-      expiresAt: finalExpiresAt.toISOString(),
-    } as AdminRoleAssignmentEvent);
+    // The event is CONSTRUCTED, not cast. The payload used to be an object
+    // literal told to be an `AdminRoleAssignmentEvent` with `as`, which is a
+    // promise the compiler cannot check: the break-glass payload was cast to
+    // the same union even though it matched neither member. Constructing the
+    // event makes the producer and the schema two views of ONE fact, and a
+    // field that the schema requires and the producer forgets is a compile
+    // error instead of a dead-lettered event.
+    await this.eventBus.emit(
+      'admin_role.assigned',
+      new AdminRoleAssignedEvent(input.userId, input.adminRole, assignedById, input.reason, finalExpiresAt.toISOString()),
+    );
 
     this.logger.info(`Assigned ${input.adminRole} to user ${input.userId} by ${assignedById}`, 'AdminRolesService');
 
@@ -141,12 +146,10 @@ export class AdminRolesService {
       adminRoleExpiresAt: newAdminRole ? await this.getRoleExpiry(input.userId, newAdminRole) : null,
     });
 
-    await this.eventBus.emit('admin_role.revoked', {
-      userId: input.userId,
-      adminRole: input.adminRole,
-      revokedBy: revokedById,
-      reason: input.revokeReason,
-    } as AdminRoleAssignmentEvent);
+    await this.eventBus.emit(
+      'admin_role.revoked',
+      new AdminRoleRevokedEvent(input.userId, input.adminRole, revokedById, input.revokeReason),
+    );
 
     this.logger.info(`Revoked ${input.adminRole} from user ${input.userId} by ${revokedById}`, 'AdminRolesService');
 
@@ -291,14 +294,17 @@ export class AdminRolesService {
       adminRoleExpiresAt: expiresAt,
     });
 
-    await this.eventBus.emit('admin_role.break_glass', {
-      userId,
-      adminRole: dto.adminRole,
-      invokedBy: userId,
-      reason: dto.reason,
-      expiresAt: expiresAt.toISOString(),
-      durationMinutes: dto.durationMinutes,
-    });
+    await this.eventBus.emit(
+      'admin_role.break_glass',
+      new AdminRoleBreakGlassEvent(
+        userId,
+        dto.adminRole,
+        userId,
+        dto.reason,
+        expiresAt.toISOString(),
+        dto.durationMinutes,
+      ),
+    );
 
     this.logger.warn(`BREAK-GLASS activated: user ${userId} granted ${dto.adminRole} for ${dto.durationMinutes} minutes. Reason: ${dto.reason}`, 'AdminRolesService');
 

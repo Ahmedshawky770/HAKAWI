@@ -50,9 +50,17 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  // Touch targets never go below 44px: sm is 36px tall but carries `py` padding
-  // that lands it on the 44px minimum once the surrounding row spacing counts.
-  sm: "min-h-9 px-3 text-sm",
+  // Touch targets never go below 44px (WCAG 2.5.8 / the platform minimum).
+  //
+  // `sm` used to be `min-h-9` — 36px — with a comment claiming the surrounding
+  // padding made up the difference. It did not: the padding belongs to the
+  // row, not to the target, and the buttons that are actually small — the
+  // delete control in a list row, a reaction chip, a dismiss button — are
+  // exactly the ones a reader has to hit accurately, often one-handed, while
+  // holding the phone. Every size is therefore at least 44px tall; `sm` and
+  // `md` differ in their horizontal padding and their type size, not in the
+  // height of the target.
+  sm: "min-h-11 px-3 text-sm",
   md: "min-h-11 px-4 py-2 text-base",
   lg: "min-h-12 px-6 py-2.5 text-lg",
 };
@@ -146,7 +154,10 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={`${BASE_STYLES} ${VARIANTS[variant]} ${
-        size === "sm" ? "size-9 p-0" : size === "lg" ? "size-12 p-0" : "size-11 p-0"
+        // 44×44 is the smallest target a finger can be asked to hit, so the
+        // icon-only sizes are 44 (`sm`, `md`) and 48 (`lg`) — the same rule the
+        // text buttons follow.
+        size === "sm" ? "size-11 p-0" : size === "lg" ? "size-12 p-0" : "size-11 p-0"
       } ${className}`.trim()}
       {...props}
     >

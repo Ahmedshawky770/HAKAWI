@@ -1,9 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
+import {
+  isFailedLoad,
+  libraryKeys,
+  useBook,
+  useInvalidation,
+  useLibrary,
+  useReadingProgress,
+} from "@/lib/queries";
 import { formatBookPrice } from "@/components/books/BookCard";
 import { LibraryStatusBadge } from "@/components/library/LibraryStatusBadge";
 import { ReadingProgressCard } from "@/components/library/ReadingProgressCard";
@@ -17,15 +27,17 @@ import { Icon } from "@/components/ui/Icon";
 import { Loading } from "@/components/ui/Loading";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { formatDate } from "@/lib/i18n";
-import type { Book, LibraryItem, ReadingProgress } from "@/types/api";
+import type { LibraryListResponse } from "@/types/api";
 
 /**
  * One shelf entry, in full: the book, where the reader is with it, and the two actions.
  *
- * The book and the progress are fetched the way they were before — the library list is the authority
- * on whether this id belongs to the reader, and a book or progress that cannot be fetched degrades to
- * "no book" / "no progress" rather than failing the page. The progress card is rendered only when
- * there is progress to show, because a bar at zero percent reads as "broken", not as "not started".
+ * The library list is the authority on whether this id belongs to the reader, and it is read through
+ * `useLibrary` — the same cache entry the shelf itself reads, so opening an entry never costs a
+ * second copy of the shelf. The book and the progress are fetched through `useBook` and
+ * `useReadingProgress`, and a book or progress that cannot be fetched degrades to "no book" /
+ * "no progress" rather than failing the page. The progress card is rendered only when there is
+ * progress to show, because a bar at zero percent reads as "broken", not as "not started".
  *
  * Both actions are real buttons and both failures are announced: an access that did not happen leaves
  * the reader believing their place in the book was saved, and a removal that did not happen leaves a
@@ -36,95 +48,60 @@ export default function LibraryItemPage() {
   const router = useRouter();
   const id = typeof params.id === "string" ? params.id : "";
   const { notify } = useToast();
-  const { intl } = useLocale();
+  const { intl, strings } = useLocale();
+  const { library } = strings;
+  const queryClient = useQueryClient();
+  const invalidation = useInvalidation();
 
-  const [item, setItem] = useState<LibraryItem | null>(null);
-  const [book, setBook] = useState<Book | null>(null);
-  const [progress, setProgress] = useState<ReadingProgress | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const shelf = useLibrary();
+  const item = shelf.data?.items.find((entry) => entry.id === id) ?? null;
+  // The book id is only known once the shelf has answered, and both queries stay
+  // disabled until then — a disabled query fetches nothing.
+  const bookId = item?.bookId ?? "";
+  const bookQuery = useBook(bookId);
+  const progressQuery = useReadingProgress(bookId);
+  const book = bookQuery.data ?? null;
+  const progress = progressQuery.data?.progress[0] ?? null;
 
-  useEffect(() => {
-    let active = true;
+  const accessMutation = useMutation({
+    mutationFn: (itemId: string) => api.accessLibraryItem(itemId),
+    onSuccess: async (updated) => {
+      // The server's answer goes into the cache, so the badge and every other
+      // surface showing this entry move to the state the API confirmed.
+      queryClient.setQueryData<LibraryListResponse>(libraryKeys.list(), (old) =>
+        old ? { ...old, items: old.items.map((entry) => (entry.id === updated.id ? updated : entry)) } : old,
+      );
+      await invalidation.library();
+    },
+    onError: (error) => {
+      notify(strings.errors[classifyError(error)], "error");
+    },
+  });
 
-    async function load() {
-      try {
-        const data = await api.listLibrary();
-        const found = data.items.find((i: LibraryItem) => i.id === id) || null;
-        if (!active) return;
-        setItem(found);
-
-        if (found) {
-          try {
-            const bookData = await api.getBook(found.bookId);
-            if (active) setBook(bookData);
-          } catch {
-            if (active) setBook(null);
-          }
-          try {
-            const progressData = await api.getReadingProgress(found.bookId);
-            if (active) setProgress(progressData.progress[0] ?? null);
-          } catch {
-            if (active) setProgress(null);
-          }
-        }
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "فشل تحميل تفاصيل الكتاب");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [id, attempt]);
-
-  /** Re-arms the same request; the reset lives here so the effect only awaits. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    setAttempt((n) => n + 1);
-  }
-
-  const handleAccess = async () => {
-    if (!item) return;
-    setActionLoading(true);
-    try {
-      const updated = await api.accessLibraryItem(item.id);
-      setItem(updated);
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "فشل تحديث حالة القراءة", "error");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!item) return;
-    setRemoving(true);
-    try {
-      await api.removeFromLibrary(item.id);
+  const removeMutation = useMutation({
+    mutationFn: (itemId: string) => api.removeFromLibrary(itemId),
+    onSuccess: async () => {
+      await invalidation.library();
       router.push("/library");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "فشل إزالة الكتاب من المكتبة", "error");
-      setRemoving(false);
-    }
-  };
+    },
+    onError: (error) => {
+      notify(strings.errors[classifyError(error)], "error");
+    },
+  });
 
-  if (loading) return <Loading />;
+  if (shelf.isLoading || bookQuery.isLoading) return <Loading />;
 
-  if (error) {
+  if (isFailedLoad(shelf)) {
     return (
       <div className="space-y-4">
-        <ErrorMessage error={error} onRetry={retry} />
+        <ErrorMessage
+          error={strings.errors[classifyError(shelf.error)]}
+          title={library.loadFailedTitle}
+          onRetry={() => void shelf.refetch()}
+        />
         <ButtonLink href="/library" variant="ghost" size="sm">
           <Icon name="chevron" size="sm" />
-          العودة للمكتبة
+          {library.backToLibrary}
         </ButtonLink>
       </div>
     );
@@ -134,24 +111,24 @@ export default function LibraryItemPage() {
     return (
       <EmptyState
         icon="library"
-        title="الكتاب غير موجود في مكتبتك"
-        description="ربما أزلته، أو أن الرابط يشير إلى عنصر لم يعد لك."
-        action={<ButtonLink href="/library">العودة للمكتبة</ButtonLink>}
+        title={library.notFoundTitle}
+        description={library.notFoundDescription}
+        action={<ButtonLink href="/library">{library.backToLibrary}</ButtonLink>}
       />
     );
   }
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       <PageHeader
-        title={book?.title || "الكتاب"}
-        description={book?.author ? `بواسطة ${book.author}` : undefined}
+        title={book?.title || library.detailTitleFallback}
+        description={book?.author ? library.authorByline(book.author) : undefined}
         action={
           <>
             <LibraryStatusBadge status={item.status} />
             <ButtonLink href="/library" variant="ghost" size="sm">
               <Icon name="chevron" size="sm" />
-              العودة للمكتبة
+              {library.backToLibrary}
             </ButtonLink>
           </>
         }
@@ -160,9 +137,13 @@ export default function LibraryItemPage() {
       <Card>
         <CardBody>
           <div className="flex flex-col gap-6 sm:flex-row">
-          {book?.coverImage ? (
-            <RemoteImage src={book.coverImage} className="h-56 w-40 shrink-0 self-start rounded-lg object-cover" />
-          ) : (
+            {book?.coverImage ? (
+              <RemoteImage
+                src={book.coverImage}
+                alt={book.title}
+                className="h-56 w-40 shrink-0 self-start rounded-lg object-cover"
+              />
+            ) : (
               <div className="grid h-56 w-40 shrink-0 place-items-center self-start rounded-lg bg-surface-raised text-ink-faint">
                 <Icon name="book" size="lg" />
               </div>
@@ -176,32 +157,40 @@ export default function LibraryItemPage() {
               {book?.pageCount != null && (
                 <p className="flex items-center gap-2 text-sm text-ink-muted">
                   <Icon name="book" size="sm" />
-                  عدد الصفحات: <span className="hk-numeric">{book.pageCount}</span>
+                  {library.pageCountLabel} <span className="hk-numeric">{book.pageCount}</span>
                 </p>
               )}
 
               {item.lastAccessedAt && (
                 <p className="flex items-center gap-2 text-sm text-ink-muted">
                   <Icon name="clock" size="sm" />
-                  آخر قراءة: {formatDate(item.lastAccessedAt, intl)}
+                  {library.lastReadLabel} {formatDate(item.lastAccessedAt, intl)}
                 </p>
               )}
 
               {book?.description ? (
                 <p className="whitespace-pre-line leading-8 text-ink-muted">{book.description}</p>
               ) : (
-                <p className="text-sm text-ink-muted">لا يوجد وصف لهذا الكتاب.</p>
+                <p className="text-sm text-ink-muted">{library.noDescription}</p>
               )}
             </div>
           </div>
         </CardBody>
 
         <CardFooter>
-          <Button onClick={handleAccess} loading={actionLoading} className="flex-1">
-            {item.status === "reading" ? "تحديث القراءة" : "بدء القراءة"}
+          <Button
+            onClick={() => accessMutation.mutate(item.id)}
+            loading={accessMutation.isPending}
+            className="flex-1"
+          >
+            {item.status === "reading" ? library.updateReading : library.startReading}
           </Button>
-          <Button variant="danger" onClick={handleRemove} loading={removing}>
-            إزالة من المكتبة
+          <Button
+            variant="danger"
+            onClick={() => removeMutation.mutate(item.id)}
+            loading={removeMutation.isPending}
+          >
+            {library.removeFromLibrary}
           </Button>
         </CardFooter>
       </Card>

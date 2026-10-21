@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { Injectable, Module, Global } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
 
-import {
+import paymobConfig, {
   NON_PRODUCTION_PAYMOB_WEBHOOK_SECRET,
   normalizePaymobBaseUrl,
   PAYMOB_AUTH_TOKEN_LIFETIME_SECONDS,
+  PAYMOB_CONFIG_NAMESPACE,
   resolvePaymobConfig,
+  resolvePaymobPaymentMethodId,
+  type PaymobPaymentMethodChoice,
 } from './paymob.config.ts';
 
 afterEach(() => {
@@ -21,6 +27,8 @@ afterEach(() => {
   delete process.env.PAYMOB_AUTH_TIMEOUT_MS;
   delete process.env.PAYMOB_AUTH_TOKEN_CACHE_TTL_SECONDS;
   delete process.env.PAYMOB_RETRY_MAX_ATTEMPTS;
+  delete process.env.PAYMOB_CARD_PAYMENT_METHOD_ID;
+  delete process.env.PAYMOB_WALLET_PAYMENT_METHOD_ID;
 });
 
 describe('normalizePaymobBaseUrl', () => {
@@ -64,6 +72,8 @@ describe('resolvePaymobConfig', () => {
       PAYMOB_AUTH_TIMEOUT_MS: '1500',
       PAYMOB_AUTH_TOKEN_CACHE_TTL_SECONDS: '900',
       PAYMOB_RETRY_MAX_ATTEMPTS: '4',
+      PAYMOB_CARD_PAYMENT_METHOD_ID: '7',
+      PAYMOB_WALLET_PAYMENT_METHOD_ID: '9',
     });
 
     expect(config).toEqual({
@@ -77,6 +87,8 @@ describe('resolvePaymobConfig', () => {
       authTimeoutMs: 1500,
       authTokenCacheTtlSeconds: 900,
       retryMaxAttempts: 4,
+      cardPaymentMethodId: '7',
+      walletPaymentMethodId: '9',
     });
   });
 
@@ -250,5 +262,156 @@ describe('resolvePaymobConfig', () => {
 
     expect(resolvePaymobConfig().environment).toBe('live');
     expect(resolvePaymobConfig().apiKey).toBe('from-process-env');
+  });
+
+  /**
+   * THE TWO OPTIONAL PAYMENT METHOD IDS.
+   *
+   * They are the merchant's own Paymob numbers for a card and a mobile wallet, so they cannot be
+   * written into this codebase — and they are OPTIONAL, because their absence has a documented
+   * meaning (the gateway asks the customer) rather than being a boot failure.
+   */
+  describe('the payment method ids', () => {
+    it('reads both of them when the deployment configures them', () => {
+      const config = resolvePaymobConfig({
+        PAYMOB_CARD_PAYMENT_METHOD_ID: '7',
+        PAYMOB_WALLET_PAYMENT_METHOD_ID: '9',
+      });
+
+      expect(config.cardPaymentMethodId).toBe('7');
+      expect(config.walletPaymentMethodId).toBe('9');
+    });
+
+    it('leaves them unset when the deployment configures neither', () => {
+      const config = resolvePaymobConfig({});
+
+      expect(config.cardPaymentMethodId).toBeUndefined();
+      expect(config.walletPaymentMethodId).toBeUndefined();
+    });
+
+    it('treats a blank value as not configured rather than as a valid id', () => {
+      const config = resolvePaymobConfig({
+        PAYMOB_CARD_PAYMENT_METHOD_ID: '  ',
+        PAYMOB_WALLET_PAYMENT_METHOD_ID: '',
+      });
+
+      expect(config.cardPaymentMethodId).toBeUndefined();
+      expect(config.walletPaymentMethodId).toBeUndefined();
+    });
+
+    it('refuses an id that is not a positive integer', () => {
+      expect(() => resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: 'card' })).toThrow();
+      expect(() => resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: '0' })).toThrow();
+      expect(() => resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '-3' })).toThrow();
+      expect(() => resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '1.5' })).toThrow();
+    });
+
+    it('does not refuse to boot in production because of them', () => {
+      // An unconfigured method id costs the FEATURE, not the deployment: the gateway asks the
+      // customer, which is what it did before the reader's choice existed.
+      const config = resolvePaymobConfig({
+        NODE_ENV: 'production',
+        PAYMOB_ENVIRONMENT: 'live',
+        PAYMOB_WEBHOOK_SECRET: 'a-genuinely-unique-webhook-secret-value',
+        PAYMOB_API_KEY: 'live-api-key',
+        PAYMOB_MERCHANT_ID: 'live-merchant-id',
+        PAYMOB_INTEGRATION_ID: 'live-integration-id',
+      });
+
+      expect(config.cardPaymentMethodId).toBeUndefined();
+    });
+  });
+
+  /**
+   * THE ONE PLACE THE READER'S CHOICE BECOMES A GATEWAY INSTRUMENT.
+   */
+  describe('resolvePaymobPaymentMethodId', () => {    const config = resolvePaymobConfig({
+      PAYMOB_CARD_PAYMENT_METHOD_ID: '7',
+      PAYMOB_WALLET_PAYMENT_METHOD_ID: '9',
+    });
+
+    it('maps the card choice to the card id and the wallet choice to the wallet id', () => {
+      expect(resolvePaymobPaymentMethodId(config, 'card')).toBe('7');
+      expect(resolvePaymobPaymentMethodId(config, 'wallet')).toBe('9');
+    });
+
+    it('returns nothing when the deployment configured no id for that instrument', () => {
+      const halfConfigured = resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: '7' });
+
+      expect(resolvePaymobPaymentMethodId(halfConfigured, 'card')).toBe('7');
+      expect(resolvePaymobPaymentMethodId(halfConfigured, 'wallet')).toBeUndefined();
+    });
+
+    it('returns nothing when there is no choice or no configuration at all', () => {
+      expect(resolvePaymobPaymentMethodId(config, undefined)).toBeUndefined();
+      expect(resolvePaymobPaymentMethodId(undefined, 'card')).toBeUndefined();
+      expect(resolvePaymobPaymentMethodId(undefined, undefined)).toBeUndefined();
+    });
+
+    it('resolves a word it does not know to nothing, rather than to the wallet', () => {
+      // A choice that falls through to the wallet id would quietly charge a reader through an
+      // instrument they did not pick. It resolves to nothing instead, and the gateway asks.
+      expect(resolvePaymobPaymentMethodId(config, 'bitcoin' as PaymobPaymentMethodChoice)).toBeUndefined();
+    });
+  });
+});
+
+/**
+ * THE NAMESPACE IS REACHABLE FROM A MODULE THAT DOES NOT PROVIDE THE TOKEN.
+ *
+ * The books module resolves the reader's choice of instrument against this configuration, and it
+ * cannot inject the `PAYMOB_CONFIG` token — that token is provided inside the payments module and
+ * is not exported from it. What it CAN do is read the same resolved object through the global
+ * `ConfigService`, because `ConfigModule.forFeature(paymob)` merges it into the shared config host
+ * under the `paymob` namespace. This is the wiring that makes that true, asserted rather than
+ * assumed: if it broke, the reader's choice would silently stop reaching the gateway.
+ */
+@Injectable()
+class PaymobConfigProbe {
+  constructor(private readonly configService: ConfigService) {}
+
+  read(): Record<string, unknown> | undefined {
+    return this.configService.get<Record<string, unknown>>(PAYMOB_CONFIG_NAMESPACE);
+  }
+}
+
+/**
+ * The shape of the real application: the root configuration lives in a GLOBAL module that exports
+ * `ConfigModule` (this is `CommonModule`), and the Paymob namespace is registered by a different
+ * module through `ConfigModule.forFeature` (this is `PaymentsModule`).
+ */
+@Global()
+@Module({
+  imports: [ConfigModule.forRoot({ ignoreEnvFile: true, load: [] })],
+  exports: [ConfigModule],
+})
+class PaymobConfigRootModule {}
+
+@Module({
+  imports: [ConfigModule.forFeature(paymobConfig)],
+  providers: [PaymobConfigProbe],
+  exports: [PaymobConfigProbe],
+})
+class PaymobConfigFeatureModule {}
+
+@Module({
+  imports: [PaymobConfigFeatureModule],
+  providers: [PaymobConfigProbe],
+})
+class PaymobConfigConsumerModule {}
+
+describe('the paymob namespace', () => {
+  it('is readable through the global ConfigService from a module that does not provide it', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [PaymobConfigRootModule, PaymobConfigFeatureModule, PaymobConfigConsumerModule],
+    }).compile();
+    const app = await moduleRef.init();
+
+    const probe = app.get(PaymobConfigProbe);
+    const read = probe.read();
+    expect(typeof read?.merchantId).toBe('string');
+    expect(typeof read?.integrationId).toBe('string');
+
+    await app.close();
   });
 });

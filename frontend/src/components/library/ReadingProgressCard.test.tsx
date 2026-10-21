@@ -7,6 +7,7 @@ import { screen } from "@testing-library/react";
 import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { ReadingProgressCard } from "@/components/library/ReadingProgressCard";
+import { AR as AR_LIBRARY } from "@/lib/i18n/library";
 import type { ReadingProgress } from "@/types/api";
 
 vi.mock("next/link", () => ({
@@ -28,7 +29,7 @@ describe("ReadingProgressCard", () => {
   it("exposes the progress as a labelled progressbar rather than a coloured bar", () => {
     renderWithProviders(<ReadingProgressCard progress={PROGRESS} />);
 
-    const bar = screen.getByRole("progressbar", { name: "تقدم القراءة" });
+    const bar = screen.getByRole("progressbar", { name: AR_LIBRARY.progressLabel });
     expect(bar).toHaveAttribute("aria-valuenow", "40");
     expect(bar).toHaveAttribute("aria-valuemin", "0");
     expect(bar).toHaveAttribute("aria-valuemax", "100");
@@ -37,20 +38,20 @@ describe("ReadingProgressCard", () => {
   it("states the page position and the percentage as text, in numeric figures", () => {
     renderWithProviders(<ReadingProgressCard progress={PROGRESS} />);
 
-    expect(screen.getByText(/الصفحة 120/)).toHaveClass("hk-numeric");
+    expect(screen.getByText(AR_LIBRARY.progressPage(120, 300))).toHaveClass("hk-numeric");
     expect(screen.getByText("40.0%")).toHaveClass("hk-numeric");
   });
 
   it("omits the total when the book does not report one", () => {
     renderWithProviders(<ReadingProgressCard progress={{ ...PROGRESS, totalPages: null }} />);
 
-    expect(screen.getByText(/^الصفحة 120$/)).toBeInTheDocument();
+    expect(screen.getByText(AR_LIBRARY.progressPage(120, null))).toBeInTheDocument();
   });
 
   it("says nothing about completion while the book is unfinished", () => {
     renderWithProviders(<ReadingProgressCard progress={PROGRESS} />);
 
-    expect(screen.queryByText(/اكتملت القراءة/)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(AR_LIBRARY.progressCompletedLabel))).not.toBeInTheDocument();
   });
 
   it("announces completion in the success tokens, with its date", () => {
@@ -58,7 +59,7 @@ describe("ReadingProgressCard", () => {
       <ReadingProgressCard progress={{ ...PROGRESS, progressPercentage: 100, completedAt: "2026-02-01T00:00:00.000Z" }} />,
     );
 
-    const note = screen.getByText(/اكتملت القراءة/);
+    const note = screen.getByText(new RegExp(AR_LIBRARY.progressCompletedLabel));
     expect(note).toHaveClass("text-success-ink");
     expect(note.textContent).toMatch(/[0-9٠-٩]/);
   });

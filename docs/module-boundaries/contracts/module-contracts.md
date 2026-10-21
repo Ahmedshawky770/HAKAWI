@@ -294,9 +294,14 @@ interface StoryPublishedEvent {
 **Request:**
 ```json
 {
-  "paymentMethodId": "pm_123456"
+  "paymentMethod": "card"
 }
 ```
+
+> `paymentMethod` is the reader's choice — `"card"` or `"wallet"` — and not a
+> gateway identifier. The server resolves it to this merchant's own Paymob
+> method id; a deployment with no method id configured lets the gateway ask
+> the customer, which is the behaviour that existed before the choice did.
 
 **Response 201:**
 ```json

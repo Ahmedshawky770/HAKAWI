@@ -15,6 +15,7 @@ import {
 import { formatDate, intlLocale } from "@/lib/i18n";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
 import { PAYMENT } from "@/test-utils/fixtures";
+import { AR as AR_PAYMENTS } from "@/lib/i18n/payments";
 import type { Payment } from "@/types/api";
 
 vi.mock("next/link", () => ({
@@ -40,7 +41,8 @@ describe("PaymentRow", () => {
     const { container } = renderWithProviders(<PaymentRow payment={PAYMENT} />);
 
     expect(screen.getByText(PAYMENT.id)).toHaveClass("hk-numeric");
-    expect(screen.getByText(`${PAYMENT.amount} ${PAYMENT.currency}`)).toHaveClass("hk-numeric");
+    // The amount is in PIASTRES: 100 piastres is 1.00 EGP, not "100 EGP".
+    expect(screen.getByText("1.00 ج.م")).toHaveClass("hk-numeric");
     expect(container.textContent).toContain(formatDate(PAYMENT.createdAt, intlLocale(DEFAULT_LOCALE)));
   });
 
@@ -52,8 +54,8 @@ describe("PaymentRow", () => {
       </>,
     );
 
-    expect(screen.getByText("مكتملة").className).toContain("text-success-ink");
-    expect(screen.getByText("قيد المراجعة").className).toContain("text-warning-ink");
+    expect(screen.getByText(AR_PAYMENTS.statusLabels.completed).className).toContain("text-success-ink");
+    expect(screen.getByText(AR_PAYMENTS.statusLabels.pending).className).toContain("text-warning-ink");
   });
 
   it("uses design tokens only", () => {
@@ -76,8 +78,8 @@ describe("PaymentListSkeleton", () => {
 });
 
 describe("PaymentListEmpty", () => {
-  it("says there is no payment yet, in Arabic", () => {
+  it("says there is no payment yet", () => {
     renderWithProviders(<PaymentListEmpty />);
-    expect(screen.getByRole("heading", { name: "لا توجد مدفوعات بعد." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: AR_PAYMENTS.emptyTitle })).toBeInTheDocument();
   });
 });

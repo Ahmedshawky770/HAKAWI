@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 
-import { api, getStoredUser } from "@/lib/api";
+import { useStoredUser } from "@/lib/use-stored-user";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
-import type { PublisherStatsResponse, PublisherSubmissionOverview, PublisherVoteOverview } from "@hakawi/shared-types";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { classifyError } from "@/lib/errors";
+import {
+  isFailedLoad,
+  useContests,
+  usePublisherStats,
+  usePublisherSubmissions,
+  usePublisherVotes,
+} from "@/lib/queries";
 
 /**
  * The publisher dashboard.
@@ -15,105 +23,107 @@ import type { PublisherStatsResponse, PublisherSubmissionOverview, PublisherVote
  * numbers that matter — how many contests are live, how many submissions are waiting,
  * and how people are voting. The three backend routes that serve this data are wired
  * here in one component so the publisher does not have to navigate three pages.
+ *
+ * WHY A FAILING LOADER NO LONGER BLANKS THE PAGE. The three loaders used to
+ * swallow their own failures in a bare `catch {}`, so the page-level error branch
+ * could never be reached and a broken panel looked like an empty one. Each loader
+ * is now its own query with its own error, and the first failure is reported at
+ * the top of the page while the panels that DID load stay on screen.
  */
 export default function PublisherDashboardPage() {
-  const currentUserId = getStoredUser()?.id ?? null;
-  const [stats, setStats] = useState<PublisherStatsResponse | null>(null);
-  const [submissions, setSubmissions] = useState<PublisherSubmissionOverview[]>([]);
-  const [votes, setVotes] = useState<PublisherVoteOverview[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const strings = useStrings();
+
+  /**
+   * The publisher's own id, from the session store.
+   *
+   * The contest below is the publisher's OWN live contest, so the id decides
+   * which one it is — and it is read through the store rather than out of
+   * local storage during render, because the server has no local storage to
+   * read and the two answers are not the same markup. See
+   * `lib/use-stored-user.ts`.
+   */
+  const currentUserId = useStoredUser()?.id ?? null;
+
+  const statsQuery = usePublisherStats();
+  const contestsQuery = useContests();
+
+  /**
+   * The contest the entries and the votes below belong to.
+   *
+   * The publisher's routes are addressed by a contest id, and the id is the
+   * publisher's own live contest — so it is derived from the contest list rather
+   * than asked for. An empty id leaves the two queries disabled, which is why
+   * they never fire for a publisher with no live contest.
+   */
+  const activeContestId = useMemo(() => {
+    const contests = contestsQuery.data?.contests ?? [];
+    const active = contests.find((contest) => contest.createdBy === currentUserId && contest.status === "active");
+    return active?.id ?? "";
+  }, [contestsQuery.data, currentUserId]);
+
+  const submissionsQuery = usePublisherSubmissions(activeContestId);
+  const votesQuery = usePublisherVotes(activeContestId);
+
   const [activeTab, setActiveTab] = useState<"overview" | "submissions" | "votes">("overview");
 
-  const loadStats = useCallback(async () => {
-    try {
-      const data = await api.getPublisherStats();
-      setStats(data);
-    } catch {
-      // Stats are additive; a failure here does not block the rest.
-    }
-  }, []);
+  // A failed BACKGROUND refetch keeps what is on the screen; only a load that
+  // never arrived is a failure.
+  const failure = isFailedLoad(statsQuery)
+    ? statsQuery.error
+    : isFailedLoad(contestsQuery)
+      ? contestsQuery.error
+      : isFailedLoad(submissionsQuery)
+        ? submissionsQuery.error
+        : isFailedLoad(votesQuery)
+          ? votesQuery.error
+          : null;
 
-  const loadSubmissions = useCallback(async () => {
-    try {
-      const { contests } = await api.listContests();
-      const activeContest = contests.find((c) => c.createdBy === currentUserId && c.status === "active");
-      if (!activeContest) return;
-      const data = await api.getPublisherSubmissions(activeContest.id);
-      setSubmissions(data.submissions);
-    } catch {
-      // Submissions are secondary; a failure here does not block stats.
-    }
-  }, [currentUserId]);
-
-  const loadVotes = useCallback(async () => {
-    try {
-      const { contests } = await api.listContests();
-      const activeContest = contests.find((c) => c.createdBy === currentUserId && c.status === "active");
-      if (!activeContest) return;
-      const data = await api.getPublisherVotes(activeContest.id);
-      setVotes(data.votes);
-    } catch {
-      // Votes are secondary; a failure here does not block stats.
-    }
-  }, [currentUserId]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        await Promise.all([loadStats(), loadSubmissions(), loadVotes()]);
-      } catch {
-        if (active) setError("فشل تحميل لوحة الناشر");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [loadStats, loadSubmissions, loadVotes]);
-
-  const retry = () => {
-    setLoading(true);
-    setError("");
-    void loadStats();
-    void loadSubmissions();
-    void loadVotes();
+  const retryAll = () => {
+    void statsQuery.refetch();
+    void contestsQuery.refetch();
+    void submissionsQuery.refetch();
+    void votesQuery.refetch();
   };
 
-  if (loading) {
+  if (statsQuery.isLoading || contestsQuery.isLoading) {
     return (
       <>
-        <PageHeader title="لوحة الناشر" />
+        <PageHeader title={strings.contests.publisherTitle} />
         <Loading />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={retry} title="فشل تحميل لوحة الناشر" />;
-  }
+  const stats = statsQuery.data;
 
   const statCards = stats
     ? [
-          { label: "إجمالي المسابقات", value: stats.totalContests },
-          { label: "المسابقات النشطة", value: stats.activeContests },
-          { label: "المسابقات المكتملة", value: stats.totalSubmissions },
-          { label: "المشاركات المعلّقة", value: stats.pendingSubmissions },
-          { label: "إجمالي الأصوات", value: stats.totalVotes },
-          { label: "إجمالي الجوائز", value: stats.totalPrizes },
-        ]
+        { label: strings.contests.publisherStatTotalContests, value: stats.totalContests },
+        { label: strings.contests.publisherStatActiveContests, value: stats.activeContests },
+        { label: strings.contests.publisherStatCompletedContests, value: stats.completedContests },
+        { label: strings.contests.publisherStatTotalSubmissions, value: stats.totalSubmissions },
+        { label: strings.contests.publisherStatPendingSubmissions, value: stats.pendingSubmissions },
+        { label: strings.contests.publisherStatTotalVotes, value: stats.totalVotes },
+        { label: strings.contests.publisherStatTotalPrizes, value: stats.totalPrizes },
+      ]
     : [];
+
+  const submissions = submissionsQuery.data?.submissions ?? [];
+  const votes = votesQuery.data?.votes ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title="لوحة الناشر" description="نظرة عامة على مسابقاتك ومشاركاتها." />
+      <PageHeader title={strings.contests.publisherTitle} description={strings.contests.publisherDescription} />
 
-      {stats && (
+      {failure && (
+        <ErrorMessage
+          error={strings.errors[classifyError(failure)]}
+          title={strings.contests.publisherLoadFailed}
+          onRetry={retryAll}
+        />
+      )}
+
+      {statCards.length > 0 && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {statCards.map((stat) => (
             <div key={stat.label} className="rounded-lg border border-line p-4">
@@ -128,43 +138,56 @@ export default function PublisherDashboardPage() {
         <button
           type="button"
           onClick={() => setActiveTab("overview")}
-          className={`px-4 py-2 text-sm font-medium ${
+          aria-current={activeTab === "overview" ? "true" : undefined}
+          className={`min-h-11 px-4 py-2 text-sm font-medium ${
             activeTab === "overview" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
           }`}
         >
-          نظرة عامة
+          {strings.contests.publisherTabOverview}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("submissions")}
-          className={`px-4 py-2 text-sm font-medium ${
+          aria-current={activeTab === "submissions" ? "true" : undefined}
+          className={`min-h-11 px-4 py-2 text-sm font-medium ${
             activeTab === "submissions" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
           }`}
         >
-          المشاركات
+          {strings.contests.publisherTabSubmissions}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("votes")}
-          className={`px-4 py-2 text-sm font-medium ${
+          aria-current={activeTab === "votes" ? "true" : undefined}
+          className={`min-h-11 px-4 py-2 text-sm font-medium ${
             activeTab === "votes" ? "border-b-2 border-ink text-ink" : "text-ink-muted"
           }`}
         >
-          الأصوات
+          {strings.contests.publisherTabVotes}
         </button>
       </div>
 
       {activeTab === "submissions" && (
         <div className="space-y-3">
-          {submissions.length === 0 ? (
-            <p className="text-sm text-ink-muted">لا توجد مشاركات بعد.</p>
+          {submissionsQuery.isLoading ? (
+            <Loading />
+          ) : submissions.length === 0 ? (
+            <p className="text-sm text-ink-muted">{strings.contests.publisherSubmissionsEmpty}</p>
           ) : (
             <ul className="space-y-3">
               {submissions.map((submission) => (
                 <li key={submission.id} className="rounded-lg border border-line p-4">
-                  <p className="font-medium text-ink">معرّف القصة: {submission.storyId}</p>
-                  <p className="text-sm text-ink-muted">الحالة: {submission.status}</p>
-                  <p className="text-sm text-ink-muted">الأصوات: {submission.votes}</p>
+                  <p className="font-medium text-ink">
+                    {strings.contests.publisherSubmissionStoryId(submission.storyId)}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {strings.contests.publisherSubmissionStatus(
+                      strings.contests.submissionStatusLabels[submission.status] ?? submission.status,
+                    )}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {strings.contests.publisherSubmissionVotes(submission.votes)}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -174,14 +197,18 @@ export default function PublisherDashboardPage() {
 
       {activeTab === "votes" && (
         <div className="space-y-3">
-          {votes.length === 0 ? (
-            <p className="text-sm text-ink-muted">لا توجد أصوات بعد.</p>
+          {votesQuery.isLoading ? (
+            <Loading />
+          ) : votes.length === 0 ? (
+            <p className="text-sm text-ink-muted">{strings.contests.publisherVotesEmpty}</p>
           ) : (
             <ul className="space-y-3">
               {votes.map((vote) => (
                 <li key={vote.id} className="rounded-lg border border-line p-4">
-                  <p className="text-sm text-ink-muted">معرّف المشاركة: {vote.submissionId}</p>
-                  <p className="text-sm text-ink-muted">الناخب: {vote.userId}</p>
+                  <p className="text-sm text-ink-muted">
+                    {strings.contests.publisherVoteSubmissionId(vote.submissionId)}
+                  </p>
+                  <p className="text-sm text-ink-muted">{strings.contests.publisherVoteVoter(vote.userId)}</p>
                 </li>
               ))}
             </ul>

@@ -2,11 +2,11 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-
-import { api } from "@/lib/api";
+import { screen } from "@testing-library/react";
 
 import { AnchorLink } from "@/test-utils/navigation-mock";
+import { renderWithProviders } from "@/test-utils/render";
+import { api } from "@/lib/api";
 import MessagesPage from "@/app/(app)/messages/page";
 
 vi.mock("next/link", () => ({
@@ -40,17 +40,17 @@ describe("Messages page", () => {
   });
 
   it("renders the page title", () => {
-    render(<MessagesPage />);
+    renderWithProviders(<MessagesPage />);
     expect(screen.getByRole("heading", { name: "الرسائل" })).toBeInTheDocument();
   });
 
   it("shows loading state on mount", () => {
-    render(<MessagesPage />);
+    renderWithProviders(<MessagesPage />);
     expect(screen.getByRole("status")).toHaveTextContent("جارٍ التحميل…");
   });
 
   it("handles empty state", async () => {
-    render(<MessagesPage />);
+    renderWithProviders(<MessagesPage />);
     expect(await screen.findByRole("heading", { name: "لا توجد محادثات بعد" })).toBeInTheDocument();
   });
 });

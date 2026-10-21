@@ -4,33 +4,15 @@ import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { REACTION_TYPES, type ReactionCounts, type ReactionType } from "@hakawi/shared-types";
-import { api, getStoredUser } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useStoredUser } from "@/lib/use-stored-user";
+import { classifyError } from "@/lib/errors";
+import { reactionKeys, storyKeys } from "@/lib/queries";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { Icon } from "@/components/ui/Icon";
 
-/**
- * How each reaction presents: the glyph beside the number and the name a screen
- * reader reads out.
- *
- * The list of reactions is NOT written here. `REACTION_TYPES` comes from
- * `@hakawi/shared-types`, which is the same list the API validates against — a
- * local copy of those six strings would be a second source of truth for a
- * contract, and would eventually offer a reaction the server rejects with a 400.
- * A missing presentation is a type error at build time, not a blank button.
- */
-const PRESENTATION: Record<ReactionType, { label: string; glyph: string }> = {
-  like: { label: "أعجبني", glyph: "❤" },
-  love: { label: "أحببتها", glyph: "💛" },
-  wow: { label: "أدهشتني", glyph: "✨" },
-  sad: { label: "أبكّتني", glyph: "💧" },
-  angry: { label: "غضبتها", glyph: "🔥" },
-  haunted: { label: "رعبتني", glyph: "👻" },
-};
-
-export const reactionKeys = {
-  counts: (storyId: string) => ["reactions", storyId, "counts"] as const,
-  list: (storyId: string) => ["reactions", storyId, "list"] as const,
-};
+import { ReactionGlyph } from "./ReactionGlyph";
 
 /**
  * What the counts endpoint actually returns.
@@ -76,6 +58,7 @@ function totalOf(counts: ReactionCountTotals): number {
 export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallbackCount: number }) {
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const strings = useStrings();
   const countsKey = reactionKeys.counts(storyId);
   const listKey = reactionKeys.list(storyId);
 
@@ -91,7 +74,16 @@ export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallb
     staleTime: 1000 * 60,
   });
 
-  const currentUserId = getStoredUser()?.id ?? null;
+  /**
+   * The reader's id, from the session store.
+   *
+   * The reader's own reaction is resolved from the reaction list by this id,
+   * and the id is read through the store rather than out of local storage
+   * during render: the server has no local storage to read, so the pressed
+   * state would be resolved against two different readers. See
+   * `lib/use-stored-user.ts`.
+   */
+  const currentUserId = useStoredUser()?.id ?? null;
   const myReaction = mineQuery.data?.reactions.find((reaction) => reaction.userId === currentUserId)?.type ?? null;
 
   const mutation = useMutation({
@@ -120,11 +112,24 @@ export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallb
     onError: (error, _next, context) => {
       if (context?.previousCounts) queryClient.setQueryData(countsKey, context.previousCounts);
       if (context?.previousList) queryClient.setQueryData(listKey, context.previousList);
-      notify(error instanceof Error ? error.message : "تعذّر تسجيل التفاعل", "error");
+      // The server's wording is classified and then said in the reader's
+      // language — a toast that says "Unauthorized" in an Arabic interface is
+      // not an explanation.
+      notify(strings.errors[classifyError(error)], "error");
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: countsKey });
       void queryClient.invalidateQueries({ queryKey: listKey });
+      /*
+       * THE STORY'S OWN COUNT MOVED TOO.
+       *
+       * The story's cache entry carries `story.reactions`, and the story page
+       * shows it beside this bar. Invalidating only the reaction keys left
+       * that number at its pre-reaction value — the bar and the number next to
+       * it disagreed, and with the app-wide stale time the number stayed wrong
+       * for the rest of the session.
+       */
+      void queryClient.invalidateQueries({ queryKey: storyKeys.detail(storyId) });
     },
   });
 
@@ -132,11 +137,12 @@ export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallb
   const total = counts ? totalOf(counts) : fallbackCount;
 
   return (
-    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="التفاعلات">
-{REACTION_TYPES.map((type) => (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={strings.story.reactionsLabel}>
+      {REACTION_TYPES.map((type) => (
         <ReactionButton
           key={type}
           type={type}
+          label={strings.story.reactionNames[type]}
           count={counts ? (counts[type] ?? 0) : 0}
           total={total}
           active={myReaction === type}
@@ -150,6 +156,7 @@ export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallb
 
 function ReactionButton({
   type,
+  label,
   count,
   total,
   active,
@@ -157,27 +164,28 @@ function ReactionButton({
   onRemove,
 }: {
   type: ReactionType;
+  label: string;
   count: number;
   total: number;
   active: boolean;
   onReact: () => void;
   onRemove: () => void;
 }) {
-  const presentation = PRESENTATION[type];
-
   return (
     <button
       type="button"
       aria-pressed={active}
-      aria-label={`${presentation.label} (${total})`}
+      aria-label={`${label} (${total})`}
       onClick={() => (active ? onRemove() : onReact())}
-      className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-all duration-200 hover:shadow-[var(--hk-glow-accent)] ${
+      // 44px tall: this is a row of six small targets that a reader taps with a
+      // thumb, and a 36px chip is a mis-tap waiting to happen.
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-all duration-200 hover:shadow-[var(--hk-glow-accent)] ${
         active
           ? "animate-beat border-accent/40 bg-accent-soft text-accent-ink"
           : "border-line text-ink-muted hover:border-accent/30 hover:text-accent-ink"
       }`}
     >
-      <span aria-hidden="true">{presentation.glyph}</span>
+      <ReactionGlyph type={type} />
       <span className="hk-numeric">{count}</span>
     </button>
   );
@@ -188,11 +196,13 @@ function ReactionButton({
  * Amber, per §3: social reactions are never blue.
  */
 export function ReactionCount({ count }: { count: number }) {
+  const strings = useStrings();
+
   return (
     <span className="flex items-center gap-1.5 text-sm text-ink-muted">
       <Icon name="heart" size="sm" className="text-accent-ink" />
       <span className="hk-numeric">{count}</span>
-      <span className="sr-only">تفاعل</span>
+      <span className="sr-only">{strings.story.reactionCountLabel}</span>
     </span>
   );
 }

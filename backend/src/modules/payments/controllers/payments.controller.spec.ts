@@ -152,6 +152,22 @@ describe('PaymentsController', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    // THE SERVICE MOCKS ARE THIS SUITE'S, SO THEIR IMPLEMENTATIONS ARE RESET TOO.
+    //
+    // `clearAllMocks` only forgets the CALLS: an implementation set by one
+    // case survives into the next one, and the next one then reads a fact it
+    // never arranged. That is exactly how the refunds case ended up reading
+    // the payment the PREVIOUS case had made somebody else's — the route's
+    // ownership check answered 403 to a reader who owned the payment, and the
+    // case failed for a reason that had nothing to do with what it was
+    // testing.
+    //
+    // Only the service mocks are reset. The doubles provided to the module in
+    // `beforeAll` — the restriction reader, the Valkey client, the logger —
+    // are wired once and are expected to keep their answers.
+    for (const mock of Object.values(paymentsService)) {
+      mock.mockReset();
+    }
   });
 
   describe('POST /payments', () => {
@@ -349,6 +365,11 @@ describe('PaymentsController', () => {
     it('should return refunds for a payment', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
+      // The route reads the payment BEFORE it reads the refunds, because it
+      // checks that the reader owns the payment it is about to list. The case
+      // has to arrange the payment as well as the refunds: without it the
+      // route has nothing to check the ownership against.
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment());
       vi.mocked(paymentsService.getRefunds).mockResolvedValue([]);
 
       const res = await request(app.getHttpServer())
@@ -357,6 +378,33 @@ describe('PaymentsController', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
+      expect(paymentsService.getRefunds).toHaveBeenCalledWith('payment-1');
+    });
+
+    it('answers 403 for a payment owned by somebody else', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment({ userId: 'someone-else' }));
+
+      await request(app.getHttpServer())
+        .get('/payments/payment-1/refunds')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      expect(paymentsService.getRefunds).not.toHaveBeenCalled();
+    });
+
+    it('answers 200 for a finance admin who does not own the payment', async () => {
+      const token = await generateToken('admin-1', 'admin@example.com', 'admin', 'financial_officer');
+
+      vi.mocked(paymentsService.findById).mockResolvedValue(makePayment({ userId: 'someone-else' }));
+      vi.mocked(paymentsService.getRefunds).mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/payments/payment-1/refunds')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
       expect(paymentsService.getRefunds).toHaveBeenCalledWith('payment-1');
     });
   });

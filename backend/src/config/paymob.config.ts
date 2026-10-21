@@ -40,6 +40,35 @@ export const PAYMOB_AUTH_TOKEN_LIFETIME_SECONDS = 3600;
 export const PAYMOB_CONFIG = 'PAYMOB_CONFIG';
 
 /**
+ * The namespace this configuration is registered under, in ONE place.
+ *
+ * `registerAs('paymob', …)` puts the resolved configuration into the shared config host under this
+ * key, and the `PAYMOB_CONFIG` token provider reads it back with `configService.get('paymob')`.
+ * Anything else that needs the same object — the books module, which resolves the reader's choice
+ * of instrument — reads it under this same name rather than under a literal of its own, so the two
+ * can never drift onto different namespaces.
+ */
+export const PAYMOB_CONFIG_NAMESPACE = 'paymob';
+
+/**
+ * THE INSTRUMENT VOCABULARY THE READER CHOOSES FROM.
+ *
+ * These are the two things a reader can pick on the checkout panel, and they are SEMANTIC: "card"
+ * and "wallet" are a choice, not a gateway handle. Paymob wants a merchant-specific numeric id for
+ * each of them, and this codebase cannot know that number — so the choice is resolved against the
+ * configuration below, in exactly one place.
+ *
+ * The list is the single source of truth for the API (`PurchaseBookDto`) and for the resolution
+ * helper, so the vocabulary the API accepts and the vocabulary the resolver understands are the
+ * same two words.
+ */
+export const PAYMOB_PAYMENT_METHOD_CHOICES = ['card', 'wallet'] as const;
+
+export type PaymobPaymentMethodChoice = (typeof PAYMOB_PAYMENT_METHOD_CHOICES)[number];
+
+export const paymobPaymentMethodChoiceSchema = z.enum(PAYMOB_PAYMENT_METHOD_CHOICES);
+
+/**
  * WHY a default exists at all: the unit suite and local development boot the payments module with
  * no environment at all, and a webhook secret with no value would fail the minimum-length rule for
  * every one of them. This is a *development* value, not a fallback — `envSchema` refuses it whenever
@@ -68,6 +97,33 @@ const PUBLICLY_KNOWN_WEBHOOK_SECRETS: ReadonlySet<string> = new Set([
 const MIN_WEBHOOK_SECRET_LENGTH = 32;
 
 /**
+ * THE PAYMENT METHOD IDS, AND WHY THEY ARE OPTIONAL AND UNGUARDED.
+ *
+ * Paymob's `payment_keys` endpoint accepts a `payment_method_id`: the MERCHANT'S OWN numeric id for
+ * one instrument — a card, a mobile wallet. It differs per account, per integration and per
+ * country, and it is not discoverable from this codebase, so it is read from the environment rather
+ * than written here.
+ *
+ * WHY OPTIONAL, AND WHY THERE IS NO PRODUCTION GUARD. An absent id means the gateway is not told
+ * which instrument to use, and Paymob then asks the CUSTOMER to choose inside the payment frame.
+ * That is exactly the behaviour this codebase had before the reader's choice existed, so an unset
+ * variable costs the FEATURE and nothing else: the reader picks an instrument in the checkout panel
+ * and the gateway asks again. The alternative — refusing to boot, or failing the purchase — would
+ * turn an optional convenience into an outage, and would do it over a value the operator may simply
+ * not have for this merchant yet.
+ *
+ * A blank value means "not configured" for the same reason an unset one does: a deployment that
+ * exports the variable empty has not configured it, and must not be answered with a boot failure.
+ */
+const paymentMethodIdSchema = z
+  .string()
+  .optional()
+  .transform((value) => (value === undefined || value.trim().length === 0 ? undefined : value.trim()))
+  .refine((value) => value === undefined || /^[1-9]\d*$/.test(value), {
+    message: 'must be a positive integer id',
+  });
+
+/**
  * An unset variable and a blank one mean the same thing, and both mean "not configured".
  * Reading an absent variable as the development value keeps local work and the test suite
  * ergonomic; production rejects that value by name in the object-level check below.
@@ -90,6 +146,8 @@ const envSchema = z
     PAYMOB_INTEGRATION_ID: z.string().min(1, 'PAYMOB_INTEGRATION_ID must be set').default('sandbox-integration-id'),
     PAYMOB_SANDBOX_INTEGRATION_ID: z.string().min(1).optional(),
     PAYMOB_WEBHOOK_SECRET: webhookSecretSchema,
+    PAYMOB_CARD_PAYMENT_METHOD_ID: paymentMethodIdSchema,
+    PAYMOB_WALLET_PAYMENT_METHOD_ID: paymentMethodIdSchema,
     PAYMOB_BASE_URL: z.string().url('PAYMOB_BASE_URL must be an absolute URL').optional(),
     PAYMOB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
     PAYMOB_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(8_000),
@@ -160,7 +218,50 @@ export type PaymobConfig = {
   readonly authTimeoutMs: number;
   readonly authTokenCacheTtlSeconds: number;
   readonly retryMaxAttempts: number;
+  /**
+   * The merchant's Paymob id for the CARD instrument, when the deployment has configured one.
+   *
+   * Optional, and absent means "the gateway asks the customer" — see the note on
+   * `paymentMethodIdSchema`.
+   */
+  readonly cardPaymentMethodId?: string;
+  /**
+   * The merchant's Paymob id for the MOBILE WALLET instrument, when the deployment has configured
+   * one. Optional, with the same meaning as {@link PaymobConfig.cardPaymentMethodId}.
+   */
+  readonly walletPaymentMethodId?: string;
 };
+
+/**
+ * THE ONE PLACE A READER'S CHOICE BECOMES A GATEWAY INSTRUMENT.
+ *
+ * The reader picks "card" or "wallet" — a SEMANTIC choice, in words they recognise. Paymob wants a
+ * numeric id that is specific to this merchant. This function is the translation between the two,
+ * and it is the ONLY place it happens: everything upstream of it deals in the choice, everything
+ * downstream of it deals in the id.
+ *
+ * WHY IT RETURNS `undefined` RATHER THAN FAILING. A missing configuration value is not an error —
+ * it means this deployment has not told the gateway which instrument to use, and the gateway then
+ * asks the customer inside the payment frame, which is the behaviour the product had before the
+ * choice existed. Failing the purchase over an optional convenience would cost a reader a book
+ * because an operator had not filled in a number.
+ */
+export function resolvePaymobPaymentMethodId(
+  config: Pick<PaymobConfig, 'cardPaymentMethodId' | 'walletPaymentMethodId'> | undefined,
+  choice: PaymobPaymentMethodChoice | undefined,
+): string | undefined {
+  if (config === undefined || choice === undefined) {
+    return undefined;
+  }
+  // The choice is PARSED, not compared. A word this resolver does not know resolves to NOTHING —
+  // which leaves the gateway to ask the customer — rather than falling through to the wallet id,
+  // which would quietly charge a reader through an instrument they did not choose.
+  const parsed = paymobPaymentMethodChoiceSchema.safeParse(choice);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return parsed.data === 'card' ? config.cardPaymentMethodId : config.walletPaymentMethodId;
+}
 
 export function normalizePaymobBaseUrl(rawBaseUrl: string): string {
   const withoutTrailingSlash = rawBaseUrl.trim().replace(/\/+$/, '');
@@ -209,7 +310,9 @@ export function resolvePaymobConfig(env: NodeJS.ProcessEnv = process.env): Paymo
       PAYMOB_AUTH_TOKEN_LIFETIME_SECONDS - 60,
     ),
     retryMaxAttempts: parsed.data.PAYMOB_RETRY_MAX_ATTEMPTS,
+    cardPaymentMethodId: parsed.data.PAYMOB_CARD_PAYMENT_METHOD_ID,
+    walletPaymentMethodId: parsed.data.PAYMOB_WALLET_PAYMENT_METHOD_ID,
   };
 }
 
-export default registerAs('paymob', () => resolvePaymobConfig());
+export default registerAs(PAYMOB_CONFIG_NAMESPACE, () => resolvePaymobConfig());

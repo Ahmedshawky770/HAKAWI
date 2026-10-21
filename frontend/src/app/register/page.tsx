@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, setStoredUser } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { OAuthButtons } from "@/components/auth/OAuthButtons";
@@ -47,7 +48,7 @@ export default function RegisterPage() {
       setStoredUser(session.user);
       router.push(AUTHENTICATED_HOME_ROUTE);
     } catch (err) {
-      setError(err instanceof Error ? err.message : strings.auth.registerError);
+      setError(strings.errors[classifyError(err)]);
     } finally {
       setLoading(false);
     }

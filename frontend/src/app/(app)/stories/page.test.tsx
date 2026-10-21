@@ -75,7 +75,10 @@ describe("Stories list page", () => {
   it("handles error state", async () => {
     mockedApi.listStories.mockRejectedValue(new Error("Failed to load stories"));
     renderWithProviders(<StoriesPage />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to load stories");
+    // The failure is classified before it reaches the reader.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      stringsFor(DEFAULT_LOCALE).errors.unknown,
+    );
   });
 
   it("handles empty stories list", async () => {
@@ -108,7 +111,8 @@ describe("Stories list page", () => {
       limit: 20,
     });
     renderWithProviders(<StoriesPage />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("قصة اختبار")).toBeInTheDocument();
+    // The list arrives through the query cache, so the row is waited for rather
+    // than looked for: a tick is not a promise.
+    expect(await screen.findByText("قصة اختبار")).toBeInTheDocument();
   });
 });

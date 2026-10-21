@@ -3,7 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, setStoredUser } from "@/lib/api";
+import { classifySignInError } from "@/lib/errors";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { OAuthButtons } from "@/components/auth/OAuthButtons";
@@ -15,6 +17,7 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 export default function LoginPage() {
   const router = useRouter();
   const strings = useStrings();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,9 +32,26 @@ export default function LoginPage() {
       await api.login({ email, password });
       const session = await api.getSession();
       setStoredUser(session.user);
+      // The cache belongs to the session that filled it. A sign-in can follow
+      // a previous session in the same tab — the reader reached the login
+      // screen without signing out — and the cache would still hold that
+      // reader's conversations, library and payments. They are emptied here,
+      // the same way an explicit sign-out empties them.
+      queryClient.clear();
       router.push(AUTHENTICATED_HOME_ROUTE);
     } catch (err) {
-      setError(err instanceof Error ? err.message : strings.auth.loginError);
+      // The server's own wording ("Invalid email or password") is a fact about
+      // the API, not about the reader, and it arrives in English inside an
+      // Arabic interface. The error is CLASSIFIED and then said in the
+      // reader's language — see `lib/errors.ts`.
+      //
+      // AND IT IS CLASSIFIED AS A SIGN-IN, NOT AS A FAILURE IN GENERAL. A 401
+      // on this screen means one thing only: the email and the password did
+      // not match. The same status on a protected page means the opposite —
+      // the session ended — and the generic classifier would otherwise have
+      // told a reader whose password was wrong that "your session has ended",
+      // which is a sentence about a session they never had.
+      setError(strings.errors[classifySignInError(err)]);
     } finally {
       setLoading(false);
     }

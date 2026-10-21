@@ -1,6 +1,10 @@
+"use client";
+
 import React from "react";
 
 import { Badge, CONTEST_STATUS_TONES, toneFor, type BadgeTone } from "@/components/ui/Badge";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import type { ContestsStrings } from "@/lib/i18n/contests";
 
 /**
  * The contest status pill.
@@ -14,30 +18,27 @@ import { Badge, CONTEST_STATUS_TONES, toneFor, type BadgeTone } from "@/componen
  * fixed, so the overlay is gone: one table per domain, and a status that arrives
  * tomorrow is a change in one place.
  *
- * Only the LABELS live here — the Arabic word for each state is presentation, and
- * the API speaks English. An unknown status falls through unchanged, so a state
- * added later is displayed rather than swallowed.
+ * THE WORD FOR EACH STATE LIVES IN THE DICTIONARY, NOT HERE. The label used to be
+ * a table of Arabic words inside the component, which meant the pill on a card and
+ * the pill on a contest's own page were two copies of the same sentence — and an
+ * English reader saw an Arabic pill on an otherwise English page. `strings.contests
+ * .statusLabels` is the one table, and a status the dictionary does not know falls
+ * through unchanged, so a state added later is displayed rather than swallowed.
  */
-export const CONTEST_STATUS_LABELS: Record<string, string> = {
-  draft: "مسودة",
-  active: "جارية",
-  voting: "مرحلة التصويت",
-  completed: "مكتملة",
-  cancelled: "ملغاة",
-};
-
 export function contestStatusTone(status: string): BadgeTone {
   return toneFor(CONTEST_STATUS_TONES, status);
 }
 
-export function contestStatusLabel(status: string): string {
-  return CONTEST_STATUS_LABELS[status] ?? status;
+export function contestStatusLabel(status: string, strings: ContestsStrings): string {
+  return strings.statusLabels[status] ?? status;
 }
 
 export function ContestStatusBadge({ status, className = "" }: { status: string; className?: string }) {
+  const strings = useStrings();
+
   return (
     <Badge tone={contestStatusTone(status)} className={className}>
-      {contestStatusLabel(status)}
+      {contestStatusLabel(status, strings.contests)}
     </Badge>
   );
 }

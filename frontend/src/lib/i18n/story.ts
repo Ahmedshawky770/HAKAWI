@@ -1,4 +1,5 @@
 import { countReadout, type CountReadout } from "./common";
+import type { ReactionType } from "@hakawi/shared-types";
 import type { Locale } from "@/lib/preferences";
 
 /**
@@ -27,6 +28,12 @@ export interface StoryStrings {
   storyEditSaveFailed: string;
   storyDeleteSucceeded: string;
   storyDeleteFailed: string;
+  /** The button that asks the writer to confirm the deletion. */
+  deleteStoryButton: string;
+  /** The button that confirms the deletion, once asked for. */
+  deleteStoryConfirmButton: string;
+  /** The button that takes the deletion back. */
+  deleteStoryUndoButton: string;
   createPageTitle: string;
   createPageDescription: string;
   createSubmitButton: string;
@@ -36,6 +43,22 @@ export interface StoryStrings {
   editSubmitButton: string;
   storyEditLoadFailed: string;
   storyEditUpdateFailed: string;
+  /** The sentence under a story whose body is empty. */
+  noContent: string;
+  /** The heading over a story's comments. */
+  commentsTitle: string;
+  /** The tab title of the comments page, over the story's own title. */
+  commentsPageTitle: (title: string) => string;
+  /** The sentence under the heading, over the story's own title. */
+  commentsDescription: (title: string) => string;
+  /** The heading over a story's reactions. */
+  reactionsTitle: string;
+  /** The tab title of the reactions page, over the story's own title. */
+  reactionsPageTitle: (title: string) => string;
+  /** The sentence under the heading, over the story's own title. */
+  reactionsDescription: (title: string) => string;
+  /** The link back to the story a comment or a reaction came from. */
+  backToStory: string;
   storyNotFound: string;
   storyNotFoundDescription: string;
   backToStories: string;
@@ -51,6 +74,50 @@ export interface StoryStrings {
   tagsPlaceholder: string;
   tagsHint: string;
   cancelButton: string;
+  /** The name of the reaction group, for the `role="group"` that holds it. */
+  reactionsLabel: string;
+  /** The name of each reaction, as a screen reader reads it. */
+  reactionNames: Record<ReactionType, string>;
+  /** The word a reaction count is read with on a card, where there is no bar. */
+  reactionCountLabel: string;
+  /** The toast that explains a reaction that could not be recorded. */
+  reactionFailed: string;
+  /** How far through the story the reader is. */
+  readingProgressLabel: string;
+  /** The percentage read, as a number followed by a sign. */
+  readingProgress: (percent: number) => string;
+  /** How long the rest of the story is expected to take. */
+  readingTimeRemaining: (minutes: number) => string;
+  /** What the readout says at the end of the story. */
+  readingFinished: string;
+
+  /* ---- the story card ---- */
+  /** The word a card's view count is read with, where there is no full readout. */
+  viewCountLabel: string;
+  /**
+   * A compact magnitude: "1.2 ألف" in Arabic, "1.2K" in English.
+   *
+   * The JOINING is part of the copy — Arabic writes the word after the figure
+   * with a space, English writes the suffix against it — so the whole phrase is
+   * built here and the caller only supplies the rounded number.
+   */
+  compactMagnitude: (value: number, unit: "thousand" | "million") => string;
+
+  /* ---- the feed and the two grids ---- */
+  feedLoadingLabel: string;
+  feedEmptyTitle: string;
+  feedEmptyDescription: string;
+  loadMoreStories: string;
+  loadingMoreStories: string;
+
+  /* ---- the inline composer ---- */
+  creatorTitlePlaceholder: string;
+  creatorContentLabel: string;
+  creatorTagsLabel: string;
+  creatorTagsPlaceholder: string;
+  creatorSubmitButton: string;
+  creatorCloseButton: string;
+  creatorPublishedToast: string;
 }
 
 export const AR: StoryStrings = {
@@ -81,6 +148,9 @@ export const AR: StoryStrings = {
   storyEditSaveFailed: "تعذّر حفظ التعديلات",
   storyDeleteSucceeded: "تم حذف القصة",
   storyDeleteFailed: "تعذّر حذف القصة",
+  deleteStoryButton: "حذف القصة",
+  deleteStoryConfirmButton: "تأكيد الحذف",
+  deleteStoryUndoButton: "تراجع",
   createPageTitle: "إنشاء قصة",
   createPageDescription: "اكتب حكايتك، وامنحها تصنيفاً يقرّبها من القرّاء.",
   createSubmitButton: "إنشاء القصة",
@@ -90,6 +160,14 @@ export const AR: StoryStrings = {
   editSubmitButton: "حفظ التغييرات",
   storyEditLoadFailed: "فشل تحميل القصة",
   storyEditUpdateFailed: "فشل تحديث القصة",
+  noContent: "لا يوجد محتوى",
+  commentsTitle: "التعليقات",
+  commentsPageTitle: (title) => `التعليقات - ${title}`,
+  commentsDescription: (title) => `تعليقات قصة ${title}`,
+  reactionsTitle: "التفاعلات",
+  reactionsPageTitle: (title) => `التفاعلات - ${title}`,
+  reactionsDescription: (title) => `تفاعلات قصة ${title}`,
+  backToStory: "العودة للقصة",
   storyNotFound: "القصة غير موجودة",
   storyNotFoundDescription: "ربما حُذفت أو تغيّر رابطها.",
   backToStories: "العودة للقصص",
@@ -105,6 +183,39 @@ export const AR: StoryStrings = {
   tagsPlaceholder: "مغامرة، غموض",
   tagsHint: "افصل بين الوسوم بفاصلة",
   cancelButton: "إلغاء",
+  reactionsLabel: "التفاعلات",
+  reactionNames: {
+    like: "أعجبني",
+    love: "أحببتها",
+    wow: "أدهشتني",
+    sad: "أبكّتني",
+    angry: "غضبتها",
+    haunted: "رعبتني",
+  },
+  reactionCountLabel: "تفاعل",
+  reactionFailed: "تعذّر تسجيل التفاعل.",
+  readingProgressLabel: "تقدّم القراءة",
+  readingProgress: (percent) => `${percent}%`,
+  readingTimeRemaining: (minutes) =>
+    minutes === 1 ? "بقي دقيقة واحدة" : minutes === 2 ? "بقيت دقيقتان" : `بقي ${minutes} دقيقة`,
+  readingFinished: "وصلت إلى نهاية القصة",
+
+  viewCountLabel: "مشاهدة",
+  compactMagnitude: (value, unit) => `${value} ${unit === "thousand" ? "ألف" : "مليون"}`,
+
+  feedLoadingLabel: "جارٍ تحميل القصص",
+  feedEmptyTitle: "لا توجد قصص بعد. كن أول من يكتب.",
+  feedEmptyDescription: "اكتب حكايتك الأولى، وستظهر هنا.",
+  loadMoreStories: "تحميل المزيد من القصص",
+  loadingMoreStories: "جارٍ تحميل المزيد…",
+
+  creatorTitlePlaceholder: "عنوان يلفت الانتباه",
+  creatorContentLabel: "الحكاية",
+  creatorTagsLabel: "الوسوم",
+  creatorTagsPlaceholder: "رعب، غموض، واقعي",
+  creatorSubmitButton: "انشر القصة",
+  creatorCloseButton: "إغلاق",
+  creatorPublishedToast: "تم نشر حكايتك",
 };
 
 export const EN: StoryStrings = {
@@ -124,6 +235,9 @@ export const EN: StoryStrings = {
   storyEditSaveFailed: "Couldn't save your changes",
   storyDeleteSucceeded: "The story was deleted",
   storyDeleteFailed: "Couldn't delete the story",
+  deleteStoryButton: "Delete the story",
+  deleteStoryConfirmButton: "Confirm the deletion",
+  deleteStoryUndoButton: "Take it back",
   createPageTitle: "Write a story",
   createPageDescription: "Write your story, and give it a category that brings it closer to readers.",
   createSubmitButton: "Create story",
@@ -133,6 +247,14 @@ export const EN: StoryStrings = {
   editSubmitButton: "Save changes",
   storyEditLoadFailed: "Couldn't load the story",
   storyEditUpdateFailed: "Couldn't update the story",
+  noContent: "There is no content yet",
+  commentsTitle: "Comments",
+  commentsPageTitle: (title) => `Comments - ${title}`,
+  commentsDescription: (title) => `The comments on ${title}`,
+  reactionsTitle: "Reactions",
+  reactionsPageTitle: (title) => `Reactions - ${title}`,
+  reactionsDescription: (title) => `The reactions to ${title}`,
+  backToStory: "Back to the story",
   storyNotFound: "Story not found",
   storyNotFoundDescription: "It may have been deleted, or its link may have changed.",
   backToStories: "Back to stories",
@@ -148,6 +270,39 @@ export const EN: StoryStrings = {
   tagsPlaceholder: "Adventure, mystery",
   tagsHint: "Separate tags with a comma",
   cancelButton: "Cancel",
+  reactionsLabel: "Reactions",
+  reactionNames: {
+    like: "Liked",
+    love: "Loved",
+    wow: "Amazed",
+    sad: "Moved",
+    angry: "Angry",
+    haunted: "Spooked",
+  },
+  reactionCountLabel: "reactions",
+  reactionFailed: "Couldn't record the reaction.",
+  readingProgressLabel: "Reading progress",
+  readingProgress: (percent) => `${percent}%`,
+  readingTimeRemaining: (minutes) =>
+    minutes === 1 ? "1 minute left" : `${minutes} minutes left`,
+  readingFinished: "You've reached the end of the story",
+
+  viewCountLabel: "views",
+  compactMagnitude: (value, unit) => `${value}${unit === "thousand" ? "K" : "M"}`,
+
+  feedLoadingLabel: "Loading stories",
+  feedEmptyTitle: "No stories yet. Be the first to write one.",
+  feedEmptyDescription: "Write your first story and it will show up here.",
+  loadMoreStories: "Load more stories",
+  loadingMoreStories: "Loading more…",
+
+  creatorTitlePlaceholder: "A title that catches the eye",
+  creatorContentLabel: "The story",
+  creatorTagsLabel: "Tags",
+  creatorTagsPlaceholder: "Horror, mystery, realism",
+  creatorSubmitButton: "Publish the story",
+  creatorCloseButton: "Close",
+  creatorPublishedToast: "Your story is published",
 };
 
 /**
@@ -195,4 +350,20 @@ const CATEGORY_LABELS: Record<Locale, Record<string, string>> = {
  */
 export function storyCategoryLabel(value: string, locale: Locale): string {
   return CATEGORY_LABELS[locale][value] ?? value;
+}
+
+/**
+ * A compact magnitude in the reader's language.
+ *
+ * The same shape `storyCategoryLabel` has: the copy lives in the two tables
+ * above and this is the one way in from a component that has a `locale` rather
+ * than a dictionary — `StoryCard`'s `formatCompact` is a pure function of a
+ * number and a locale, and it must not reach into the tables itself.
+ */
+export function storyCompactMagnitude(
+  locale: Locale,
+  value: number,
+  unit: "thousand" | "million",
+): string {
+  return locale === "ar" ? AR.compactMagnitude(value, unit) : EN.compactMagnitude(value, unit);
 }

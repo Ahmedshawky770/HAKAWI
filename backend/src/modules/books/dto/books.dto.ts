@@ -14,6 +14,11 @@ import {
   Min as MinNumber,
 } from 'class-validator';
 
+import {
+  PAYMOB_PAYMENT_METHOD_CHOICES,
+  type PaymobPaymentMethodChoice,
+} from '../../../config/paymob.config.ts';
+
 export class CreateBookDto {
   @IsString()
   @MinLength(1, { message: 'Title is required' })
@@ -179,14 +184,44 @@ export class BooksQueryDto {
 }
 
 export class PurchaseBookDto {
+  /**
+   * THE READER'S CHOICE OF INSTRUMENT — NOT A GATEWAY IDENTIFIER.
+   *
+   * This field used to be `paymentMethodId?: string`: a free-form string the caller was supposed to
+   * already know, up to 255 characters of anything. It was stored in the payment's metadata and
+   * nothing else — the gateway was never told, so the Paymob frame asked the customer for an
+   * instrument anyway and the reader's answer was opaque metadata. The field is now the CHOICE
+   * itself, "card" or "wallet", which the server resolves to this merchant's Paymob method id.
+   *
+   * The two words come from the same list the resolver uses, so the vocabulary the API accepts and
+   * the vocabulary the server understands cannot drift apart. Anything else is a 400 rather than a
+   * request that quietly does nothing.
+   */
   @IsOptional()
-  @IsString()
-  @MaxLength(255, { message: 'Payment method ID must not exceed 255 characters' })
-  paymentMethodId?: string;
+  @IsIn(PAYMOB_PAYMENT_METHOD_CHOICES, {
+    message: `Payment method must be one of: ${PAYMOB_PAYMENT_METHOD_CHOICES.join(', ')}`,
+  })
+  paymentMethod?: PaymobPaymentMethodChoice;
 }
 
 export class RentBookDto {
   @IsInt()
   @IsIn([1, 3, 7, 14, 30, 90], { message: 'Duration must be one of: 1, 3, 7, 14, 30, 90 days' })
   durationDays: number;
+
+  /**
+   * THE READER'S CHOICE OF INSTRUMENT — NOT A GATEWAY IDENTIFIER.
+   *
+   * The same field the purchase takes, and for the same reason: the panel asks
+   * the reader which instrument they are using, and a rental that silently
+   * dropped the answer would be a question the product asked and then ignored.
+   * The server resolves the choice to this merchant's Paymob method id, and a
+   * deployment that has configured none is told nothing — which is Paymob's own
+   * "let the customer choose" case.
+   */
+  @IsOptional()
+  @IsIn(PAYMOB_PAYMENT_METHOD_CHOICES, {
+    message: `Payment method must be one of: ${PAYMOB_PAYMENT_METHOD_CHOICES.join(', ')}`,
+  })
+  paymentMethod?: PaymobPaymentMethodChoice;
 }

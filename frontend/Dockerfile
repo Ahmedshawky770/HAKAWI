@@ -55,6 +55,30 @@ RUN npm run build --workspace=packages/shared-types
 # `frontend/tsconfig.tsbuildinfo` and every `.env*` from what arrives here, so nothing stale and
 # nothing secret reaches a layer.
 COPY frontend/ ./frontend/
+
+# --- the origins the BROWSER is given are decided HERE, not at runtime ---------------------------
+# `NEXT_PUBLIC_*` is INLINED into the client bundle at build time. The pod's environment
+# cannot change it afterwards: the variable the Helm chart sets on the running container is
+# read by the SERVER, and the browser is already holding the address the build baked in.
+#
+# So every origin the browser is told about has to be a build argument. Without this, the
+# client bundle carried the development default — `http://localhost:3001/api/v1` — and every
+# deployed browser was asking its own machine for the API.
+#
+#   NEXT_PUBLIC_API_URL     the API the browser calls
+#   NEXT_PUBLIC_APP_URL     this app's own origin: the canonical links, the sitemap, the robots
+#                           file and the `metadataBase` every `og:image` is resolved against
+#   NEXT_PUBLIC_PAYMOB_ORIGIN  the payment gateway the checkout is allowed to frame
+#
+# An argument that is not passed stays empty, and every one of these has a fallback in the code
+# — an empty string is falsy, so the fallback wins and the build still succeeds.
+ARG NEXT_PUBLIC_API_URL=""
+ARG NEXT_PUBLIC_APP_URL=""
+ARG NEXT_PUBLIC_PAYMOB_ORIGIN=""
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_PAYMOB_ORIGIN=$NEXT_PUBLIC_PAYMOB_ORIGIN
+
 RUN npm run build --workspace=frontend
 
 # WHY THE CSP IS ASSERTED INSIDE THE IMAGE BUILD AND NOT ONLY IN CI: the header

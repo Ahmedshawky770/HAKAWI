@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Brand } from "./Brand";
+import { UnreadBadge } from "./UnreadBadge";
 import { IconButton } from "@/components/ui/Button";
 import { useLocale } from "@/components/providers/LocaleProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { useUnreadNotificationCount } from "@/lib/queries";
 import { Icon } from "@/components/ui/Icon";
 
 /**
@@ -21,15 +23,21 @@ import { Icon } from "@/components/ui/Icon";
  * - the brand (mobile only; from `lg` the sidebar carries it)
  * - search, the one global action
  * - the theme toggle (§14) and the language toggle (§15)
+ * - the notifications bell, with the unread count on it
  * - the profile link, which is the only place a reader can reach their own page
  *
- * Nothing here fetches. A header that reflows when data arrives pushes the
- * content down and breaks the scroll position.
+ * The header reads exactly ONE fact — the unread notification count — and it
+ * reads it from the shared cache, so the header, the sidebar and the
+ * notifications page agree on the number without three requests. The badge is
+ * positioned over the bell rather than sitting in the flow, so the header's
+ * height does not change when the count arrives: a header that reflows pushes
+ * the content under the reader's thumb.
  */
 export function Header() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const { locale, toggleLocale, strings } = useLocale();
+  const unreadNotifications = useUnreadNotificationCount().data?.count ?? 0;
 
   const nextThemeLabel = theme === "dark" ? strings.shell.themeToLight : strings.shell.themeToDark;
 
@@ -82,6 +90,24 @@ export function Header() {
             name="globe"
             onClick={toggleLocale}
           />
+          <Link
+            href="/notifications"
+            // The name carries the count, because an `aria-label` on the link
+            // OVERRIDES its content: without the count in the label, the badge
+            // beside the bell would be visible and never announced.
+            aria-label={
+              unreadNotifications > 0
+                ? `${strings.shell.navNotifications} (${unreadNotifications})`
+                : strings.shell.navNotifications
+            }
+            className="relative ms-1 flex size-11 items-center justify-center rounded-lg text-ink-muted transition-colors duration-200 hover:bg-surface-raised hover:text-ink"
+          >
+            <Icon name="bell" size="md" />
+            <UnreadBadge
+              count={unreadNotifications}
+              label={strings.shell.unreadNotificationsLabel}
+            />
+          </Link>
           <Link
             href="/profile"
             className="ms-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors duration-200 hover:bg-surface-raised hover:text-ink"

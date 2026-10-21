@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { PAYMOB_ORIGIN } from "./src/lib/paymob";
+
 /**
  * The Content-Security-Policy applied to every response.
  *
@@ -82,6 +84,24 @@ import type { NextConfig } from "next";
 // CHANGELOG entry for this round.
 const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 
+/**
+ * The origin the checkout is allowed to frame.
+ *
+ * The value lives in `src/lib/paymob.ts`, which the checkout dialog reads too:
+ * the origin that decides what may be framed and the origin that decides what
+ * a reader may be sent to are the same fact, and they are read from one place.
+ *
+ * ⚠️ IT IS FROZEN INTO THE BUILD. This file is evaluated when the app is
+ * BUILT, and its headers are serialized into the build manifest that `next
+ * start` serves — the running container's environment cannot change them. A
+ * deployment that needs a different origin therefore passes
+ * `NEXT_PUBLIC_PAYMOB_ORIGIN` as a BUILD ARGUMENT to the image build, not only
+ * as a runtime environment variable. The default below matches the gateway
+ * host the backend uses (`backend/src/config/paymob.config.ts`), so a build
+ * without the variable still frames the right origin.
+ */
+const PAYMOB_FRAME_ORIGIN = PAYMOB_ORIGIN;
+
 // WHY `'unsafe-eval'` IS DEV-ONLY. React's development build reconstructs server error stacks in
 // the browser and runs its debug hooks through `eval()`, which a bare `script-src` reports as
 // "[browser] eval() is not supported in this environment" on every dev page while doing nothing
@@ -96,6 +116,16 @@ const CONTENT_SECURITY_POLICY = [
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https:",
   "connect-src 'self' http://localhost:3001 https://api.hakawi.com https://*.s3.*.amazonaws.com",
+  // WHY `frame-src` NAMES THE PAYMENT GATEWAY. The checkout loads Paymob's
+  // `/acceptance/iframes/<token>` page INSIDE a frame — that URL is a frame
+  // target, not a page, and a top-level redirect to it shows a bare document
+  // with no way back. Without this directive the policy falls back to
+  // `default-src 'self'` and the frame is refused, so the checkout is dead on
+  // every browser. The host is the same for Paymob's sandbox and its live
+  // environment (see `backend/src/config/paymob.config.ts`), and a deployment
+  // that proxies the gateway sets `NEXT_PUBLIC_PAYMOB_ORIGIN` rather than
+  // editing this file.
+  `frame-src 'self' ${PAYMOB_FRAME_ORIGIN}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

@@ -10,9 +10,7 @@ import { RENTAL_STATUS_TONES, toneFor, type BadgeTone } from "@/components/ui/Ba
  * it; the backend finds the overdue ones with `findOverdue()`, which is
  * `status = 'active' AND endDate < now`, and exposes them at
  * `GET /rentals/overdue`. So `status` alone tells the reader a rental is "نشط"
- * three weeks after it ended — and the API will never send them `overdue`, which
- * is why an `overdue` entry in a label table was copy for a state the API cannot
- * produce.
+ * three weeks after it ended — and the API will never send them `overdue`.
  *
  * The fix is not a seventh status and not a new request. It is the same
  * comparison the backend makes, made from the two fields already in hand, in one
@@ -21,6 +19,11 @@ import { RENTAL_STATUS_TONES, toneFor, type BadgeTone } from "@/components/ui/Ba
  *
  * `now` is a parameter rather than a hidden `Date.now()` so this is testable: a
  * clock argument is what makes "expired yesterday" assertable at all.
+ *
+ * THE WORD IS NOT HERE. This module derives the STATE; the dictionary says what
+ * that state is called, in the reader's language (`strings.rentals.statusLabels`).
+ * A table of Arabic labels living here was a table the English reader could
+ * never reach, and it was a second vocabulary for a fact the badge already owns.
  */
 
 /** A derived state, not a stored one. */
@@ -28,18 +31,8 @@ export const RENTAL_OVERDUE_STATE = "overdue";
 
 export type RentalDisplayState = (typeof RENTAL_STATUSES)[number] | typeof RENTAL_OVERDUE_STATE;
 
-/** The states the contract declares, in Arabic. Only these are ever stored. */
-export const RENTAL_STATUS_LABELS: Record<string, string> = {
-  active: "نشط",
-  expired: "منتهي",
-  returned: "مُرجع",
-  cancelled: "ملغى",
-  [RENTAL_OVERDUE_STATE]: "متأخر",
-};
-
 export interface RentalStateView {
   state: RentalDisplayState;
-  label: string;
   tone: BadgeTone;
   /** True only while the rental is still running or rescuable — never for an ended one. */
   overdue: boolean;
@@ -61,12 +54,11 @@ export function rentalStateView(rental: RentalTiming, now: number | Date = Date.
   const endedAt = Date.parse(rental.endDate);
 
   if (rental.status === "active" && Number.isFinite(endedAt) && endedAt <= at) {
-    return { state: RENTAL_OVERDUE_STATE, label: RENTAL_STATUS_LABELS[RENTAL_OVERDUE_STATE], tone: "error", overdue: true };
+    return { state: RENTAL_OVERDUE_STATE, tone: "error", overdue: true };
   }
 
   return {
     state: rental.status as RentalDisplayState,
-    label: RENTAL_STATUS_LABELS[rental.status] ?? rental.status,
     tone: toneFor(RENTAL_STATUS_TONES, rental.status),
     overdue: false,
   };

@@ -2,9 +2,14 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
+import type { StoryMutationInput } from "@hakawi/shared-types";
 
 import { api } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
+import { useInvalidation } from "@/lib/queries";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -24,45 +29,58 @@ import { Input, Textarea } from "@/components/ui/Input";
  * Collapsed by default, and collapsing again after a publish, because a feed
  * with a permanent open editor pushes the content the reader came for off the
  * screen.
+ *
+ * THE WRITE INVALIDATES THE FEED. A published story is a fact the dashboard,
+ * the stories grid and the trending rail all show, so the mutation retires
+ * those cache entries instead of leaving the reader to press refresh.
  */
 export function StoryCreatorCard() {
   const router = useRouter();
   const { notify } = useToast();
+  const strings = useStrings();
+  const invalidation = useInvalidation();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
 
   const remaining = 120 - title.trim().length;
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setPending(true);
-
-    try {
-      const story = await api.createStory({
-        title: title.trim(),
-        content,
-        category: "fiction",
-        tags: tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-      });
-      notify("تم نشر حكايتك", "success");
+  const createStory = useMutation({
+    mutationFn: (payload: StoryMutationInput) => api.createStory(payload),
+    onSuccess: (story) => {
+      notify(strings.story.creatorPublishedToast, "success");
       setTitle("");
       setContent("");
       setTags("");
       setOpen(false);
+      // WHY THE NAVIGATION GOES FIRST. `invalidateQueries` resolves only after
+      // the refetches it triggered SETTLE, so awaiting it before the
+      // navigation made the reader wait for two or three network round trips
+      // before the story they had just written appeared. The page they land on
+      // reads the story from the API when it mounts, so the invalidation is
+      // not what makes the story visible THERE — it is what makes the feed and
+      // the dashboard honest when the reader goes back to them. So the
+      // navigation happens first and the invalidation runs behind it.
       router.push(`/stories/${story.id}`);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "تعذّر نشر القصة");
-    } finally {
-      setPending(false);
-    }
+      // It is not awaited, so it must not be able to fail into the void: a
+      // rejected refetch is a stale feed, not a broken write, and the write
+      // itself already succeeded.
+      void invalidation.stories(story.id).catch(() => undefined);
+    },
+  });
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    createStory.mutate({
+      title: title.trim(),
+      content,
+      category: "fiction",
+      tags: tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    });
   }
 
   if (!open) {
@@ -76,7 +94,7 @@ export function StoryCreatorCard() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-ink">
             <Icon name="pen" size="sm" />
           </span>
-          اكتب حكايتك هنا…
+          {strings.shell.writeSomething}
           <Icon name="plus" size="sm" className="ms-auto text-chrome-ink" />
         </button>
       </Card>
@@ -86,41 +104,48 @@ export function StoryCreatorCard() {
   return (
     <Card>
       <form onSubmit={handleSubmit} className="space-y-4 p-5">
-        {error && <ErrorMessage error={error} />}
+        {createStory.isError && (
+          <ErrorMessage
+            error={strings.errors[classifyError(createStory.error)]}
+            title={strings.story.storyPublishFailed}
+          />
+        )}
 
         <Input
-          label="العنوان"
+          label={strings.story.titleLabel}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="عنوان يلفت الانتباه"
+          placeholder={strings.story.creatorTitlePlaceholder}
           required
           maxLength={120}
-          hint={remaining <= 0 ? "وصلت الحد الأقصى لطول العنوان" : `${remaining} حرفاً متبقياً`}
+          hint={
+            remaining <= 0 ? strings.story.titleLimitReached : strings.story.titleRemaining(remaining)
+          }
         />
 
         <Textarea
-          label="الحكاية"
+          label={strings.story.creatorContentLabel}
           value={content}
           onChange={(event) => setContent(event.target.value)}
-          placeholder="اكتب حكايتك هنا…"
+          placeholder={strings.shell.writeSomething}
           rows={6}
           required
         />
 
         <Input
-          label="الوسوم"
+          label={strings.story.creatorTagsLabel}
           value={tags}
           onChange={(event) => setTags(event.target.value)}
-          placeholder="رعب، غموض، واقعي"
-          hint="افصل بين الوسوم بفاصلة"
+          placeholder={strings.story.creatorTagsPlaceholder}
+          hint={strings.story.tagsHint}
         />
 
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" loading={pending}>
-            انشر القصة
+          <Button type="submit" loading={createStory.isPending}>
+            {strings.story.creatorSubmitButton}
           </Button>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            إغلاق
+            {strings.story.creatorCloseButton}
           </Button>
         </div>
       </form>

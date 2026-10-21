@@ -305,6 +305,30 @@ have no effect.
 
 ## Frontend Environment Variables
 
+### ⚠️ `NEXT_PUBLIC_*` is decided at BUILD time, not at runtime
+
+`NEXT_PUBLIC_*` variables are **inlined into the client bundle when the app is built**. The
+container's environment cannot change them afterwards: the value the pod is given is read by the
+SERVER, and the browser is already holding the address the build baked in.
+
+So every origin the browser is told about is a **build argument to the image**, and the deploy
+workflows pass them:
+
+| Variable | What the browser is told | Where it is set |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | the API the browser calls | `--build-arg` in `deploy-{dev,staging,production}.yml`; also `frontend/Dockerfile`'s `ARG` |
+| `NEXT_PUBLIC_APP_URL` | this app's own origin — the canonical links, the sitemap, the robots file, and the `metadataBase` every `og:image` resolves against | same |
+| `NEXT_PUBLIC_PAYMOB_ORIGIN` | the payment gateway the checkout is allowed to frame | same |
+
+A value that is not passed stays empty, and each of these has a fallback in the code — an empty
+string is falsy, so the fallback wins and the build still succeeds.
+
+> ⚠️ **The runtime-only setting is a trap.** The Helm chart also sets `NEXT_PUBLIC_API_URL` and
+> `NEXT_PUBLIC_APP_URL` on the running container. Those reach the server and do nothing for the
+> browser. Before the build arguments were added, the client bundle carried the development
+> default — `http://localhost:3001/api/v1` — and every deployed browser was asking its own
+> machine for the API.
+
 ### API — ✅ real
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
@@ -318,8 +342,10 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 > ⚠️ `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_APP_VERSION`,
 > `NEXT_PUBLIC_SANITY_*`, `NEXT_PUBLIC_ANALYTICS_ID` and `NEXT_PUBLIC_SENTRY_DSN` were documented
 > here before. **No frontend code reads them**, and the frontend has no `.env.example`. The only
-> frontend variable the application actually uses is `NEXT_PUBLIC_API_URL`
-> (`frontend/src/lib/api.ts:47`, defaulting to `http://localhost:3001/api/v1`).
+> frontend variables the application actually uses are `NEXT_PUBLIC_API_URL`
+> (`frontend/src/lib/api.ts`), `NEXT_PUBLIC_APP_URL`
+> (`frontend/src/app/robots.ts` — the canonical origin) and `NEXT_PUBLIC_PAYMOB_ORIGIN`
+> (`frontend/src/lib/paymob.ts` — the payment gateway).
 
 ---
 

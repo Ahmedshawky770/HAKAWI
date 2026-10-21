@@ -9,6 +9,7 @@ import { Card, CardBody, CardFooter } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import type { Book, LibraryItem } from "@/types/api";
 
 /** A library row plus the book it points at, when that book could be fetched. */
@@ -19,8 +20,8 @@ export type LibraryEntry = LibraryItem & { book?: Book };
  *
  * Two decisions:
  *
- * - **The title is not a link and the card is not a link.** The "عرض التفاصيل" action is a
- *   `ButtonLink` and "إزالة" is a real `Button`; the old version wrapped the whole card in a `<Link>`
+ * - **The title is not a link and the card is not a link.** The details action is a
+ *   `ButtonLink` and "remove" is a real `Button`; the old version wrapped the whole card in a `<Link>`
  *   and then put a second link to the same place in its footer, which is two nested targets for one
  *   destination and a `<button>` inside an `<a>`.
  * - **The remove control is `variant="danger"`.** It is destructive and it is irreversible from this
@@ -35,6 +36,7 @@ export function LibraryCard({
   removing?: boolean;
   onRemove: () => void;
 }) {
+  const { library } = useStrings();
   const book = item.book;
 
   return (
@@ -42,7 +44,11 @@ export function LibraryCard({
       <CardBody className="flex-1">
         <div className="flex gap-4">
           {book?.coverImage ? (
-            <RemoteImage src={book.coverImage} className="h-28 w-20 shrink-0 rounded-md object-cover" />
+            <RemoteImage
+              src={book.coverImage}
+              alt={book.title}
+              className="h-28 w-20 shrink-0 rounded-md object-cover"
+            />
           ) : (
             <div className="grid h-28 w-20 shrink-0 place-items-center rounded-md bg-surface-raised text-ink-faint">
               <Icon name="book" size="md" />
@@ -50,7 +56,7 @@ export function LibraryCard({
           )}
 
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-lg font-semibold text-ink">{book?.title ?? "كتاب"}</h3>
+            <h3 className="truncate text-lg font-semibold text-ink">{book?.title ?? library.unknownBookTitle}</h3>
             <p className="mt-1 text-sm text-ink-muted">{book?.author ?? ""}</p>
 
             {book?.price != null && book.price > 0 && (
@@ -66,10 +72,10 @@ export function LibraryCard({
 
       <CardFooter>
         <ButtonLink href={`/library/${item.id}`} size="sm" className="flex-1">
-          عرض التفاصيل
+          {library.detailsAction}
         </ButtonLink>
         <Button variant="danger" size="sm" loading={removing} onClick={onRemove}>
-          إزالة
+          {library.removeAction}
         </Button>
       </CardFooter>
     </Card>

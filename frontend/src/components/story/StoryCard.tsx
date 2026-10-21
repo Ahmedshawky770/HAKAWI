@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 
@@ -5,6 +7,9 @@ import { StoryByline, StoryCategory } from "./StoryMeta";
 import { Icon } from "@/components/ui/Icon";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useLocale } from "@/components/providers/LocaleProvider";
+import { storyCompactMagnitude } from "@/lib/i18n/story";
+import type { Locale } from "@/lib/preferences";
 import type { Story } from "@/types/api";
 
 /**
@@ -31,6 +36,8 @@ import type { Story } from "@/types/api";
  * - the reaction row carries live counts, and the accent heart marks the state.
  */
 export function StoryCard({ story, showCover = true }: { story: Story; showCover?: boolean }) {
+  const { locale, strings } = useLocale();
+
   return (
     <article className="group relative rounded-xl border border-line bg-surface transition-shadow duration-200 hover:border-chrome/30 hover:shadow-[var(--hk-glow-chrome)]">
       <Link href={`/stories/${story.id}`} className="block rounded-xl p-5 focus-visible:outline-2">
@@ -61,12 +68,12 @@ export function StoryCard({ story, showCover = true }: { story: Story; showCover
           <span className="flex items-center gap-1.5">
             <Icon name="heart" size="sm" className="text-accent-ink" />
             <span className="hk-numeric">{story.reactions}</span>
-            <span className="sr-only">تفاعل</span>
+            <span className="sr-only">{strings.story.reactionCountLabel}</span>
           </span>
           <span className="flex items-center gap-1.5">
             <Icon name="eye" size="sm" />
-            <span className="hk-numeric">{formatCompact(story.views)}</span>
-            <span className="sr-only">مشاهدة</span>
+            <span className="hk-numeric">{formatCompact(story.views, locale)}</span>
+            <span className="sr-only">{strings.story.viewCountLabel}</span>
           </span>
         </div>
       </Link>
@@ -79,6 +86,8 @@ export function StoryCard({ story, showCover = true }: { story: Story; showCover
  * no cover, so a grid of six does not become six hero images.
  */
 export function StoryCardCompact({ story }: { story: Story }) {
+  const { locale, strings } = useLocale();
+
   return (
     <article className="group relative rounded-xl border border-line bg-surface transition-colors duration-200 hover:border-chrome/30">
       <Link href={`/stories/${story.id}`} className="block rounded-xl p-4 focus-visible:outline-2">
@@ -89,7 +98,8 @@ export function StoryCardCompact({ story }: { story: Story }) {
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
           <StoryByline author={story.author} />
           <span aria-hidden="true">·</span>
-          <span className="hk-numeric">{formatCompact(story.views)} مشاهدة</span>
+          <span className="hk-numeric">{formatCompact(story.views, locale)}</span>{" "}
+          {strings.story.viewCountLabel}
         </div>
       </Link>
     </article>
@@ -157,13 +167,26 @@ export function StoryFeedSkeleton({ count = 3, variant = "full" }: { count?: num
  * A view count is a magnitude, not an exact figure: rounding it saves four
  * characters per card and, more usefully, keeps the row from reflowing as the
  * number ticks. The exact figure stays available on the story page.
+ *
+ * The words are the dictionary's, not this file's: Arabic writes "1.2 ألف" and
+ * English writes "1.2K", and the joining differs too, so the phrase is built
+ * in `story.ts` and only the ROUNDING is decided here — one decimal while it
+ * still carries information, none once it does not.
  */
-export function formatCompact(value: number): string {
+export function formatCompact(value: number, locale: Locale): string {
   if (value < 1000) return String(value);
   if (value < 1_000_000) {
     const thousands = value / 1000;
-    return `${thousands >= 10 ? Math.round(thousands) : Math.round(thousands * 10) / 10} ألف`;
+    return storyCompactMagnitude(
+      locale,
+      thousands >= 10 ? Math.round(thousands) : Math.round(thousands * 10) / 10,
+      "thousand",
+    );
   }
   const millions = value / 1_000_000;
-  return `${millions >= 10 ? Math.round(millions) : Math.round(millions * 10) / 10} مليون`;
+  return storyCompactMagnitude(
+    locale,
+    millions >= 10 ? Math.round(millions) : Math.round(millions * 10) / 10,
+    "million",
+  );
 }

@@ -62,6 +62,16 @@ export interface CommonStrings {
   search: string;
   noResults: string;
   resultsCount: (count: number) => CountReadout;
+  /** The accessible name of a dismiss control — a toast's close button, a banner's close. */
+  dismiss: string;
+  /** The heading of the "this page does not exist" screen. */
+  notFoundTitle: string;
+  /** The sentence under the not-found heading. */
+  notFoundDescription: string;
+  /** The sentence under the crash heading. */
+  errorDescription: string;
+  /** The link back to the product's front door. */
+  backHome: string;
 }
 
 export const AR: CommonStrings = {
@@ -74,6 +84,11 @@ export const AR: CommonStrings = {
   noResults: "لا توجد نتائج",
   resultsCount: (count) =>
     countReadout(count, "ar", { zero: "نتائج", one: "نتيجة", two: "نتيجتان", few: "نتائج", many: "نتيجةً", other: "نتيجة" }),
+  dismiss: "إغلاق",
+  notFoundTitle: "الصفحة غير موجودة",
+  notFoundDescription: "الرابط الذي فتحته لا يشير إلى شيء في حكاوي.",
+  errorDescription: "حدث خطأ غير متوقع في هذه الصفحة.",
+  backHome: "العودة إلى الرئيسية",
 };
 
 export const EN: CommonStrings = {
@@ -85,4 +100,9 @@ export const EN: CommonStrings = {
   search: "Search",
   noResults: "No results",
   resultsCount: (count) => countReadout(count, "en", { one: "result", other: "results" }),
+  dismiss: "Dismiss",
+  notFoundTitle: "This page does not exist",
+  notFoundDescription: "The link you opened doesn't point to anything on Hakawi.",
+  errorDescription: "Something unexpected happened on this page.",
+  backHome: "Back to the home page",
 };

@@ -7,6 +7,7 @@ import { SkipLink } from "@/components/layout/SkipLink";
 import { TitleMirror } from "@/components/providers/TitleMirror";
 import { stringsFor } from "@/lib/i18n";
 import { PREFERENCE_BOOTSTRAP_SCRIPT } from "@/lib/preferences";
+import { SITE_URL } from "@/lib/site-url";
 import { Providers } from "./providers";
 
 // The root metadata is static Arabic — a server `metadata` export cannot read
@@ -16,7 +17,14 @@ import { Providers } from "./providers";
 // `shell.appTitle`/`shell.appDescription`; while these were hand-written
 // literals beside the dictionary, editing either copy silently made the
 // comparison stop matching and the mirror die with every suite still green.
+//
+// `metadataBase` is what every absolute URL in the metadata is resolved
+// against. Without it Next falls back to `http://localhost:3000`, and every
+// page of the product advertised its own link preview as a localhost address
+// no crawler can fetch. The origin is the same constant the robots file and
+// the sitemap use, so the product names one host everywhere.
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: stringsFor("ar").shell.appTitle,
   description: stringsFor("ar").shell.appDescription,
   applicationName: stringsFor("ar").shell.brand,

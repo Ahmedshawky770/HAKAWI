@@ -33,6 +33,11 @@ env:
   NODE_VERSION: '22'
   AWS_REGION: us-east-1
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  # The origins the BROWSER is given. `NEXT_PUBLIC_*` is inlined into the client
+  # bundle at BUILD time — the pod's environment cannot change it afterwards — so
+  # they are build arguments to the image, not runtime variables on the container.
+  NEXT_PUBLIC_APP_URL: https://app.hakawi.com
+  NEXT_PUBLIC_API_URL: https://api.hakawi.com/api/v1
   # WHY the cluster name is a workflow-level variable: `modules/eks` names the cluster
   # `${var.environment}-hakawi` (terraform's own `eks_cluster_name` output), while the
   # workflows, docs and infrastructure/scripts/setup-iam.sh all say `hakawi-<env>-eks`. The
@@ -94,7 +99,10 @@ jobs:
       - name: Build, tag, and push frontend image
         id: frontend-image
         run: |
-          docker build -t $ECR_REGISTRY/hakawi/frontend:${{ github.sha }} -f ./frontend/Dockerfile .
+          docker build -t $ECR_REGISTRY/hakawi/frontend:${{ github.sha }} -f ./frontend/Dockerfile \
+            --build-arg NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+            --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+            --build-arg NEXT_PUBLIC_PAYMOB_ORIGIN=${{ vars.NEXT_PUBLIC_PAYMOB_ORIGIN }} .
           docker push $ECR_REGISTRY/hakawi/frontend:${{ github.sha }}
           echo "image=$ECR_REGISTRY/hakawi/frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
 

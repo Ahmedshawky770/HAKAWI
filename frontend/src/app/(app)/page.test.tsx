@@ -30,6 +30,10 @@ function listResponse(stories: unknown[]): Response {
 // string in two places and one string in one place.
 const NO_STORIES_TITLE = stringsFor(DEFAULT_LOCALE).shell.noStories;
 
+// A failure is CLASSIFIED before it reaches the reader, so the sentence the
+// reader sees is the dictionary's — never the server's own wording.
+const UNAUTHORIZED_MESSAGE = stringsFor(DEFAULT_LOCALE).errors.sessionExpired;
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
@@ -102,7 +106,7 @@ describe("authenticated home page", () => {
 
     renderWithProviders(<AuthenticatedHomePage />);
 
-    expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
+    expect(await screen.findByText(UNAUTHORIZED_MESSAGE)).toBeInTheDocument();
   });
 
   it("links every story to its detail route", async () => {
@@ -148,7 +152,7 @@ describe("authenticated home page", () => {
 
     renderWithProviders(<AuthenticatedHomePage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unauthorized");
+    expect(await screen.findByRole("alert")).toHaveTextContent(UNAUTHORIZED_MESSAGE);
     expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
 
     fetchMock.mockResolvedValue(listResponse([STORY]));

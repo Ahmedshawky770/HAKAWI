@@ -4,6 +4,9 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { classifyError } from "@/lib/errors";
+import { useInvalidation } from "@/lib/queries";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -21,9 +24,17 @@ import { RequireAccount } from "@/components/account/RequireAccount";
  * The ISBN field is separate from the ISBN lookup on the detail page: a publisher
  * entering a new book may not have an ISBN yet, while a reader looking up an existing
  * one always does.
+ *
+ * THE PRICE IS IN PIASTRES, AND THE FORM SAYS SO. `books.price` is the integer the
+ * gateway is asked to charge — 2500 is 25.00 EGP — and a publisher who types
+ * "25" into the field would be publishing a book at a hundredth of the price they
+ * meant. The hint is therefore explicit rather than implied, and the same sentence
+ * exists in both languages.
  */
 export default function CreateBookPage() {
   const router = useRouter();
+  const strings = useStrings();
+  const invalidate = useInvalidation();
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [description, setDescription] = useState("");
@@ -63,9 +74,12 @@ export default function CreateBookPage() {
         fileType: fileType || undefined,
         categoryId: categoryId || undefined,
       });
+      // The catalogue is a shared fact: the new book is in it the moment it
+      // exists, so the cache is told rather than left to a manual refresh.
+      invalidate.books(response.id);
       router.push(`/books/${response.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "فشل إنشاء الكتاب");
+      setError(strings.errors[classifyError(err)]);
     } finally {
       setLoading(false);
     }
@@ -74,62 +88,62 @@ export default function CreateBookPage() {
   return (
     <RequireAccount capability="sellBooks" upgradeRoute="/profile">
       <div>
-        <PageHeader title="إنشاء كتاب" description="أضف كتاباً جديداً إلى كتالوج حكاوي." />
+        <PageHeader title={strings.books.createTitle} description={strings.books.createDescription} />
 
       <Card>
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <ErrorMessage error={error} title="تعذّر إنشاء الكتاب" />}
+            {error && <ErrorMessage error={error} title={strings.books.createFailed} />}
 
             <Input
-              label="عنوان الكتاب"
+              label={strings.books.titleLabel}
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="أدخل عنوان الكتاب"
+              placeholder={strings.books.titlePlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="المؤلف"
+              label={strings.books.authorLabel}
               type="text"
               required
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
-              placeholder="اسم المؤلف"
+              placeholder={strings.books.authorPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Textarea
-              label="الوصف"
+              label={strings.books.descriptionLabel}
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="وصف مختصر للكتاب"
+              placeholder={strings.books.descriptionPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="ISBN"
+              label={strings.books.isbnFieldLabel}
               type="text"
               value={isbn}
               onChange={(e) => setIsbn(e.target.value)}
-              placeholder="978-3-16-148410-0"
+              placeholder={strings.books.isbnPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="الناشر"
+              label={strings.books.publisherLabel}
               type="text"
               value={publisher}
               onChange={(e) => setPublisher(e.target.value)}
-              placeholder="اسم الناشر"
+              placeholder={strings.books.publisherLabel}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="تاريخ النشر"
+              label={strings.books.publishDateLabel}
               type="date"
               value={publishDate}
               onChange={(e) => setPublishDate(e.target.value)}
@@ -137,16 +151,16 @@ export default function CreateBookPage() {
             />
 
             <Input
-              label="اللغة"
+              label={strings.books.languageLabel}
               type="text"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              placeholder="العربية"
+              placeholder={strings.books.languagePlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="عدد الصفحات"
+              label={strings.books.pageCountFieldLabel}
               type="number"
               min={1}
               value={pageCount}
@@ -156,13 +170,13 @@ export default function CreateBookPage() {
             />
 
             <Input
-              label="السعر (بالقرش)"
+              label={strings.books.priceLabel}
               type="number"
               min={0}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="2500"
-              hint="أدخل السعر بالقرش (1 جنيه = 100 قرش). اتركه فارغاً إذا كان الكتاب مجانياً."
+              hint={strings.books.priceHint}
               wrapperClassName="max-w-lg"
             />
 
@@ -172,42 +186,42 @@ export default function CreateBookPage() {
                 type="checkbox"
                 checked={isFree}
                 onChange={(e) => setIsFree(e.target.checked)}
-                className="h-4 w-4 rounded border-line accent-ink"
+                className="size-5 rounded border-control-line accent-accent-fill"
               />
               <label htmlFor="isFree" className="text-sm text-ink-muted">
-                كتاب مجاني
+                {strings.books.freeLabel}
               </label>
             </div>
 
             <Input
-              label="رابط الغلاف"
+              label={strings.books.coverLabel}
               type="url"
               value={coverImage}
               onChange={(e) => setCoverImage(e.target.value)}
-              placeholder="https://..."
+              placeholder={strings.books.coverPlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="رابط الملف"
+              label={strings.books.fileLabel}
               type="url"
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
-              placeholder="https://..."
+              placeholder={strings.books.fileHint}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="نوع الملف"
+              label={strings.books.fileTypeLabel}
               type="text"
               value={fileType}
               onChange={(e) => setFileType(e.target.value)}
-              placeholder="pdf"
+              placeholder={strings.books.fileTypePlaceholder}
               wrapperClassName="max-w-lg"
             />
 
             <Input
-              label="معرّف التصنيف"
+              label={strings.books.categoryLabel}
               type="text"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
@@ -217,10 +231,10 @@ export default function CreateBookPage() {
 
             <div className="flex flex-wrap gap-3">
               <Button type="submit" loading={loading}>
-                إنشاء الكتاب
+                {strings.books.createSubmitButton}
               </Button>
               <ButtonLink href="/books" variant="ghost">
-                إلغاء
+                {strings.books.cancelButton}
               </ButtonLink>
             </div>
           </form>

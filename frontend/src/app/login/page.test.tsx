@@ -128,7 +128,7 @@ describe("login page", () => {
 
   it("shows no error before the form is submitted", () => {
     renderWithProviders(<LoginPage />);
-    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+    expect(screen.queryByText(/انتهت جلستك/)).not.toBeInTheDocument();
   });
 
   it("submits the typed credentials", async () => {
@@ -181,7 +181,10 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email or password");
+    expect(await screen.findByRole("alert")).toHaveTextContent("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+    // The server's own English is a fact about the API, not an explanation for
+    // the reader, and it does not belong on an Arabic screen.
+    expect(screen.queryByText("Invalid email or password")).not.toBeInTheDocument();
   });
 
   it("does not navigate when the credentials are rejected", async () => {
@@ -192,7 +195,7 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+    expect(await screen.findByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/)).toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
     expect(mockedSetStoredUser).not.toHaveBeenCalled();
   });
@@ -205,7 +208,7 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
+    expect(await screen.findByText(/انتهت جلستك/)).toBeInTheDocument();
   });
 
   it("disables the submit button while the request is in flight", async () => {
@@ -236,7 +239,7 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+    expect(await screen.findByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "تسجيل الدخول" })).toBeEnabled();
   });
 
@@ -247,12 +250,12 @@ describe("login page", () => {
 
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
-    expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+    expect(await screen.findByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("Invalid email or password")).not.toBeInTheDocument();
+      expect(screen.queryByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/)).not.toBeInTheDocument();
     });
   });
 
@@ -264,7 +267,7 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    await screen.findByText("Invalid email or password");
+    await screen.findByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/);
     expect(mockedApi.getSession).not.toHaveBeenCalled();
   });
 
@@ -276,7 +279,7 @@ describe("login page", () => {
     await fillCredentials(user);
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
-    expect(await screen.findByText("Invalid session")).toBeInTheDocument();
+    expect(await screen.findByText(/انتهت جلستك/)).toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
   });
 });

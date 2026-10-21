@@ -14,8 +14,28 @@ globalThis.useLocale = () => ({ intl: { formatDate: () => "", formatNumber: () =
 
 import "@testing-library/jest-dom";
 
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+
+/**
+ * THE ASYNC TIMEOUT IS A WAIT, NOT A VERDICT.
+ *
+ * `findBy*` waits for the element to appear and gives up after a second by
+ * default. A second is plenty for a machine that is doing nothing else, and
+ * too little for one that is running the backend suite in parallel, a
+ * container build, or a CI runner with two cores: the query resolves, the
+ * component re-renders, and the assertion still arrives after the wait has
+ * already ended. The failure that follows says "unable to find the heading",
+ * which is a statement about the MACHINE and not about the code — and it
+ * costs a real failure its credibility, because a suite that fails for
+ * reasons nobody can reproduce gets ignored.
+ *
+ * So the wait is widened, and the verdict is not: an element that is never
+ * going to appear still fails, five seconds later instead of one. A genuine
+ * failure is reported as a genuine failure; a slow machine is not reported as
+ * a broken product.
+ */
+configure({ asyncUtilTimeout: 5000 });
 
 /**
  * jsdom implements neither `matchMedia` nor `IntersectionObserver`, and the

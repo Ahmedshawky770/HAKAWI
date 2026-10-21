@@ -14,7 +14,8 @@ import {
   STORY,
   STORY_RECORD,
 } from "@/test-utils/fixtures";
-import { api, clearStoredUser, getStoredRefreshToken, getStoredUser, setStoredUser, type StoredUser } from "@/lib/api";
+import { api, clearStoredUser, getStoredRefreshToken, getStoredUser, onSessionLost, setStoredUser, type StoredUser } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import { countResultSchema, messageOnlySchema } from "@/lib/schemas";
 
 const fetchMock = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>();
@@ -75,7 +76,11 @@ describe("api client request handling", () => {
     setStoredUser(STORED_USER);
     fetchMock.mockResolvedValue(jsonResponse({ message: "Token expired" }, 401));
 
-    await expectRejection(api.request(countResultSchema, "/library/count"), "Unauthorized");
+    // The server's own wording survives a 401. It used to be replaced by the
+    // word "Unauthorized", which the error classifier reads as "the session
+    // has ended" — so a reader who mistyped their password was told their
+    // session had expired, and the reason the server gave was lost.
+    await expectRejection(api.request(countResultSchema, "/library/count"), "Token expired");
     expect(getStoredUser()).toBeNull();
   });
 
@@ -83,14 +88,53 @@ describe("api client request handling", () => {
     window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
     fetchMock.mockResolvedValue(jsonResponse({ message: "Token expired" }, 401));
 
-    await expectRejection(api.request(countResultSchema, "/library/count"), "Unauthorized");
+    await expectRejection(api.request(countResultSchema, "/library/count"), "Token expired");
     expect(window.localStorage.getItem("hakawi_tokens")).toBeNull();
+  });
+
+  it("announces the loss of the session on an unauthorized response", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Token expired" }, 401));
+    const heard = vi.fn();
+    const stop = onSessionLost(heard);
+
+    await expect(api.request(countResultSchema, "/library/count")).rejects.toThrow();
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    stop();
   });
 
   it("does not run the schema for an unauthorized response", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ count: 3 }, 401));
 
     await expect(api.request(countResultSchema, "/library/count")).rejects.toThrow("Unauthorized");
+  });
+
+  /**
+   * THE STATUS TRAVELS WITH THE FAILURE.
+   *
+   * The client used to throw a plain `Error` carrying the server's message and
+   * drop the HTTP status on the floor, which left the classifier with nothing
+   * but the wording to work with — and the server's wording for an expired
+   * session ("Invalid or expired token") was a sentence the classifier did not
+   * know. The status is what makes the verdict reliable.
+   */
+  it("carries the status and the server's wording on the failure", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid or expired token" }, 401));
+
+    const failure = await api.request(countResultSchema, "/library/count").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(401);
+    expect((failure as ApiError).message).toBe("Invalid or expired token");
+  });
+
+  it("carries the status of a refusal that is not a session", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Story not found" }, 404));
+
+    const failure = await api.request(countResultSchema, "/library/count").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(404);
   });
 
   it("throws the server message of a failed response", async () => {
@@ -726,7 +770,7 @@ describe("logout request", () => {
   it("rejects when the server refuses the logout", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid refresh token" }, 401));
 
-    await expectRejection(api.logout(), "Unauthorized");
+    await expectRejection(api.logout(), "Invalid refresh token");
     expect(getStoredUser()).toBeNull();
   });
 });

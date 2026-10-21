@@ -19,7 +19,7 @@ import type { ReadingProgress } from "@/types/api";
  * stated in words beside it — colour is never the only signal.
  *
  * Shared by the library detail and the rental detail, which are the same surface with a different
- * action attached.
+ * action attached. Its copy therefore lives in the LIBRARY namespace, not in two copies of itself.
  */
 export function ReadingProgressCard({
   progress,
@@ -28,39 +28,39 @@ export function ReadingProgressCard({
   progress: ReadingProgress;
   action?: React.ReactNode;
 }) {
-  const { intl } = useLocale();
+  const { intl, strings } = useLocale();
+  const { library } = strings;
 
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-xl font-semibold text-ink">تقدم القراءة</h2>
+        <h2 className="text-xl font-semibold text-ink">{library.progressTitle}</h2>
       </CardHeader>
 
       <CardBody>
         <ProgressBar
           value={progress.progressPercentage}
-          label="تقدم القراءة"
+          label={library.progressLabel}
           tone={progress.completedAt ? "success" : "accent"}
         />
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-muted">
           <span className="hk-numeric">
-            الصفحة {progress.currentPage}
-            {progress.totalPages ? ` من ${progress.totalPages}` : ""}
+            {library.progressPage(progress.currentPage, progress.totalPages)}
           </span>
           <span className="hk-numeric">{progress.progressPercentage.toFixed(1)}%</span>
         </div>
 
         {progress.lastReadAt && (
           <p className="mt-2 text-xs text-ink-muted">
-            آخر قراءة: {formatDate(progress.lastReadAt, intl)}
+            {library.lastReadLabel} {formatDate(progress.lastReadAt, intl)}
           </p>
         )}
 
         {progress.completedAt && (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-success-ink">
             <Icon name="check" size="sm" />
-            اكتملت القراءة: {formatDate(progress.completedAt, intl)}
+            {library.progressCompletedLabel} {formatDate(progress.completedAt, intl)}
           </p>
         )}
       </CardBody>

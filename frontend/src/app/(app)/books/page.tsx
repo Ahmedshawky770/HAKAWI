@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 
-import { api } from "@/lib/api";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { classifyError } from "@/lib/errors";
 import { BookCard, BookGridSkeleton } from "@/components/books/BookCard";
+import { isFailedLoad, useBooks } from "@/lib/queries";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
-import type { Book } from "@/types/api";
 
 /**
  * The book catalogue.
@@ -21,69 +22,55 @@ import type { Book } from "@/types/api";
  *
  * The page header stays mounted in every state, so the column never reflows around
  * a title that appears after the data does.
+ *
+ * The list comes from the shared query cache (`useBooks`), not from a local
+ * `useEffect`: the catalogue, the dashboard and a book page all read the same
+ * key, so they cannot show three different catalogues, and a book that is
+ * published in one place appears in the others without a refresh.
  */
 export default function BooksPage() {
-  const [books, setBooks] = useState<Book[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        const data = await api.listBooks();
-        if (active) setBooks(data.books);
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "فشل تحميل الكتب");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
-
-  /** Re-arms the same request; the reset lives here so the effect only awaits. */
-  function retry() {
-    setLoading(true);
-    setError("");
-    setAttempt((n) => n + 1);
-  }
+  const strings = useStrings();
+  const booksQuery = useBooks();
+  // A failed BACKGROUND refetch keeps the catalogue on the screen; only a load
+  // that never arrived is a failed catalogue.
+  const failed = isFailedLoad(booksQuery);
+  const books = booksQuery.data?.books ?? [];
 
   return (
     <div>
-      <PageHeader title="الكتب" description="كل ما نشرته حكاوي، للشراء أو الإيجار." />
+      <PageHeader title={strings.books.listTitle} description={strings.books.listDescription} />
 
-      {loading && (
+      {booksQuery.isLoading && (
         <div>
           <span className="sr-only" role="status">
-            جارٍ تحميل الكتب
+            {strings.books.listLoadingLabel}
           </span>
           <BookGridSkeleton count={6} />
         </div>
       )}
 
-      {!loading && error && <ErrorMessage error={error} onRetry={retry} />}
+      {failed && (
+        <ErrorMessage
+          error={strings.errors[classifyError(booksQuery.error)]}
+          title={strings.books.listLoadFailed}
+          onRetry={() => void booksQuery.refetch()}
+        />
+      )}
 
-      {!loading && !error && books.length === 0 && (
+      {!booksQuery.isLoading && !failed && books.length === 0 && (
         <EmptyState
           icon="library"
-          title="لا توجد كتب بعد"
-          description="لم يُنشر أي كتاب حتى الآن. القصص متاحة الآن، وسنضيف الكتب تباعاً."
+          title={strings.books.listEmptyTitle}
+          description={strings.books.listEmptyDescription}
           action={
             <ButtonLink href={AUTHENTICATED_HOME_ROUTE} variant="primary">
-              تصفح القصص
+              {strings.books.browseStories}
             </ButtonLink>
           }
         />
       )}
 
-      {!loading && !error && books.length > 0 && (
+      {!booksQuery.isLoading && !failed && books.length > 0 && (
         <ul className="grid gap-5 sm:grid-cols-2">
           {books.map((book) => (
             <li key={book.id}>

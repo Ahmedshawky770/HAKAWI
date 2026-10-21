@@ -5,7 +5,9 @@ import React, { useEffect, useRef } from "react";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { IconButton } from "@/components/ui/Button";
 import { StoryCard, StoryCardCompact, StoryFeedSkeleton } from "@/components/story/StoryCard";
-import { flattenStories, useStoriesFeed, type StoryFilters } from "@/lib/queries";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { classifyError } from "@/lib/errors";
+import { flattenStories, isFailedLoad, type StoryFilters, useStoriesFeed } from "@/lib/queries";
 
 /**
  * The infinite feed of §7.
@@ -32,11 +34,13 @@ import { flattenStories, useStoriesFeed, type StoryFilters } from "@/lib/queries
  * for the failure with a retry, and nothing at all once everything is loaded.
  */
 export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryFilters; variant?: "full" | "compact" }) {
+  const strings = useStrings();
   const query = useStoriesFeed(filters);
   const sentinel = useRef<HTMLDivElement>(null);
 
   const stories = flattenStories(query.data);
   const hasMore = query.hasNextPage;
+  const { fetchNextPage, isFetchingNextPage } = query;
 
   useEffect(() => {
     if (!hasMore) return undefined;
@@ -46,10 +50,14 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
     // sentinel, so by the time the next page is on screen it is usually
     // resolved. TanStack collapses the duplicate call if the observer fires
     // twice for the same page.
+    //
+    // The dependencies are the STABLE pieces of the query — `fetchNextPage` is
+    // the same function for the life of the observer — so the sentinel is
+    // observed once, not re-subscribed on every render.
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !query.isFetchingNextPage) {
-          void query.fetchNextPage();
+        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage) {
+          void fetchNextPage();
         }
       },
       { rootMargin: "400px 0px" },
@@ -57,23 +65,24 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
 
     if (sentinel.current) observer.observe(sentinel.current);
     return () => observer.disconnect();
-  }, [hasMore, query.isFetchingNextPage, query]);
+  }, [hasMore, isFetchingNextPage, fetchNextPage]);
 
   if (query.isLoading) {
     return (
       <div>
         <span className="sr-only" role="status">
-          جارٍ تحميل القصص
+          {strings.story.feedLoadingLabel}
         </span>
         <StoryFeedSkeleton count={3} variant={variant} />
       </div>
     );
   }
 
-  if (query.isError) {
+  if (isFailedLoad(query)) {
     return (
       <ErrorMessage
-        error={query.error instanceof Error ? query.error.message : "تعذّر تحميل القصص"}
+        error={strings.errors[classifyError(query.error)]}
+        title={strings.story.storiesLoadFailed}
         onRetry={() => void query.refetch()}
       />
     );
@@ -81,7 +90,7 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
 
   return (
     <div className="space-y-6">
-      <ul className="space-y-6" aria-busy={query.isFetchingNextPage || undefined}>
+      <ul className="space-y-6" aria-busy={isFetchingNextPage || undefined}>
         {stories.map((story) => (
           <li key={story.id}>
             {variant === "full" ? <StoryCard story={story} /> : <StoryCardCompact story={story} />}
@@ -90,24 +99,55 @@ export function StoryFeed({ filters = {}, variant = "full" }: { filters?: StoryF
       </ul>
 
       {stories.length === 0 && (
-        <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-ink-muted">
-          لا توجد قصص بعد. كن أول من يكتب.
-        </p>
+        <div className="rounded-xl border border-dashed border-line-strong p-8 text-center">
+          <p className="text-sm font-semibold text-ink">{strings.story.feedEmptyTitle}</p>
+          <p className="mt-1 text-sm text-ink-muted">{strings.story.feedEmptyDescription}</p>
+        </div>
       )}
 
       {hasMore && (
-        <div ref={sentinel} className="flex flex-col items-center gap-3 pt-2">
-          {query.isFetchingNextPage ? (
-            <>
-              <span role="status" className="text-sm text-ink-muted">
-                جارٍ تحميل المزيد…
-              </span>
-              <StoryFeedSkeleton count={1} variant={variant} />
-            </>
-          ) : (
-            <IconButton label="تحميل المزيد من القصص" name="plus" onClick={() => void query.fetchNextPage()} />
-          )}
+        <div ref={sentinel}>
+          <StoryLoadMore
+            variant={variant}
+            isFetching={isFetchingNextPage}
+            onLoadMore={() => void fetchNextPage()}
+          />
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The control that asks for the next page.
+ *
+ * It is exported because the dashboard and the stories grid read the SAME feed
+ * and both need the affordance: infinite scroll is an enhancement over this
+ * button, never a replacement for it, and a button that exists in one surface
+ * and not in another is a surface a keyboard user cannot finish.
+ */
+export function StoryLoadMore({
+  isFetching,
+  onLoadMore,
+  variant = "full",
+}: {
+  isFetching: boolean;
+  onLoadMore: () => void;
+  variant?: "full" | "compact";
+}) {
+  const strings = useStrings();
+
+  return (
+    <div className="flex flex-col items-center gap-3 pt-2">
+      {isFetching ? (
+        <>
+          <span role="status" className="text-sm text-ink-muted">
+            {strings.story.loadingMoreStories}
+          </span>
+          <StoryFeedSkeleton count={1} variant={variant} />
+        </>
+      ) : (
+        <IconButton label={strings.story.loadMoreStories} name="plus" onClick={onLoadMore} />
       )}
     </div>
   );

@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CardLink } from "@/components/ui/Card";
-import { useLocale } from "@/components/providers/LocaleProvider";
+import { useLocale, useStrings } from "@/components/providers/LocaleProvider";
 import { formatDate } from "@/lib/i18n";
 import type { Contest } from "@/types/api";
 
@@ -26,6 +26,7 @@ import { ContestStatusBadge } from "./ContestStatusBadge";
  */
 export function ContestCard({ contest }: { contest: Contest }) {
   const { intl } = useLocale();
+  const strings = useStrings();
 
   return (
     <CardLink href={`/contests/${contest.id}`} className="h-full">
@@ -43,7 +44,7 @@ export function ContestCard({ contest }: { contest: Contest }) {
           <Icon name="calendar" size="sm" />
           <span className="hk-numeric">{formatDate(contest.startDate, intl)}</span>
           <span aria-hidden="true">—</span>
-          <span className="sr-only">إلى</span>
+          <span className="sr-only">{strings.contests.dateRangeSeparator}</span>
           <span className="hk-numeric">{formatDate(contest.endDate, intl)}</span>
         </p>
       </div>
@@ -77,11 +78,13 @@ export function ContestListSkeleton({ count = 3 }: { count?: number }) {
 }
 
 export function ContestListEmpty() {
+  const strings = useStrings();
+
   return (
     <EmptyState
       icon="trophy"
-      title="لا توجد مسابقات بعد"
-      description="تابع الحكاوي ليصلك إشعار فور انطلاق المسابقة القادمة."
+      title={strings.contests.emptyTitle}
+      description={strings.contests.emptyDescription}
     />
   );
 }

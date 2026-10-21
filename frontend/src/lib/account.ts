@@ -24,6 +24,25 @@ export function can(accountType: string | null | undefined, capability: AccountC
   return accountTypeAtLeast(accountType, CAPABILITY_MIN_ACCOUNT[capability]);
 }
 
+/**
+ * WHY A REASON IS A KEY AND TWO NUMBERS AND NOT A SENTENCE.
+ *
+ * The helper used to build the reason an account is not yet eligible in Arabic
+ * inside the client — "قصص منشورة: 3/5" — so the sentence stayed Arabic in
+ * every locale, and the same fact had to be re-worded in every dictionary that
+ * wanted to show it. The helper now returns WHAT IT KNOWS: which metric is
+ * short, how far along the reader is and the threshold to reach. The dictionary
+ * (`lib/i18n/profile.ts`) writes the sentence, in the reader's language.
+ */
+export type ProfessionalProgressReason =
+  | {
+      kind: "count";
+      metric: "stories" | "views" | "reactions" | "followers";
+      current: number;
+      threshold: number;
+    }
+  | { kind: "verified" };
+
 export interface ProfessionalProgress {
   storiesCount: { current: number; threshold: number; percent: number; met: boolean };
   totalViews: { current: number; threshold: number; percent: number; met: boolean };
@@ -31,7 +50,7 @@ export interface ProfessionalProgress {
   followersCount: { current: number; threshold: number; percent: number; met: boolean };
   isVerified: { met: boolean };
   eligible: boolean;
-  reasons: string[];
+  reasons: ProfessionalProgressReason[];
 }
 
 export function professionalProgress(user: PublicUserProfile, stats: UserStats | null): ProfessionalProgress {
@@ -45,38 +64,26 @@ export function professionalProgress(user: PublicUserProfile, stats: UserStats |
   const reactionsCurrent = stats?.totalReactions ?? 0;
   const followersCurrent = stats?.followersCount ?? 0;
 
-  const storiesMet = storiesCurrent >= 5;
-  const viewsMet = viewsCurrent >= 1000;
-  const reactionsMet = reactionsCurrent >= 100;
-  const followersMet = followersCurrent >= 50;
+  const storiesMet = storiesCurrent >= storiesThreshold;
+  const viewsMet = viewsCurrent >= viewsThreshold;
+  const reactionsMet = reactionsCurrent >= reactionsThreshold;
+  const followersMet = followersCurrent >= followersThreshold;
   const verifiedMet = user.isVerified === true;
 
-  const reasons: string[] = [];
-  if (!storiesMet) reasons.push(`قصص منشورة: ${storiesCurrent}/5`);
-  if (!viewsMet) reasons.push(`مشاهدات: ${viewsCurrent}/1,000`);
-  if (!reactionsMet) reasons.push(`تفاعلات: ${reactionsCurrent}/100`);
-  if (!followersMet) reasons.push(`متابعين: ${followersCurrent}/50`);
-  if (!verifiedMet) reasons.push('البريد الإلكتروني غير مؤكد');
+  const reasons: ProfessionalProgressReason[] = [];
+  if (!storiesMet) reasons.push({ kind: "count", metric: "stories", current: storiesCurrent, threshold: storiesThreshold });
+  if (!viewsMet) reasons.push({ kind: "count", metric: "views", current: viewsCurrent, threshold: viewsThreshold });
+  if (!reactionsMet) reasons.push({ kind: "count", metric: "reactions", current: reactionsCurrent, threshold: reactionsThreshold });
+  if (!followersMet) reasons.push({ kind: "count", metric: "followers", current: followersCurrent, threshold: followersThreshold });
+  if (!verifiedMet) reasons.push({ kind: "verified" });
 
   return {
-    storiesCount: { current: storiesCurrent, threshold: storiesThreshold, percent: Math.min(storiesCurrent / 5, 1) * 100, met: storiesMet },
-    totalViews: { current: viewsCurrent, threshold: viewsThreshold, percent: Math.min(viewsCurrent / 1000, 1) * 100, met: viewsMet },
-    totalReactions: { current: reactionsCurrent, threshold: reactionsThreshold, percent: Math.min(reactionsCurrent / 100, 1) * 100, met: reactionsMet },
-    followersCount: { current: followersCurrent, threshold: followersThreshold, percent: Math.min(followersCurrent / 50, 1) * 100, met: followersMet },
+    storiesCount: { current: storiesCurrent, threshold: storiesThreshold, percent: Math.min(storiesCurrent / storiesThreshold, 1) * 100, met: storiesMet },
+    totalViews: { current: viewsCurrent, threshold: viewsThreshold, percent: Math.min(viewsCurrent / viewsThreshold, 1) * 100, met: viewsMet },
+    totalReactions: { current: reactionsCurrent, threshold: reactionsThreshold, percent: Math.min(reactionsCurrent / reactionsThreshold, 1) * 100, met: reactionsMet },
+    followersCount: { current: followersCurrent, threshold: followersThreshold, percent: Math.min(followersCurrent / followersThreshold, 1) * 100, met: followersMet },
     isVerified: { met: verifiedMet },
     eligible: storiesMet && viewsMet && reactionsMet && followersMet && verifiedMet,
     reasons,
   };
-}
-
-export function capabilityLabel(capability: AccountCapability): string {
-  const labels: Readonly<Record<AccountCapability, string>> = {
-    writeStories: "كتابة القصص",
-    fullAnalytics: "التحليلات الكاملة",
-    sellBooks: "بيع الكتب",
-    communicateWithPublishers: "التواصل مع دور النشر",
-    createContests: "إنشاء المسابقات",
-    sellRepresentedBooks: "بيع كتب الكتّاب الموكلين",
-  };
-  return labels[capability];
 }

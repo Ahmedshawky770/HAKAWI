@@ -50,19 +50,37 @@ function unreadValue(): string | null {
   return unreadLabel().previousElementSibling?.textContent ?? null;
 }
 
+/**
+ * The server's own copy of the list and the count.
+ *
+ * THE MOCKS ANSWER FROM STATE, NOT FROM A FIXTURE. Marking a notification as
+ * read invalidates the cache, and the cache then asks the server again — so the
+ * server has to agree that the notification is now read and that the count went
+ * down. A mock that always answered "one unread" would be a server that forgets
+ * what it just accepted, and the test would be asserting against it.
+ */
+let notifications: Notification[] = [{ ...NOTIFICATION }, READ_NOTIFICATION];
+
 describe("notifications page", () => {
   beforeEach(() => {
-    mockedApi.getNotifications.mockResolvedValue({
-      notifications: [{ ...NOTIFICATION }, READ_NOTIFICATION],
-      total: 2,
+    notifications = [{ ...NOTIFICATION }, READ_NOTIFICATION];
+
+    mockedApi.getNotifications.mockImplementation(async () => ({
+      notifications,
+      total: notifications.length,
       page: 1,
       limit: 20,
-    });
-    mockedApi.getUnreadNotificationCount.mockResolvedValue({ count: 1 });
-    mockedApi.markNotificationAsRead.mockResolvedValue({
-      ...NOTIFICATION,
-      isRead: true,
-      readAt: "2026-01-01T12:00:00.000Z",
+    }));
+    mockedApi.getUnreadNotificationCount.mockImplementation(async () => ({
+      count: notifications.filter((notification) => !notification.isRead).length,
+    }));
+    mockedApi.markNotificationAsRead.mockImplementation(async (id: string) => {
+      notifications = notifications.map((notification) =>
+        notification.id === id
+          ? { ...notification, isRead: true, readAt: "2026-01-01T12:00:00.000Z" }
+          : notification,
+      );
+      return { ...NOTIFICATION, isRead: true, readAt: "2026-01-01T12:00:00.000Z" };
     });
   });
 
@@ -172,7 +190,9 @@ describe("notifications page", () => {
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     await waitFor(() => {
-      expect(mockedApi.markNotificationAsRead).toHaveBeenCalled();
+      // The id is pinned, not just "a call happened": a page that marked the
+      // WRONG notification as read would pass the weaker assertion.
+      expect(mockedApi.markNotificationAsRead).toHaveBeenCalledWith(NOTIFICATION.id);
     });
     expect(screen.getByRole("button", { name: "تعليم كمقروء" })).toBeInTheDocument();
     expect(screen.getByText("إشعار غير مقروء")).toBeInTheDocument();
@@ -183,7 +203,10 @@ describe("notifications page", () => {
 
     renderWithProviders(<NotificationsPage />);
 
-    expect(await screen.findByText("Failed to load notifications")).toBeInTheDocument();
+    // The reader is told what happened in their own language, never the raw
+    // message the server wrote.
+    expect(await screen.findByText("تعذّر إتمام العملية. حاول مرة أخرى.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load notifications")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "الإشعارات" })).not.toBeInTheDocument();
   });
 
@@ -192,7 +215,8 @@ describe("notifications page", () => {
 
     renderWithProviders(<NotificationsPage />);
 
-    expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
+    expect(await screen.findByText("انتهت جلستك. سجّل الدخول من جديد.")).toBeInTheDocument();
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
   it("keeps the loaded list when only the unread count request fails", async () => {
@@ -243,6 +267,8 @@ describe("notifications page", () => {
     await user.click(screen.getByRole("button", { name: "تعليم كمقروء" }));
 
     await waitFor(() => {
+      // The id is pinned here too: the count endpoint is broken, not the
+      // mutation, and the mutation still has to name the notification it read.
       expect(mockedApi.markNotificationAsRead).toHaveBeenCalledWith(NOTIFICATION.id);
     });
     expect(screen.getByText("تعذّر جلب العدد")).toBeInTheDocument();
@@ -259,7 +285,7 @@ describe("notifications page", () => {
   it("stops announcing the loading state once the page is ready", async () => {
     renderWithProviders(<NotificationsPage />);
 
-    await screen.findByRole("heading", { name: "الإشعارات" });
+    await screen.findByRole("heading", { name: NOTIFICATION.title });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

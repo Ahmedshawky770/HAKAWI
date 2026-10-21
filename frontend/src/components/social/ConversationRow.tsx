@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { CardLink } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ListRowSkeleton } from "@/components/ui/Skeleton";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import type { Conversation } from "@/types/api";
 
 /**
@@ -22,6 +23,8 @@ import type { Conversation } from "@/types/api";
  * the conversation link in a navigation rail, not on a list of siblings.
  */
 export function ConversationRow({ conversation }: { conversation: Conversation }) {
+  const strings = useStrings();
+
   return (
     <CardLink href={`/messages/${conversation.id}`} className="h-full">
       <div className="flex items-center gap-4 p-4">
@@ -29,17 +32,17 @@ export function ConversationRow({ conversation }: { conversation: Conversation }
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-semibold text-ink">
-            {conversation.participant.name ?? "مستخدم"}
+            {conversation.participant.name ?? strings.social.conversationParticipantFallback}
           </p>
           <p className="truncate text-sm text-ink-muted">
-            {conversation.lastMessage?.content ?? "لا توجد رسائل بعد"}
+            {conversation.lastMessage?.content ?? strings.social.conversationNoMessages}
           </p>
         </div>
 
         {conversation.unreadCount > 0 && (
           <Badge tone="accent" className="shrink-0">
             <span className="hk-numeric">{conversation.unreadCount}</span>
-            <span className="sr-only">رسائل غير مقروءة</span>
+            <span className="sr-only">{strings.social.conversationUnreadLabel}</span>
           </Badge>
         )}
       </div>
@@ -58,11 +61,13 @@ export function ConversationListSkeleton({ count = 4 }: { count?: number }) {
 }
 
 export function ConversationListEmpty() {
+  const strings = useStrings();
+
   return (
     <EmptyState
       icon="message"
-      title="لا توجد محادثات بعد"
-      description="ابدأ محادثة من صفحة كاتب أي قصة، وستظهر هنا."
+      title={strings.social.conversationsEmptyTitle}
+      description={strings.social.conversationsEmptyDescription}
     />
   );
 }

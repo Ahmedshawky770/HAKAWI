@@ -1,64 +1,48 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
-import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { ContestCard, ContestListEmpty, ContestListSkeleton } from "@/components/social/ContestCard";
-import type { Contest } from "@/types/api";
+import { useStrings } from "@/components/providers/LocaleProvider";
+import { classifyError } from "@/lib/errors";
+import { isFailedLoad, useContests } from "@/lib/queries";
 
 export default function ContestsPage() {
-  const [contests, setContests] = useState<Contest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const strings = useStrings();
+  const contestsQuery = useContests();
+  const { data, isLoading, error, refetch } = contestsQuery;
 
-  const load = useCallback(async () => {
-    try {
-      const data = await api.listContests();
-      setContests(data.contests);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذّر تحميل المسابقات");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Fire-and-forget; the retry below calls this same `load`.
-    async function initialLoad() {
-      await load();
-    }
-    void initialLoad();
-  }, [load]);
-
-  const retry = () => {
-    setLoading(true);
-    setError("");
-    void load();
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
       <>
-        <PageHeader title="المسابقات" />
+        <PageHeader title={strings.contests.listTitle} />
         <p role="status" className="sr-only">
-          جارٍ التحميل…
+          {strings.common.loading}
         </p>
         <ContestListSkeleton />
       </>
     );
   }
 
-  if (error) {
-    return <ErrorMessage error={error} onRetry={retry} title="تعذّر تحميل المسابقات" />;
+  if (isFailedLoad(contestsQuery)) {
+    return (
+      <ErrorMessage
+        error={strings.errors[classifyError(error)]}
+        title={strings.contests.listLoadFailed}
+        onRetry={() => void refetch()}
+      />
+    );
   }
+
+  const contests = data?.contests ?? [];
 
   return (
     <div className="animate-rise">
       <PageHeader
-        title="المسابقات"
-        description="اكتب قصتك، وشاركها في مسابقة، واقرأ أعمال الآخرين."
+        title={strings.contests.listTitle}
+        description={strings.contests.listDescription}
       />
 
       {contests.length === 0 ? (

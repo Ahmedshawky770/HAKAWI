@@ -2,9 +2,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { api } from "@/lib/api";
-import { formatDate, intlLocale } from "@/lib/i18n";
+import { formatDate, intlLocale, stringsFor } from "@/lib/i18n";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
 
 import { renderWithProviders } from "@/test-utils/render";
@@ -59,14 +60,34 @@ describe("Users followers page", () => {
 
   it("renders the follower rows", async () => {
     renderWithProviders(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
-    expect(screen.getByText("متابع")).toBeInTheDocument();
+    // The list arrives through the query cache, so the row is waited for.
+    expect(await screen.findByText("متابع")).toBeInTheDocument();
     const joined = formatDate(mockFollowers.followers[0].createdAt, intlLocale(DEFAULT_LOCALE));
     expect(screen.getByText(joined)).toBeInTheDocument();
   });
 
-  it("falls back to the empty state when the request fails", async () => {
+  it("announces a failed request instead of claiming the list is empty", async () => {
     mockedApi.getFollowers.mockRejectedValueOnce(new Error("request failed"));
     renderWithProviders(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
-    expect(screen.getByText("لا يوجد متابعون بعد.")).toBeInTheDocument();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(stringsFor(DEFAULT_LOCALE).errors.unknown);
+    // The empty state is a sentence about the world; the server never said it.
+    expect(
+      screen.queryByText(stringsFor(DEFAULT_LOCALE).social.followEmptyFollowers),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks the server again when the reader retries", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.getFollowers.mockRejectedValueOnce(new Error("request failed"));
+
+    renderWithProviders(await UsersFollowersPage({ params: Promise.resolve({ id: "user-1" }) }));
+
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: stringsFor(DEFAULT_LOCALE).common.retry }));
+
+    expect(await screen.findByText("متابع")).toBeInTheDocument();
+    expect(mockedApi.getFollowers).toHaveBeenCalledTimes(2);
   });
 });

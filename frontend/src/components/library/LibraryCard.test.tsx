@@ -9,7 +9,7 @@ import { AnchorLink } from "@/test-utils/navigation-mock";
 import { renderWithProviders } from "@/test-utils/render";
 import { BOOK } from "@/test-utils/fixtures";
 import { LibraryCard, LibraryCardSkeleton, LibraryGridSkeleton } from "@/components/library/LibraryCard";
-import { LIBRARY_STATUS_LABELS } from "@/components/library/LibraryStatusBadge";
+import { AR as AR_LIBRARY } from "@/lib/i18n/library";
 import type { LibraryEntry } from "@/components/library/LibraryCard";
 import type { LibraryItem } from "@/types/api";
 
@@ -43,14 +43,14 @@ describe("LibraryCard", () => {
   it("links to the details page with a link that looks like a button", () => {
     renderWithProviders(<LibraryCard item={entry()} onRemove={vi.fn()} />);
 
-    const link = screen.getByRole("link", { name: "عرض التفاصيل" });
+    const link = screen.getByRole("link", { name: AR_LIBRARY.detailsAction });
     expect(link).toHaveAttribute("href", "/library/lib-1");
   });
 
   it("offers removal as a button, never as a link", () => {
     renderWithProviders(<LibraryCard item={entry()} onRemove={vi.fn()} />);
 
-    const remove = screen.getByRole("button", { name: "إزالة" });
+    const remove = screen.getByRole("button", { name: AR_LIBRARY.removeAction });
     expect(remove.tagName).toBe("BUTTON");
     expect(remove.className).toContain("bg-error-fill");
   });
@@ -59,7 +59,7 @@ describe("LibraryCard", () => {
     const onRemove = vi.fn();
     renderWithProviders(<LibraryCard item={entry()} onRemove={onRemove} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "إزالة" }));
+    await userEvent.click(screen.getByRole("button", { name: AR_LIBRARY.removeAction }));
 
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
@@ -67,13 +67,13 @@ describe("LibraryCard", () => {
   it("marks the card busy while the removal is in flight", () => {
     renderWithProviders(<LibraryCard item={entry()} removing onRemove={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: /إزالة/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: new RegExp(AR_LIBRARY.removeAction) })).toBeDisabled();
   });
 
   it("names the status of every state in the library vocabulary", () => {
     for (const status of ["owned", "rented", "reading", "completed"] as const) {
       const { unmount } = renderWithProviders(<LibraryCard item={entry(status)} onRemove={vi.fn()} />);
-      expect(screen.getByText(LIBRARY_STATUS_LABELS[status])).toBeInTheDocument();
+      expect(screen.getByText(AR_LIBRARY.statusLabels[status])).toBeInTheDocument();
       unmount();
     }
   });
@@ -81,7 +81,7 @@ describe("LibraryCard", () => {
   it("colours the status with the design system tone, not a stock palette", () => {
     renderWithProviders(<LibraryCard item={entry("reading")} onRemove={vi.fn()} />);
 
-    const badge = screen.getByText(LIBRARY_STATUS_LABELS.reading);
+    const badge = screen.getByText(AR_LIBRARY.statusLabels.reading);
     expect(badge.className).toContain("bg-warning-soft");
     expect(badge.className).not.toMatch(/yellow|green|blue|gray/);
   });
@@ -92,8 +92,8 @@ describe("LibraryCard", () => {
 
     renderWithProviders(<LibraryCard item={withoutBook} onRemove={vi.fn()} />);
 
-    expect(screen.getByRole("heading", { name: "كتاب" })).toBeInTheDocument();
-    expect(screen.getByText(LIBRARY_STATUS_LABELS.owned)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: AR_LIBRARY.unknownBookTitle })).toBeInTheDocument();
+    expect(screen.getByText(AR_LIBRARY.statusLabels.owned)).toBeInTheDocument();
   });
 });
 

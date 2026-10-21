@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { RENTAL_CURRENCY, rentalPriceForDays } from '@hakawi/shared-types';
+import { ConfigService } from '@nestjs/config';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
@@ -10,9 +13,11 @@ import type { ILibraryRepository } from '../library/interfaces/library-repositor
 import { RentalsService } from '../rentals/rentals.service.ts';
 import type { Rental } from '../rentals/types.ts';
 import { requireValue } from '../../test/helpers/require-value.ts';
+import type { PaymobConfig } from '../../config/paymob.config.ts';
 
 import type { Book, CreateBookInput, UpdateBookInput } from './types.ts';
 import { BooksService } from './books.service.ts';
+import { PurchaseBookDto } from './dto/books.dto.ts';
 
 type MockBooksRepository = {
   findById: ReturnType<typeof vi.fn<(id: string) => Promise<Book | null>>>;
@@ -106,6 +111,9 @@ describe('BooksService', () => {
   // The library is the authoritative record of what the caller already owns, so the duplicate
   // purchase guard reads it rather than counting payment rows (Principle #9).
   let libraryRepository: { findByUserAndBook: ReturnType<typeof vi.fn> };
+  // The Paymob configuration the reader's choice is resolved against, read through the same
+  // `paymob` namespace the `PAYMOB_CONFIG` token's own factory reads.
+  let configService: { get: ReturnType<typeof vi.fn> };
 
   const mockBook: Book = {
     id: 'book-123',
@@ -191,6 +199,12 @@ describe('BooksService', () => {
       findByUserAndBook: vi.fn().mockResolvedValue(null),
     };
 
+    // No configured method ids by default: the gateway asks the customer which instrument to use,
+    // which is the behaviour a deployment without the optional configuration gets.
+    configService = {
+      get: vi.fn().mockReturnValue(undefined),
+    };
+
     booksService = new BooksService(
       booksRepository,
       logger as unknown as WinstonLoggerService,
@@ -199,6 +213,7 @@ describe('BooksService', () => {
       paymentsService as unknown as PaymentsService,
       rentalsService as unknown as RentalsService,
       libraryRepository as unknown as ILibraryRepository,
+      configService as unknown as ConfigService,
     );
   });
 
@@ -752,7 +767,7 @@ describe('BooksService', () => {
       vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);
       vi.mocked(paymentsService.paymobInitializePayment).mockResolvedValue(paymentResult);
 
-      const result = await booksService.purchase('user-123', 'book-123', 'pm_123');
+      const result = await booksService.purchase('user-123', 'book-123', 'card');
 
       expect(result).toEqual({
         paymentId: 'payment-123',
@@ -761,11 +776,20 @@ describe('BooksService', () => {
         acceptUrl: 'https://accept.paymob.com/accept/pk-123',
         status: 'pending',
       });
-      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith('user-123', paidBook.price, 'EGP', {
-        bookId: 'book-123',
-        type: 'purchase',
-        paymentMethodId: 'pm_123',
-      });
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith(
+        'user-123',
+        paidBook.price,
+        'EGP',
+        {
+          bookId: 'book-123',
+          type: 'purchase',
+          // The SEMANTIC choice is what the payment record keeps.
+          paymentMethod: 'card',
+        },
+        // No configured method id in this deployment, so nothing is said to the gateway about the
+        // instrument — which is Paymob's own "let the customer choose" case.
+        undefined,
+      );
 
       // The payment row is no longer read back: the checkout IS the response, and a second lookup
       // would only re-read what the gateway just told us.
@@ -794,6 +818,141 @@ describe('BooksService', () => {
       await expect(booksService.purchase('user-123', 'book-123', undefined)).rejects.toThrow(
         'This book is free, no purchase needed',
       );
+    });
+  });
+
+  /**
+   * THE READER'S CHOICE OF INSTRUMENT, AND WHERE IT ENDS UP.
+   *
+   * THE DEFECT THIS HOLDS STILL. The reader picked "بطاقة ائتمانية" or "محفظة إلكترونية" on the
+   * checkout panel, the choice was stored as opaque metadata, and the Paymob frame asked which
+   * instrument to use anyway — the UI promised a choice it did not deliver. The choice has to
+   * become this merchant's own Paymob method id on the way to the gateway, or it is decoration.
+   */
+  describe("the reader's choice of instrument", () => {
+    const paidBook = { ...mockBook, isFree: false, ownerId: 'other-author' };
+
+    beforeEach(() => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(paidBook);
+      vi.mocked(booksRepository.incrementViewCount).mockResolvedValue(undefined);
+      vi.mocked(paymentsService.paymobInitializePayment).mockResolvedValue({
+        paymentId: 'payment-123',
+        orderId: 'order-123',
+        paymentKey: 'pk-123',
+        iframeUrl: 'https://accept.paymob.com/iframes/pk-123',
+        acceptUrl: 'https://accept.paymob.com/accept/pk-123',
+        status: 'pending',
+      });
+    });
+
+    const configure = (config: Partial<PaymobConfig>): void => {
+      configService.get.mockReturnValue(config);
+    };
+
+    it('sends the configured card id to the gateway when the reader chose the card', async () => {
+      configure({ cardPaymentMethodId: '7', walletPaymentMethodId: '9' });
+
+      await booksService.purchase('user-123', 'book-123', 'card');
+
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith(
+        'user-123',
+        paidBook.price,
+        'EGP',
+        expect.objectContaining({ paymentMethod: 'card' }),
+        '7',
+      );
+    });
+
+    it('sends the configured wallet id to the gateway when the reader chose the wallet', async () => {
+      configure({ cardPaymentMethodId: '7', walletPaymentMethodId: '9' });
+
+      await booksService.purchase('user-123', 'book-123', 'wallet');
+
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith(
+        'user-123',
+        paidBook.price,
+        'EGP',
+        expect.objectContaining({ paymentMethod: 'wallet' }),
+        '9',
+      );
+    });
+
+    it('sends NOTHING to the gateway when this deployment has configured no method id', async () => {
+      // The deployment has not told the gateway which instrument to use, so the gateway asks the
+      // customer inside the payment frame — the behaviour the product had before the choice
+      // existed. The purchase must NOT fail over an optional configuration value.
+      configure({});
+
+      await booksService.purchase('user-123', 'book-123', 'card');
+
+      expect(paymentsService.paymobInitializePayment).toHaveBeenCalledWith(
+        'user-123',
+        paidBook.price,
+        'EGP',
+        expect.objectContaining({ paymentMethod: 'card' }),
+        undefined,
+      );
+    });
+
+    it('sends NOTHING to the gateway when the reader chose no instrument at all', async () => {
+      configure({ cardPaymentMethodId: '7', walletPaymentMethodId: '9' });
+
+      await booksService.purchase('user-123', 'book-123');
+
+      const call = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
+      expect(call[4]).toBeUndefined();
+      // And the record says nothing about an instrument either, rather than claiming one.
+      expect(call[3]).not.toHaveProperty('paymentMethod');
+    });
+
+    it('keeps the SEMANTIC choice in the payment record and the numeric id out of it', async () => {
+      // The record is what an analyst reconciles on, so it carries the reader's words. The gateway's
+      // id is a fact about this merchant's dashboard and never reaches the stored metadata.
+      configure({ cardPaymentMethodId: '7', walletPaymentMethodId: '9' });
+
+      await booksService.purchase('user-123', 'book-123', 'wallet');
+
+      const call = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
+      expect(call[3]).toEqual({ bookId: 'book-123', type: 'purchase', paymentMethod: 'wallet' });
+    });
+  });
+
+  /**
+   * THE PURCHASE BODY, THROUGH THE DTO'S OWN DECORATORS.
+   *
+   * This lives here rather than in a separate file because the books module has no DTO spec of its
+   * own, and the field under test is the one this service reads.
+   */
+  describe('PurchaseBookDto', () => {
+    const messagesFor = async (body: Record<string, unknown>): Promise<string[]> => {
+      const dto = plainToInstance(PurchaseBookDto, body);
+      const errors = await validate(dto);
+      return errors.flatMap((error) => Object.values(error.constraints ?? {}));
+    };
+
+    it('accepts the two instruments the reader can choose', async () => {
+      expect(await messagesFor({ paymentMethod: 'card' })).toEqual([]);
+      expect(await messagesFor({ paymentMethod: 'wallet' })).toEqual([]);
+    });
+
+    it('refuses anything else, including a gateway identifier', async () => {
+      // The field used to be a free-form string, so any handle a caller could invent was accepted
+      // and stored as metadata. The vocabulary is closed now.
+      expect(await messagesFor({ paymentMethod: 'pm_123' })).not.toEqual([]);
+      expect(await messagesFor({ paymentMethod: 'bank-transfer' })).not.toEqual([]);
+      expect(await messagesFor({ paymentMethod: 7 })).not.toEqual([]);
+    });
+
+    it('still accepts a body with no choice in it', async () => {
+      // The choice is optional: a reader who never picked one still gets the gateway's own
+      // instrument question.
+      expect(await messagesFor({})).toEqual([]);
     });
   });
 

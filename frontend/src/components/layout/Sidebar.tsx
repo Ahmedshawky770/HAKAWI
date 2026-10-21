@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { useUnreadMessageCount, useUnreadNotificationCount } from "@/lib/queries";
 import { Brand } from "./Brand";
 import { LogoutButton } from "./LogoutButton";
+import { UnreadBadge } from "./UnreadBadge";
 import { ButtonLink } from "@/components/ui/Button";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { useStrings } from "@/components/providers/LocaleProvider";
@@ -15,6 +17,14 @@ interface NavItem {
   href: string;
   label: string;
   icon: IconName;
+  /**
+   * The unread count this item carries, or `null` for the items that have no
+   * inbox. The count is a NUMBER the product already knows — the API counts
+   * unread notifications, and every conversation carries its own unread count —
+   * and the badge is the only place it reaches the reader.
+   */
+  badge?: number;
+  badgeLabel?: string;
 }
 
 /**
@@ -34,6 +44,8 @@ interface NavItem {
 export function Sidebar() {
   const pathname = usePathname();
   const strings = useStrings();
+  const unreadNotifications = useUnreadNotificationCount().data?.count ?? 0;
+  const unreadMessages = useUnreadMessageCount();
 
   const primary: NavItem[] = [
     { href: AUTHENTICATED_HOME_ROUTE, label: strings.shell.navHome, icon: "home" },
@@ -44,8 +56,20 @@ export function Sidebar() {
   ];
 
   const secondary: NavItem[] = [
-    { href: "/messages", label: strings.shell.navMessages, icon: "message" },
-    { href: "/notifications", label: strings.shell.navNotifications, icon: "bell" },
+    {
+      href: "/messages",
+      label: strings.shell.navMessages,
+      icon: "message",
+      badge: unreadMessages,
+      badgeLabel: strings.shell.unreadMessagesLabel,
+    },
+    {
+      href: "/notifications",
+      label: strings.shell.navNotifications,
+      icon: "bell",
+      badge: unreadNotifications,
+      badgeLabel: strings.shell.unreadNotificationsLabel,
+    },
     { href: "/rentals", label: strings.shell.navRentals, icon: "clock" },
     { href: "/payments", label: strings.shell.navPayments, icon: "wallet" },
   ];
@@ -99,7 +123,12 @@ function Nav({
                     : "text-ink-muted hover:bg-surface-raised hover:text-ink"
                 }`}
               >
-                <Icon name={item.icon} size="sm" className={active ? "text-accent" : undefined} />
+                <span className="relative flex size-5 items-center justify-center">
+                  <Icon name={item.icon} size="sm" className={active ? "text-accent" : undefined} />
+                  {item.badge !== undefined && (
+                    <UnreadBadge count={item.badge} label={item.badgeLabel ?? item.label} />
+                  )}
+                </span>
                 <span className="truncate">{item.label}</span>
               </Link>
             </li>

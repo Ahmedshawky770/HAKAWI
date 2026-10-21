@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
-import { api } from "@/lib/api";
+import { api, notifySessionLost } from "@/lib/api";
 import { LOGIN_ROUTE } from "@/lib/routes";
 
 import { isUnauthenticatedFailure, useAuthGuard } from "./auth-guard";
@@ -63,6 +63,53 @@ describe("useAuthGuard", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE));
     expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
+  });
+
+  /**
+   * THE REGRESSION THIS FILE EXISTS FOR.
+   *
+   * `backend/src/common/guards/jwt-auth.guard.ts` answers an expired or
+   * revoked access token with `UnauthorizedException('Invalid or expired
+   * token')`. That sentence was not in the classifier's table, so an expired
+   * token was not recognised as a lost session: the reader was sent to an
+   * error screen with a retry button instead of the sign-in screen — and the
+   * retry could never succeed, because nothing refreshes the token. The access
+   * token lives for fifteen minutes, so this was not an edge case.
+   */
+  it("treats the server's own expired-token sentence as signed out", async () => {
+    vi.spyOn(api, "getSession").mockRejectedValue(new Error("Invalid or expired token"));
+
+    render(<GuardHarness />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE));
+    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
+  });
+
+  /**
+   * A SESSION THAT ENDS WHILE THE PAGE IS OPEN.
+   *
+   * The probe above runs once, when the page opens. A session does not only
+   * end when the reader signs out: a token expires, a session is revoked, a
+   * device is signed out of remotely. Every one of those arrives as a 401 on
+   * whatever request happened to be running, and without this the reader sits
+   * on a page whose every request now fails, looking at error messages
+   * instead of being sent to the sign-in screen.
+   */
+  it("sends the reader to the login route when the session ends while the page is open", async () => {
+    vi.spyOn(api, "getSession").mockResolvedValue({
+      user: { id: "u", email: "e", name: "n", username: "u", accountType: "reader" },
+      expiresAt: "x",
+    });
+
+    render(<GuardHarness />);
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+
+    act(() => {
+      notifySessionLost();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
+    expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE);
   });
 
   it("treats a missing token as signed out", async () => {

@@ -91,27 +91,33 @@ describe("Search page", () => {
     expect(await screen.findByText("قصة البحث")).toBeInTheDocument();
   });
 
-  it("renders the results count grouped, the way the readout formats it", async () => {
-    mockedApi.search.mockResolvedValue({
-      ...mockSearchResults,
-      total: 1234,
-      results: Array.from({ length: 1234 }, (_, index) => ({
-        ...mockSearchResults.results[0],
-        id: `story-${index}`,
-        title: `قصة ${index}`,
-      })),
-    });
+  it(
+    "renders the results count grouped, the way the readout formats it",
+    async () => {
+      mockedApi.search.mockResolvedValue({
+        ...mockSearchResults,
+        total: 1234,
+        results: Array.from({ length: 1234 }, (_, index) => ({
+          ...mockSearchResults.results[0],
+          id: `story-${index}`,
+          title: `قصة ${index}`,
+        })),
+      });
 
-    renderWithProviders(<SearchPage />);
+      renderWithProviders(<SearchPage />);
 
-    // The page counts the rows it renders, and the digits are the dictionary's
-    // `resultsCount` — read the same way the component computes it, so the
-    // grouping ("1,234") is the production formatting and not a retyped guess.
-    const readout = stringsFor(DEFAULT_LOCALE).common.resultsCount(1234);
-    expect(await screen.findByText(readout.count, {}, { timeout: 30000 })).toHaveClass("hk-numeric");
-    expect(screen.getByRole("status")).toHaveTextContent(`${readout.count} ${readout.label}`);
-    expect(readout.count).toBe("1,234");
-  });
+      // The page counts the rows it renders, and the digits are the dictionary's
+      // `resultsCount` — read the same way the component computes it, so the
+      // grouping ("1,234") is the production formatting and not a retyped guess.
+      const readout = stringsFor(DEFAULT_LOCALE).common.resultsCount(1234);
+      expect(await screen.findByText(readout.count, {}, { timeout: 30000 })).toHaveClass("hk-numeric");
+      expect(screen.getByRole("status")).toHaveTextContent(`${readout.count} ${readout.label}`);
+      expect(readout.count).toBe("1,234");
+    },
+    // A thousand and a quarter of cards is a lot of DOM to build in jsdom, and
+    // the suite's own timeout is not generous enough for it on a loaded machine.
+    60000,
+  );
 
   it("stays idle, and asks for nothing, while the URL carries no query", () => {
     urlQuery = "";
@@ -156,7 +162,8 @@ describe("Search page", () => {
 
     const shell = stringsFor(DEFAULT_LOCALE).shell;
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("تعذّر الاتصال بالخادم");
+    // The failure is classified before it reaches the reader.
+    expect(alert).toHaveTextContent(stringsFor(DEFAULT_LOCALE).errors.unknown);
     expect(screen.getByRole("heading", { name: shell.searchFailed })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: stringsFor(DEFAULT_LOCALE).common.retry }));

@@ -1,6 +1,10 @@
+"use client";
+
 import React from "react";
+import type { PaymentStatus } from "@hakawi/shared-types";
 
 import { Badge, PAYMENT_STATUS_TONES, toneFor, type BadgeTone } from "@/components/ui/Badge";
+import { useStrings } from "@/components/providers/LocaleProvider";
 
 /**
  * The payment status pill.
@@ -10,29 +14,24 @@ import { Badge, PAYMENT_STATUS_TONES, toneFor, type BadgeTone } from "@/componen
  * used to cover `processing` and `cancelled` is gone for the same reason as the
  * contest one: two tables for one fact is a fact that will disagree with itself.
  *
- * Only the Arabic labels are local, because only they are presentation.
+ * The WORD is the dictionary's. The badge used to carry a table of Arabic labels
+ * of its own, which meant the English reader saw a pill that said "مكتملة"
+ * inside an English interface.
  */
-export const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  pending: "قيد المراجعة",
-  processing: "قيد المعالجة",
-  completed: "مكتملة",
-  failed: "فشلت",
-  cancelled: "ملغاة",
-  refunded: "مستردّة",
-};
-
 export function paymentStatusTone(status: string): BadgeTone {
   return toneFor(PAYMENT_STATUS_TONES, status);
 }
 
-export function paymentStatusLabel(status: string): string {
-  return PAYMENT_STATUS_LABELS[status] ?? status;
-}
-
 export function PaymentStatusBadge({ status, className = "" }: { status: string; className?: string }) {
+  const { payments } = useStrings();
+
+  // A status the contract does not declare has no word, so it is shown as the API
+  // sent it — more honest to the reader than blanking it.
+  const label = payments.statusLabels[status as PaymentStatus] ?? status;
+
   return (
     <Badge tone={paymentStatusTone(status)} className={className}>
-      {paymentStatusLabel(status)}
+      {label}
     </Badge>
   );
 }
