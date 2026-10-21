@@ -5,7 +5,9 @@ import {
   BadRequestException,
   InternalServerErrorException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RENTAL_CURRENCY, RENTAL_DURATION_DAYS, isRentalDurationDays, rentalPriceForDays } from '@hakawi/shared-types';
 
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
@@ -14,6 +16,12 @@ import type { PaymobCheckoutResponse } from '../payments/types.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import type { RentalReturnedEvent, RentalExpiredEvent } from '../../common/events/rentals.events.ts';
+import {
+  PAYMOB_CONFIG_NAMESPACE,
+  resolvePaymobPaymentMethodId,
+  type PaymobConfig,
+  type PaymobPaymentMethodChoice,
+} from '../../config/paymob.config.ts';
 
 import type { IRentalsRepository } from './interfaces/rentals-repository.interface.ts';
 import { RENTALS_REPOSITORY } from './interfaces/rentals-repository.interface.ts';
@@ -35,6 +43,13 @@ export class RentalsService {
     // granted free up to the per-row cap; `extendRental` now initialises a payment and
     // `RentalsEventHandler` applies the extension from `payment.completed`.
     @Inject(PaymentsService) private readonly paymentsService: PaymentsService,
+    // THE PAYMOB CONFIGURATION, FOR THE READER'S CHOICE OF INSTRUMENT.
+    //
+    // The same resolved configuration the books module reads, from the same shared config host and
+    // parsed from the environment ONCE at boot. It is optional so a service built by hand — a unit
+    // test — still works: with no configuration there is no method id, and the gateway asks the
+    // customer which instrument to use, which is Paymob's own behaviour.
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   /*
@@ -154,7 +169,12 @@ export class RentalsService {
    * The return type changing from `RentalExtension` to `PaymobCheckoutResponse` IS the fix: the
    * previous shape told the caller the extension had already happened.
    */
-  async extendRental(id: string, extensionDays: number, userId: string): Promise<PaymobCheckoutResponse> {
+  async extendRental(
+    id: string,
+    extensionDays: number,
+    userId: string,
+    paymentMethod?: PaymobPaymentMethodChoice,
+  ): Promise<PaymobCheckoutResponse> {
     const rental = await this.rentalsRepository.findById(id);
     if (!rental || rental.deletedAt) {
       throw new NotFoundException('Rental not found');
@@ -185,12 +205,47 @@ export class RentalsService {
       throw new InternalServerErrorException('Rental pricing is misconfigured');
     }
 
-    return this.paymentsService.paymobInitializePayment(userId, amount, RENTAL_CURRENCY, {
-      rentalId: id,
-      bookId: rental.bookId,
-      type: 'rental_extension',
-      extensionDays,
-    });
+    // THE READER'S CHOICE OF INSTRUMENT, RESOLVED TO THIS MERCHANT'S ID.
+    //
+    // The extension is a payment, and it was the one path in the product that
+    // asked the reader nothing about the instrument and then told the gateway
+    // nothing either — so the answer the reader gave on the checkout panel
+    // was dropped here. The same two words, the same resolver, the same
+    // merchant's ids.
+    //
+    // A deployment that has configured no id gets `undefined`, and the gateway
+    // is then told nothing about the instrument, which is Paymob's own "let the
+    // customer choose" case.
+    const paymentMethodId = resolvePaymobPaymentMethodId(this.paymobConfig(), paymentMethod);
+
+    return this.paymentsService.paymobInitializePayment(
+      userId,
+      amount,
+      RENTAL_CURRENCY,
+      {
+        rentalId: id,
+        bookId: rental.bookId,
+        type: 'rental_extension',
+        extensionDays,
+        // The SEMANTIC value is what the payment record keeps. "card" /
+        // "wallet" is what the reader chose and what an analyst reconciles
+        // on; the gateway's numeric id is a fact about this merchant's
+        // dashboard and never reaches the stored record.
+        ...(paymentMethod === undefined ? {} : { paymentMethod }),
+      },
+      paymentMethodId,
+    );
+  }
+
+  /**
+   * The resolved Paymob configuration, or `undefined` when this service was built without one.
+   *
+   * Read per call rather than cached in the constructor: the configuration is merged into the shared
+   * config host when the payments module is initialised, and a service that read it once at
+   * construction time could be handed an empty host depending on module order.
+   */
+  private paymobConfig(): PaymobConfig | undefined {
+    return this.configService?.get<PaymobConfig>(PAYMOB_CONFIG_NAMESPACE);
   }
 
   /**

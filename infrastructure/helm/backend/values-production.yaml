@@ -114,6 +114,11 @@ env:
   corsOrigin: "https://app.hakawi.com,https://hakawi.com"
   paymob:
     environment: live
+    # The merchant's own numeric ids for the card and the mobile wallet. Empty
+    # is a working configuration: the gateway then asks the customer to choose
+    # inside the payment frame. See values.yaml for the full note.
+    cardPaymentMethodId: ""
+    walletPaymentMethodId: ""
   sentry:
     dsn: ""
   emailFrom: "noreply@hakawi.com"

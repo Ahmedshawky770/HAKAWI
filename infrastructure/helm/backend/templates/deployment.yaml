@@ -46,6 +46,18 @@ data:
   READINESS_CHECK_PATH: {{ .Values.env.readinessPath | quote }}
   CORS_ORIGIN: {{ .Values.env.corsOrigin | quote }}
   PAYMOB_ENVIRONMENT: {{ .Values.env.paymob.environment | quote }}
+  # THE MERCHANT'S OWN NUMERIC IDS FOR THE TWO INSTRUMENTS.
+  #
+  # The reader chooses "card" or "wallet" on the checkout panel, and the server
+  # resolves that choice to the id Paymob knows this merchant by. These are not
+  # credentials — a method id names an instrument and authorises nothing — so
+  # they are plain ConfigMap values rather than secrets.
+  #
+  # An empty value is a WORKING configuration: the gateway is then told nothing
+  # about the instrument and asks the customer inside the payment frame, which
+  # is what the product did before the reader's choice existed.
+  PAYMOB_CARD_PAYMENT_METHOD_ID: {{ .Values.env.paymob.cardPaymentMethodId | default "" | quote }}
+  PAYMOB_WALLET_PAYMENT_METHOD_ID: {{ .Values.env.paymob.walletPaymentMethodId | default "" | quote }}
   # Which provider shape the SMTP transport should assume for its connection defaults. The
   # credentials themselves are secrets (below); this is the one non-secret knob, and `smtp`
   # means "use EMAIL_HOST/PORT exactly as given", which is what any real relay wants.

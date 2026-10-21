@@ -14,7 +14,13 @@ describe('User Upgrade Flow E2E', () => {
   beforeAll(async () => {
     context = await createTestContext();
     adminUser = await context.registerAndLogin({ prefix: 'admin', name: 'Admin Officer' });
-    await context.promoteToAdmin(adminUser.id, AdminRole.VERIFICATION_OFFICER);
+    // A SUPER ADMIN, and not a verification officer, because this account has to do
+    // two things: create a category, which the taxonomy routes ask a content moderator
+    // for, and approve a professional, which the user routes ask a verification officer
+    // for. A super admin implies every administrative role, so it is the one account
+    // that can do both. The token is minted AFTER the promotion, because the role is in
+    // the token and a token minted before it would be refused.
+    await context.promoteToAdmin(adminUser.id, AdminRole.SUPER_ADMIN);
     const tokens = await context.login(adminUser.email);
     adminUser = { ...adminUser, ...tokens };
   });
@@ -40,53 +46,75 @@ describe('User Upgrade Flow E2E', () => {
     `);
   };
 
-  // Inserts reaction rows directly
+  /**
+   * THE REACTORS, IN ONE STATEMENT.
+   *
+   * The accounts used to be created one registration at a time — a hundred HTTP
+   * registrations, each hashing a password — and then inserted one reaction at a
+   * time. That is two hundred round trips, and it took longer than the test's own
+   * timeout, so the test failed on how SLOWLY it simulated a threshold rather than on
+   * the threshold.
+   *
+   * The test is about the THRESHOLD, so the accounts are created the way the
+   * reactions are inserted: directly, in one statement, in the database the
+   * threshold is counted in.
+   */
   const simulateReactions = async (userId: string, storyId: string, count: number): Promise<void> => {
-    // Get a pool of existing users (including the reader) who can react
-    const reactors = await db.execute<{ id: string }>(sql`
-      SELECT id FROM users WHERE id != ${userId} LIMIT ${count}
+    const existing = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count FROM users WHERE id != ${userId}
     `);
-    if (reactors.rows.length < count) {
-      // Create more users if needed
-      const needed = count - reactors.rows.length;
-      for (let i = 0; i < needed; i++) {
-        const reactor = await context.registerUser({ prefix: `rx_${i}` });
-        reactors.rows.push({ id: reactor.id });
-      }
-    }
-    for (let i = 0; i < count; i++) {
-      const reactorId = reactors.rows[i].id;
+    const needed = count - Number(existing.rows[0]?.count ?? '0');
+
+    if (needed > 0) {
       await db.execute(sql`
-        INSERT INTO reactions (story_id, user_id, type, created_at)
-        VALUES (${storyId}, ${reactorId}, 'like', now())
+        INSERT INTO users (id, username, email, name)
+        SELECT
+          uuid_generate_v4(),
+          'rx_' || gs,
+          'rx_' || gs || '@hakawi.test',
+          'Reactor ' || gs
+        FROM generate_series(1, ${needed}) AS gs
       `);
     }
+
+    await db.execute(sql`
+      INSERT INTO reactions (story_id, user_id, type, created_at)
+      SELECT ${storyId}, id, 'like', now()
+      FROM users
+      WHERE id != ${userId}
+      LIMIT ${count}
+    `);
   };
 
   // Inserts follow rows directly
   const simulateFollowers = async (userId: string, count: number): Promise<void> => {
-    // Get users who are not the target and not already following
-    const followers = await db.execute<{ id: string }>(sql`
-      SELECT id FROM users WHERE id != ${userId} LIMIT ${count}
+    // The same reasoning as `simulateReactions`: the accounts are created in one
+    // statement, so the test measures the threshold and not the cost of creating a
+    // hundred accounts over HTTP.
+    const existing = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count FROM users WHERE id != ${userId}
     `);
-    let needMore = false;
-    if (followers.rows.length < count) {
-      needMore = true;
-    }
-    if (needMore) {
-      const needed = count - followers.rows.length;
-      for (let i = 0; i < needed; i++) {
-        const follower = await context.registerUser({ prefix: `fw_${i}` });
-        followers.rows.push({ id: follower.id });
-      }
-    }
-    for (let i = 0; i < count; i++) {
-      const followerId = followers.rows[i].id;
+    const needed = count - Number(existing.rows[0]?.count ?? '0');
+
+    if (needed > 0) {
       await db.execute(sql`
-        INSERT INTO follows (follower_id, following_id, created_at)
-        VALUES (${followerId}, ${userId}, now())
+        INSERT INTO users (id, username, email, name)
+        SELECT
+          uuid_generate_v4(),
+          'fw_' || gs,
+          'fw_' || gs || '@hakawi.test',
+          'Follower ' || gs
+        FROM generate_series(1, ${needed}) AS gs
       `);
     }
+
+    await db.execute(sql`
+      INSERT INTO follows (follower_id, following_id, created_at)
+      SELECT id, ${userId}, now()
+      FROM users
+      WHERE id != ${userId}
+      LIMIT ${count}
+    `);
   };
 
   describe('1. Reader → Rising Star (self-service)', () => {

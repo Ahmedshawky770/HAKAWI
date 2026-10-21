@@ -4,7 +4,24 @@ export type PaymentResponse = {
   amount: number;
   currency: string;
   status: string;
+  /**
+   * THE GATEWAY. Every Paymob payment says "paymob", which says nothing about
+   * how the reader is paying.
+   */
   paymentMethod: string;
+  /**
+   * THE INSTRUMENT THE READER CHOSE — "card" or "wallet".
+   *
+   * The choice was kept in the payment's metadata, where nothing outside the
+   * payments module could read it. So the product could not show a reader what
+   * they chose, and a support agent could not tell a card payment from a
+   * wallet one without opening the raw record.
+   *
+   * `null` when there is no choice to report: a payment made before the choice
+   * existed, or one where the gateway let the customer choose inside the frame
+   * because the merchant had configured no id for either instrument.
+   */
+  instrument: string | null;
   paymobOrderId: string | null;
   paymobPaymentId: string | null;
   paymobTransactionId: string | null;

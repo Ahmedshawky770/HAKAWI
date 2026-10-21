@@ -91,7 +91,13 @@ describe("forgot password page", () => {
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "ahmed@example.com");
     await user.click(screen.getByRole("button", { name: "إرسال رابط إعادة التعيين" }));
 
-    expect(await screen.findByText("Too many requests")).toBeInTheDocument();
+    // The server's English wording is a fact about the API. The reader is
+    // told what it means for them, in their language — and the form stays
+    // there, so the request can be made again.
+    expect(
+      await screen.findByText("محاولات كثيرة في وقت قصير. انتظر قليلاً ثم أعد المحاولة."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Too many requests")).not.toBeInTheDocument();
     expect(screen.getByLabelText("البريد الإلكتروني")).toBeInTheDocument();
   });
 

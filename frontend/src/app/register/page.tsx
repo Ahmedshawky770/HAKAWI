@@ -3,9 +3,11 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, setStoredUser } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { classifyError } from "@/lib/errors";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { startSession } from "@/lib/session";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { OAuthButtons } from "@/components/auth/OAuthButtons";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +18,7 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 export default function RegisterPage() {
   const router = useRouter();
   const strings = useStrings();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -45,7 +48,13 @@ export default function RegisterPage() {
         password: formData.password,
       });
       const session = await api.getSession();
-      setStoredUser(session.user);
+      // The cache belongs to the session that filled it, and registering IS a
+      // session starting. A reader who was signed in and then registered a
+      // second account in the same tab would otherwise be served the FIRST
+      // reader's conversations, library and payments under the second
+      // account's name — the query keys carry no account identity, so the
+      // only thing standing between the two readers is this clear.
+      startSession(queryClient, session.user);
       router.push(AUTHENTICATED_HOME_ROUTE);
     } catch (err) {
       setError(strings.errors[classifyError(err)]);

@@ -10,6 +10,8 @@ import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { createDeferred } from "@/test-utils/support";
 import { AUTH_RESPONSE, AUTH_USER, SESSION_RESPONSE } from "@/test-utils/fixtures";
 import { api, setStoredUser } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
+import { renderCaptcha } from "@/lib/captcha";
 import { stringsFor } from "@/lib/i18n";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
 import { type OAuthProvider } from "@hakawi/shared-types";
@@ -32,6 +34,29 @@ vi.mock("@/lib/api", () => ({
   },
   setStoredUser: vi.fn(),
 }));
+
+/**
+ * THE VERIFICATION WIDGET, WITHOUT THE THIRD PARTY.
+ *
+ * The widget is drawn by a script the provider serves, and a test must not fetch it. So
+ * the loader is replaced by one that resolves, and the renderer by one that hands back a
+ * token — which is all the sign-in screen actually uses.
+ */
+vi.mock("@/lib/captcha", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/captcha")>();
+  return {
+    ...original,
+    loadCaptchaScript: vi.fn().mockResolvedValue(undefined),
+    renderCaptcha: vi.fn((_provider, _container, _siteKey, onToken) => {
+      // The real widget calls the callback with its token; the mock has to do the
+      // same, or the sign-in screen never learns that there is an answer to send.
+      onToken("token-from-widget");
+      return "widget-1";
+    }),
+    removeCaptcha: vi.fn(),
+    resetCaptcha: vi.fn(),
+  };
+});
 
 const mockedApi = vi.mocked(api);
 const mockedSetStoredUser = vi.mocked(setStoredUser);
@@ -142,6 +167,55 @@ describe("login page", () => {
       expect(mockedApi.login).toHaveBeenCalledWith({
         email: "ahmed@example.com",
         password: "SecurePass123!",
+        // There is no verification yet: the server has not asked for one.
+        captchaToken: null,
+      });
+    });
+  });
+
+  /**
+   * THE SERVER ASKS FOR A VERIFICATION, AND THE READER IS SHOWN ONE.
+   *
+   * The server refuses a sign-in that is under a watch with a 401 and a body naming the
+   * provider and the site key. The refusal used to be shown as "that password is wrong",
+   * which sent the reader looking for a typo instead of a verification — and the sign-in
+   * could not be completed at all, because there was no way to answer the server.
+   */
+  it("draws the verification the server asks for, and sends the token", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.login.mockRejectedValueOnce(
+      new ApiError("CAPTCHA verification required", 401, {
+        captchaRequired: true,
+        captchaProvider: "turnstile",
+        captchaSiteKey: "site-key-1",
+        endsSession: false,
+      }),
+    );
+    renderWithProviders(<LoginPage />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    // The widget is drawn, with the provider and the key the server named.
+    await waitFor(() => {
+      expect(renderCaptcha).toHaveBeenCalledWith(
+        "turnstile",
+        expect.anything(),
+        "site-key-1",
+        expect.any(Function),
+      );
+    });
+    expect(screen.getByText(authStrings.captchaLabel)).toBeInTheDocument();
+
+    // And the answer is sent with the next attempt.
+    mockedApi.login.mockResolvedValueOnce(AUTH_RESPONSE);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    await waitFor(() => {
+      expect(mockedApi.login).toHaveBeenLastCalledWith({
+        email: "ahmed@example.com",
+        password: "SecurePass123!",
+        captchaToken: "token-from-widget",
       });
     });
   });

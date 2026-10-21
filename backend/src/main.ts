@@ -191,6 +191,10 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
+      // A body that carries a RETIRED field is answered with a sentence that says what
+      // to send instead, rather than with "property paymentMethodId should not exist".
+      // Every other validation failure is reported exactly as the pipe reports it.
+      exceptionFactory: (await import('./common/validation/retired-fields.ts')).validationExceptionFactory,
     }),
   );
 

@@ -23,10 +23,21 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from "@/lib/preferences";
  * file, the sitemap and the link previews name the host the reader is on
  * instead of a second, different one.
  *
- * IT IS READ AT BUILD TIME. `robots.txt` is a prerendered route — its body is
- * written into the image when the app is built — so the variable has to be
- * present in the build environment, not only in the running container. A
- * deployment that wants a different origin rebuilds the image with it.
+ * IT IS READ WHEN THE IMAGE IS BUILT, AND NOT AT REQUEST TIME. `robots.txt`
+ * is a prerendered route — its body is written into the image when the app is
+ * built — so the variable has to be present in the build environment, not only
+ * in the running container. A deployment that wants a different origin
+ * rebuilds the image with it.
+ *
+ * AND A DYNAMIC ROUTE THAT READS IT IS NOT READING IT LIVE. This is a
+ * constant, and `NEXT_PUBLIC_*` is INLINED by the compiler when the image is
+ * built, so a route rendered per request — the sitemap, the link previews —
+ * names the origin the IMAGE was built with, not the one the container
+ * happens to be configured with. That is deliberate: one origin, agreed at
+ * build time, is better than two that disagree. A deployment that sets
+ * `NEXT_PUBLIC_APP_URL` only in the running container gets the default here,
+ * and the honest fix is to pass the public variables at build time — which is
+ * what the Dockerfile and the CI workflows do.
  */
 export const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://app.hakawi.com").replace(
   /\/+$/,

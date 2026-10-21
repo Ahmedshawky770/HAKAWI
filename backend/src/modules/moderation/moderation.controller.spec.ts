@@ -8,6 +8,8 @@ import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { MfaGuard } from "../../common/guards/mfa.guard.ts";
+import { MfaService } from "../../modules/auth/mfa.service.ts";
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
 import { RolesGuard } from '../../common/guards/roles.guard.ts';
@@ -111,6 +113,19 @@ describe('ModerationController', () => {
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,
+        MfaGuard,
+        // `SECURED_GUARDS` composes `MfaGuard`, which reads the account's admin role to
+        // find out whether a second factor has to be presented. This module is hand-built
+        // rather than importing `CommonModule`, so the reader has to be provided here —
+        // the alternative is the whole suite failing at DI resolution.
+        {
+          provide: MfaService,
+          useValue: {
+            shouldEnforceMfa: vi.fn().mockResolvedValue(false),
+            isMfaEnabled: vi.fn().mockResolvedValue(false),
+            verifyToken: vi.fn().mockResolvedValue({ verified: false }),
+          },
+        },
         RestrictionGuard,
         {
           provide: Reflector,

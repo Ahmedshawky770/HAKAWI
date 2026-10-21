@@ -14,9 +14,23 @@ describe("ErrorMessage", () => {
     expect(screen.getByText("تعذر تحميل القصة")).toBeInTheDocument();
   });
 
-  it("renders the message of an Error instance", () => {
-    renderWithProviders(<ErrorMessage error={new Error("فشل الاتصال بالخادم")} />);
-    expect(screen.getByText("فشل الاتصال بالخادم")).toBeInTheDocument();
+  /**
+   * THE PROP IS A SENTENCE, AND ONLY A SENTENCE.
+   *
+   * It used to accept an `Error` and read `error.message` from it — and the
+   * message of a failure that came from the API IS the server's own wording,
+   * in English, in a product that may be in Arabic. Every call site that
+   * passed a caught error put "Invalid email or password" on the screen. The
+   * failures are classified and translated first (see `lib/errors.ts`), and
+   * what arrives here is already a sentence the reader can read. The type
+   * says so, so the next call site cannot get it wrong.
+   */
+  it("does not accept a raw error, so the server's wording cannot reach the screen", () => {
+    // The type says `string | null`, and `tsc` enforces it. This is the
+    // runtime half: even when a raw error is forced past the type, its
+    // message — the server's own English wording — is not what is rendered.
+    const forced = new Error("Invalid email or password") as unknown as string;
+    expect(() => renderWithProviders(<ErrorMessage error={forced} />)).toThrow();
   });
 
   it("labels the banner with a heading in the product's language", () => {
@@ -34,9 +48,9 @@ describe("ErrorMessage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("تعذر تحميل القصة");
   });
 
-  it("announces the alert for an Error instance too", () => {
-    renderWithProviders(<ErrorMessage error={new Error("فشل الاتصال بالخادم")} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("فشل الاتصال بالخادم");
+  it("announces the alert with the reader's own sentence", () => {
+    renderWithProviders(<ErrorMessage error="تعذّر الاتصال بالإنترنت" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("تعذّر الاتصال بالإنترنت");
   });
 
   it("hides the decorative icon from assistive technology", () => {
@@ -69,8 +83,8 @@ describe("ErrorMessage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("renders nothing at all for an Error with an empty message", () => {
-    renderWithProviders(<ErrorMessage error={new Error("")} />);
+  it("renders nothing at all for an empty sentence", () => {
+    renderWithProviders(<ErrorMessage error="" />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 

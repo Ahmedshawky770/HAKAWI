@@ -100,12 +100,21 @@ export interface MessageUserResponse {
   name: string;
 }
 
+/**
+ * WHAT THE API ACTUALLY ANSWERS WITH.
+ *
+ * The type used to describe a shape the API never returned: a `participant1` and a
+ * `participant2` that were OBJECTS. The API answers the two participant IDS, and it has
+ * always done so — the repository type is `participant1Id` and `participant2Id`, and the
+ * service hands that row back unchanged. The type was never exercised, because the e2e
+ * suite could not run: the application refused to start, so the assertion on it was
+ * never reached.
+ */
 export interface ConversationResponse {
   id: string;
-  participant1: MessageUserResponse;
-  participant2: MessageUserResponse;
-  lastMessage: MessageResponse | null;
-  updatedAt: string;
+  participant1Id: string;
+  participant2Id: string;
+  lastMessageAt: string | null;
   createdAt: string;
 }
 

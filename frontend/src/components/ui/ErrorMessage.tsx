@@ -7,7 +7,18 @@ import { Icon } from "./Icon";
 import { useStrings } from "@/components/providers/LocaleProvider";
 
 interface ErrorMessageProps {
-  error: string | Error | null;
+  /**
+   * THE SENTENCE, AS A STRING.
+   *
+   * The prop used to accept an `Error` and read `error.message` from it — and
+   * the message of a failure that came from the API IS the server's own
+   * wording, in English, in a product that may be in Arabic. Every call site
+   * that passed a caught error therefore put "Invalid email or password" on
+   * the screen. The failures are classified and translated first (see
+   * `lib/errors.ts`), and what arrives here is already a sentence the reader
+   * can read. The type says so, so the next call site cannot get it wrong.
+   */
+  error: string | null;
   onRetry?: () => void;
   /** Overridable so a shared component can be labelled by its context. */
   title?: string;
@@ -33,7 +44,7 @@ export function ErrorMessage({
   const { common } = useStrings();
   const resolvedTitle = title ?? common.errorTitle;
   const resolvedRetryLabel = retryLabel ?? common.retry;
-  const message = error instanceof Error ? error.message : error;
+  const message = error;
 
   if (!message) return null;
 

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { registerAs } from '@nestjs/config';
 import { z } from 'zod';
 
@@ -114,14 +115,39 @@ const MIN_WEBHOOK_SECRET_LENGTH = 32;
  *
  * A blank value means "not configured" for the same reason an unset one does: a deployment that
  * exports the variable empty has not configured it, and must not be answered with a boot failure.
+ *
+ * AND WHY A MALFORMED VALUE IS ALSO "NOT CONFIGURED". The value used to be checked with a hard
+ * `refine()`, so a typo — "card" where a number belongs — stopped the WHOLE application from
+ * starting, over an optional convenience, and the operator was told "must be a positive integer id"
+ * without being told WHICH VARIABLE. That is the outage the paragraph above refuses to create. A
+ * malformed value is now reported loudly and then treated as absent: the feature is off, and
+ * everything else keeps working.
  */
-const paymentMethodIdSchema = z
-  .string()
-  .optional()
-  .transform((value) => (value === undefined || value.trim().length === 0 ? undefined : value.trim()))
-  .refine((value) => value === undefined || /^[1-9]\d*$/.test(value), {
-    message: 'must be a positive integer id',
-  });
+const PAYMENT_METHOD_ID_PATTERN = /^[1-9]\d*$/;
+
+/** The logger the two optional values report through. */
+const configLogger = new Logger('PaymobConfig');
+
+/**
+ * One optional payment method id, read leniently.
+ *
+ * The value is either a positive integer or it is nothing: there is no third
+ * answer, and no answer that stops the application from starting.
+ */
+function readPaymentMethodId(raw: string | undefined, name: string): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  if (!PAYMENT_METHOD_ID_PATTERN.test(trimmed)) {
+    configLogger.warn(
+      `${name}="${raw}" is not a positive integer id. It is IGNORED, so the gateway will ask the ` +
+        'customer to choose the instrument inside the payment frame. Set it to the numeric id from ' +
+        'the Paymob dashboard to enable the reader\'s choice.',
+    );
+    return undefined;
+  }
+  return trimmed;
+}
 
 /**
  * An unset variable and a blank one mean the same thing, and both mean "not configured".
@@ -146,8 +172,6 @@ const envSchema = z
     PAYMOB_INTEGRATION_ID: z.string().min(1, 'PAYMOB_INTEGRATION_ID must be set').default('sandbox-integration-id'),
     PAYMOB_SANDBOX_INTEGRATION_ID: z.string().min(1).optional(),
     PAYMOB_WEBHOOK_SECRET: webhookSecretSchema,
-    PAYMOB_CARD_PAYMENT_METHOD_ID: paymentMethodIdSchema,
-    PAYMOB_WALLET_PAYMENT_METHOD_ID: paymentMethodIdSchema,
     PAYMOB_BASE_URL: z.string().url('PAYMOB_BASE_URL must be an absolute URL').optional(),
     PAYMOB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
     PAYMOB_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(8_000),
@@ -275,10 +299,12 @@ export function resolvePaymobConfig(env: NodeJS.ProcessEnv = process.env): Paymo
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
     // WHY not the raw ZodError: a boot failure has to be readable in the first line of a log an
-    // operator sees, and ZodError's message is a JSON dump of its issue list.
+    // operator sees, and ZodError's message is a JSON dump of its issue list. The PATH is in the
+    // message too, so the operator is told which VARIABLE to fix: every other rule in this file
+    // names its variable, and one that did not was the reason a malformed value was hard to find.
     throw new Error(
       `Refusing to start with an unsafe Paymob configuration: ${parsed.error.issues
-        .map((issue) => issue.message)
+        .map((issue) => `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${issue.message}`)
         .join(' ')}`,
     );
   }
@@ -310,8 +336,11 @@ export function resolvePaymobConfig(env: NodeJS.ProcessEnv = process.env): Paymo
       PAYMOB_AUTH_TOKEN_LIFETIME_SECONDS - 60,
     ),
     retryMaxAttempts: parsed.data.PAYMOB_RETRY_MAX_ATTEMPTS,
-    cardPaymentMethodId: parsed.data.PAYMOB_CARD_PAYMENT_METHOD_ID,
-    walletPaymentMethodId: parsed.data.PAYMOB_WALLET_PAYMENT_METHOD_ID,
+    cardPaymentMethodId: readPaymentMethodId(env.PAYMOB_CARD_PAYMENT_METHOD_ID, 'PAYMOB_CARD_PAYMENT_METHOD_ID'),
+    walletPaymentMethodId: readPaymentMethodId(
+      env.PAYMOB_WALLET_PAYMENT_METHOD_ID,
+      'PAYMOB_WALLET_PAYMENT_METHOD_ID',
+    ),
   };
 }
 

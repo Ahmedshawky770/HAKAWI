@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 import { getStoredUser, type StoredUser } from "@/lib/api";
+import { onSessionChanged } from "@/lib/session-events";
 
 /**
  * The session, read the one way a React component is allowed to read it.
@@ -49,32 +50,23 @@ const USER_STORAGE_KEY = "hakawi_user";
 /**
  * THE SNAPSHOT HAS TO BE THE SAME OBJECT, OR REACT NEVER STOPS RENDERING.
  *
- * `getStoredUser()` parses the stored JSON on every call, so it hands back a
- * NEW object every time it is called. `useSyncExternalStore` compares the
- * snapshot it is given against the last one with `Object.is`, and a new
- * object every time is a change every time: React renders, reads the
- * snapshot, sees a different object, and renders again — forever. So the
- * parsed user is kept here and handed back unchanged for as long as the
- * session it describes is unchanged.
- */
-let cachedUser: StoredUser | null = null;
-let cachedKey: string | null = null;
-
-/**
- * The session, as the store sees it.
+ * `useSyncExternalStore` compares the snapshot it is given against the last one
+ * with `Object.is`, and a new object every time is a change every time: React
+ * renders, reads the snapshot, sees a different object, and renders again —
+ * forever.
  *
- * THE SESSION IS COMPARED BY ITS CONTENT AND NOT BY ITS IDENTITY. The same
- * session parses into a new object every time it is read, and a session that
- * CHANGED is a different session even when it was read by the same call — so
- * the comparison is over the fields the session is made of.
+ * The identity is kept by the READ itself: `getStoredUser` compares the raw
+ * stored value and hands back the same parsed object for as long as the
+ * session it describes is unchanged. So the snapshot is simply that object,
+ * and the comparison React makes is against the same one it saw last time.
+ *
+ * The parse is done once as well, and not on every read: the raw value is one
+ * `getItem` away from the parsed one, and the parse costs a `JSON.parse` and a
+ * schema validation — work that was being redone at least twice per render,
+ * for every component that reads the session.
  */
 function getSnapshot(): StoredUser | null {
-  const user = getStoredUser();
-  const key = user === null ? null : JSON.stringify(user);
-  if (key === cachedKey) return cachedUser;
-  cachedKey = key;
-  cachedUser = user;
-  return cachedUser;
+  return getStoredUser();
 }
 
 /**
@@ -90,7 +82,7 @@ function getServerSnapshot(): StoredUser | null {
 }
 
 /**
- * THE OTHER TABS.
+ * THE OTHER TABS, AND THIS ONE.
  *
  * A sign-in or a sign-out in ANOTHER tab writes the `hakawi_user` key, and the
  * browser tells every OTHER tab about it with a `storage` event on `window`.
@@ -99,11 +91,13 @@ function getServerSnapshot(): StoredUser | null {
  * laptop until they reloaded it — the one place the session is a fact about
  * the BROWSER and not about the tab.
  *
- * The event does NOT fire in the tab that made the change, and it does not
- * have to: a sign-in or a sign-out in THIS tab is followed by a navigation
- * (the login page pushes the home route, the logout button pushes the login
- * route), and the navigation renders the page again, which reads the store
- * again. The subscription is for the case that has no navigation of its own.
+ * THE EVENT DOES NOT FIRE IN THE TAB THAT MADE THE CHANGE, so this tab needs
+ * its own signal. There is one: `lib/api.ts` announces every write to the
+ * stored session — a sign-in, a sign-out, a 401 that wiped it — and this
+ * module listens to it. The subscription used to rely on the navigation that
+ * follows a sign-in, which is true of the sign-in screen and false of every
+ * other path: a 401 that ends the session does not navigate on its own, and
+ * the header kept showing the reader who was just signed out.
  */
 function subscribe(onStoreChange: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
@@ -114,7 +108,11 @@ function subscribe(onStoreChange: () => void): () => void {
   };
 
   window.addEventListener("storage", onStorage);
-  return () => window.removeEventListener("storage", onStorage);
+  const unsubscribe = onSessionChanged(onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    unsubscribe();
+  };
 }
 
 /**

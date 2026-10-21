@@ -20,6 +20,7 @@ import { USERS_REPOSITORY } from '../../modules/users/interfaces/users-repositor
 import { UsersRepository } from '../../modules/users/repositories/users.repository.ts';
 import { db } from '../../db/index.ts';
 
+import { totpCode } from './totp.ts';
 import { currentTestDatabase } from './test-database-scope.ts';
 import { cleanValkey } from './test-isolation.util.ts';
 
@@ -103,6 +104,8 @@ export interface TestContext {
   login(email: string, password?: string): Promise<AuthTokens>;
   registerAndLogin(options?: RegisterUserOptions): Promise<TestUser>;
   promoteToAdmin(userId: string, adminRole?: AdminRole): Promise<void>;
+  /** Turn the second factor on for the account, and return a code generator for it. */
+  enableMfa(accessToken: string): Promise<() => string>;
   createCategory(accessToken: string, options?: { name?: string; slug?: string }): Promise<CategoryResponseBody>;
   createStory(accessToken: string, options?: CreateStoryOptions): Promise<StoryResponseBody>;
   countRows(table: CountableTable): Promise<number>;
@@ -233,6 +236,37 @@ export async function createTestContext(overrides: TestContextOverrides = {}): P
     return { ...user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   };
 
+  /**
+   * TURN THE SECOND FACTOR ON, AND HAND BACK A CODE GENERATOR.
+   *
+   * The routes that ask for a second factor now really ask for one, so a test that
+   * reaches one has to present one. This walks the real flow over HTTP — the setup
+   * endpoint, a TOTP code generated from the secret it returned, and the verification
+   * that turns MFA on — rather than writing the row directly, so the test exercises
+   * what a reader does.
+   *
+   * The returned function produces a FRESH code each time it is called: a TOTP code is
+   * good for one window, and a test that reuses one would be testing the clock rather
+   * than the flow.
+   */
+  const enableMfa = async (accessToken: string): Promise<() => string> => {
+    const setup = await request(httpServer)
+      .post('/auth/mfa/setup')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const secret = (setup.body as { secret: string }).secret;
+
+    const code = (): string => totpCode(secret);
+
+    await request(httpServer)
+      .post('/auth/mfa/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ token: code() })
+      .expect(200);
+
+    return code;
+  };
+
   const promoteToAdmin = async (userId: string, adminRole: AdminRole = AdminRole.SUPER_ADMIN): Promise<void> => {
     await db.execute(sql`
       UPDATE users
@@ -295,6 +329,7 @@ export async function createTestContext(overrides: TestContextOverrides = {}): P
     registerUser,
     login,
     registerAndLogin,
+    enableMfa,
     promoteToAdmin,
     createCategory,
     createStory,

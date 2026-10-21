@@ -15,6 +15,8 @@ import { AccountRestrictionService } from '../services/account-restriction.servi
 import { WinstonLoggerService } from '../services/winston-logger.service.ts';
 import { Secured } from '../decorators/secured.decorator.ts';
 import { Permission } from '../permissions/permissions.ts';
+import { MfaGuard } from "../../common/guards/mfa.guard.ts";
+import { MfaService } from "../../modules/auth/mfa.service.ts";
 
 import { JwtAuthGuard } from './jwt-auth.guard.ts';
 import { PermissionsGuard } from './permissions.guard.ts';
@@ -95,6 +97,19 @@ describe('RolesGuard over HTTP', () => {
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,
+        MfaGuard,
+        // `SECURED_GUARDS` composes `MfaGuard`, which reads the account's admin role to
+        // find out whether a second factor has to be presented. This module is hand-built
+        // rather than importing `CommonModule`, so the reader has to be provided here —
+        // the alternative is the whole suite failing at DI resolution.
+        {
+          provide: MfaService,
+          useValue: {
+            shouldEnforceMfa: vi.fn().mockResolvedValue(false),
+            isMfaEnabled: vi.fn().mockResolvedValue(false),
+            verifyToken: vi.fn().mockResolvedValue({ verified: false }),
+          },
+        },
         {
           provide: JwtService,
           useValue: jwtService,

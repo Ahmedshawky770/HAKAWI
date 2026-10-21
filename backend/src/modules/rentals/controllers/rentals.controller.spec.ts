@@ -3,10 +3,12 @@ import type { Server } from 'node:http';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
+import { validationExceptionFactory } from '../../../common/validation/retired-fields.ts';
 import { AccountRestrictionService } from '../../../common/services/account-restriction.service.ts';
 import { ValkeyService } from '../../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -118,6 +120,23 @@ describe('RentalsController', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    // THE SAME VALIDATION THE APPLICATION USES.
+    //
+    // Without the global pipe the DTO is never checked, so a body carrying an
+    // instrument that is not one of the two would be accepted and the route
+    // would answer 200 — which is exactly the defect the closed vocabulary
+    // exists to prevent. The pipe is the production one, not a test-only one.
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+        transformOptions: { enableImplicitConversion: true },
+        // The production factory, so a body carrying a RETIRED field is answered with
+        // what to send instead — the same sentence the running application gives.
+        exceptionFactory: validationExceptionFactory,
+      }),
+    );
     await app.init();
   });
 
@@ -191,7 +210,65 @@ describe('RentalsController', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('id', 'extension-1');
-      expect(rentalsService.extendRental).toHaveBeenCalledWith('rental-1', 7, 'user-1');
+      // The reader's CHOICE of instrument travels with the extension: an extension is a
+      // payment, and it used to be the one path that asked the reader nothing and then
+      // told the gateway nothing either.
+      expect(rentalsService.extendRental).toHaveBeenCalledWith('rental-1', 7, 'user-1', undefined);
+    });
+
+    it('carries the reader\'s choice of instrument', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      vi.mocked(rentalsService.extendRental).mockResolvedValue(makeExtensionCheckout());
+
+      await request(app.getHttpServer())
+        .post('/rentals/rental-1/extend')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ extensionDays: 7, paymentMethod: 'wallet' })
+        .expect(200);
+
+      expect(rentalsService.extendRental).toHaveBeenCalledWith('rental-1', 7, 'user-1', 'wallet');
+    });
+
+    it('refuses an instrument that is not one of the two', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      await request(app.getHttpServer())
+        .post('/rentals/rental-1/extend')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ extensionDays: 7, paymentMethod: 'pm_123' })
+        .expect(400);
+
+      expect(rentalsService.extendRental).not.toHaveBeenCalled();
+    });
+
+    /**
+     * THE RETIRED FIELD IS ANSWERED WITH WHAT TO SEND INSTEAD.
+     *
+     * `paymentMethodId` was a free-form string the client was supposed to already know,
+     * and it was replaced by `paymentMethod` — the reader's CHOICE, which the server
+     * resolves to this merchant's Paymob method id. The old name was accepted and
+     * ignored for one release so that a client that had not been redeployed yet would
+     * keep working; the release has passed.
+     *
+     * So the body is a malformed body — and the answer says what to send, rather than
+     * "property paymentMethodId should not exist", which is a fact about the request and
+     * says nothing about the request the client SHOULD have made.
+     */
+    it('names the retired field and what replaced it', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      const res = await request(app.getHttpServer())
+        .post('/rentals/rental-1/extend')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ extensionDays: 7, paymentMethodId: 'pm_123' })
+        .expect(400);
+
+      const body = res.body as { message: string };
+      expect(body.message).toContain('paymentMethod');
+      expect(body.message).toContain('card');
+      expect(body.message).not.toContain('should not exist');
+      expect(rentalsService.extendRental).not.toHaveBeenCalled();
     });
   });
 

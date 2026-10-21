@@ -15,6 +15,7 @@ import {
   STORY_RECORD,
 } from "@/test-utils/fixtures";
 import { api, clearStoredUser, getStoredRefreshToken, getStoredUser, onSessionLost, setStoredUser, type StoredUser } from "@/lib/api";
+import { registerMfaCodeRequester } from "@/lib/mfa-step-up";
 import { ApiError } from "@/lib/errors";
 import { countResultSchema, messageOnlySchema } from "@/lib/schemas";
 
@@ -107,6 +108,187 @@ describe("api client request handling", () => {
     fetchMock.mockResolvedValue(jsonResponse({ count: 3 }, 401));
 
     await expect(api.request(countResultSchema, "/library/count")).rejects.toThrow("Unauthorized");
+  });
+
+  /**
+   * A REFUSED SIGN-IN MUST NOT DESTROY THE SESSION THAT IS WORKING.
+   *
+   * Every 401 used to clear the stored session — the reader AND the refresh
+   * token — and to announce the loss of the session. The 401 that answers a
+   * wrong password is a fact about the ATTEMPT, not about the session the
+   * reader already has, and it went through the same handler as the 401 that
+   * answers a dead session.
+   *
+   * So a reader who opened the sign-in screen to switch accounts, mistyped
+   * their password, and went back to what they were doing lost the session
+   * they were doing it in — and was evicted a quarter of an hour later, with
+   * no way to refresh the token and no way back in.
+   *
+   * The rule now: a request that ESTABLISHES a session cannot end one. The
+   * verdict travels on the error, so there is one answer and not two.
+   */
+  it("keeps the stored session when a sign-in is refused", async () => {
+    setStoredUser(STORED_USER);
+    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid email or password" }, 401));
+
+    await expectRejection(api.login({ email: "a@b.c", password: "wrong" }), "Invalid email or password");
+
+    expect(getStoredUser()).toEqual(STORED_USER);
+    expect(window.localStorage.getItem("hakawi_tokens")).not.toBeNull();
+  });
+
+  it("keeps the stored session when a sign-up is refused", async () => {
+    setStoredUser(STORED_USER);
+    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Email already exists" }, 409));
+
+    await expect(api.register({ email: "a@b.c", password: "p", name: "n", username: "u" })).rejects.toThrow();
+
+    expect(getStoredUser()).toEqual(STORED_USER);
+    expect(window.localStorage.getItem("hakawi_tokens")).not.toBeNull();
+  });
+
+  it("does not announce the loss of the session when a sign-in is refused", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid email or password" }, 401));
+    const heard = vi.fn();
+    const stop = onSessionLost(heard);
+
+    await expect(api.login({ email: "a@b.c", password: "wrong" })).rejects.toThrow();
+    expect(heard).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  /**
+   * THE VERDICT IS RECORDED ON THE ERROR, SO THAT NOBODY DERIVES IT AGAIN.
+   *
+   * The guard used to ask the classifier a second time whether the session
+   * was over, and the two answers could disagree: the client announced the
+   * loss of a session for EVERY 401, while the guard accepted only the
+   * failures the classifier called `sessionExpired`. So a 401 the server
+   * worded "Account has been disabled" was announced as a lost session and
+   * then judged not to be one.
+   */
+  it("records on the failure whether the session ended", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid or expired token" }, 401));
+
+    const failure = await api.request(countResultSchema, "/library/count").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).endsSession).toBe(true);
+  });
+
+  it("records on the failure that a refused sign-in did not end the session", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid email or password" }, 401));
+
+    const failure = await api.login({ email: "a@b.c", password: "wrong" }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).endsSession).toBe(false);
+  });
+
+  /**
+   * THE SERVER'S WORDING IS READ FIELD BY FIELD.
+   *
+   * The body used to be parsed as ONE schema, so a single malformed field — a
+   * `details` array of strings instead of objects, a `message` object without
+   * a string inside it — failed the whole parse and the server's wording was
+   * lost. That is the same defect one level down from the one this file
+   * already fixed: the wording is what the classifier reads, and a lost
+   * wording is a failure called "unknown".
+   */
+  it("keeps the server's wording when another field of the body is malformed", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: "Invalid email or password", details: ["not an object"] }, 401),
+    );
+
+    await expectRejection(api.request(countResultSchema, "/library/count"), "Invalid email or password");
+  });
+
+  it("keeps the server's wording when the details are objects", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: "Bad Request", details: [{ field: "email", message: "email must be an email" }] }, 400),
+    );
+
+    await expectRejection(api.request(countResultSchema, "/library/count"), "email must be an email");
+  });
+
+  it("reads the server's wording out of a message object", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: { message: "CAPTCHA verification required" } }, 401));
+
+    await expectRejection(api.request(countResultSchema, "/library/count"), "CAPTCHA verification required");
+  });
+
+  /**
+   * A SECOND FACTOR, NOT A LOST SESSION.
+   *
+   * The routes that demand one refuse the request with a 401, and a 401 has always meant
+   * "the session is over". Read that way, a reader who wanted to do something needing a
+   * code from their phone was told their session had ended and was thrown to the sign-in
+   * screen — for a session that was alive and well.
+   *
+   * So the reader is asked for the code and the request is made again, with the code in
+   * the header the API reads.
+   */
+  it("asks for a second factor and makes the request again with it", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ message: "MFA challenge required", code: "MFA_CHALLENGE_REQUIRED" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ count: 3 }));
+
+    const stop = registerMfaCodeRequester(async () => "123456");
+
+    const result = await api.request(countResultSchema, "/library/count");
+
+    expect(result).toEqual({ count: 3 });
+    // The second request carried the code, in the header the guard reads.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondHeaders = fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(secondHeaders["X-MFA-Token"]).toBe("123456");
+
+    stop();
+  });
+
+  it("does not treat a second-factor refusal as the end of the session", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: "MFA challenge required", code: "MFA_CHALLENGE_REQUIRED" }, 401),
+    );
+
+    const stop = registerMfaCodeRequester(async () => null);
+    const failure = await api.request(countResultSchema, "/library/count").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).endsSession).toBe(false);
+    expect((failure as ApiError).mfaChallenge).toBe(true);
+
+    stop();
+  });
+
+  it("makes the request only ONCE with a second factor", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: "MFA challenge required", code: "MFA_CHALLENGE_REQUIRED" }, 401),
+    );
+
+    const stop = registerMfaCodeRequester(async () => "123456");
+    await api.request(countResultSchema, "/library/count").catch(() => undefined);
+
+    // The first attempt was refused for want of a code, and the second was refused
+    // again — so there is no third: a reader who typed a wrong code is told so, and
+    // the client does not keep asking.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    stop();
+  });
+
+  it("records that a refusal was waiting for a captcha", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: "CAPTCHA verification required", captchaRequired: true }, 401),
+    );
+
+    const failure = await api.login({ email: "a@b.c", password: "wrong" }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).captchaRequired).toBe(true);
   });
 
   /**

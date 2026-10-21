@@ -385,6 +385,26 @@ export const ModerationContentRemovedSchema = z.object({
  * `Date` comes back from that round trip as a string. `z.coerce.date()` reads
  * both, so a replayed event is not rejected by the shape of its own timestamp.
  */
+/**
+ * A TIMESTAMP THAT MUST ACTUALLY BE A TIMESTAMP.
+ *
+ * `z.coerce.date()` turns `null` into the EPOCH — `new Date(null)` is
+ * 1970-01-01 — and it turns `undefined` into an invalid date, which Zod
+ * rejects. So a payload whose `expiresAt` was `null` was accepted as a grant
+ * that expired fifty-five years ago. A break-glass grant that reads as
+ * expired is a grant nobody can use, and a consumer that only asks "is this
+ * still in force" would say no to a role the operator believes they hold for
+ * the next fifteen minutes.
+ *
+ * `null` and `undefined` are therefore refused, and the refusal is a SCHEMA
+ * failure rather than a silent coercion: a payload that cannot be understood
+ * is one the dead-letter queue should see.
+ */
+const requiredTimestamp = z.preprocess(
+  (value) => (value === null || value === undefined ? Number.NaN : value),
+  z.coerce.date(),
+);
+
 export const AdminRoleAssignedSchema = z.object({
   userId: z.string(),
   adminRole: z.string(),
@@ -405,7 +425,7 @@ export const AdminRoleBreakGlassSchema = z.object({
   adminRole: z.string(),
   invokedBy: z.string(),
   reason: z.string(),
-  expiresAt: z.coerce.date(),
+  expiresAt: requiredTimestamp,
   durationMinutes: z.number(),
 });
 

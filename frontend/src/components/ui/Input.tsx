@@ -2,7 +2,17 @@ import React from "react";
 
 import { controlClassName, describedBy, Field, type FieldProps } from "./Field";
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement>, FieldProps {}
+/**
+ * `ref` is declared here rather than left to `React.RefAttributes`.
+ *
+ * React 19 makes `ref` an ordinary prop, and this component spreads the rest of its
+ * props onto the `<input>` — so a `ref` reaches the control. But the props type did not
+ * say so, and a caller that wanted to move the focus into the field (the second-factor
+ * prompt, which asks for a code and wants the caret in the box) could not type it.
+ */
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement>, FieldProps {
+  ref?: React.Ref<HTMLInputElement>;
+}
 
 /**
  * The text input.

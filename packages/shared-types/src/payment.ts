@@ -12,7 +12,26 @@ export type Payment = {
   amount: number;
   currency: string;
   status: string;
+  /**
+   * THE GATEWAY. Every Paymob payment says "paymob", which says nothing about how the
+   * reader is paying.
+   */
   paymentMethod: string;
+  /**
+   * THE INSTRUMENT THE READER CHOSE — "card" or "wallet".
+   *
+   * `null` when there is no choice to report: a payment made before the choice existed,
+   * or one where the gateway let the customer choose inside the frame because the
+   * merchant had configured no id for either instrument.
+   *
+   * OPTIONAL, and that is a contract decision rather than an accident. The API and the
+   * app are deployed independently, so for the length of a rolling deploy there are
+   * OLD pods that do not send this field and NEW clients that read it. A required
+   * field would make the payment list fail to parse against an old pod — a broken
+   * screen for a fact nobody is waiting for. An optional field is read as "not
+   * reported" and the client carries on.
+   */
+  instrument?: string | null;
   paymobOrderId: string | null;
   paymobPaymentId: string | null;
   paymobTransactionId: string | null;

@@ -285,6 +285,57 @@ describe('event-schemas', () => {
 
       expect(result.success).toBe(false);
     });
+
+    /**
+     * A NULL EXPIRY IS NOT THE EPOCH.
+     *
+     * `z.coerce.date()` turns `null` into the EPOCH — `new Date(null)` is
+     * 1970-01-01 — and it turns `undefined` into an invalid date, which Zod
+     * rejects. So a break-glass whose `expiresAt` was null was accepted as a
+     * grant that expired fifty-five years ago: a break-glass that reads as
+     * expired is a grant nobody can use, and a consumer that only asks "is
+     * this still in force" would say no to a role the operator believes they
+     * hold for the next fifteen minutes.
+     */
+    it('should refuse a break-glass whose expiry is null', () => {
+      const result = AdminRoleBreakGlassSchema.safeParse({
+        userId: 'user-1',
+        adminRole: 'financial_officer',
+        invokedBy: 'user-1',
+        reason: 'an incident needed the role',
+        expiresAt: null,
+        durationMinutes: 15,
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should refuse a break-glass whose expiry is missing', () => {
+      const result = AdminRoleBreakGlassSchema.safeParse({
+        userId: 'user-1',
+        adminRole: 'financial_officer',
+        invokedBy: 'user-1',
+        reason: 'an incident needed the role',
+        durationMinutes: 15,
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should still accept an assignment with no expiry at all', () => {
+      // An ordinary grant does not expire, and "no expiry" is a different
+      // fact from "an expiry of the epoch". The assignment's expiry is
+      // nullable, and the null stays a null.
+      const result = AdminRoleAssignedSchema.safeParse({
+        userId: 'user-1',
+        adminRole: 'content_moderator',
+        assignedBy: 'admin-1',
+        reason: 'covering the moderator leave',
+        expiresAt: null,
+      });
+
+      expect(result.success).toBe(true);
+    });
   });
 
   describe('EVENT_SCHEMAS', () => {

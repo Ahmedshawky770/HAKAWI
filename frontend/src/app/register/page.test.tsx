@@ -197,7 +197,7 @@ describe("register page", () => {
 
   it("says a duplicate account in the reader's language, not the server's", async () => {
     const user = userEvent.setup({ delay: null });
-    mockedApi.register.mockRejectedValue(new Error("Email already registered"));
+    mockedApi.register.mockRejectedValue(new Error("Email already exists"));
     renderWithProviders(<RegisterPage />);
 
     await fillForm(user);
@@ -206,7 +206,7 @@ describe("register page", () => {
     // The server's English wording is a fact about the API. The reader is told
     // what it means for them, in their language.
     expect(await screen.findByText(/هذا البريد الإلكتروني مسجّل بالفعل/)).toBeInTheDocument();
-    expect(screen.queryByText("Email already registered")).not.toBeInTheDocument();
+    expect(screen.queryByText("Email already exists")).not.toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
   });
 
@@ -244,7 +244,7 @@ describe("register page", () => {
 
   it("clears a previous error when the form is submitted again", async () => {
     const user = userEvent.setup({ delay: null });
-    mockedApi.register.mockRejectedValueOnce(new Error("Email already registered"));
+    mockedApi.register.mockRejectedValueOnce(new Error("Email already exists"));
     renderWithProviders(<RegisterPage />);
 
     await fillForm(user);

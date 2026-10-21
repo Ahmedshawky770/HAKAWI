@@ -954,6 +954,26 @@ describe('BooksService', () => {
       // instrument question.
       expect(await messagesFor({})).toEqual([]);
     });
+
+    it('refuses a choice that is null rather than treating it as no choice', async () => {
+      // `@IsOptional` skips the check for `null` as well as for `undefined`, so a body that
+      // said `{"paymentMethod": null}` passed validation and stored a `null` — which is
+      // neither the word the reader chose nor the absence of a choice.
+      expect(await messagesFor({ paymentMethod: null })).not.toEqual([]);
+    });
+
+    it('no longer declares the retired field', () => {
+      // The field was accepted and ignored for one release, so that a client that had not
+      // been redeployed yet would keep working. The release has passed, and the field is
+      // gone.
+      //
+      // The REFUSAL is the global validation pipe's, not the DTO's: `forbidNonWhitelisted`
+      // is what answers a body that carries a property the DTO does not declare, and
+      // class-validator on its own never sees that. So the refusal is asserted where the
+      // pipe runs — `common/validation/retired-fields.spec.ts` and the rentals controller
+      // spec, which installs the production pipe.
+      expect('paymentMethodId' in new PurchaseBookDto()).toBe(false);
+    });
   });
 
   describe('rent', () => {

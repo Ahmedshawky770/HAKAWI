@@ -86,7 +86,9 @@ describe("auth callback page", () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
     renderWithProviders(<AuthCallbackPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid session");
+    // The server's English wording is a fact about the API; the reader is
+    // told what it means for them, in their language.
+    expect(await screen.findByRole("alert")).toHaveTextContent("انتهت جلستك. سجّل الدخول من جديد.");
   });
 
   it("requests the session exactly once per callback", async () => {
@@ -101,7 +103,7 @@ describe("auth callback page", () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
     renderWithProviders(<AuthCallbackPage />);
 
-    expect(await screen.findByText("Invalid session")).toBeInTheDocument();
+    expect(await screen.findByText("انتهت جلستك. سجّل الدخول من جديد.")).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockedSetStoredUser).not.toHaveBeenCalled();
   });
@@ -110,7 +112,7 @@ describe("auth callback page", () => {
     mockedApi.getSession.mockRejectedValue(new Error("Unauthorized"));
     renderWithProviders(<AuthCallbackPage />);
 
-    expect(await screen.findByText("Unauthorized")).toBeInTheDocument();
+    expect(await screen.findByText("انتهت جلستك. سجّل الدخول من جديد.")).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
   });
 
@@ -118,7 +120,7 @@ describe("auth callback page", () => {
     mockedApi.getSession.mockRejectedValue(new Error("Invalid session"));
     renderWithProviders(<AuthCallbackPage />);
 
-    await screen.findByText("Invalid session");
+    await screen.findByText("انتهت جلستك. سجّل الدخول من جديد.");
     expect(screen.queryByText("جاري إكمال تسجيل الدخول...")).not.toBeInTheDocument();
   });
 });

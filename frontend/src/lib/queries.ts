@@ -49,23 +49,27 @@ import type { StoriesListResponse, Story } from "@/types/api";
  * also make every caller responsible for a key it does not own.
  *
  * That is only safe because the cache is EMPTIED at the session boundaries,
- * and there are exactly two of them:
+ * and there are exactly three of them:
  *
- * - `app/login/page.tsx` calls `queryClient.clear()` after a successful
- *   sign-in — a sign-in can follow another session in the same tab, and the
- *   cache would still hold that reader's conversations, library and payments.
+ * - the sign-in and registration screens call `startSession` (`lib/session.ts`)
+ *   after a successful sign-in or sign-up — a sign-in can follow another
+ *   session in the same tab, and the cache would still hold that reader's
+ *   conversations, library and payments. The registration screen used to skip
+ *   this, and registering a second account in the same tab handed the second
+ *   reader the first reader's private lists.
  * - `components/layout/LogoutButton.tsx` calls `queryClient.clear()` on
  *   sign-out — the next reader of a shared machine must not be served the
  *   previous one's feed.
- *
- * (`app/providers.tsx` empties it a third time, for the session that ends by
- * itself — a revoked token, an expired refresh token.)
+ * - the session that ends by itself: the providers empty the queries nobody is
+ *   waiting for the moment it is announced (`app/providers.tsx`), and the
+ *   authenticated frame empties the rest once it has torn down the pages that
+ *   were reading it (`app/(app)/layout.tsx`).
  *
  * SO A KEY ADDED HERE IS A KEY THAT MUST NOT OUTLIVE THE SESSION THAT FILLED
  * IT. If the key holds the reader's own data, the answer is not a per-user key
- * to make it safe — the answer is that the two calls above empty the cache,
- * and they are the whole invariant. The keys below are short because the
- * cache is disposable, and they are only disposable because it is cleared.
+ * to make it safe — the answer is that the calls above empty the cache, and
+ * they are the whole invariant. The keys below are short because the cache is
+ * disposable, and they are only disposable because it is cleared.
  */
 
 /* -------------------------------------------------------------------------- */

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { readerMessage } from "@/lib/errors";
 import { messageOnlySchema } from "@/lib/schemas";
 import { LOGIN_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
@@ -54,7 +55,12 @@ export default function ResetPasswordPage() {
         router.push(LOGIN_ROUTE);
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : strings.auth.resetError);
+      // The server's wording is a fact about the API, in English, inside an
+      // interface that may be Arabic — so the failure is classified and said
+      // in the reader's language. A link that has expired is the common case
+      // here, and the reader is told THAT rather than being shown the
+      // server's sentence.
+      setError(readerMessage(err, strings.errors, strings.auth.resetError));
     } finally {
       setLoading(false);
     }

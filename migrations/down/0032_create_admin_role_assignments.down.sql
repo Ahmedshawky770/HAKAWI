@@ -1,3 +1,2 @@
--- Migration 0032 down: Drop admin_role_assignments table
-
+-- hakawi:down reversibility=reversible data-loss=rows reason=Drops the admin_role_assignments table. The rows in it are the history of who was granted which administrative role, and losing it means an audit of past grants is gone. That is acceptable for a rollback because the grants themselves are reproducible from the users table, which keeps each account's current role.
 DROP TABLE IF EXISTS admin_role_assignments CASCADE;

@@ -11,6 +11,7 @@ import {
   Max,
   Matches,
   IsNumber,
+  ValidateIf,
   Min as MinNumber,
 } from 'class-validator';
 
@@ -183,6 +184,24 @@ export class BooksQueryDto {
   limit?: number;
 }
 
+/**
+ * THE READER'S CHOICE OF INSTRUMENT, DECLARED ONCE.
+ *
+ * `@ValidateIf` rather than `@IsOptional`, and the difference matters:
+ * `@IsOptional` skips the check when the value is `null` OR `undefined`, so a
+ * body that says `{"paymentMethod": null}` passed validation and reached the
+ * service, where `null` is not a choice and not the absence of one either —
+ * it was stored as `null` in the payment's metadata, which is neither the word
+ * the reader chose nor the absence of a choice. `@ValidateIf` skips the check
+ * only when the value is `undefined`, so `null` is a 400 and the stored value
+ * is either one of the two words or nothing at all.
+ *
+ * THE POLARITY: a `@ValidateIf` condition that is TRUE means "VALIDATE THIS".
+ */
+function validatePaymentMethod(_object: unknown, value: unknown): boolean {
+  return value !== undefined;
+}
+
 export class PurchaseBookDto {
   /**
    * THE READER'S CHOICE OF INSTRUMENT — NOT A GATEWAY IDENTIFIER.
@@ -193,15 +212,20 @@ export class PurchaseBookDto {
    * instrument anyway and the reader's answer was opaque metadata. The field is now the CHOICE
    * itself, "card" or "wallet", which the server resolves to this merchant's Paymob method id.
    *
+   * The old field is GONE, after the release it was deprecated in. A client that still sends it is
+   * answered with a 400 that says what to send instead — see `paymentMethodIdRemovedMessage` in
+   * the global validation pipe.
+   *
    * The two words come from the same list the resolver uses, so the vocabulary the API accepts and
    * the vocabulary the server understands cannot drift apart. Anything else is a 400 rather than a
    * request that quietly does nothing.
    */
-  @IsOptional()
+  @ValidateIf(validatePaymentMethod)
   @IsIn(PAYMOB_PAYMENT_METHOD_CHOICES, {
     message: `Payment method must be one of: ${PAYMOB_PAYMENT_METHOD_CHOICES.join(', ')}`,
   })
   paymentMethod?: PaymobPaymentMethodChoice;
+
 }
 
 export class RentBookDto {
@@ -219,9 +243,10 @@ export class RentBookDto {
    * deployment that has configured none is told nothing — which is Paymob's own
    * "let the customer choose" case.
    */
-  @IsOptional()
+  @ValidateIf(validatePaymentMethod)
   @IsIn(PAYMOB_PAYMENT_METHOD_CHOICES, {
     message: `Payment method must be one of: ${PAYMOB_PAYMENT_METHOD_CHOICES.join(', ')}`,
   })
   paymentMethod?: PaymobPaymentMethodChoice;
+
 }

@@ -376,6 +376,47 @@ describe('RentalsService', () => {
       expect(eventValidatorService.emit).not.toHaveBeenCalledWith('rental.extended', expect.any(Object));
     });
 
+    /**
+     * THE READER'S CHOICE OF INSTRUMENT REACHES THE GATEWAY.
+     *
+     * An extension is a PAYMENT, and it used to be the one path in the product that asked
+     * the reader nothing about the instrument and then told the gateway nothing either:
+     * the answer the reader gave on the checkout panel was dropped here. The same two
+     * words, the same resolver, the same merchant's ids.
+     */
+    it('resolves the reader\'s choice of instrument to this merchant\'s id', async () => {
+      const activeRental = { ...mockRental, extendedCount: 0, maxExtensions: 2 };
+      vi.mocked(rentalsRepository.findById).mockResolvedValue(activeRental);
+
+      await rentalsService.extendRental('rental-123', 14, 'user-123', 'wallet');
+
+      const [, , , metadata, paymentMethodId] = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
+
+      // The SEMANTIC value is what the payment record keeps.
+      expect(metadata).toMatchObject({ paymentMethod: 'wallet' });
+      // And the GATEWAY id is what the gateway is told. A deployment with no configured
+      // id gets `undefined`, and the gateway then asks the customer — which is Paymob's
+      // own behaviour, and the reason an absent configuration is not a failure.
+      expect(paymentMethodId).toBeUndefined();
+    });
+
+    it('keeps the choice out of the stored record when the reader made none', async () => {
+      const activeRental = { ...mockRental, extendedCount: 0, maxExtensions: 2 };
+      vi.mocked(rentalsRepository.findById).mockResolvedValue(activeRental);
+
+      await rentalsService.extendRental('rental-123', 14, 'user-123');
+
+      const [, , , metadata] = requireValue(
+        vi.mocked(paymentsService.paymobInitializePayment).mock.calls[0],
+        'paymobInitializePayment call args',
+      );
+
+      expect(metadata).not.toHaveProperty('paymentMethod');
+    });
+
     it('should throw ForbiddenException when rental is not active', async () => {
       const returnedRental = { ...mockRental, status: 'returned' as const };
       vi.mocked(rentalsRepository.findById).mockResolvedValue(returnedRental);

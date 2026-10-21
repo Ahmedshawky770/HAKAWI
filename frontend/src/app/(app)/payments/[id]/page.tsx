@@ -76,6 +76,18 @@ export default function PaymentDetailPage() {
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: copy.paymentIdLabel, value: <span className="hk-numeric break-all text-sm">{payment.id}</span> },
     { label: copy.userIdLabel, value: <span className="hk-numeric break-all text-sm">{payment.userId}</span> },
+    // WHAT THE READER CHOSE, when they chose: the instrument — a bank card or a
+    // mobile wallet — is a fact about the payment, and it used to be invisible
+    // outside the payments module. It is shown in the reader's language.
+    ...(payment.instrument == null
+      ? []
+      : [
+          {
+            label: copy.instrumentLabel,
+            value:
+              payment.instrument === "wallet" ? copy.instrumentWallet : copy.instrumentCard,
+          },
+        ]),
     // The gateway's own name for the method. It is a wire value rather than the
     // product's copy, so it is shown as it came — the same policy the story
     // category follows.

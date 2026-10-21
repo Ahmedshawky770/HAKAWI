@@ -32,6 +32,9 @@ export interface PaymentsStrings {
   paymentIdLabel: string;
   userIdLabel: string;
   paymentMethodLabel: string;
+  instrumentLabel: string;
+  instrumentCard: string;
+  instrumentWallet: string;
   createdAtLabel: string;
   descriptionLabel: string;
 }
@@ -61,6 +64,9 @@ export const AR: PaymentsStrings = {
   paymentIdLabel: "معرّف الدفع",
   userIdLabel: "معرّف المستخدم",
   paymentMethodLabel: "طريقة الدفع",
+  instrumentLabel: "وسيلة الدفع",
+  instrumentCard: "بطاقة بنكية",
+  instrumentWallet: "محفظة إلكترونية",
   createdAtLabel: "تاريخ الإنشاء",
   descriptionLabel: "الوصف",
 };
@@ -90,6 +96,9 @@ export const EN: PaymentsStrings = {
   paymentIdLabel: "Payment id",
   userIdLabel: "User id",
   paymentMethodLabel: "Payment method",
+  instrumentLabel: "Paid with",
+  instrumentCard: "Bank card",
+  instrumentWallet: "Mobile wallet",
   createdAtLabel: "Created",
   descriptionLabel: "Description",
 };

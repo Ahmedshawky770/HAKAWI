@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, setStoredUser } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { readerMessage } from "@/lib/errors";
 import { AUTHENTICATED_HOME_ROUTE, LOGIN_ROUTE } from "@/lib/routes";
+import { startSession } from "@/lib/session";
 import { ButtonLink } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
@@ -12,6 +15,7 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 export default function AuthCallbackPage() {
   const router = useRouter();
   const strings = useStrings();
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   // The completion effect must run exactly once. `strings` changes object
@@ -30,17 +34,23 @@ export default function AuthCallbackPage() {
         const session = await api.getSession();
 
         if (typeof window !== "undefined") {
-          setStoredUser(session.user);
+          // The OAuth handshake is a sign-in like any other: the cache belongs
+          // to the session that filled it, and the reader may have had one
+          // before they signed in with a provider.
+          startSession(queryClient, session.user);
         }
 
         router.replace(AUTHENTICATED_HOME_ROUTE);
       } catch (err) {
-        setError(err instanceof Error ? err.message : stringsRef.current.auth.callbackError);
+        // The server's wording is a fact about the API, in English, inside an
+        // interface that may be Arabic — so the failure is classified and said
+        // in the reader's language.
+        setError(readerMessage(err, stringsRef.current.errors, stringsRef.current.auth.callbackError));
       }
     };
 
     completeOAuth();
-  }, [router]);
+  }, [router, queryClient]);
 
   // WHY A `<main>` LANDMARK HERE: the root layout's skip link targets
   // `#main-content`, and this route is neither `AppShell`'s frame nor an

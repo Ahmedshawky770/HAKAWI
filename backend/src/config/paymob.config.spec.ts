@@ -299,11 +299,31 @@ describe('resolvePaymobConfig', () => {
       expect(config.walletPaymentMethodId).toBeUndefined();
     });
 
-    it('refuses an id that is not a positive integer', () => {
-      expect(() => resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: 'card' })).toThrow();
-      expect(() => resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: '0' })).toThrow();
-      expect(() => resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '-3' })).toThrow();
-      expect(() => resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '1.5' })).toThrow();
+    /**
+     * A MALFORMED VALUE IS "NOT CONFIGURED", NOT A BOOT FAILURE.
+     *
+     * The value used to be checked with a hard `refine()`, so a typo — "card" where a
+     * number belongs — stopped the WHOLE application from starting, over an optional
+     * convenience, and the operator was told "must be a positive integer id" without
+     * being told WHICH VARIABLE. That is an outage caused by the very thing the value's
+     * own comment says must not happen: "an optional convenience must not be able to take
+     * the product down".
+     *
+     * So a value that is not a positive integer is IGNORED — the feature is off, and
+     * everything else keeps working — and it is reported loudly, because the operator has
+     * to know that the reader's choice is not being forwarded.
+     */
+    it('ignores an id that is not a positive integer instead of refusing to start', () => {
+      expect(() => resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: 'card' })).not.toThrow();
+      expect(resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: 'card' }).cardPaymentMethodId).toBeUndefined();
+      expect(resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: '0' }).cardPaymentMethodId).toBeUndefined();
+      expect(resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '-3' }).walletPaymentMethodId).toBeUndefined();
+      expect(resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '1.5' }).walletPaymentMethodId).toBeUndefined();
+    });
+
+    it('keeps the value when it is a positive integer', () => {
+      expect(resolvePaymobConfig({ PAYMOB_CARD_PAYMENT_METHOD_ID: '7' }).cardPaymentMethodId).toBe('7');
+      expect(resolvePaymobConfig({ PAYMOB_WALLET_PAYMENT_METHOD_ID: '9' }).walletPaymentMethodId).toBe('9');
     });
 
     it('does not refuse to boot in production because of them', () => {

@@ -159,6 +159,23 @@ env:
   corsOrigin: "https://app.hakawi.com"
   paymob:
     environment: live
+    # THE MERCHANT'S OWN NUMERIC IDS FOR THE TWO INSTRUMENTS.
+    #
+    # The checkout panel asks the reader whether they are paying by card or by
+    # mobile wallet, and the server resolves that choice to the id Paymob knows
+    # this merchant by. The ids are per account, per integration and per
+    # country, so they cannot live in the code.
+    #
+    # THEY ARE NOT SECRETS. A payment method id names an instrument; it does
+    # not authorise anything, and it is not a credential — so it belongs in a
+    # plain ConfigMap value and not in the secret store.
+    #
+    # EMPTY IS A VALID, WORKING CONFIGURATION: with no id the gateway asks the
+    # customer to choose inside the payment frame, which is what the product
+    # did before the reader's choice existed. Nothing is broken by leaving
+    # these empty — the reader's choice simply is not forwarded.
+    cardPaymentMethodId: ""
+    walletPaymentMethodId: ""
   # `smtp` = use EMAIL_HOST/PORT verbatim. Other values the backend understands: `gmail`,
   # `sendgrid`, `mailgun`, `ses` — each of which rewrites the host/port/auth it should use.
   # With no credentials in the environment's secret store the transport stays null and mail

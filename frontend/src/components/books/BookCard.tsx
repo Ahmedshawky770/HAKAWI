@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/money";
 import { Icon } from "@/components/ui/Icon";
 import { RemoteImage } from "@/components/ui/RemoteImage";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useStrings } from "@/components/providers/LocaleProvider";
 import type { Book } from "@/types/api";
 
 /**
@@ -37,6 +38,7 @@ import type { Book } from "@/types/api";
  *   integer behind it was the wrong unit.
  */
 export function BookCard({ book }: { book: Book }) {
+  const strings = useStrings();
   return (
     <CardLink href={`/books/${book.id}`} className="group h-full">
       <div className="flex h-full flex-col">
@@ -48,10 +50,16 @@ export function BookCard({ book }: { book: Book }) {
           </h3>
           <p className="text-sm text-ink-muted">بواسطة {book.author}</p>
 
-          {book.price != null && book.price > 0 && (
+          {book.price != null && book.price > 0 ? (
             <p className="hk-numeric mt-auto pt-3 text-base font-bold text-accent-ink">
               {formatBookPrice(book.price)}
             </p>
+          ) : (
+            // A FREE BOOK SAYS SO. The card used to render nothing at all where
+            // the price goes, which is a price of zero with the label missing
+            // — and a reader cannot tell a free book from a card that failed
+            // to load its price.
+            <p className="mt-auto pt-3 text-base font-bold text-ink-muted">{strings.books.freeLabel}</p>
           )}
         </div>
       </div>

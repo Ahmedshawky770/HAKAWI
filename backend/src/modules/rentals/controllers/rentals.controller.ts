@@ -81,7 +81,10 @@ export class RentalsController {
     @Body() dto: ExtendRentalDto,
     @Request() req: Request & { user: { sub: string } },
   ) {
-    return this.rentalsService.extendRental(id, dto.extensionDays ?? 7, req.user.sub);
+    // The reader's CHOICE, not a gateway handle — the same two words the
+    // purchase and the rental take, resolved by the server to this merchant's
+    // Paymob method id.
+    return this.rentalsService.extendRental(id, dto.extensionDays ?? 7, req.user.sub, dto.paymentMethod);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)

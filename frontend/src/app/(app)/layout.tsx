@@ -61,10 +61,15 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
    * cannot swallow an error anybody is waiting for: the requests are simply
    * cancelled, and the data is gone.
    *
-   * The other half of the guarantee lives at the session's other boundary: the
-   * sign-in screen empties the cache before the next session's first byte
-   * (`app/login/page.tsx`), and signing out empties it too
-   * (`components/layout/LogoutButton.tsx`).
+   * THE OTHER HALF OF THE GUARANTEE, AND WHY THERE ARE TWO HALVES. The
+   * providers (`app/providers.tsx`) empty the queries nobody is waiting for the
+   * moment the session is announced lost, because they live in the ROOT layout
+   * and a navigation to the sign-in screen cannot take them with it. This
+   * effect empties the rest, and it is the one that can, because it runs after
+   * the pages reading them are gone. The third boundary is the session's
+   * other end: the sign-in and registration screens empty the cache before
+   * the next session's first byte (`lib/session.ts`), and signing out empties
+   * it too (`components/layout/LogoutButton.tsx`).
    */
   useEffect(() => {
     if (status !== "unauthenticated") return;

@@ -17,6 +17,7 @@ import valkeyConfig from '../config/valkey.config.ts';
 import wafConfig, { type WafConfig } from '../config/waf.config.ts';
 import { UsersRepository } from '../modules/users/repositories/users.repository.ts';
 import { USERS_REPOSITORY } from '../modules/users/interfaces/users-repository.interface.ts';
+import { MfaService } from '../modules/auth/mfa.service.ts';
 
 import { WinstonLoggerService } from './services/winston-logger.service.ts';
 import { ValkeyService } from './services/valkey.service.ts';
@@ -115,6 +116,27 @@ const appReflector = new Reflector();
     RolesGuard,
     PermissionsGuard,
     MfaGuard,
+    // THE MFA SERVICE LIVES HERE, AND NOT IN `AuthModule`.
+    //
+    // `MfaGuard` is provided by this module, and a guard can only be injected with what
+    // this module can see. `MfaService` was in `AuthModule`, and `AuthModule` imports
+    // `CommonModule` — so the dependency pointed the wrong way round, and the whole
+    // application refused to start:
+    //
+    //   "Nest can't resolve dependencies of the MfaGuard (Reflector, ?). Please make
+    //    sure that the argument MfaService at index [1] is available in the CommonModule
+    //    module."
+    //
+    // `AuthModule` cannot be imported back into `CommonModule` without a cycle, and
+    // cycles are forbidden here (see `docs/module-boundaries/dependency-rules.md`).
+    //
+    // So the service is provided HERE, which is the same shape the module already uses
+    // for `UsersRepository`: a class that lives under `modules/` and is provided by the
+    // module that owns the shared contract. `MfaService` depends only on things this
+    // module already provides — `ValkeyService`, `WinstonLoggerService`,
+    // `EncryptionService`, `USERS_REPOSITORY` and `EventValidatorService` — so it
+    // belongs here, and `AuthModule` consumes it from here like every other consumer.
+    MfaService,
     OwnershipGuard,
     RestrictionGuard,
     // THE ONE EMAIL TRANSPORT. Provided here rather than in `NotificationsModule` so the auth flows
@@ -187,6 +209,7 @@ const appReflector = new Reflector();
     RolesGuard,
     PermissionsGuard,
     MfaGuard,
+    MfaService,
     OwnershipGuard,
     RestrictionGuard,
     JwtModule,

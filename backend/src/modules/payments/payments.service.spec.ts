@@ -456,6 +456,53 @@ describe('PaymentsService', () => {
       expect(result.page).toBe(1);
       expect(result.limit).toBe(20);
     });
+
+    /**
+     * THE INSTRUMENT THE READER CHOSE IS VISIBLE.
+     *
+     * The choice was kept in the payment's metadata, where nothing outside the payments
+     * module could read it. So the product could not show a reader what they chose, and a
+     * support agent could not tell a card payment from a wallet one without opening the
+     * raw record.
+     *
+     * `paymentMethod` is the GATEWAY — every Paymob payment says "paymob" — and `instrument`
+     * is the reader's choice. Two similar names for two different facts, and the one the
+     * product wants is the one that used to be invisible.
+     */
+    it('reports the instrument the reader chose', async () => {
+      vi.mocked(paymentsRepository.findAll).mockResolvedValue({
+        payments: [{ ...mockPayment, metadata: JSON.stringify({ paymentMethod: 'wallet' }) }],
+        total: 1,
+      });
+
+      const result = await paymentsService.findAll({ page: 1, limit: 20 });
+
+      expect(result.payments[0]?.instrument).toBe('wallet');
+      // The gateway is still the gateway: the two facts do not collapse into one.
+      expect(result.payments[0]?.paymentMethod).toBe('paymob');
+    });
+
+    it('reports no instrument for a payment that carries no choice', async () => {
+      vi.mocked(paymentsRepository.findAll).mockResolvedValue({ payments: [mockPayment], total: 1 });
+
+      const result = await paymentsService.findAll({ page: 1, limit: 20 });
+
+      expect(result.payments[0]?.instrument).toBeNull();
+    });
+
+    it('reports no instrument for a payment whose metadata cannot be read', async () => {
+      // The metadata is a JSON string that older records do not have and that nothing
+      // guarantees is well formed. A record that cannot be read reports NO instrument
+      // rather than failing the request that is showing the reader their own payment.
+      vi.mocked(paymentsRepository.findAll).mockResolvedValue({
+        payments: [{ ...mockPayment, metadata: 'not json at all' }],
+        total: 1,
+      });
+
+      const result = await paymentsService.findAll({ page: 1, limit: 20 });
+
+      expect(result.payments[0]?.instrument).toBeNull();
+    });
   });
 
   describe('updateStatus', () => {

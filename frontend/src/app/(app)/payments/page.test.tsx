@@ -41,7 +41,10 @@ const mockPayments = [
     createdAt: new Date().toISOString(),
     userId: "user-1",
     currency: "EGP",
-    paymentMethod: "credit_card",
+    // The GATEWAY, and the INSTRUMENT the reader chose: two different facts
+    // under two similar names.
+    paymentMethod: "paymob",
+    instrument: "card",
     paymobOrderId: "order-1",
     paymobPaymentId: "paymob-1",
     paymobTransactionId: "trans-1",

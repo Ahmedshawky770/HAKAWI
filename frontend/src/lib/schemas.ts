@@ -345,7 +345,23 @@ export const paymentSchema: z.ZodType<Payment> = z.object({
   amount: z.number(),
   currency: z.string(),
   status: z.string(),
+  /**
+   * THE GATEWAY. Every Paymob payment says "paymob", which says nothing about how the
+   * reader is paying.
+   */
   paymentMethod: z.string(),
+  /**
+   * THE INSTRUMENT THE READER CHOSE — "card" or "wallet".
+   *
+   * `null` when there is no choice to report: a payment made before the choice existed,
+   * or one where the gateway let the customer choose inside the frame because the
+   * merchant had configured no id for either instrument.
+   *
+   * OPTIONAL, because the API and the app deploy independently: for the length of a
+   * rolling deploy there are OLD pods that do not send this field. A required field
+   * would make the whole payment list fail to parse against one of them.
+   */
+  instrument: nullableString.optional(),
   paymobOrderId: nullableString,
   paymobPaymentId: nullableString,
   paymobTransactionId: nullableString,

@@ -778,6 +778,7 @@ export class PaymentsService {
       currency: payment.currency,
       status: payment.status,
       paymentMethod: payment.paymentMethod,
+      instrument: this.instrumentOf(payment),
       paymobOrderId: payment.paymobOrderId,
       paymobPaymentId: payment.paymobPaymentId,
       paymobTransactionId: payment.paymobTransactionId,
@@ -788,6 +789,32 @@ export class PaymentsService {
       createdAt: payment.createdAt.toISOString(),
       updatedAt: payment.updatedAt.toISOString(),
     };
+  }
+
+  /**
+   * THE INSTRUMENT THE READER CHOSE, READ BACK OUT OF THE METADATA.
+   *
+   * The choice is stored in the payment's metadata under `paymentMethod` —
+   * the SEMANTIC word, "card" or "wallet" — while the payment's own
+   * `paymentMethod` COLUMN holds the gateway, "paymob". Two different facts
+   * under two similar names, and the one the product wants is the one that was
+   * invisible.
+   *
+   * The metadata is a JSON string that older records do not have and that
+   * nothing guarantees is well formed, so it is read defensively: a record
+   * whose metadata cannot be read reports NO instrument rather than failing
+   * the request that is trying to show the reader their own payment.
+   */
+  private instrumentOf(payment: Payment): string | null {
+    if (!payment.metadata) return null;
+    try {
+      const parsed: unknown = JSON.parse(payment.metadata);
+      if (typeof parsed !== 'object' || parsed === null) return null;
+      const instrument = (parsed as Record<string, unknown>).paymentMethod;
+      return typeof instrument === 'string' && instrument.length > 0 ? instrument : null;
+    } catch {
+      return null;
+    }
   }
 
   private toRefundResponse(refund: Refund): RefundResponse {

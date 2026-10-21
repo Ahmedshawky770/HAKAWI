@@ -4,10 +4,10 @@ Five guards in `CommonModule` plus one that is registered by the module that nee
 guard that cannot establish the caller's right to the resource must deny.** Everything below follows
 from that.
 
-`@Secured()` composes exactly **four** of them — `JwtAuthGuard` → `RestrictionGuard` →
-`RolesGuard` → `PermissionsGuard` (`SECURED_GUARDS` in `secured.decorator.ts`). `OwnershipGuard` is
-applied per route with `@UseGuards`, and `OptionalJwtAuthGuard` is registered by its consuming
-module; neither is composed by `@Secured()`.
+`@Secured()` composes exactly **five** of them — `JwtAuthGuard` → `RestrictionGuard` →
+`RolesGuard` → `PermissionsGuard` → `MfaGuard` (`SECURED_GUARDS` in `secured.decorator.ts`).
+`OwnershipGuard` is applied per route with `@UseGuards`, and `OptionalJwtAuthGuard` is
+registered by its consuming module; neither is composed by `@Secured()`.
 
 | Guard              | Question it answers                          | Wired                                         |
 | ------------------ | -------------------------------------------- | --------------------------------------------- |
@@ -16,11 +16,39 @@ module; neither is composed by `@Secured()`.
 | `PermissionsGuard` | Is the granted permission set sufficient?    | `@Secured` (via `SECURED_GUARDS`)             |
 | `OwnershipGuard`   | Is the caller the owner of _this_ resource?  | applied per route — see below                 |
 | `RestrictionGuard` | Is the account restricted (ban / mute)?      | `@Secured` (via `SECURED_GUARDS`) — see below |
+| `MfaGuard`         | Does this action need a second factor?       | `@Secured` (via `SECURED_GUARDS`) — see below |
 
-All five are provided **and exported** by `CommonModule`, so `@UseGuards(SomeGuard)`
+All six are provided **and exported** by `CommonModule`, so `@UseGuards(SomeGuard)`
 resolves from any module. `common.module.spec.ts` pins that list; it is the exact property
 whose absence made `OwnershipGuard` dead code, and then `RestrictionGuard` — the second
 guard to be documented as live while being wired to nothing.
+
+## `MfaGuard` — a sixth guard, and the third that was documented as live while doing nothing
+
+`MfaGuard` was provided and exported by `CommonModule` and applied to **zero** routes. So
+every `@RequireMfa()` in the codebase — on the admin break-glass route, on the moderation
+routes, on the financial routes — was a decoration that did nothing: an account with an
+admin role could reach the routes that ask for a second factor without presenting one.
+
+It is now composed by `@Secured()`, which is what makes the decorator mean something: the
+route that asks for MFA and the guard that enforces it are in the same file, so a route
+cannot forget the first without the second going with it.
+
+`mfa-guard.wiring.spec.ts` closes the loop the unit test cannot: it drives real HTTP
+through a `@Secured` route and asserts that an account which needs a second factor is
+refused without one, refused when MFA is not enabled on it, and let through with a code
+the server accepts. A unit test constructs the guard directly, so it stays green no
+matter how many places call it.
+
+The guard asks the account's reader — `MfaService`, which `CommonModule` provides — whether
+a second factor is enforced for the caller, and it only asks on a route that asked for one.
+It is LAST in the chain because it reads `request.user`, which `JwtAuthGuard` populates.
+
+**`MfaService` lives in `CommonModule`, and not in `AuthModule`.** `MfaGuard` is provided
+by `CommonModule`, and a guard can only be injected with what its own module can see;
+`AuthModule` imports `CommonModule`, so the service could not be reached from there
+without a cycle. The service was moved to the module that owns the shared contract, the
+same shape the module already uses for `UsersRepository`.
 
 `restriction-guard.wiring.spec.ts` closes the loop the module spec cannot: it drives real
 HTTP through a `@Secured` route and asserts a banned account is refused. A unit test

@@ -2,6 +2,18 @@ import { z } from "zod";
 
 import type { ReactionType, StoryMutationInput, StoryPatchInput } from "@hakawi/shared-types";
 
+import { notifySessionChanged, notifySessionLost } from "@/lib/session-events";
+import { MFA_TOKEN_HEADER, requestMfaCode } from "@/lib/mfa-step-up";
+
+/**
+ * THE SESSION'S SIGNALS, RE-EXPORTED HERE.
+ *
+ * They live in `lib/session-events.ts` so that a test suite which replaces
+ * `@/lib/api` with a hand-written object does not take the signals with it —
+ * and the re-export keeps the one import path this module always had.
+ */
+export { onSessionChanged, onSessionLost, notifySessionChanged, notifySessionLost } from "@/lib/session-events";
+
 import {
   authResponseSchema,
   badgeCatalogSchema,
@@ -107,8 +119,12 @@ export type StoredUser = {
 export function setStoredUser(user: StoredUser) {
   if (typeof window === "undefined") return;
   localStorage.setItem("hakawi_user", JSON.stringify(user));
+  notifySessionChanged();
 }
 
+/**
+ * The parsed form of a stored session.
+ */
 function parseStoredUser(raw: string): StoredUser | null {
   const parsed: unknown = JSON.parse(raw);
   if (typeof parsed !== "object" || parsed === null) {
@@ -118,66 +134,60 @@ function parseStoredUser(raw: string): StoredUser | null {
   return candidate.success ? candidate.data : null;
 }
 
+/**
+ * THE PARSE IS DONE ONCE, AND THE OBJECT IS THE SAME ONE EVERY TIME.
+ *
+ * The stored session is read by `useSyncExternalStore`, which compares the
+ * snapshot it is given against the last one with `Object.is`. A new object
+ * every time is a change every time: React renders, reads the snapshot, sees
+ * a different object, and renders again — for ever. The read therefore
+ * returns the SAME object for as long as the session it describes is
+ * unchanged, and the comparison is over the RAW value, which is the thing
+ * that actually changes.
+ *
+ * The raw value is one `getItem` away from the parsed one, and the parse
+ * costs a `JSON.parse` and a schema validation — work that was being redone
+ * on every read, at least twice per render, for every component that reads
+ * the session.
+ */
+let cachedUserRaw: string | null = null;
+let cachedUserRawRead = false;
+let cachedUser: StoredUser | null = null;
+
 export function getStoredUser(): StoredUser | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem("hakawi_user");
-  if (!raw) return null;
-  try {
-    return parseStoredUser(raw);
-  } catch {
-    return null;
+  const present = raw !== null;
+  if (present === cachedUserRawRead && raw === cachedUserRaw) return cachedUser;
+
+  cachedUserRawRead = present;
+  cachedUserRaw = raw;
+  if (raw === null) {
+    cachedUser = null;
+    return cachedUser;
   }
+  try {
+    cachedUser = parseStoredUser(raw);
+  } catch {
+    cachedUser = null;
+  }
+  return cachedUser;
 }
 
 export function clearStoredUser() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("hakawi_user");
   localStorage.removeItem("hakawi_tokens");
+  notifySessionChanged();
 }
 
-/**
- * WHAT HAPPENS WHEN THE SESSION IS LOST.
- *
- * A 401 is not only an error on a screen: it means the reader who was signed
- * in is no longer signed in, and everything the client cached for them belongs
- * to somebody else now. The cache is cleared on an explicit sign-out
- * (`LogoutButton`), but a session can also end by itself — a revoked token, an
- * expired refresh token, a server-side session deletion — and then the reader
- * is redirected to the login screen while the previous reader's conversations,
- * library, payments and unread counts are still sitting in the shared
- * `QueryClient`, which lives in the root layout and survives the redirect.
- *
- * The next person to sign in on the same tab would be served that cache.
- *
- * So the client announces the loss of a session, and whoever owns the cache
- * empties it. `Providers` registers the one listener that matters.
- */
-type SessionLostListener = () => void;
 
-const sessionLostListeners = new Set<SessionLostListener>();
-
-/** Tell the application that the session is gone. */
-export function notifySessionLost(): void {
-  for (const listener of sessionLostListeners) {
-    try {
-      listener();
-    } catch {
-      // A listener that fails must not turn a 401 into an unhandled error.
-    }
-  }
-}
 
 /**
  * Subscribe to the loss of a session.
  *
  * @returns the function that cancels the subscription.
  */
-export function onSessionLost(listener: SessionLostListener): () => void {
-  sessionLostListeners.add(listener);
-  return () => {
-    sessionLostListeners.delete(listener);
-  };
-}
 
 const storedTokensSchema = z.object({
   refreshToken: z.string(),
@@ -197,42 +207,44 @@ export function getStoredRefreshToken(): string | null {
 }
 
 /**
- * The shape of the server's error body.
+ * ONE FIELD OF AN ERROR BODY, READ AS A SENTENCE.
  *
- * NestJS answers an exception with `{message, error, statusCode}`, and
- * `message` is sometimes a STRING ("Invalid email or password") and sometimes
- * an OBJECT that carries its own `message` ("CAPTCHA verification required").
- * The object form used to fail the whole parse, so the server's own wording
- * was lost and the client had nothing to classify — which is why the error
- * classifier in `lib/errors.ts` never saw the reason a request was refused.
+ * NestJS puts the reason in `message` — a STRING ("Invalid email or
+ * password"), an ARRAY of strings, or an OBJECT that carries its own `message`
+ * ("CAPTCHA verification required") — and the per-field reasons in `details`,
+ * whose entries are `{field, message}`. The object form used to fail the whole
+ * parse, so the server's own wording was lost and the client had nothing to
+ * classify — which is why the error classifier in `lib/errors.ts` never saw the
+ * reason a request was refused.
+ *
+ * EVERY FIELD IS READ ON ITS OWN. The body used to be parsed as ONE schema, so
+ * a single malformed field — a `details` array of strings instead of objects,
+ * a `message` object without a string inside it — failed the whole parse and
+ * the server's wording was lost again, which is the same defect one level
+ * down. A body is a bag of fields here, not a contract: each is asked in
+ * turn, and the first one that yields a sentence wins.
  */
-const apiErrorMessageSchema = z.union([
-  z.string(),
-  z.array(z.string()),
-  z.object({ message: z.string() }).passthrough(),
-]);
-
-const apiErrorSchema = z.object({
-  message: apiErrorMessageSchema.optional(),
-  error: apiErrorMessageSchema.optional(),
-  details: z
-    .array(
-      z.object({
-        field: z.string(),
-        message: apiErrorMessageSchema,
-      }),
-    )
-    .optional(),
-});
-
-function firstMessage(value: z.infer<typeof apiErrorMessageSchema> | null): string | null {
-  if (value === null) return null;
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    const [first] = value;
-    return first ?? null;
+function readMessageField(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
-  return value.message;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const message = readMessageField(entry);
+      if (message) return message;
+    }
+    return null;
+  }
+  if (typeof value === "object" && value !== null) {
+    return readMessageField((value as Record<string, unknown>).message);
+  }
+  return null;
+}
+
+function asRecord(payload: unknown): Record<string, unknown> | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  return payload as Record<string, unknown>;
 }
 
 /**
@@ -244,19 +256,99 @@ function firstMessage(value: z.infer<typeof apiErrorMessageSchema> | null): stri
  * client's answer to a wrong password wrong.
  */
 function readErrorMessage(payload: unknown): string | null {
-  const parsed = apiErrorSchema.safeParse(payload);
-  if (parsed.success) {
-    const [firstDetail] = parsed.data.details ?? [];
-    if (firstDetail) {
-      const detailMessage = firstMessage(firstDetail.message);
-      if (detailMessage) return detailMessage;
+  const record = asRecord(payload);
+  if (record === null) return null;
+
+  // `details` is the most precise: it names the FIELD that was refused. Only
+  // the OBJECT form is read — NestJS's per-field reason is
+  // `{field, message}` — so a `details` array of bare strings, which says
+  // nothing about which field it is talking about, cannot cost the reader the
+  // sentence in `message`.
+  const details = record.details;
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      const message = readMessageField(asRecord(detail)?.message);
+      if (message) return message;
     }
-    const message = firstMessage(parsed.data.message ?? null);
-    if (message) return message;
-    const error = firstMessage(parsed.data.error ?? null);
-    if (error) return error;
   }
+
+  const message = readMessageField(record.message);
+  if (message) return message;
+
+  const error = readMessageField(record.error);
+  if (error) return error;
+
   return null;
+}
+
+/**
+ * The per-field reasons, for the error's own record.
+ *
+ * Read one entry at a time, and a malformed entry costs that entry only.
+ */
+function readErrorDetails(payload: unknown): string[] {
+  const record = asRecord(payload);
+  if (record === null) return [];
+  const details = record.details;
+  if (!Array.isArray(details)) return [];
+
+  const collected: string[] = [];
+  for (const detail of details) {
+    const message = readMessageField(asRecord(detail)?.message);
+    if (!message) continue;
+    const field = asRecord(detail)?.field;
+    collected.push(typeof field === "string" && field.length > 0 ? `${field}: ${message}` : message);
+  }
+  return collected;
+}
+
+/**
+ * Whether the server is asking for a SECOND FACTOR before it will let the request through.
+ *
+ * The routes that ask for one — the financial ones, the moderation ones, the admin
+ * break-glass one — refuse the request with a 401 whose body says `MFA_CHALLENGE_REQUIRED`.
+ * A 401 that used to be read as a lost session, so a reader who wanted to do something that
+ * needs a code from their phone was signed out for it. The refusal is now recognised as what
+ * it is, the reader is asked for the code, and the request is made again with it.
+ */
+function readMfaChallenge(payload: unknown): boolean {
+  const record = asRecord(payload);
+  if (record === null) return false;
+  if (record.code === "MFA_CHALLENGE_REQUIRED") return true;
+  const message = readMessageField(record.message);
+  return message !== null && message.toLowerCase().includes("mfa challenge");
+}
+
+/**
+ * Whether the server is asking for a CAPTCHA before it will let the reader in.
+ *
+ * The server answers a sign-in that is under a CAPTCHA watch with a 401 and a
+ * body that says so (`backend/src/modules/auth/auth.service.ts`). The flag is
+ * carried on the error so the sign-in screen can ask for the CAPTCHA instead of
+ * telling the reader their password is wrong.
+ */
+function readCaptchaRequired(payload: unknown): boolean {
+  const record = asRecord(payload);
+  if (record === null) return false;
+  if (record.captchaRequired === true) return true;
+  if (record.code === "CAPTCHA_REQUIRED") return true;
+  const message = readMessageField(record.message);
+  return message !== null && message.toLowerCase().includes("captcha");
+}
+
+/**
+ * THE PROVIDER AND THE SITE KEY THE SERVER ASKED FOR.
+ *
+ * The server names both, and both are facts about the deployment: which script to load
+ * and which tenant the widget belongs to. A reader cannot be asked for a CAPTCHA
+ * without them.
+ */
+function readCaptchaDetails(payload: unknown): { provider: string | null; siteKey: string | null } {
+  const record = asRecord(payload);
+  if (record === null) return { provider: null, siteKey: null };
+  const provider = typeof record.captchaProvider === "string" ? record.captchaProvider : null;
+  const siteKey = typeof record.captchaSiteKey === "string" ? record.captchaSiteKey : null;
+  return { provider, siteKey };
 }
 
 function decodeBody(text: string): unknown {
@@ -310,10 +402,42 @@ function describeInvalidPayload(error: z.ZodError, endpoint: string, payload: un
   return `Invalid server response: ${detail}${overflow} (endpoint ${endpoint}, received ${describeValue(payload)})`;
 }
 
+/**
+ * HOW A REQUEST IS CLASSIFIED BEFORE IT IS SENT.
+ *
+ * `establishingSession` is the one fact about the request that changes what a
+ * 401 MEANS. A request that is part of establishing a session — signing in,
+ * signing up — cannot end a session, because the session it would end is not
+ * the one the request is about.
+ */
+export interface ApiRequestOptions extends RequestInit {
+  /**
+   * TRUE when this request is part of ESTABLISHING a session rather than USING
+   * one.
+   *
+   * A refused sign-in is a fact about the ATTEMPT. It must not destroy the
+   * session the reader already has: the reader who opens the sign-in screen to
+   * switch accounts and mistypes a password would lose the session that was
+   * working, and would be evicted a quarter of an hour later with no way to
+   * refresh the token.
+   */
+  establishingSession?: boolean;
+  /**
+   * The reader's SECOND FACTOR, for a route that demands one.
+   *
+   * The code is never written down and never sent anywhere but the route that
+   * asked for it: it travels in the `X-MFA-Token` header, exactly once, on the
+   * request that was refused. The API verifies the code against the reader's
+   * own secret, so the server keeps no copy of it either.
+   */
+  mfaToken?: string;
+}
+
 async function handleResponse<S extends z.ZodTypeAny>(
   response: Response,
   schema: S,
   endpoint: string,
+  options: { establishingSession: boolean },
 ): Promise<z.infer<S>> {
   // The body is read FIRST, and always. A 401 is the one answer whose wording
   // decides what the reader is told: "Invalid email or password",
@@ -325,16 +449,54 @@ async function handleResponse<S extends z.ZodTypeAny>(
   const payload: unknown = decodeBody(await response.text());
 
   if (response.status === 401) {
-    clearStoredUser();
-    notifySessionLost();
-    // The status travels with the failure: a 401 is a lost session, and the
-    // classifier in `lib/errors.ts` has to be able to say so even when the
-    // server words it in a sentence this client has never heard.
-    throw new ApiError(readErrorMessage(payload) ?? "Unauthorized", 401);
+    // A REFUSED SIGN-IN IS NOT AN ENDED SESSION.
+    //
+    // This is the rule the whole session story rests on, and it is decided
+    // HERE, in the one layer that knows what the request was for. A request
+    // that establishes a session cannot end one; every other 401 does.
+    //
+    // The verdict is recorded on the error and read by everybody else, so the
+    // announcement ("the session is gone") and the decision ("the reader is
+    // signed out") can never disagree — which is how a disabled account used
+    // to be answered with a retry button that could never succeed, and how a
+    // 401 that the classifier read differently left the previous reader's data
+    // in the cache.
+    const mfaChallenge = readMfaChallenge(payload);
+    // A SECOND FACTOR IS NOT A LOST SESSION.
+    //
+    // The routes that demand one refuse the request with a 401, and the refusal says
+    // "prove who you are once more" — not "your session is over". Treating it as the
+    // end of the session would destroy a session that is alive: the reader would be
+    // signed out for trying to do something that needs a code from their phone, and
+    // the request they were making would never be made.
+    const endsSession = !options.establishingSession && !mfaChallenge;
+    const message = readErrorMessage(payload);
+
+    const captcha = readCaptchaDetails(payload);
+    const failure = new ApiError(message ?? "Unauthorized", 401, {
+      details: readErrorDetails(payload),
+      endsSession,
+      captchaRequired: readCaptchaRequired(payload),
+      captchaProvider: captcha.provider,
+      captchaSiteKey: captcha.siteKey,
+      mfaChallenge,
+    });
+
+    if (endsSession) {
+      clearStoredUser();
+      // The failure travels with the announcement, so a listener can say WHY
+      // the session ended: "Account has been disabled" is a fact the reader
+      // must be told, and it is in the server's own wording.
+      notifySessionLost(failure);
+    }
+
+    throw failure;
   }
 
   if (!response.ok) {
-    throw new ApiError(readErrorMessage(payload) ?? "An error occurred", response.status);
+    throw new ApiError(readErrorMessage(payload) ?? "An error occurred", response.status, {
+      details: readErrorDetails(payload),
+    });
   }
 
   const parsed = schema.safeParse(payload);
@@ -360,36 +522,96 @@ function withQuery(endpoint: string, params: Record<string, string | number | un
 async function apiRequest<S extends z.ZodTypeAny>(
   schema: S,
   endpoint: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
 ): Promise<z.infer<S>> {
+  const { establishingSession = false, mfaToken, ...requestInit } = options;
+
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...requestInit.headers,
+    // The second factor travels in the header the API reads. It is added only when
+    // there is one, so an ordinary request carries nothing it does not need.
+    ...(mfaToken === undefined ? {} : { [MFA_TOKEN_HEADER]: mfaToken }),
   };
 
   const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
+    ...requestInit,
     headers,
     credentials: "include",
   });
 
-  return handleResponse(response, schema, endpoint);
+  try {
+    return await handleResponse(response, schema, endpoint, { establishingSession });
+  } catch (error) {
+    // A SECOND FACTOR, NOT A LOST SESSION.
+    //
+    // The routes that demand one refuse the request with a 401, and a 401 has always
+    // meant "the session is over". Read that way, a reader who wanted to do something
+    // needing a code from their phone was told their session had ended and was thrown
+    // to the sign-in screen — for a session that was alive and well.
+    //
+    // So the reader is asked for the code and the request is made again, ONCE. The retry
+    // is not unbounded: a code the server refuses comes back as a refusal that is not a
+    // challenge, and is reported as it is.
+    if (error instanceof ApiError && error.mfaChallenge && mfaToken === undefined) {
+      const code = await requestMfaCode();
+      if (code !== null && code !== "") {
+        return apiRequest(schema, endpoint, { ...options, mfaToken: code });
+      }
+    }
+    throw error;
+  }
 }
 
+/** The answer to a second-factor check. */
+const mfaChallengeResponseSchema = z.object({
+  verified: z.boolean(),
+  backupCodeUsed: z.boolean().optional(),
+});
+
 export const api = {
-  request: <S extends z.ZodTypeAny>(schema: S, endpoint: string, options: RequestInit = {}): Promise<z.infer<S>> =>
-    apiRequest(schema, endpoint, options),
+  request: <S extends z.ZodTypeAny>(
+    schema: S,
+    endpoint: string,
+    options: ApiRequestOptions = {},
+  ): Promise<z.infer<S>> => apiRequest(schema, endpoint, options),
 
   register: (data: { email: string; password: string; name: string; username: string }) =>
     apiRequest(authResponseSchema, "/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
+      // Signing UP establishes a session; it cannot end one.
+      establishingSession: true,
     }),
 
-  login: (data: { email: string; password: string }) =>
+  login: (data: { email: string; password: string; captchaToken?: string | null }) =>
     apiRequest(authResponseSchema, "/auth/login", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password,
+        // The token is sent only when there is one: the server asks for it by
+        // refusing the sign-in, and a body with an empty token would be a
+        // different request from one without the field.
+        ...(data.captchaToken ? { captchaToken: data.captchaToken } : {}),
+      }),
+      // Signing IN establishes a session; it cannot end one. A wrong password
+      // here must not delete the refresh token of the session that is working.
+      establishingSession: true,
+    }),
+
+  /**
+   * CHECK A SECOND FACTOR, WITHOUT DOING THE THING IT AUTHORISES.
+   *
+   * The reader is asked for a code, and the code is checked on its own — so that a code
+   * the server refuses is refused WHILE THE PROMPT IS STILL OPEN, where the reader can
+   * type another one, instead of arriving as a failure of the action they were trying to
+   * do.
+   */
+  verifyMfaChallenge: (token: string) =>
+    apiRequest(mfaChallengeResponseSchema, "/auth/mfa/challenge", {
+      method: "POST",
+      body: JSON.stringify({ token }),
     }),
 
   refreshToken: (refreshToken: string) =>

@@ -62,6 +62,13 @@ export function currencySymbol(currency: string = RENTAL_CURRENCY): string {
  * NOT WRAPPED IN `hk-numeric` HERE. The caller's job: an amount on its own line
  * wants the LTR isolate, and an amount inside an Arabic sentence does not, because
  * isolating it reorders the words around it.
+ *
+ * AN AMOUNT THAT IS NOT THERE IS AN EMPTY STRING, NOT A ZERO. A free book has
+ * no price, and "0.00 ج.م" is a price — a wrong one, on a surface that takes
+ * money. So a book with no price is rendered with the product's own "free"
+ * label by the caller, and this function says "there is no amount" rather than
+ * inventing one. A caller that has already established that there IS an amount
+ * is rendering a real price, and `0` is a real price.
  */
 export function formatPrice(piastres: number | null | undefined, currency: string = RENTAL_CURRENCY): string {
   if (typeof piastres !== "number" || !Number.isFinite(piastres)) return "";

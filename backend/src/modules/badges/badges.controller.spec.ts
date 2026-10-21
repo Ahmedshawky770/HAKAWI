@@ -5,6 +5,7 @@ import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
+import { MfaGuard } from "../../common/guards/mfa.guard.ts";
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.ts';
 import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
@@ -77,6 +78,10 @@ describe('BadgesController', () => {
       .overrideGuard(RestrictionGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      // `SECURED_GUARDS` composes `MfaGuard` as well, and this suite is about badges.
+      // Every other guard in the chain is overridden here for the same reason.
+      .overrideGuard(MfaGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

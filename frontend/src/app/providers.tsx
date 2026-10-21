@@ -1,12 +1,15 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import { LocaleProvider } from "@/components/providers/LocaleProvider";
+import { MfaProvider } from "@/components/providers/MfaProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ToastProvider } from "@/components/providers/ToastProvider";
+import { onSessionLost } from "@/lib/session-events";
+import { clearUnobservedQueries } from "@/lib/session";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -37,13 +40,16 @@ export function Providers({ children }: { children: ReactNode }) {
    * whoever is signed in. It lives in this component, in the root layout, so
    * it survives a redirect to the sign-in screen.
    *
-   * It is emptied at the two moments a session can end, and at NO other moment:
+   * It is emptied at the three moments a session can end, and at NO other
+   * moment:
    *
    *   · the reader signs out — `components/layout/LogoutButton.tsx`;
+   *   · the reader signs in, or signs up, in a tab that already had a session
+   *     — `lib/session.ts`, used by the sign-in and registration screens;
    *   · the session ends by itself — an expired token, a revoked session, a
-   *     remote sign-out. The API client announces that (`lib/api.ts`), the
-   *     session guard declares the reader signed out (`lib/auth-guard.ts`), and
-   *     the authenticated frame empties the cache once it has torn down the
+   *     remote sign-out. The API client announces that (`lib/api.ts`), this
+   *     component owns the cache and so empties what nobody is waiting for,
+   *     and the authenticated frame empties the rest once it has torn down the
    *     pages that were reading it (`app/(app)/layout.tsx`).
    *
    * WHY THE SECOND ONE IS NOT DONE HERE, AT THE MOMENT THE 401 ARRIVES. The
@@ -52,20 +58,36 @@ export function Providers({ children }: { children: ReactNode }) {
    * trap. Emptying the cache DESTROYS the queries, and destroying a query
    * whose request is still in flight CANCELS that request: the error the
    * server sent never reaches the component waiting for it, and that component
-   * sits in the loading state for ever, with no error and no retry. The header
+   * sits in the loading state for ever, with no error, no retry. The header
    * fetches an unread count on every route, so one expired token froze every
    * page of the product.
    *
-   * So this component does not listen for the session at all. It owns the
-   * cache; the session's owner decides when the session is over, and that is
-   * the only moment at which the cache may be emptied.
+   * So this component empties only the queries NOBODY is waiting for. A query
+   * that is still being watched is left alone, and the frame that owns the
+   * pages reading it empties it once those pages are gone.
+   *
+   * And this component listens where the redirect cannot unlisten it: it lives
+   * in the ROOT layout, above the route tree, so a navigation to the sign-in
+   * screen does not take the listener with it. That is the whole reason the
+   * cache is emptied from two places: the frame's clear is the one that runs
+   * after the teardown, and this one is the one that always runs.
    */
+  useEffect(() => {
+    return onSessionLost(() => {
+      clearUnobservedQueries(client);
+    });
+  }, [client]);
 
   return (
     <QueryClientProvider client={client}>
       <ThemeProvider>
         <LocaleProvider>
-          <ToastProvider>{children}</ToastProvider>
+          {/* The second factor, asked for at the moment an action needs it. It sits
+              INSIDE the providers, so it is mounted wherever the action happens —
+              including on a page that is not under the authenticated frame. */}
+          <MfaProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </MfaProvider>
         </LocaleProvider>
       </ThemeProvider>
     </QueryClientProvider>

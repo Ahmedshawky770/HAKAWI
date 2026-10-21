@@ -150,6 +150,8 @@ PAYMOB_MERCHANT_ID=…
 PAYMOB_INTEGRATION_ID=…
 PAYMOB_SANDBOX_API_KEY=                 # used only when PAYMOB_ENVIRONMENT=sandbox
 PAYMOB_SANDBOX_INTEGRATION_ID=          # used only when PAYMOB_ENVIRONMENT=sandbox
+PAYMOB_CARD_PAYMENT_METHOD_ID=          # optional — the merchant's numeric id for a card
+PAYMOB_WALLET_PAYMENT_METHOD_ID=        # optional — the merchant's numeric id for a wallet
 PAYMOB_BASE_URL=https://accept.paymob.com/api
 PAYMOB_REQUEST_TIMEOUT_MS=10000
 PAYMOB_AUTH_TIMEOUT_MS=8000
@@ -157,6 +159,23 @@ PAYMOB_AUTH_TOKEN_CACHE_TTL_SECONDS=3000
 PAYMOB_RETRY_MAX_ATTEMPTS=2
 PAYMOB_WEBHOOK_SECRET=…                    # read directly in payments.service.ts, not by paymob.config.ts
 ```
+
+> **The two payment method ids are the reader's instrument choice, and they are optional.** The
+> checkout panel asks whether the reader is paying by card or by mobile wallet, and the server
+> resolves that choice to this merchant's own Paymob id. The ids come from the Paymob dashboard
+> (Settings > Account Info > Payment Methods) and differ per account, per integration and per
+> country.
+>
+> **An empty value is a working configuration, not a broken one:** with no id the gateway is told
+> nothing about the instrument and asks the customer to choose inside the payment frame — exactly
+> what the product did before the reader's choice existed. Nothing fails, no payment is refused, and
+> the reader's choice is simply not forwarded.
+>
+> **They are not secrets.** A method id names an instrument and authorises nothing, so in Kubernetes
+> they are plain ConfigMap values (`env.paymob.cardPaymentMethodId` and
+> `env.paymob.walletPaymentMethodId` in the Helm chart), not secret-store keys. A value that is not
+> a positive integer is ignored with a warning in the log — it does not stop the API from starting,
+> because an optional convenience must not be able to take the product down.
 
 > `PAYMOB_WEBHOOK_SECRET` is the one Paymob variable **not** covered by `paymob.config.ts`. It is
 > read straight from `process.env` in `backend/src/modules/payments/payments.service.ts:412`. If it is unset, every webhook is

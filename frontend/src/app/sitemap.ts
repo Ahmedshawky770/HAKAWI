@@ -50,6 +50,16 @@ const PAGE_SIZE = 100;
 /** The most pages the sitemap walks. A crawler does not need the whole archive. */
 const MAX_PAGES = 5;
 
+/**
+ * THE WHOLE ROUTE'S BUDGET, IN ONE NUMBER.
+ *
+ * The pages used to be walked one after another, each with its own five-second
+ * timeout, so a slow API could hold a crawler for twenty-five seconds. The
+ * pages are fetched in PARALLEL now, under ONE budget, so the route answers in
+ * about as long as its slowest single request.
+ */
+const TOTAL_FETCH_BUDGET_MS = 5000;
+
 interface StorySummary {
   id: string;
   updatedAt?: string;
@@ -63,12 +73,12 @@ interface StoriesPage {
 }
 
 /** One page of stories, or `null` when the API refused or could not be reached. */
-async function fetchStoryPage(page: number): Promise<StoriesPage | null> {
+async function fetchStoryPage(page: number, signal: AbortSignal): Promise<StoriesPage | null> {
   try {
     const response = await fetch(`${API_URL}/stories?page=${page}&limit=${PAGE_SIZE}`, {
       // The stories are public, so the sitemap does not need a session; the
       // request is made on the server, where there is no session to send.
-      signal: AbortSignal.timeout(5000),
+      signal,
     });
     if (!response.ok) return null;
     const payload: unknown = await response.json();
@@ -76,6 +86,49 @@ async function fetchStoryPage(page: number): Promise<StoriesPage | null> {
     return payload as StoriesPage;
   } catch {
     return null;
+  }
+}
+
+/**
+ * The story pages, fetched as one parallel batch.
+ *
+ * The FIRST page is fetched on its own, because it is the one that says how
+ * many stories there are: without that number the sitemap cannot know how
+ * many pages to ask for, and asking for five when there are three is a
+ * request the API has to refuse. The rest are fetched together.
+ */
+async function fetchStoryPages(): Promise<StoriesPage[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TOTAL_FETCH_BUDGET_MS);
+
+  try {
+    const first = await fetchStoryPage(1, controller.signal);
+    const pages: StoriesPage[] = first === null ? [] : [first];
+
+    // `total` is optional, and reading an absent `total` as `0` made the walk
+    // stop after the first page — silently shipping a sitemap with a hundred
+    // stories in it while the archive holds thousands. An absent total means
+    // "ask for the most the sitemap is willing to hold".
+    const total = typeof first?.total === "number" ? first.total : undefined;
+    const wantedPages =
+      total === undefined
+        ? MAX_PAGES
+        : Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+
+    if (wantedPages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: wantedPages - 1 }, (_, index) =>
+          fetchStoryPage(index + 2, controller.signal),
+        ),
+      );
+      for (const page of rest) {
+        if (page !== null) pages.push(page);
+      }
+    }
+
+    return pages;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -88,16 +141,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const stories: StorySummary[] = [];
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const payload = await fetchStoryPage(page);
+  for (const payload of await fetchStoryPages()) {
     const batch = Array.isArray(payload?.stories) ? payload.stories : [];
-    if (batch.length === 0) break;
+    if (batch.length === 0) continue;
     stories.push(...batch);
-    // The walk stops early only when the API TOLD us how many stories there
-    // are. `total` is optional, and reading an absent `total` as `0` made
-    // the loop stop after the first page — silently shipping a sitemap with
-    // a hundred stories in it while the archive holds thousands.
-    if (typeof payload?.total === "number" && stories.length >= payload.total) break;
   }
 
   const storyRoutes: MetadataRoute.Sitemap = stories.map((story) => ({

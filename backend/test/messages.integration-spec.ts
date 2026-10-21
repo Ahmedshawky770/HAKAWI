@@ -34,7 +34,9 @@ describe('Messages Integration', () => {
       const body = res.body as ConversationResponse;
 
       expect(body).toHaveProperty('id');
-      expect([body.participant1.id, body.participant2.id]).toEqual(
+      // The API answers the two participant IDS — the two are sorted, so which is
+      // "first" is not the caller's business.
+      expect([body.participant1Id, body.participant2Id]).toEqual(
         expect.arrayContaining([sender.id, recipient.id]),
       );
     });

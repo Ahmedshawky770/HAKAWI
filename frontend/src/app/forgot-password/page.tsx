@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { readerMessage } from "@/lib/errors";
 import { messageOnlySchema } from "@/lib/schemas";
 import { LOGIN_ROUTE } from "@/lib/routes";
 import { AuthShell } from "@/components/auth/AuthShell";
@@ -30,7 +31,13 @@ export default function ForgotPasswordPage() {
       });
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : strings.auth.forgotError);
+      // The server's own wording is a fact about the API, and it arrives in
+      // English inside an interface that may be Arabic. The failure is
+      // classified and then said in the reader's language — see
+      // `lib/errors.ts`. A request that was refused because the address is
+      // unknown is told so, instead of being told that the server said
+      // something the reader has no way to interpret.
+      setError(readerMessage(err, strings.errors, strings.auth.forgotError));
     } finally {
       setLoading(false);
     }

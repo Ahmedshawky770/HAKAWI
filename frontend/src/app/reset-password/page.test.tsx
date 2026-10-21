@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { AnchorLink, router } from "@/test-utils/navigation-mock";
 import { messageOnlySchema } from "@/lib/schemas";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import ResetPasswordPage from "@/app/reset-password/page";
 
 vi.mock("next/link", () => ({
@@ -151,19 +152,24 @@ describe("reset password page", () => {
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
 
-    expect(await screen.findByText("Invalid or expired reset token")).toBeInTheDocument();
+    // The server's English wording is a fact about the API; the reader is
+    // told what it means for them, in their language.
+    expect(await screen.findByText("رابط إعادة التعيين غير صالح أو منتهي. اطلب رابطاً جديداً.")).toBeInTheDocument();
+    expect(screen.queryByText("Invalid or expired reset token")).not.toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
   });
 
   it("renders a schema rejection of a malformed server response", async () => {
     const user = userEvent.setup();
-    mockedApi.request.mockRejectedValue(new Error("Invalid server response: message"));
+    // A body the schema refuses is the server's contract breaking, and the
+    // client reports it with the status that says so.
+    mockedApi.request.mockRejectedValue(new ApiError("Invalid server response: message", 502));
     renderWithProviders(<ResetPasswordPage />);
 
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
 
-    expect(await screen.findByText("Invalid server response: message")).toBeInTheDocument();
+    expect(await screen.findByText("حدث خطأ في الخادم. حاول مرة أخرى بعد قليل.")).toBeInTheDocument();
   });
 
   it("keeps the recovery form after a failure so the request can be retried", async () => {
@@ -174,7 +180,7 @@ describe("reset password page", () => {
     await fillForm(user);
     await user.click(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" }));
 
-    await screen.findByText("Invalid or expired reset token");
+    await screen.findByText("رابط إعادة التعيين غير صالح أو منتهي. اطلب رابطاً جديداً.");
     expect(screen.getByLabelText("كلمة المرور الجديدة")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "إعادة تعيين كلمة المرور" })).toBeEnabled();
   });

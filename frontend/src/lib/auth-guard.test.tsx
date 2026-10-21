@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
 import { api, notifySessionLost } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import { LOGIN_ROUTE } from "@/lib/routes";
 
 import { isUnauthenticatedFailure, useAuthGuard } from "./auth-guard";
@@ -106,6 +107,50 @@ describe("useAuthGuard", () => {
 
     act(() => {
       notifySessionLost();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
+    expect(replace).toHaveBeenCalledWith(LOGIN_ROUTE);
+  });
+
+  /**
+   * A BLOCKED ACCOUNT IS TOLD WHAT HAPPENED.
+   *
+   * The server answers a disabled account with a 401 and the sentence "Account has been
+   * disabled". The reader is sent to the sign-in screen — but with the REASON attached,
+   * because signing in again with the same credentials fails the same way, and a reader
+   * told "your session has ended" goes away thinking they were signed out.
+   *
+   * The reason travels as a CODE in the query string, never as the server's sentence.
+   */
+  it("carries the reason to the sign-in screen when the account is blocked", async () => {
+    vi.spyOn(api, "getSession").mockResolvedValue({
+      user: { id: "u", email: "e", name: "n", username: "u", accountType: "reader" },
+      expiresAt: "x",
+    });
+
+    render(<GuardHarness />);
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+
+    act(() => {
+      notifySessionLost(new ApiError("Account has been disabled", 401, { endsSession: true }));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
+    expect(replace).toHaveBeenCalledWith(`${LOGIN_ROUTE}?reason=accountDisabled`);
+  });
+
+  it("sends the reader to the plain sign-in screen when there is no reason to carry", async () => {
+    vi.spyOn(api, "getSession").mockResolvedValue({
+      user: { id: "u", email: "e", name: "n", username: "u", accountType: "reader" },
+      expiresAt: "x",
+    });
+
+    render(<GuardHarness />);
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+
+    act(() => {
+      notifySessionLost(new ApiError("Invalid or expired token", 401, { endsSession: true }));
     });
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));

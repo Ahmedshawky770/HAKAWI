@@ -115,8 +115,15 @@ async function downloadFaces(): Promise<OgFont[]> {
     .map((match) => {
       const body = match[1];
       const url = body.match(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/)?.[1];
-      const weight = Number(body.match(/font-weight:\s*(\d+)/)?.[1] ?? 400);
-      return url ? { url, weight } : null;
+      // A variable font declares a RANGE — "font-weight: 100 900" — and the
+      // range is what the file is FOR. The face is then labelled with the
+      // bottom of the range, which is the weight the renderer asks for most
+      // often. Reading the range's second number would label a variable face
+      // with a weight it does not have, and a face whose weight is `NaN` is
+      // worse than no face at all: the renderer throws on it.
+      const declaredWeight = body.match(/font-weight:\s*(\d+)/)?.[1];
+      const weight = declaredWeight === undefined ? 400 : Number(declaredWeight);
+      return url ? { url, weight: Number.isFinite(weight) ? weight : 400 } : null;
     })
     .filter((declaration): declaration is { url: string; weight: number } => declaration !== null);
 
@@ -124,10 +131,11 @@ async function downloadFaces(): Promise<OgFont[]> {
    * THE FILES ARE FETCHED IN PARALLEL, ONCE EACH.
    *
    * One file can be named by more than one declaration — a variable font is
-   * served the same file for both weights — so the DOWNLOADS are de-duplicated
-   * while the declarations are all kept. The cold server was paying six
-   * serial round trips to a third party before the first preview could be
-   * drawn, three of them for a file it already had.
+   * served the same file for two weights — so the DOWNLOADS are de-duplicated
+   * while the declarations are all kept. The cold server was paying a serial
+   * round trip to a third party per face before the first preview could be
+   * drawn, and the de-duplication is what keeps a face that names the same
+   * file twice from being fetched twice.
    *
    * The request is bounded: a font host that does not answer must not hold a
    * link preview open. The timeout turns a slow host into the documented

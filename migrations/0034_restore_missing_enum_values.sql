@@ -1,0 +1,49 @@
+-- Forward migration. Semicolons and "--> statement-breakpoint" markers are both
+-- accepted; line and block comments are ignored when the file is split into
+-- statements and are covered by the content checksum.
+
+-- THREE ENUM VALUES THE APPLICATION USES, AND THE DATABASE DOES NOT HAVE.
+--
+-- `0024_create_database_enums.sql` converted a set of VARCHAR columns into Postgres
+-- enums, and it left out values the application has always used. A column that is an
+-- enum can only hold the values the enum declares, so every write of a missing value
+-- and every query that NAMED one failed:
+--
+--   invalid input value for enum <type>: "<value>"
+--
+-- The three, and what each one broke:
+--
+--   · `report_status` was missing 'escalated'. The moderation dashboard COUNTS
+--     escalated reports, so `GET /moderation/stats` answered 500, and the escalation
+--     sweep WRITES them, so the sweep threw on every run. The report list accepted
+--     the status as a filter, so a reader could ask for escalated reports and get a
+--     500 instead of a list.
+--
+--   · `payment_status` was missing 'processing'. The status is set when the Paymob
+--     checkout is created — the moment between "the reader chose to pay" and "the
+--     gateway has taken the money" — so `POST /payments` answered 500 and no
+--     checkout could ever be started.
+--
+--   · `rental_status` was missing 'returned'. Returning a rental WRITES that status,
+--     so returning a rental threw and the rental stayed active for ever.
+--
+-- THE VOCABULARY IS NOT THE MIGRATION'S TO DECIDE. `@hakawi/shared-types` is the
+-- canonical list, and it has always had all three values: `REPORT_STATUSES` (in
+-- `backend/src/modules/moderation/dto/report.dto.ts`) reads 'open', 'in_review',
+-- 'escalated', 'resolved', 'dismissed'; `PAYMENT_STATUSES` reads 'pending',
+-- 'processing', 'completed', 'failed', 'cancelled', 'refunded'; and `RENTAL_STATUSES`
+-- reads 'active', 'expired', 'returned', 'cancelled'. The enums are the ones that were
+-- short.
+--
+-- THE VALUES ARE ADDED AND THE ENUMS ARE NOT REBUILT. Rebuilding a type that a column
+-- with data in it uses means dropping the column, which means losing the rows that
+-- carry the other values.
+--
+-- `IF NOT EXISTS` so that a database which already has one of these values — one
+-- where an operator added it by hand to unblock a route — is not failed by this
+-- migration.
+ALTER TYPE report_status ADD VALUE IF NOT EXISTS 'escalated';
+--> statement-breakpoint
+ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'processing';
+--> statement-breakpoint
+ALTER TYPE rental_status ADD VALUE IF NOT EXISTS 'returned';

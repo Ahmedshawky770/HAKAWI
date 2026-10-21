@@ -10,6 +10,7 @@ import { AdminRolesController } from './controllers/admin-roles.controller.ts';
 import { AdminRolesService } from './services/admin-roles.service.ts';
 import { AdminRolesRepository } from './repositories/admin-roles.repository.ts';
 import { ADMIN_ROLES_REPOSITORY } from './interfaces/admin-roles-repository.interface.ts';
+import { AdminPrivilegedAccessEventHandler } from './events/admin-privileged-access.event-handler.ts';
 
 @Module({
   imports: [CommonModule, SharedCacheModule, forwardRef(() => UsersModule), AdminRolesSchedulerModule],
@@ -18,6 +19,9 @@ import { ADMIN_ROLES_REPOSITORY } from './interfaces/admin-roles-repository.inte
     AdminRolesService,
     AdminRolesRepository,
     { provide: ADMIN_ROLES_REPOSITORY, useExisting: AdminRolesRepository },
+    // The consumer of the three privileged-access events. Without it the events
+    // are registered, validated and delivered — to nobody.
+    AdminPrivilegedAccessEventHandler,
   ],
   exports: [AdminRolesService, ADMIN_ROLES_REPOSITORY],
 })

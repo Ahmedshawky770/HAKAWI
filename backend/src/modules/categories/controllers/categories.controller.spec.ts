@@ -12,6 +12,7 @@ import { AccountRestrictionService } from '../../../common/services/account-rest
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import { CategoriesService } from '../categories.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { MfaService } from "../../../modules/auth/mfa.service.ts";
 import type { Category, CreateCategoryInput, UpdateCategoryInput } from '../types.ts';
 
 import { CategoriesController } from './categories.controller.ts';
@@ -90,6 +91,18 @@ describe('CategoriesController', () => {
           useValue: categoriesService,
         },
         JwtAuthGuard,
+        // `SECURED_GUARDS` composes `MfaGuard`, which reads the account's admin role to
+        // find out whether a second factor has to be presented. This module is hand-built
+        // rather than importing `CommonModule`, so the reader has to be provided here —
+        // the alternative is the whole suite failing at DI resolution.
+        {
+          provide: MfaService,
+          useValue: {
+            shouldEnforceMfa: vi.fn().mockResolvedValue(false),
+            isMfaEnabled: vi.fn().mockResolvedValue(false),
+            verifyToken: vi.fn().mockResolvedValue({ verified: false }),
+          },
+        },
         {
           provide: JwtService,
           useValue: new JwtService({ secret: JWT_SECRET }),

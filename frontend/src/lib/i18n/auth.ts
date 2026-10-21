@@ -2,6 +2,27 @@
 export interface AuthStrings {
   loginTitle: string;
   loginButton: string;
+  /**
+   * THE SECOND FACTOR, ASKED FOR AT THE MOMENT IT IS NEEDED.
+   *
+   * Some actions demand one — the financial routes, the moderation routes, the admin
+   * break-glass one — and the API refuses a caller who has an admin role unless the
+   * request carries a TOTP code or a backup code.
+   */
+  mfaChallengeTitle: string;
+  mfaChallengeDescription: string;
+  mfaCodeLabel: string;
+  mfaCodePlaceholder: string;
+  mfaChallengeConfirm: string;
+  mfaInvalidCode: string;
+  /**
+   * THE VERIFICATION THE SERVER ASKED FOR.
+   *
+   * The sign-in screen is asked for one when the server says the sign-in is under a
+   * watch — after too many failed attempts, or from an address the server does not trust.
+   */
+  captchaLabel: string;
+  captchaUnavailable: string;
   loginError: string;
   loginFooter: string;
   loginCreateAccountLink: string;
@@ -69,6 +90,15 @@ export interface AuthStrings {
 export const AR: AuthStrings = {
   loginTitle: "تسجيل الدخول",
   loginButton: "تسجيل الدخول",
+  mfaChallengeTitle: "تحقّق إضافي مطلوب",
+  mfaChallengeDescription:
+    "هذا الإجراء يحتاج رمز التحقق الخاص بك. أدخل الرمز من تطبيق المصادقة، أو أحد رموز الاسترداد.",
+  mfaCodeLabel: "رمز التحقق",
+  mfaCodePlaceholder: "000000",
+  mfaChallengeConfirm: "تحقّق",
+  mfaInvalidCode: "رمز التحقق غير صحيح. حاول مرة أخرى.",
+  captchaLabel: "أكمل التحقق الأمني للمتابعة.",
+  captchaUnavailable: "تعذّر عرض التحقق الأمني. حدّث الصفحة وحاول مرة أخرى.",
   loginError: "فشل تسجيل الدخول",
   loginFooter: "ليس لديك حساب؟",
   loginCreateAccountLink: "إنشاء حساب جديد",
@@ -136,6 +166,15 @@ export const AR: AuthStrings = {
 export const EN: AuthStrings = {
   loginTitle: "Sign in",
   loginButton: "Sign in",
+  mfaChallengeTitle: "Verification required",
+  mfaChallengeDescription:
+    "This action needs your verification code. Enter the code from your authenticator app, or one of your backup codes.",
+  mfaCodeLabel: "Verification code",
+  mfaCodePlaceholder: "000000",
+  mfaChallengeConfirm: "Verify",
+  mfaInvalidCode: "That verification code is not right. Try again.",
+  captchaLabel: "Complete the security check to continue.",
+  captchaUnavailable: "The security check could not be shown. Refresh the page and try again.",
   loginError: "Couldn't sign in",
   loginFooter: "Don't have an account?",
   loginCreateAccountLink: "Create an account",

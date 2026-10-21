@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { SetMetadata } from '@nestjs/common';
 import { getStorageToken } from '@nestjs/throttler';
 
+import { MfaService } from '../modules/auth/mfa.service.ts';
+
 import { WafMiddleware } from './middleware/waf.middleware.ts';
 import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
 import { ValkeyThrottlerStorage } from './throttler/valkey-throttler.storage.ts';
@@ -11,6 +13,7 @@ import { RolesGuard } from './guards/roles.guard.ts';
 import { PermissionsGuard } from './guards/permissions.guard.ts';
 import { OwnershipGuard } from './guards/ownership.guard.ts';
 import { RestrictionGuard } from './guards/restriction.guard.ts';
+import { MfaGuard } from './guards/mfa.guard.ts';
 import { SmtpEmailTransporter } from './email/smtp-email-transporter.ts';
 import { TransactionalEmailService } from './email/transactional-email.service.ts';
 import { EMAIL_TRANSPORTER } from './email/email-transporter.interface.ts';
@@ -45,6 +48,10 @@ describe('CommonModule wiring', () => {
       // because `SECURED_GUARDS` composes it — so a missing provider here would fail at runtime on
       // every `@Secured` route rather than at boot.
       ['RestrictionGuard', RestrictionGuard],
+      // Pinned for the same reason, and for a second one: `MfaGuard` was provided here and applied
+      // to ZERO routes, so every `@RequireMfa()` in the codebase was a decoration that did nothing.
+      // A guard that is not in `SECURED_GUARDS` is a guard that does not run.
+      ['MfaGuard', MfaGuard],
     ])('provides %s', (_name, guard) => {
       expect(providers).toContain(guard);
     });
@@ -55,8 +62,18 @@ describe('CommonModule wiring', () => {
       ['PermissionsGuard', PermissionsGuard],
       ['OwnershipGuard', OwnershipGuard],
       ['RestrictionGuard', RestrictionGuard],
+      ['MfaGuard', MfaGuard],
     ])('exports %s so @UseGuards() resolves outside this module', (_name, guard) => {
       expect(exports).toContain(guard);
+    });
+
+    it('provides and exports MfaService, which MfaGuard is injected with', () => {
+      // The guard lives in this module, and a guard can only be injected with what its own
+      // module can see. The service was in `AuthModule`, and `AuthModule` imports
+      // `CommonModule` — so the dependency pointed the wrong way round and the application
+      // refused to start.
+      expect(providers).toContain(MfaService);
+      expect(exports).toContain(MfaService);
     });
 
     it('registers OwnershipGuard as the injectable class, not only as a factory helper', () => {

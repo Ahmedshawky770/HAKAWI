@@ -13,6 +13,8 @@ import type {
 describe('Moderation Integration', () => {
   let context: TestContext;
   let superAdminToken: string;
+  /** A fresh TOTP code for the super admin, which the routes that ask for one need. */
+  let superAdminCode: () => string;
   let readerToken: string;
   let readerUserId: string;
 
@@ -22,6 +24,10 @@ describe('Moderation Integration', () => {
     const superAdmin = await context.registerAndLogin({ prefix: 'superadmin', name: 'Super Admin' });
     await context.promoteToAdmin(superAdmin.id);
     superAdminToken = (await context.login(superAdmin.email)).accessToken;
+    // The routes below ask for a second factor, and the guard behind that marker now
+    // runs. So the account has one: turned on over the real flow, through the setup
+    // endpoint and a code generated from the secret it returned.
+    superAdminCode = await context.enableMfa(superAdminToken);
 
     const reader = await context.registerAndLogin({ prefix: 'reader', name: 'Plain Reader' });
     readerUserId = reader.id;
@@ -51,6 +57,7 @@ describe('Moderation Integration', () => {
       const res = await request(context.httpServer)
         .get('/moderation/stats')
         .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('X-MFA-Token', superAdminCode())
         .expect(200);
 
       const body = res.body as ModerationStatsResponse;
@@ -71,17 +78,46 @@ describe('Moderation Integration', () => {
     it('should reject a token minted before the promotion and accept a freshly minted one', async () => {
       const promoted = await context.registerAndLogin({ prefix: 'stale', name: 'Stale Admin Token' });
       await context.promoteToAdmin(promoted.id);
+      const promotedCode = await context.enableMfa(promoted.accessToken);
 
       await request(context.httpServer)
         .get('/moderation/stats')
         .set('Authorization', `Bearer ${promoted.accessToken}`)
+        .set('X-MFA-Token', promotedCode())
         .expect(403);
 
       const freshToken = await context.login(promoted.email);
       await request(context.httpServer)
         .get('/moderation/stats')
         .set('Authorization', `Bearer ${freshToken.accessToken}`)
+        .set('X-MFA-Token', promotedCode())
         .expect(200);
+    });
+
+    /**
+     * THE SECOND FACTOR IS NOT OPTIONAL ON A ROUTE THAT ASKS FOR ONE.
+     *
+     * The route is marked `@RequireMfa()`, and the marker used to be a decoration
+     * that did nothing: the guard behind it was applied to zero routes, so an account
+     * with an admin role reached a route that asks for a second factor without
+     * presenting one. Now that the guard runs, an account with MFA turned on is
+     * refused until it presents a code.
+     */
+    it('should refuse an admin who has not presented a second factor', async () => {
+      const res = await request(context.httpServer)
+        .get('/moderation/stats')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(401);
+
+      expect((res.body as { message: string }).message).toContain('MFA challenge required');
+    });
+
+    it('should refuse an admin whose second factor is wrong', async () => {
+      await request(context.httpServer)
+        .get('/moderation/stats')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('X-MFA-Token', '000000')
+        .expect(401);
     });
   });
 
@@ -116,6 +152,7 @@ describe('Moderation Integration', () => {
       const res = await request(context.httpServer)
         .get('/moderation/reports/trends?days=7')
         .set('Authorization', `Bearer ${superAdminToken}`)
+        .set('X-MFA-Token', superAdminCode())
         .expect(200);
 
       expect(typeof res.body).toBe('object');

@@ -126,11 +126,14 @@ export const PAYMENT: Payment = {
   amount: 100,
   currency: "EGP",
   status: "completed",
-  paymentMethod: "card",
+  // The GATEWAY, and the INSTRUMENT the reader chose: two different facts
+  // under two similar names.
+  paymentMethod: "paymob",
+  instrument: "card",
   paymobOrderId: "order-1",
   paymobPaymentId: "pay-1",
   paymobTransactionId: "txn-1",
-  description: "شراء كتاب",
+  description: "buy كتاب",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:01.000Z",
 };
