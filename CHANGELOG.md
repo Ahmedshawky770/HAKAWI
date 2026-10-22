@@ -92,6 +92,20 @@ that did not.
   manifests it read and the rules they were held to, and a dev manifest that PREDATES
   `next.config.ts` is reported and skipped, because it describes a policy the dev server is no
   longer serving.
+- **The browser was told to preload fifteen font files and used three or four of them.**
+  `next/font` emits a `<link rel="preload" as="font">` for every file of a face it is told to
+  preload — every weight, of every subset the face was asked for — and the four faces of the
+  design system are fifteen files between them (Amiri four, Cairo two, IBM Plex Sans Arabic
+  eight, Inter one). The browser downloaded all fifteen and reported every file it did not
+  use as "preloaded with link preload … was not used within a few seconds". The faces are a
+  FALLBACK CHAIN (`--font-arabic-heading` is Amiri and then Cairo), so Cairo was preloaded on
+  every page and drawn on none: it is only used when Amiri fails to load, and it never does.
+  All four faces now declare `preload: false`, so the browser fetches a face when a rule
+  actually asks for it — the same set of files the page was going to use, fewer of them, and
+  no console noise. The cost is stated in `src/app/fonts.ts`: a face is discovered when the
+  stylesheet carrying it is parsed rather than in parallel with it, and `display: "swap"` plus
+  Next's fallback metrics keep the text readable and the layout stable while it arrives.
+
 A 488-file change set was reviewed line by line and hardened. The full reasoning for every change
 — including the trade-offs that were accepted rather than hidden — is in
 [`docs/adr/005-security-and-correctness-hardening.md`](docs/adr/005-security-and-correctness-hardening.md).
