@@ -78,6 +78,15 @@ npm run dev:backend  # API on :3001
 npm run dev:frontend # web on :3000
 ```
 
+`npm run dev` checks both ports before it starts anything (`npm run check:dev-ports`, which can
+also be run on its own). A port that is already held is reported with the PID and the command
+line of whatever holds it, because the failure it causes is not obvious from the symptoms: the
+API dies with `EADDRINUSE`, the browser goes on talking to the process that has the port, and
+that process answers without CORS headers — so the console reports
+`Cross-Origin Request Blocked … (Reason: CORS header 'Access-Control-Allow-Origin' missing)`
+for a CORS configuration that is correct. The check names the holder instead of leaving that
+detour to be walked.
+
 Verify:
 
 ```bash
@@ -193,6 +202,7 @@ documenting an aspiration as a capability — is what this README exists to avoi
 | API contract | `docs/api-contract/` |
 | what changed and why | `CHANGELOG.md` |
 | decision records | `docs/adr/` |
+| the logo, and how every file that shows it is generated | `frontend/scripts/generate-brand-assets.mjs` |
 
 ## Contributing
 

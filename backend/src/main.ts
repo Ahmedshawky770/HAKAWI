@@ -62,6 +62,46 @@ function requestSizeLimit(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
+/**
+ * Whether an error is the operating system refusing a port.
+ *
+ * The message is matched rather than the class, because the error that reaches here is Node's
+ * own `Error` with `code: 'EADDRINUSE'` — there is no dedicated class to test for.
+ */
+function isAddressInUse(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'EADDRINUSE'
+  );
+}
+
+/**
+ * What to say when the port is taken.
+ *
+ * WHY THIS IS WORTH SAYING AT ALL. The bare `EADDRINUSE` names neither the port nor what is
+ * holding it, and the consequence is not visible from the API's own logs: the frontend keeps
+ * running, the BROWSER keeps talking to the process that has the port, and — if that process is
+ * not another instance of this API — it answers without CORS headers. The console then reports
+ * "Cross-Origin Request Blocked … (Reason: CORS header 'Access-Control-Allow-Origin' missing)" —
+ * a CORS fault, in a file whose CORS configuration is correct, for a request that never reached
+ * it.
+ *
+ * So the message names the port, names the check that diagnoses it, and says plainly that the
+ * CORS errors in the browser are this and not a CORS misconfiguration.
+ */
+function describeAddressInUse(port: string | number): string {
+  return (
+    `Port ${port} is already in use, so the API did not start. ` +
+    `Another process is holding it. If that process is not another instance of this API, its answers carry no ` +
+    `CORS headers, which is what the "CORS header 'Access-Control-Allow-Origin' missing" console errors are; ` +
+    `they are not a CORS misconfiguration here. ` +
+    `Run \`npm run check:dev-ports\` from the repository root to see what holds it, ` +
+    `stop that process, or start the API on another port with PORT.`
+  );
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new WinstonLoggerService(),
@@ -210,13 +250,79 @@ async function bootstrap() {
     setupSwagger(app);
   }
 
-  await app.listen(port);
+  try {
+    await app.listen(port);
+  } catch (error) {
+    if (isAddressInUse(error)) {
+      logger.error(describeAddressInUse(port));
+      // The process is NOT closed gracefully here, and that is deliberate. The application
+      // never finished starting, so its shutdown path is not the one that was designed: the
+      // WebSocket adapter's engine was never created, and closing it throws from a tick
+      // callback that no `await` can catch — an unhandled crash that buries the message
+      // above. `process.exit` is the honest ending for a process that never ran.
+      //
+      // BUT THE MESSAGE IS FLUSHED FIRST. The logger writes to stdout, and a write to a
+      // PIPE is asynchronous — which is exactly what stdout is when the process runs
+      // under a supervisor, in a container, or in CI. Exiting on the same tick would
+      // truncate the one line that says which port is busy, and the failure would look
+      // like a crash with no explanation.
+      await flushOutput();
+      process.exit(1);
+    }
+    throw error;
+  }
   logger.log(`Application is running on: http://localhost:${port}/api/v1`);
   logger.log(`Environment: ${process.env.NODE_ENV ?? 'development'}`);
 }
 
-bootstrap().catch((error) => {
+/**
+ * Waits for whatever has been written to stdout and stderr to actually leave the process.
+ *
+ * A write to a terminal is synchronous, so this returns at once; a write to a pipe or a
+ * file is not, and the bytes sit in the stream's buffer until the event loop gets to
+ * them. `process.exit` does not wait for that buffer, so the last thing a process
+ * prints before it exits is the thing most likely to be lost.
+ */
+function flushOutput(): Promise<void> {
+  const streams = [process.stdout, process.stderr];
+  const pending = streams.filter((stream) => stream.writableLength > 0);
+
+  if (pending.length === 0) {
+    return Promise.resolve();
+  }
+
+  const drained = Promise.all(
+    pending.map(
+      (stream) =>
+        new Promise<void>((resolve) => {
+          // The drain never comes if the reader is gone, and the stream says so with an
+          // error rather than an event — an unhandled one would end the process with a
+          // stack trace instead of the sentence it was about to print.
+          const settle = () => {
+            stream.off("error", settle);
+            resolve();
+          };
+          stream.once("error", settle);
+          stream.once("drain", settle);
+        }),
+    ),
+  ).then(() => undefined);
+
+  // A process that waits forever for a message nobody will read is worse than one that
+  // loses the message, so the wait is bounded. The timer is NOT unref'd: an unref'd timer
+  // does not keep the event loop alive, so in the very case this bound exists for — a
+  // pending write and nothing else — the process would exit on its own, with the
+  // SUCCESS code, before the failure was ever reported.
+  const giveUp = new Promise<void>((resolve) => {
+    setTimeout(resolve, 250);
+  });
+
+  return Promise.race([drained, giveUp]);
+}
+
+bootstrap().catch(async (error) => {
   const logger = new Logger('Bootstrap');
   logger.error('Failed to start application', error);
+  await flushOutput();
   process.exit(1);
 });

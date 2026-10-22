@@ -11,6 +11,36 @@ number is left to the first tag rather than invented here.
 
 ## [Unreleased]
 
+### Fixed — the dev environment's four console errors
+
+The `npm run dev` console carried four errors that shared one root cause between them, and one
+that did not.
+
+- **A process holding the API's port produced "Cross-Origin Request Blocked … (Reason: CORS
+  header 'Access-Control-Allow-Origin' missing)" for a CORS configuration that was correct.**
+  The API could not bind `:3001` because something else already had it, and the browser went on
+  talking to THAT process, which answered `200` with a JSON body and no CORS headers. The
+  console named CORS; the defect was a port. `npm run dev` now checks both ports before it
+  starts anything (`scripts/check-dev-ports.mjs`, also runnable on its own as
+  `npm run check:dev-ports`) and reports the port, the PID and the command line of whatever
+  holds it — and says, in the failure message, that the CORS errors are this and not a CORS
+  misconfiguration. The API says the same thing when it is started on its own and finds the
+  port taken: `backend/src/main.ts` now catches `EADDRINUSE` and names the port instead of
+  letting a bare `EADDRINUSE` be the whole diagnosis. The message is FLUSHED before the
+  process exits: a write to stdout is asynchronous when stdout is a pipe — which is what it
+  is under a supervisor, in a container or in CI — and exiting on the same tick truncates the
+  one line that says which port is busy.
+- **THE DEV-PORTS CHECK CHECKED A PORT NOBODY BINDS.** The frontend's port was written in two
+  places — the script that probes it and the `--port` flag the `dev:frontend` script passes to
+  Next — and nothing made them agree. A check that probes a port nobody binds always passes, and
+  it is worse than no check because it says the ports are free. The script now reads the root
+  `package.json`, refuses to run when the two disagree or when the `dev` script does not run the
+  check at all, and says which of the two is wrong.
+- **The frontend's port is now passed explicitly (`next dev --port 3000`).** `next dev` reads
+  `PORT` as well, so a `PORT` in the environment moved BOTH servers onto one port; and when
+  Next's port is not given explicitly it does not fail on a busy port at all — it silently
+  retries on the NEXT port, which for a busy `3000` is `3001`, which is the API's port. The
+  explicit port makes Next fail loudly instead of drifting onto the API.
 A 488-file change set was reviewed line by line and hardened. The full reasoning for every change
 — including the trade-offs that were accepted rather than hidden — is in
 [`docs/adr/005-security-and-correctness-hardening.md`](docs/adr/005-security-and-correctness-hardening.md).
