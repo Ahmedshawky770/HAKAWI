@@ -38,7 +38,7 @@
  * WCAG relative luminance the design system's test recomputes, and the constants are
  * chosen so that every part of the mark clears the canvas it is drawn on.
  *
- * WHY THE ICONS ARE ON AN OPAQUE PLATE.
+ * WHY THE ICONS SIT ON A DISC.
  *
  * A favicon, an apple-touch icon and an installable app's icon are all drawn by software
  * that does not know what the product's theme is: iOS composites a transparent icon over
@@ -46,6 +46,13 @@
  * reaches the edge. So every icon carries its own paper — the same cream the artwork was
  * drawn on — and the mark is printed on it. A transparent emblem would be a ring of dark
  * violet on black on an iPhone home screen, which is invisible.
+ *
+ * THE PAPER IS A DISC AND NOT A SQUARE. A square of paper behind a round mark reads as a
+ * white square with a logo in it — in a browser tab, in an app grid, in a chart listing —
+ * and that is the one thing about an icon that looks like a mistake. The shape here is the
+ * one the mark already has: the LENS, the circle the artwork's own frame draws, found in
+ * the artwork and printed a little larger than it. The corners stay transparent, so the
+ * icon is a seal rather than a card.
  *
  * WHY THE MASKABLE ICON IS A SEPARATE FILE AND A SMALLER MARK.
  *
@@ -85,6 +92,16 @@ const MARK_SIZE = 168;
 const FAVICON_SIZES = [16, 32, 48];
 const ICON_SIZE = 256;
 const APPLE_ICON_SIZE = 180;
+
+/**
+ * HOW MUCH PAPER SHOWS AROUND THE FRAME.
+ *
+ * The disc is the frame's own circle, a little larger, so the emblem sits in a ring of
+ * paper rather than on a plate. The ring is thin on purpose: at sixteen pixels it is
+ * thinner than a pixel and the icon is the emblem alone, and at two hundred and fifty
+ * six it is a hairline that says "paper" without becoming a shape of its own.
+ */
+const DISC_MARGIN = 1.06;
 
 /**
  * The paper the artwork is drawn on, and the one the icons are printed on.
@@ -778,18 +795,148 @@ function rescale(image, targetWidth, targetHeight) {
 }
 
 /**
+ * The disc the icons are printed on: the artwork's own frame circle, a little larger.
+ */
+function discFor(image) {
+  const circle = frameCircle(image);
+  return { ...circle, radius: circle.radius * DISC_MARGIN };
+}
+
+/**
+ * The circle the artwork's frame draws, found in the artwork itself.
+ *
+ * THE FRAME IS A RING, AND A RING'S EDGE IS A CIRCLE. From a candidate centre, the
+ * outline of the artwork is read along 180 rays: on each ray, the last opaque pixel is
+ * the edge of the drawing. For the right centre those radii are all the same — the
+ * frame's edge — and the MEDIAN of them is the frame's radius; how many of them land
+ * within three pixels of that median is how well the candidate explains the drawing.
+ *
+ * The centre is searched rather than guessed: a coarse sweep around the middle of the
+ * artwork's own bounding box, then a finer one around the best candidate. The artwork's
+ * bounding box is a good place to start because the emblem is a circle with a quill on
+ * the right, and the quill moves the box's centre only a little.
+ *
+ * WHY THIS IS NOT DONE BY HAND. The disc behind the mark is the shape the mark already
+ * has — a lens — and a lens that is a few pixels off the frame it surrounds reads as a
+ * mistake. Finding the circle in the artwork means the artwork can be replaced without
+ * anyone re-measuring anything.
+ */
+function frameCircle(image) {
+  const seed = boundingBoxCentre(image);
+
+  let best = null;
+
+  for (const step of [4, 1]) {
+    const span = step === 4 ? 28 : 5;
+    const fromX = (best?.centreX ?? seed.x) - span;
+    const toX = (best?.centreX ?? seed.x) + span;
+    const fromY = (best?.centreY ?? seed.y) - span;
+    const toY = (best?.centreY ?? seed.y) + span;
+
+    for (let cy = fromY; cy <= toY; cy += step) {
+      for (let cx = fromX; cx <= toX; cx += step) {
+        const candidate = outlineOf(image, cx, cy);
+        if (best === null || candidate.score > best.score) {
+          best = { ...candidate, centreX: cx, centreY: cy };
+        }
+      }
+    }
+  }
+
+  if (best === null || best.score < best.rays * 0.5) {
+    throw new Error(
+      "the artwork's frame circle could not be found — the emblem has changed shape, and the disc behind " +
+        "it has to be found again",
+    );
+  }
+
+  return { centreX: best.centreX, centreY: best.centreY, radius: best.radius };
+}
+
+/**
+ * The middle of the artwork's opaque pixels' bounding box.
+ */
+function boundingBoxCentre(image) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const index = image.indices[y * image.width + x];
+      if ((image.alpha[index] ?? 255) < 128) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+}
+
+/**
+ * The outline of the artwork, read from one candidate centre: the median of the radii
+ * of its edge, and how many of them agree with that median.
+ */
+function outlineOf(image, centreX, centreY) {
+  const radii = [];
+
+  for (let angle = 0; angle < 360; angle += 2) {
+    const ux = Math.cos((angle * Math.PI) / 180);
+    const uy = Math.sin((angle * Math.PI) / 180);
+    let edge = 0;
+
+    for (let radius = 2; radius < image.width; radius += 1) {
+      const x = Math.round(centreX + ux * radius);
+      const y = Math.round(centreY + uy * radius);
+      if (x < 0 || y < 0 || x >= image.width || y >= image.height) break;
+      const index = image.indices[y * image.width + x];
+      if ((image.alpha[index] ?? 255) >= 128) edge = radius;
+    }
+
+    if (edge > 0) radii.push(edge);
+  }
+
+  if (radii.length === 0) {
+    return { radius: 0, score: 0, rays: 0 };
+  }
+
+  radii.sort((left, right) => left - right);
+  const median = radii[Math.floor(radii.length / 2)];
+  const score = radii.reduce((total, radius) => total + (Math.abs(radius - median) <= 3 ? 1 : 0), 0);
+
+  return { radius: median, score, rays: radii.length };
+}
+
+/**
  * The artwork on the paper: the mark scaled to `scale` of the canvas and centred on it.
+ *
+ * THE GROUND IS A DISC, NOT A SQUARE. A square of paper behind the emblem reads as a
+ * white square with a logo in it — in a browser tab, in an app grid, in a chart listing —
+ * and it is the one thing about the icon that looks like a mistake. The ground here is the
+ * shape the mark already has: the LENS, the circle the artwork's own frame draws, fitted
+ * to the artwork and a little larger than it, so the emblem sits in a ring of paper and
+ * the corners are transparent. A circle is a shape a brand can have; a square of paper
+ * behind a round mark is a box the mark did not ask for.
  *
  * The artwork is scaled rather than placed at full size because it draws its quill and
  * its crescent right out to the edge of its canvas, and a launcher that masks the icon
  * crops exactly there. The margin is what the mask keeps.
  */
-function compose(image, size, scale, paper) {
+function compose(image, size, scale, paper, disc) {
   const markSize = Math.round(size * scale);
   const scaled = rescale(image, markSize, markSize);
   const offset = Math.round((size - markSize) / 2);
   const rgba = new Uint8Array(size * size * 4);
   const [pr, pg, pb] = paper;
+
+  // The disc is drawn in the CANVAS's coordinates: the frame's circle, scaled with the
+  // artwork and moved with it.
+  const centreX = disc ? (disc.centreX / image.width) * markSize + offset : 0;
+  const centreY = disc ? (disc.centreY / image.height) * markSize + offset : 0;
+  const radius = disc ? (disc.radius / image.width) * markSize : 0;
 
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
@@ -797,21 +944,34 @@ function compose(image, size, scale, paper) {
       const sx = x - offset;
       const sy = y - offset;
 
+      // THE PAPER. A disc is drawn with the COVERAGE of each pixel — a pixel that the
+      // circle crosses is partly paper and partly nothing, and a stair-stepped edge is
+      // the same white-square problem in a smaller costume.
+      let paperAlpha = 0;
+      if (disc) {
+        const distance = Math.hypot(x + 0.5 - centreX, y + 0.5 - centreY);
+        paperAlpha = Math.max(0, Math.min(1, radius + 0.5 - distance));
+      } else {
+        paperAlpha = 1;
+      }
+
       if (sx < 0 || sy < 0 || sx >= markSize || sy >= markSize) {
+        if (paperAlpha === 0) continue;
         rgba[offsetIndex] = pr;
         rgba[offsetIndex + 1] = pg;
         rgba[offsetIndex + 2] = pb;
-        rgba[offsetIndex + 3] = 255;
+        rgba[offsetIndex + 3] = Math.round(paperAlpha * 255);
         continue;
       }
 
       const sourceOffset = (sy * markSize + sx) * 4;
       const alpha = scaled.rgba[sourceOffset + 3] / 255;
 
+      // The artwork over the paper.
       rgba[offsetIndex] = Math.round(scaled.rgba[sourceOffset] * alpha + pr * (1 - alpha));
       rgba[offsetIndex + 1] = Math.round(scaled.rgba[sourceOffset + 1] * alpha + pg * (1 - alpha));
       rgba[offsetIndex + 2] = Math.round(scaled.rgba[sourceOffset + 2] * alpha + pb * (1 - alpha));
-      rgba[offsetIndex + 3] = 255;
+      rgba[offsetIndex + 3] = Math.round(paperAlpha * 255);
     }
   }
 
@@ -1035,19 +1195,19 @@ const outputs = {
     colours: 96,
   },
   "public/app-icon.png": {
-    variant: "light",
+    variant: "dark",
     size: ICON_SIZE,
     paper: 0.78,
     colours: 96,
   },
   "public/apple-touch-icon.png": {
-    variant: "light",
+    variant: "dark",
     size: APPLE_ICON_SIZE,
     paper: 0.78,
     colours: 96,
   },
   "public/app-icon-maskable.png": {
-    variant: "light",
+    variant: "dark",
     size: ICON_SIZE,
     paper: 0.58,
     colours: 96,
@@ -1070,7 +1230,13 @@ function main() {
       continue;
     }
 
-    const composed = compose(image, settings.size, settings.paper, parseHex(PAPER));
+    const composed = compose(
+      image,
+      settings.size,
+      settings.paper,
+      parseHex(PAPER),
+      discFor(image),
+    );
     writeFileSync(
       join(FRONTEND_ROOT, path),
       palettePng(composed.rgba, composed.width, composed.height, settings.colours),
@@ -1081,7 +1247,7 @@ function main() {
   // `/favicon.ico` by name, and Next's file convention serves it from `src/app`.
   const icon = built.light;
   const entries = FAVICON_SIZES.map((size) => {
-    const composed = compose(icon, size, 0.86, parseHex(PAPER));
+    const composed = compose(icon, size, 0.86, parseHex(PAPER), discFor(icon));
     return {
       width: size,
       height: size,

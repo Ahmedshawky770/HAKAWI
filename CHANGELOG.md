@@ -47,11 +47,16 @@ number is left to the first tag rather than invented here.
   name gets the brand instead of a 404. The emblem was 138KB as a favicon — a 512-pixel picture
   a browser downloads to draw sixteen of them; the icon is 7KB and is drawn at the size it is
   used at.
-- **THE ICONS ARE PRINTED ON PAPER.** A favicon, an apple-touch icon and an installable app's
-  icon are drawn by software that does not know what the product's theme is: iOS composites a
-  transparent icon over BLACK, and the emblem's violet frame is invisible on black. So every
-  icon carries the cream the artwork was drawn on, and the apple-touch icon is 180×180 — the
-  size Apple's specification names — rather than 512.
+- **THE ICONS SIT ON A DISC, NOT ON A SQUARE OF PAPER.** A favicon, an apple-touch icon and an
+  installable app's icon are drawn by software that does not know what the product's theme is:
+  iOS composites a transparent icon over BLACK, and the emblem's violet frame is invisible on
+  black. So every icon carries the cream the artwork was drawn on — but as a DISC, the shape the
+  mark already has: the lens. A square of paper behind a round mark reads as a white square with
+  a logo in it, which is the one thing about an icon that looks like a mistake; a circle is a
+  shape a brand can have. The disc is not drawn by hand — the generator finds the frame's own
+  circle in the artwork and prints the paper a little larger than it, so the emblem sits in a
+  ring of paper and the corners stay transparent. The apple-touch icon is 180×180 — the size
+  Apple's specification names — rather than 512.
 - **The installable app has a maskable icon as well as an ordinary one.** A launcher masks an
   icon into a circle or a squircle and keeps only the middle 80% of the canvas, and this
   artwork draws its quill and its crescent right out to the edge of its frame on purpose. The

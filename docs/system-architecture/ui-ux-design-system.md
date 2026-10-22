@@ -159,6 +159,12 @@ where the frame's violet ink would otherwise sit at 1.15:1 against the canvas.
 The two are generated from one source and are measured by the generator, not by
 eye.
 
+The icons the browser and the launchers draw sit on a DISC — the lens, the
+circle the artwork's own frame draws — and never on a square of paper. A square
+behind a round mark reads as a white square with a logo in it; a circle is a
+shape a brand can have. The generator finds that circle in the artwork, so the
+paper is always the size of the mark it carries.
+
 ### 3.3 Elevation
 
 Two levels and no more. A third would mean the layout is stacking surfaces to
