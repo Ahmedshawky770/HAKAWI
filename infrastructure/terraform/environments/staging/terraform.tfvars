@@ -69,7 +69,20 @@ eks_max_size            = 6
 
 grafana_admin_password = "" # Set via GitHub secret
 
-cors_allowed_origins = ["https://staging.hakawi.com", "https://app.staging.hakawi.com"]
+# THE ORIGIN THE STAGING APP IS SERVED FROM. This list is the bucket's CORS allowlist,
+# and a presigned upload is a cross-origin PUT: the browser sends a preflight, and the
+# bucket answers it without `Access-Control-Allow-Origin` for an origin it does not know.
+#
+# It said `staging.hakawi.com` and `app.staging.hakawi.com`, and the staging app is served
+# from `staging.hakawi.io` — the Helm chart's `env.host`, and the `NEXT_PUBLIC_APP_URL` the
+# frontend image is built with. The origins had parted ways, and the symptom was every
+# upload refused by the bucket rather than by the policy that allows it. The `.com` names
+# are kept: a deployment that still serves one of them must not lose it.
+cors_allowed_origins = [
+  "https://staging.hakawi.io",
+  "https://staging.hakawi.com",
+  "https://app.staging.hakawi.com",
+]
 
 # ---------------------------------------------------------------------------
 # Application secrets — NO GOOD DEFAULTS EXIST (Principle #4). Empty values mean

@@ -166,6 +166,22 @@ A 488-file change set was reviewed line by line and hardened. The full reasoning
 — including the trade-offs that were accepted rather than hidden — is in
 [`docs/adr/005-security-and-correctness-hardening.md`](docs/adr/005-security-and-correctness-hardening.md).
 
+
+### Fixed — the staging bucket refused uploads from the staging app
+
+- **THE BUCKET'S CORS ALLOWED TWO ORIGINS THAT WERE NOT THE APP.** The staging environment's
+  `cors_allowed_origins` named `https://staging.hakawi.com` and
+  `https://app.staging.hakawi.com`, while the staging app is served from
+  `https://staging.hakawi.io` — the Helm chart's `env.host`, and the `NEXT_PUBLIC_APP_URL` the
+  frontend image is built with. A presigned upload is a cross-origin `PUT`: the browser sends
+  a preflight, and the bucket answers it without `Access-Control-Allow-Origin` for an origin it
+  does not know. So every upload from the staging app was refused by the bucket, and the refusal
+  looked like a network failure. The same drift, in the same direction, as the
+  Content-Security-Policy that did not name the staging API: the origin lists and the
+  deployment had parted ways, and both were corrected against the origin the deployment
+  actually serves. The two `.com` names are kept — a deployment that still serves one of them
+  must not lose it.
+
 ### Frontend — bilingual chrome, accessibility, and a narrower CSP
 
 - **The shell dictionary is now the whole chrome, not just the navigation.**
