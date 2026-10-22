@@ -69,15 +69,23 @@ COPY frontend/ ./frontend/
 #   NEXT_PUBLIC_APP_URL     this app's own origin: the canonical links, the sitemap, the robots
 #                           file and the `metadataBase` every `og:image` is resolved against
 #   NEXT_PUBLIC_PAYMOB_ORIGIN  the payment gateway the checkout is allowed to frame
+#   NEXT_PUBLIC_STORAGE_ORIGIN  the ONE object-storage origin the browser may upload to, e.g.
+#                           `https://hakawi-media.s3.us-east-1.amazonaws.com`. Left empty, the
+#                           policy allows every storage origin in every region (see
+#                           `src/lib/storage-origins.ts`); set, it allows that one origin and
+#                           nothing else, which is a strictly tighter policy and a much
+#                           smaller header.
 #
 # An argument that is not passed stays empty, and every one of these has a fallback in the code
 # — an empty string is falsy, so the fallback wins and the build still succeeds.
 ARG NEXT_PUBLIC_API_URL=""
 ARG NEXT_PUBLIC_APP_URL=""
 ARG NEXT_PUBLIC_PAYMOB_ORIGIN=""
+ARG NEXT_PUBLIC_STORAGE_ORIGIN=""
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_PAYMOB_ORIGIN=$NEXT_PUBLIC_PAYMOB_ORIGIN
+ENV NEXT_PUBLIC_STORAGE_ORIGIN=$NEXT_PUBLIC_STORAGE_ORIGIN
 
 RUN npm run build --workspace=frontend
 

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 import { PAYMOB_ORIGIN } from "./src/lib/paymob";
+import { S3_UPLOAD_ORIGINS } from "./src/lib/storage-origins";
 
 /**
  * The Content-Security-Policy applied to every response.
@@ -31,18 +32,30 @@ import { PAYMOB_ORIGIN } from "./src/lib/paymob";
  * hardening trade-off, it is the entire data path of the application, which is why the origin list
  * below is the API plus the storage hosts and not a keyword.
  *
- * WHY THE API ORIGIN IS NAMED RATHER THAN ALL OF `https:`. Two concrete origins are known — the
- * dev server and the production ingress — so two entries allowlist them. A blanket `https:` in
- * `connect-src` would let any page that ever loads in this origin POST the session cookie
- * anywhere on the internet, which is the exfiltration primitive a CSP exists to prevent; the cost
- * of naming the two origins is that a new deployment origin needs this file edited, and that cost
- * is one line against losing the policy's meaning.
+ * WHY THE API ORIGIN IS DERIVED FROM `NEXT_PUBLIC_API_URL` AND NOT ALL OF `https:`. The client
+ * calls one API, at one origin, named by a build variable — so the policy allows that one origin.
+ * A blanket `https:` in `connect-src` would let any page that ever loads in this origin POST the
+ * session cookie anywhere on the internet, which is the exfiltration primitive a CSP exists to
+ * prevent. Deriving the origin from the same variable the client uses removes the possibility of
+ * the two disagreeing, which is how the staging API came to be missing from the policy at all.
  *
- * WHY THE S3 HOSTS ARE A WILDCARD. Uploads are a `PUT` to `https://<bucket>.s3.<region>.amazonaws.com`
- * with a presigned URL whose host cannot be pinned in advance: the bucket and the region are
- * deployment configuration, and the presigned URL is generated per upload. `https://*.s3.*.amazonaws.com`
- * covers every AWS region for the virtual-hosted-style bucket hostname while still excluding
- * non-S3 https hosts, so an exfiltration target has to be an S3 bucket.
+ * WHY THE S3 HOSTS ARE A LIST AND NOT ONE WILDCARD. Uploads are a `PUT` to
+ * `https://<bucket>.s3.<region>.amazonaws.com` with a presigned URL whose host cannot be pinned
+ * in advance: the bucket and the region are deployment configuration, and the presigned URL is
+ * generated per upload. The list in `src/lib/storage-origins.ts` keeps the BUCKET a wildcard
+ * (`https://*.s3.<region>.amazonaws.com`) and spells the REGION out, one entry per region — so
+ * every region is covered, every non-S3 https host is still excluded, and an exfiltration target
+ * still has to be an S3 bucket. A deployment that knows its own bucket sets
+ * `NEXT_PUBLIC_STORAGE_ORIGIN` and the list is replaced by that one origin, which is a strictly
+ * tighter policy and a smaller header.
+ *
+ * WHY IT CANNOT BE ONE EXPRESSION. The policy this replaced was `https://*.s3.*.amazonaws.com`,
+ * and it never worked: a CSP host-source may carry a wildcard in its LEFTMOST label only
+ * (CSP3 §2.3.1), so the second `*` was not a wildcard. Chrome rejected the source outright —
+ * "Content-Security-Policy: Couldn't parse invalid host https://*.s3.*.amazonaws.com" — and
+ * dropped it, leaving `connect-src` without the storage hosts and refusing every upload while
+ * the policy on paper allowed it. `npm run verify:csp` now checks that every host source in
+ * the served policy PARSES, so that class of mistake fails the build instead of the browser.
  *
  * FUTURE WORK, AND WHY IT IS NOT DONE HERE. A Next.js rewrite in `next.config.ts`
  * (`source: "/api/:path*" → destination: NEXT_PUBLIC_API_URL/…`) would make every API call
@@ -102,6 +115,42 @@ const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
  */
 const PAYMOB_FRAME_ORIGIN = PAYMOB_ORIGIN;
 
+/**
+ * The origin the browser is allowed to talk to.
+ *
+ * WHY IT IS DERIVED RATHER THAN NAMED. The client calls the API at
+ * `NEXT_PUBLIC_API_URL` (`src/lib/api.ts`), and the policy has to allow exactly that
+ * origin — one origin, from one variable. The policy used to NAME two origins
+ * (`http://localhost:3001` and `https://api.hakawi.com`), and the staging
+ * deployment's API (`https://staging-api.hakawi.io`) was in neither of them: the
+ * staging frontend is served from `staging.hakawi.io`, which is a different origin,
+ * so `'self'` did not cover it either, and every API call in staging was refused by
+ * the policy before it reached the API. A policy that names the wrong host fails
+ * silently, in a browser console, on one environment — which is exactly how that
+ * stayed unnoticed.
+ *
+ * The default matches the client's own default (`src/lib/api.ts`), so a build
+ * without the variable allows the same origin the client will call, and a build
+ * with it allows the same origin the client will call. The two cannot disagree.
+ *
+ * ⚠️ IT IS FROZEN INTO THE BUILD, like every other origin here: `next.config.ts` is
+ * evaluated when the app is built, and the header is serialized into the build
+ * manifest. A deployment passes `NEXT_PUBLIC_API_URL` as a BUILD ARGUMENT.
+ */
+const API_ORIGIN = (() => {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001/api/v1";
+
+  try {
+    return new URL(configured).origin;
+  } catch {
+    throw new Error(
+      `NEXT_PUBLIC_API_URL is not a URL: ${JSON.stringify(configured)}. The Content-Security-Policy ` +
+        "derives the API origin from it, so a malformed value has to fail the build rather than " +
+        "produce a policy that refuses every request.",
+    );
+  }
+})();
+
 // WHY `'unsafe-eval'` IS DEV-ONLY. React's development build reconstructs server error stacks in
 // the browser and runs its debug hooks through `eval()`, which a bare `script-src` reports as
 // "[browser] eval() is not supported in this environment" on every dev page while doing nothing
@@ -115,7 +164,7 @@ const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https:",
-  "connect-src 'self' http://localhost:3001 https://api.hakawi.com https://*.s3.*.amazonaws.com",
+  "connect-src 'self' " + API_ORIGIN + " " + S3_UPLOAD_ORIGINS.join(" "),
   // WHY `frame-src` NAMES THE PAYMENT GATEWAY. The checkout loads Paymob's
   // `/acceptance/iframes/<token>` page INSIDE a frame — that URL is a frame
   // target, not a page, and a top-level redirect to it shows a bare document

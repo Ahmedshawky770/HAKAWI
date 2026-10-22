@@ -41,6 +41,57 @@ that did not.
   Next's port is not given explicitly it does not fail on a busy port at all — it silently
   retries on the NEXT port, which for a busy `3000` is `3001`, which is the API's port. The
   explicit port makes Next fail loudly instead of drifting onto the API.
+- **The Content-Security-Policy carried a source the browser could not parse.**
+  `connect-src` named `https://*.s3.*.amazonaws.com`, and a CSP host source may carry a
+  wildcard in its LEFTMOST label and nowhere else (CSP3 §2.3.1) — the second `*` was not a
+  wildcard. Chrome refused the whole source ("Couldn't parse invalid host
+  https://*.s3.*.amazonaws.com") and dropped it, so the policy that reached the page was
+  NARROWER than the one that had been written and every upload was refused by a policy that
+  allowed it. The storage origins are now `frontend/src/lib/storage-origins.ts`: the bucket
+  stays a wildcard (its name is deployment configuration) and the region is spelled out, one
+  entry per region, so every region is covered and every non-storage https host is still
+  excluded. The list is read from one place, in the manner of `src/lib/paymob.ts`.
+- **THE REGION LIST WAS INCOMPLETE AND TWO OF ITS ENTRIES WERE DEAD.** The list was written
+  from memory; the endpoint data the AWS SDK ships (`@aws-sdk/core`, `partitions.json`) is the
+  authority on which regions exist and what their hostnames look like, and it is in this
+  repository's own `node_modules`. Compared against it, three regions were missing — `mx-central-1`,
+  `ap-east-2` and `ap-southeast-6` — and the two China entries named the wrong suffix: the
+  China partition's endpoints end in `amazonaws.com.cn`, so `https://*.s3.cn-north-1.amazonaws.com`
+  could never match anything. A region missing from the list is a region where an upload is
+  refused, and a region listed with the wrong suffix is a region where an upload is refused as
+  well. The list now carries every region of the commercial, China, GovCloud and European
+  Sovereign Cloud partitions, each with its own partition's suffix. A deployment that knows
+  its own bucket can set `NEXT_PUBLIC_STORAGE_ORIGIN` and the list is replaced by that ONE
+  origin — a strictly tighter policy and a much smaller header — and the value is VALIDATED
+  at build time, because a malformed one is a legal single-label host source to a browser and
+  would produce a policy that refuses every upload while claiming to allow it.
+- **THE POLICY ALLOWED THE API ORIGIN TO BE NAMED, AND STAGING NAMED NEITHER.** `connect-src`
+  listed two API origins — the dev server and the production ingress — while the staging
+  deployment's API (`https://staging-api.hakawi.io`) was in neither of them, and the staging
+  frontend is served from `staging.hakawi.io`, which `'self'` does not cover either. Every API
+  call in staging was therefore refused by the policy before it reached the API, and the
+  console said "refused to connect", which is a sentence nobody reads as "the policy is wrong".
+  The origin is now DERIVED from `NEXT_PUBLIC_API_URL` — the same variable the client calls
+  the API with — so the policy and the client cannot disagree about it, and a new environment
+  is one build argument rather than an edit to a list that had already drifted.
+- **`npm run verify:csp` now checks that every source in the served policy PARSES**, and reads
+  the dev manifest (`.next/dev/routes-manifest.json`) as well as the build one — a dev-only
+  mistake is the one that reaches a developer first. The parser lives in
+  `frontend/scripts/csp-sources.mjs` and has its own suite, because a parser with no test is
+  a coin flip between "misses the bug" and "fails the build for no reason". The parser follows
+  the BROWSER's rules rather than the specification's alone: a wildcard port, a trailing dot
+  and a label that begins with a dash are legal to Chrome and are legal here, and a bracketed
+  IPv6 literal is refused by Chrome and is refused here. `trusted-types` and
+  `require-trusted-types-for` take POLICY NAMES rather than sources, so they are not read as
+  source lists — reading a working Trusted Types policy as a broken hostname would fail the
+  build over it.
+- **THE CSP CHECK SAID IT HAD CHECKED SOMETHING IT HAD NOT.** The build manifest is the
+  artifact that ships, and the dev manifest is deliberately NOT held to the production rule —
+  so a run that found only the dev manifest printed that the policy "blocks eval" while having
+  checked nothing of the kind. The build manifest is now required, the summary names the
+  manifests it read and the rules they were held to, and a dev manifest that PREDATES
+  `next.config.ts` is reported and skipped, because it describes a policy the dev server is no
+  longer serving.
 A 488-file change set was reviewed line by line and hardened. The full reasoning for every change
 — including the trade-offs that were accepted rather than hidden — is in
 [`docs/adr/005-security-and-correctness-hardening.md`](docs/adr/005-security-and-correctness-hardening.md).
