@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "verify:csp": "node scripts/verify-csp.mjs",
+    "brand:assets": "node scripts/generate-brand-assets.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

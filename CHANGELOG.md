@@ -11,6 +11,62 @@ number is left to the first tag rather than invented here.
 
 ## [Unreleased]
 
+### Changed — the site wears its own logo
+
+- **The mark is the real logo, not the placeholder that stood in for it.** `frontend/public/logo.png`
+  is the product's logo — a magnifier whose lens is filled with the calligraphic `حكاوي`, a quill
+  laid across it and a crescent over the rim — and the shell now draws it. The `ح`-on-amber tile
+  that `components/layout/Brand.tsx` used to render is gone: it was a PLACEHOLDER for a logo that
+  did not exist yet, drawn in the product's palette so the layout had something to hold, and a
+  placeholder that outlasts the real thing is worse than no placeholder.
+- **Every file that shows the logo is GENERATED from one piece of artwork**, by
+  `frontend/scripts/generate-brand-assets.mjs` (`npm run brand:assets --workspace=frontend`).
+  The artwork is the source; the mark in the shell, the browser icon, the apple-touch icon and
+  the installable app's icons are its output, and the script is committed with them. Two copies
+  of a logo that can drift apart is one copy too many, and a script that derives them is the
+  only way to guarantee they cannot.
+- **THE MARK IS DRAWN IN TWO VERSIONS, because the artwork is a PRINT.** The artwork is violet
+  ink, a teal glass and gold leaf on cream paper, and it reads as it was drawn on the light
+  canvas — and it does not read on the dark one, where the frame's violet ink sits at 1.15:1
+  against the canvas, which is the frame disappearing. So `logo-mark-dark.png` and
+  `logo-mark-light.png` are two prints of the same drawing, and the theme decides which one is
+  drawn. The dark one is measured, not eyeballed: the generator prints the contrast of the
+  shade that covers the most pixels of each family against the canvas it will be drawn on, and
+  it prints it from the file that SHIPS — the violet frame at 3.6:1, the teal glass at 3.7:1,
+  the gold at 11.5:1.
+- **The mark is a CSS background, not an `<img>`.** The theme is resolved before the first
+  paint, by the bootstrap in `src/lib/preferences.ts`, so the right version is known when the
+  page is drawn — and only CSS can act on that moment. An `<img>` whose `src` follows the theme
+  downloads the WRONG version first and the right one after hydration, and a browser fetches a
+  hidden image whether it is wanted or not. A background image is fetched for the element that
+  is actually painted, which is exactly one of the two.
+- **The browser icon was the Next.js mark.** `frontend/src/app/favicon.ico` was the framework's
+  starter icon — a white `N` on transparent — and it was the one place a browser showed the
+  product's face. It is now the product's own icon: a real `.ico` carrying 16, 32 and 48 pixel
+  entries, served at `/favicon.ico` by Next's file convention, so a browser that asks for it by
+  name gets the brand instead of a 404. The emblem was 138KB as a favicon — a 512-pixel picture
+  a browser downloads to draw sixteen of them; the icon is 7KB and is drawn at the size it is
+  used at.
+- **THE ICONS ARE PRINTED ON PAPER.** A favicon, an apple-touch icon and an installable app's
+  icon are drawn by software that does not know what the product's theme is: iOS composites a
+  transparent icon over BLACK, and the emblem's violet frame is invisible on black. So every
+  icon carries the cream the artwork was drawn on, and the apple-touch icon is 180×180 — the
+  size Apple's specification names — rather than 512.
+- **The installable app has a maskable icon as well as an ordinary one.** A launcher masks an
+  icon into a circle or a squircle and keeps only the middle 80% of the canvas, and this
+  artwork draws its quill and its crescent right out to the edge of its frame on purpose. The
+  maskable icon carries the mark at 58%, inside the safe zone, so the mask keeps the drawing
+  whole.
+- **The manifest's icon entry pointed at `/logo.png` while declaring `sizes: "512x512"`**, which
+  the file is not (it is 1408×768, with the magnifier's handle running out of the frame — a
+  launcher would crop it to a shape the artwork was never drawn as); it now declares the emblem,
+  which is square.
+- **The mark and the wordmark are both shown, and they are not the same thing.** The artwork
+  carries the name in Arabic calligraphy — a logotype, which does not change with the language of
+  the interface — while the wordmark beside it is the name in the reader's own script, `حكاوي` in
+  Arabic and `Hakawi` in English. The emblem says "this is the mark"; the wordmark says "this is
+  what it is called, in your language".
+
 ### Fixed — the dev environment's four console errors
 
 The `npm run dev` console carried four errors that shared one root cause between them, and one

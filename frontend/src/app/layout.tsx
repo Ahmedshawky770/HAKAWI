@@ -28,6 +28,23 @@ export const metadata: Metadata = {
   title: stringsFor("ar").shell.appTitle,
   description: stringsFor("ar").shell.appDescription,
   applicationName: stringsFor("ar").shell.brand,
+  // THE ICON IS THE PRODUCT'S OWN LOGO, NOT A LETTER IN A TILE. The starter
+  // shipped a `favicon.ico` carrying the Next.js mark, which is the wrong
+  // brand in the one place a browser shows the product's face.
+  //
+  // THE BROWSER ICON IS THE FILE CONVENTION. `src/app/favicon.ico` is served at
+  // `/favicon.ico` and injected by Next as the first icon, so a browser that
+  // asks for `/favicon.ico` by name gets the brand instead of a 404 — and the
+  // file is a real icon at 16, 32 and 48 pixels rather than a 512-pixel picture
+  // a browser would download to draw sixteen of them.
+  //
+  // THE APPLE ICON IS ITS OWN FILE. iOS composites a transparent icon over
+  // BLACK, and the emblem's violet frame is invisible on black, so the apple
+  // icon is printed on the same paper as the other icons. The installable
+  // app's own icons are in `manifest.ts`.
+  icons: {
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {

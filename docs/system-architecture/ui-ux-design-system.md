@@ -139,9 +139,25 @@ spacing *of components* is a decision:
 ### 3.2 Radius
 
 `rounded-lg` 8px on controls · `rounded-xl` 12px on cards, buttons and toasts ·
-`rounded-2xl` 16px on the large brand mark · `rounded-full` on avatars, pills and
-the progress bar. Nothing is sharper than 8px: the product is made of paper and
-ink, and a hard 2px corner reads as a developer tool.
+`rounded-full` on avatars, pills and the progress bar. Nothing is sharper than
+8px: the product is made of paper and ink, and a hard 2px corner reads as a
+developer tool.
+
+The brand mark carries NO radius of its own. It is the product's real logo —
+the magnifier emblem cut out of `frontend/public/logo.png`, drawn as
+`frontend/public/logo-mark-dark.png` and `frontend/public/logo-mark-light.png`
+by `frontend/scripts/generate-brand-assets.mjs` — and the artwork is already
+round, with the quill and the crescent breaking out of it at the top right; a
+rounded container would cut them off. The `rounded-2xl` this table used to list
+for the large brand mark described the amber `ح` tile that stood in for the logo
+before the logo existed, and it went with it.
+
+The artwork is a PRINT — violet ink, a teal glass, gold leaf, on cream paper —
+so the mark has one version for each canvas: the light one is the drawing as it
+was made, and the dark one is the same drawing reprinted for a dark ground,
+where the frame's violet ink would otherwise sit at 1.15:1 against the canvas.
+The two are generated from one source and are measured by the generator, not by
+eye.
 
 ### 3.3 Elevation
 
