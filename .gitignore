@@ -59,3 +59,12 @@ backend/e2e-results.json
 # opposite — it pins the exact provider versions and IS tracked on purpose, so this
 # entry names only the directory and never the lock file.
 .terraform/
+
+# Corrupted node_modules backups from recovery attempts
+node_modules.corrupted.rootowned/
+node_modules.corrupted*/
+**/node_modules.corrupted.rootowned/
+**/node_modules.corrupted*/
+
+node_modules.bak/
+node_modules.bak*/
