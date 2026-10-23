@@ -456,6 +456,32 @@ export function useUserRestrictions(userId: string, includeExpired = true) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  ADMIN                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const adminKeys = {
+  moderationStats: () => ["admin", "moderation", "stats"] as const,
+  roleAssignments: () => ["admin", "roles", "assignments"] as const,
+};
+
+export function useAdminModerationStats(enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.moderationStats(),
+    queryFn: () => api.getAdminModerationStats(),
+    enabled,
+  });
+}
+
+export function useAdminRoleAssignments() {
+  return useQuery({
+    queryKey: adminKeys.roleAssignments(),
+    queryFn: () => api.getAdminRoleAssignments(),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*  USERS                                                                     */
+/* -------------------------------------------------------------------------- */
 /*  USERS                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -626,6 +652,11 @@ export function useInvalidation() {
       /** A report was filed or moderated. */
       moderation: async () => {
         await queryClient.invalidateQueries({ queryKey: ["moderation"] });
+      },
+
+      /** An admin surface changed: moderation stats, financial stats, verification stats or role assignments. */
+      admin: async () => {
+        await queryClient.invalidateQueries({ queryKey: ["admin"] });
       },
 
       /** A profile changed. */

@@ -776,6 +776,30 @@ export const emptyResponseSchema = z.undefined();
 
 export const adminRoleSchema = z.enum(ADMIN_ROLES);
 
+export const roleAssignmentSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  adminRole: adminRoleSchema,
+  reason: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  assignedBy: z.string(),
+  assignedAt: z.string(),
+  revokedAt: z.string().nullable(),
+  revokedBy: z.string().nullable(),
+});
+
+export const roleAssignmentsListResponseSchema = z.object({
+  assignments: z.array(roleAssignmentSchema),
+  total: z.number(),
+});
+
+export const breakGlassResponseSchema = z.object({
+  success: z.boolean(),
+  adminRole: adminRoleSchema,
+  expiresAt: z.string(),
+  message: z.string(),
+});
+
 export const storyStatusSchema = z.enum(["draft", "published", "archived"]);
 
 export type AuthResponseShape = z.infer<typeof authResponseSchema>;
@@ -795,3 +819,6 @@ export type MessagesListResponseShape = z.infer<typeof messagesListResponseSchem
 export type NotificationsListResponseShape = z.infer<typeof notificationsListResponseSchema>;
 export type ContestsListResponseShape = z.infer<typeof contestsListResponseSchema>;
 export type ReportsListResponseShape = z.infer<typeof reportsListResponseSchema>;
+export type RoleAssignmentShape = z.infer<typeof roleAssignmentSchema>;
+export type RoleAssignmentsListResponseShape = z.infer<typeof roleAssignmentsListResponseSchema>;
+export type BreakGlassResponseShape = z.infer<typeof breakGlassResponseSchema>;

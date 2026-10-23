@@ -37,6 +37,7 @@ export interface ShellStrings {
   navPayments: string;
   navRentals: string;
   navProfile: string;
+  navAdmin: string;
   navSearch: string;
   searchPlaceholder: string;
   searchLabel: string;
@@ -87,6 +88,7 @@ export const AR: ShellStrings = {
   navPayments: "المدفوعات",
   navRentals: "الإيجارات",
   navProfile: "حسابي",
+  navAdmin: "لوحة المسؤول",
   navSearch: "البحث",
   searchPlaceholder: "ابحث عن قصص، مستخدمين، كتب…",
   searchLabel: "البحث في الحكاوي",
@@ -136,6 +138,7 @@ export const EN: ShellStrings = {
   navPayments: "Payments",
   navRentals: "Rentals",
   navProfile: "Profile",
+  navAdmin: "Admin panel",
   navSearch: "Search",
   searchPlaceholder: "Search stories, people, books…",
   searchLabel: "Search Hakawi",

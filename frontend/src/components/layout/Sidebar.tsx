@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { useUnreadMessageCount, useUnreadNotificationCount } from "@/lib/queries";
+import { useStoredUser } from "@/lib/use-stored-user";
 import { Brand } from "./Brand";
 import { LogoutButton } from "./LogoutButton";
 import { UnreadBadge } from "./UnreadBadge";
@@ -17,12 +18,6 @@ interface NavItem {
   href: string;
   label: string;
   icon: IconName;
-  /**
-   * The unread count this item carries, or `null` for the items that have no
-   * inbox. The count is a NUMBER the product already knows — the API counts
-   * unread notifications, and every conversation carries its own unread count —
-   * and the badge is the only place it reaches the reader.
-   */
   badge?: number;
   badgeLabel?: string;
 }
@@ -40,12 +35,23 @@ interface NavItem {
  *
  * The column is sticky under the header rather than full-height, so the nav
  * follows a long feed instead of scrolling away with the page.
+ *
+ * **Admin navigation:** a third nav block appears only for callers whose
+ * `accountType === "admin"` and whose `adminRole` is one of the four admin
+ * roles. Each item points to its own surface, and every surface is guarded by
+ * `AdminGuard` so a caller who reaches a page they do not own is stopped with
+ * a "wrong role" screen rather than data they cannot touch. The guard is UX;
+ * the backend's `@Secured` + `@RequireAdminRole` decorators are the real
+ * boundary.
  */
 export function Sidebar() {
   const pathname = usePathname();
   const strings = useStrings();
   const unreadNotifications = useUnreadNotificationCount().data?.count ?? 0;
   const unreadMessages = useUnreadMessageCount();
+  const user = useStoredUser();
+
+  const isAdmin = user?.accountType === "admin" && typeof user.adminRole === "string";
 
   const primary: NavItem[] = [
     { href: AUTHENTICATED_HOME_ROUTE, label: strings.shell.navHome, icon: "home" },
@@ -74,6 +80,14 @@ export function Sidebar() {
     { href: "/payments", label: strings.shell.navPayments, icon: "wallet" },
   ];
 
+  const admin: NavItem[] = [
+    { href: "/admin", label: strings.shell.navAdmin, icon: "user" },
+    { href: "/admin/moderation", label: strings.admin?.moderation?.pageTitle ?? "Content moderation", icon: "comment" },
+    { href: "/admin/financial", label: strings.admin?.financial?.pageTitle ?? "Financial", icon: "wallet" },
+    { href: "/admin/verification", label: strings.admin?.verification?.pageTitle ?? "Identity verification", icon: "user" },
+    { href: "/admin/roles", label: strings.admin?.roles?.pageTitle ?? "Role management", icon: "users" },
+  ];
+
   const isActive = (href: string) =>
     href === AUTHENTICATED_HOME_ROUTE ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
@@ -89,6 +103,10 @@ export function Sidebar() {
 
         <Nav items={primary} isActive={isActive} label={strings.shell.mainNavigation} />
         <Nav items={secondary} isActive={isActive} label={strings.shell.secondaryNavigation} />
+
+        {isAdmin && (
+          <Nav items={admin} isActive={isActive} label={strings.shell.navAdmin} />
+        )}
 
         <div className="mt-auto pt-4">
           <LogoutButton />

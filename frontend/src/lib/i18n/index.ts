@@ -16,6 +16,7 @@ import { AR as AR_PROFILE, EN as EN_PROFILE, type ProfileStrings } from "./profi
 import { AR as AR_BOOKS, EN as EN_BOOKS, type BooksStrings } from "./books";
 import { AR as AR_CHECKOUT, EN as EN_CHECKOUT, type CheckoutStrings } from "./checkout";
 import { AR as AR_DASHBOARD, EN as EN_DASHBOARD, type DashboardStrings } from "./dashboard";
+import { AR as AR_ADMIN, EN as EN_ADMIN, type AdminStrings } from "./admin";
 
 export type { ShellStrings } from "./shell";
 export type { CommonStrings } from "./common";
@@ -33,6 +34,7 @@ export type { ProfileStrings } from "./profile";
 export type { BooksStrings } from "./books";
 export type { CheckoutStrings } from "./checkout";
 export type { DashboardStrings } from "./dashboard";
+export type { AdminStrings } from "./admin";
 
 /**
  * Every string a reader can see, namespaced by the surface that owns it.
@@ -66,6 +68,7 @@ export interface AppStrings {
   books: BooksStrings;
   checkout: CheckoutStrings;
   dashboard: DashboardStrings;
+  admin: AdminStrings;
 }
 
 const AR: AppStrings = {
@@ -85,6 +88,7 @@ const AR: AppStrings = {
   books: AR_BOOKS,
   checkout: AR_CHECKOUT,
   dashboard: AR_DASHBOARD,
+  admin: AR_ADMIN,
 };
 
 const EN: AppStrings = {
@@ -104,6 +108,7 @@ const EN: AppStrings = {
   books: EN_BOOKS,
   checkout: EN_CHECKOUT,
   dashboard: EN_DASHBOARD,
+  admin: EN_ADMIN,
 };
 
 const DICTIONARIES: Record<Locale, AppStrings> = { ar: AR, en: EN };

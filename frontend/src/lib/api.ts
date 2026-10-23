@@ -48,6 +48,10 @@ import {
   paymentsListResponseSchema,
   publicUserProfileSchema,
   publisherStatsSchema,
+  adminRoleSchema,
+  roleAssignmentSchema,
+  roleAssignmentsListResponseSchema,
+  breakGlassResponseSchema,
   publisherSubmissionsResponseSchema,
   publisherVotesResponseSchema,
   purchaseResultSchema,
@@ -106,6 +110,7 @@ const storedUserSchema = z.object({
   name: z.string(),
   username: z.string().optional(),
   accountType: z.string().optional(),
+  adminRole: z.string().optional(),
 });
 
 export type StoredUser = {
@@ -114,6 +119,7 @@ export type StoredUser = {
   name: string;
   username?: string;
   accountType?: string;
+  adminRole?: string;
 };
 
 export function setStoredUser(user: StoredUser) {
@@ -1161,4 +1167,32 @@ export const api = {
     ),
 
   getModerationStats: () => apiRequest(moderationStatsSchema, "/moderation/stats"),
+
+  /* ---- Admin: moderation statistics ---- */
+  getAdminModerationStats: () => apiRequest(moderationStatsSchema, "/moderation/stats"),
+
+  /* ---- Admin: role assignments ---- */
+  getAdminRoleAssignments: () =>
+    apiRequest(roleAssignmentsListResponseSchema, "/admin/roles"),
+
+  /* ---- Admin: break glass ---- */
+  postAdminBreakGlass: (data: { adminRole: string; durationMinutes: number; reason: string }) =>
+    apiRequest(breakGlassResponseSchema, "/admin/roles/break-glass", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /* ---- Admin: role assignment ---- */
+  postAdminAssignRole: (data: { userId: string; adminRole: string; reason?: string; expiresAt?: string }) =>
+    apiRequest(roleAssignmentSchema, "/admin/roles/assign", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /* ---- Admin: role revocation ---- */
+  deleteAdminRevokeRole: (data: { userId: string; adminRole: string }) =>
+    apiRequest(roleAssignmentSchema, "/admin/roles/revoke", {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    }),
 };
