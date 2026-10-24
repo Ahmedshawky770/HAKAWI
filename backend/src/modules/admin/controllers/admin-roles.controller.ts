@@ -29,6 +29,7 @@ export class AdminRolesController {
   constructor(@Inject(AdminRolesService) private readonly adminRolesService: AdminRolesService) {}
 
   @RequirePermissions(Permission.USERS_MANAGE_ALL)
+  @RequireMfa()
   @Post('assign')
   async assignRole(
     @Request() req: { user: { sub: string } },
@@ -38,6 +39,7 @@ export class AdminRolesController {
   }
 
   @RequirePermissions(Permission.USERS_MANAGE_ALL)
+  @RequireMfa()
   @Delete('revoke')
   async revokeRole(
     @Request() req: { user: { sub: string } },

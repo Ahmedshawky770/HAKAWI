@@ -370,11 +370,40 @@ export const paymentSchema: z.ZodType<Payment> = z.object({
   updatedAt: isoDate,
 });
 
-export const paymentsListResponseSchema = z.object({
-  payments: z.array(paymentSchema),
+export const paymentStatsSchema = z.object({
   total: z.number(),
-  page: z.number(),
-  limit: z.number(),
+  byStatus: z.record(z.string(), z.number()),
+  totalAmount: z.number(),
+});
+
+export const publisherApplicationSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  companyName: z.string(),
+  companyWebsite: z.string().nullable(),
+  companyAddress: z.string().nullable(),
+  taxId: z.string().nullable(),
+  contactName: z.string(),
+  contactEmail: z.string(),
+  contactPhone: z.string().nullable(),
+  description: z.string(),
+  status: z.string(),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  rejectionReason: z.string().nullable(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+
+export const publisherApplicationsListResponseSchema = z.object({
+  applications: z.array(publisherApplicationSchema),
+  total: z.number(),
+});
+
+export const publisherVerificationStatsSchema = z.object({
+  pendingApplications: z.number(),
+  approvedApplications: z.number(),
+  rejectedApplications: z.number(),
 });
 
 /**
@@ -809,6 +838,10 @@ export type BooksListResponseShape = z.infer<typeof booksListResponseSchema>;
 export type LibraryListResponseShape = z.infer<typeof libraryListResponseSchema>;
 export type ReadingProgressListResponseShape = z.infer<typeof readingProgressListResponseSchema>;
 export type PaymentsListResponseShape = z.infer<typeof paymentsListResponseSchema>;
+export type PaymentStatsShape = z.infer<typeof paymentStatsSchema>;
+export type PublisherApplicationShape = z.infer<typeof publisherApplicationSchema>;
+export type PublisherApplicationsListResponseShape = z.infer<typeof publisherApplicationsListResponseSchema>;
+export type PublisherVerificationStatsShape = z.infer<typeof publisherVerificationStatsSchema>;
 export type RentalsListResponseShape = z.infer<typeof rentalsListResponseSchema>;
 export type ReactionsListResponseShape = z.infer<typeof reactionsListResponseSchema>;
 export type CommentsListResponseShape = z.infer<typeof commentsListResponseSchema>;

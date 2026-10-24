@@ -46,6 +46,10 @@ import {
   notificationsListResponseSchema,
   paymentSchema,
   paymentsListResponseSchema,
+  paymentStatsSchema,
+  publisherApplicationSchema,
+  publisherApplicationsListResponseSchema,
+  publisherVerificationStatsSchema,
   publicUserProfileSchema,
   publisherStatsSchema,
   adminRoleSchema,
@@ -1190,9 +1194,25 @@ export const api = {
     }),
 
   /* ---- Admin: role revocation ---- */
-  deleteAdminRevokeRole: (data: { userId: string; adminRole: string }) =>
+  deleteAdminRevokeRole: (data: { userId: string; adminRole: string; revokeReason: string }) =>
     apiRequest(roleAssignmentSchema, "/admin/roles/revoke", {
       method: "DELETE",
+      body: JSON.stringify(data),
+    }),
+
+  /* ---- Admin: financial payments ---- */
+  getAdminPayments: (params?: { status?: string; page?: number; limit?: number }) =>
+    apiRequest(paymentsListResponseSchema, withQuery("/payments/admin", { status: params?.status, page: params?.page, limit: params?.limit })),
+  getAdminPaymentStats: () => apiRequest(paymentStatsSchema, "/payments/admin/stats"),
+
+  /* ---- Admin: publisher verification ---- */
+  getAdminPublisherApplications: (params?: { status?: string; page?: number; limit?: number }) =>
+    apiRequest(publisherApplicationsListResponseSchema, withQuery("/publishers/admin/applications", { status: params?.status, page: params?.page, limit: params?.limit })),
+  getAdminPublisherStats: () => apiRequest(publisherVerificationStatsSchema, "/publishers/stats"),
+
+  reviewPublisherApplication: (id: string, data: { status: "approved" | "rejected"; rejectionReason?: string }) =>
+    apiRequest(publisherApplicationSchema, `/publishers/applications/${id}/review`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     }),
 };

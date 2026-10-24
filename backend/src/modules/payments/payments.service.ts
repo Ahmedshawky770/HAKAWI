@@ -183,6 +183,10 @@ export class PaymentsService {
     return initialized.payment;
   }
 
+  async getAdminStats(): Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }> {
+    return this.paymentsRepository.getAdminStats();
+  }
+
   async findById(id: string): Promise<Payment> {
     const { value } = await this.cache.getOrSet<Payment>({
       namespace: PAYMENT_CACHE_NAMESPACE,

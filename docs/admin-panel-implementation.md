@@ -130,27 +130,11 @@ Each report row renders a semantic status badge via `toneFor(MODERATION_STATUS_T
 
 ### 4.3 Financial — `/admin/financial` (financial_officer + super_admin)
 
-Three tabs:
-
-- **Payments** — platform payments with status, amount, currency, method.
-- **Refunds** — issued refunds.
-- **Payouts** — payouts to users.
-
-Stats row: total payments, total refunds, total payouts, completed payments.
-Each payment row renders a semantic status badge via
-`toneFor(PAYMENT_STATUS_TONES, ...)`.
+Implemented payments list + stats via `/payments/admin`. Refunds/payouts tabs remain placeholders (no endpoints).
 
 ### 4.4 Verification — `/admin/verification` (verification_officer + super_admin)
 
-Three tabs:
-
-- **Pending** — identity verification requests awaiting review.
-- **Approved** — verified identities and onboarded publishers.
-- **Rejected** — declined verification requests.
-
-Each row shows request id, type, status, submitted date, user full name and
-email. Stats row: total, pending, approved, rejected.
-Status badge via `toneFor(SUBMISSION_STATUS_TONES, ...)`.
+Implemented publisher applications list + stats via `/publishers/applications` and `/publishers/stats`, with approve/reject actions.
 
 ### 4.5 Role management — `/admin/roles` (super_admin)
 
@@ -184,8 +168,6 @@ Admin functions added:
 | Hook | Query key | Notes |
 |------|-----------|-------|
 | `useAdminModerationStats` | `["admin", "moderation", "stats"]` | |
-| `useAdminFinancialStats` | `["admin", "financial", "stats"]` | |
-| `useAdminVerificationStats` | `["admin", "verification", "stats"]` | |
 | `useAdminRoleAssignments` | `["admin", "roles", "assignments"]` | |
 
 Invalidation: `invalidate.admin()` sweeps `["admin"]`, covering all four
@@ -193,11 +175,8 @@ admin query keys at once.
 
 ### Schemas (`lib/schemas.ts`)
 
-- `adminStatsSchema` — moderation counters
-- `financialStatsSchema` — payment/refund/payout counters
-- `verificationStatsSchema` — verification request counters
-- `roleAssignmentSchema` — a single assignment (id, userId, adminRole, reason,
-  expiresAt, assignedBy, assignedAt, revokedAt, revokedBy)
+- `moderationStatsSchema` — moderation counters
+- `roleAssignmentSchema` — a single assignment
 - `roleAssignmentsListResponseSchema` — list + total
 - `breakGlassResponseSchema` — success, adminRole, expiresAt, message
 
@@ -327,9 +306,9 @@ All admin pages follow `docs/system-architecture/ui-ux-design-system.md`:
 | Client RBAC | None | `AdminGuard` on every admin page |
 | Sidebar admin nav | None | Role-conditional admin block |
 | i18n for admin | None | `admin.ts` — Arabic + English, all surfaces |
-| API client functions | Only `getModerationStats` | 7 admin functions (stats, assignments, break-glass, assign, revoke) |
-| Query hooks | Only moderation | 4 admin hooks + `invalidate.admin()` |
-| Zod schemas | Partial | `adminStats`, `financialStats`, `verificationStats`, `roleAssignment`, `roleAssignmentsList`, `breakGlassResponse` |
+| API client functions | Only `getModerationStats` | 5 admin functions (stats, assignments, break-glass, assign, revoke) |
+| Query hooks | Only moderation | 2 admin hooks + `invalidate.admin()` |
+| Zod schemas | Partial | `moderationStats`, `roleAssignment`, `roleAssignmentsList`, `breakGlassResponse` |
 
 ---
 

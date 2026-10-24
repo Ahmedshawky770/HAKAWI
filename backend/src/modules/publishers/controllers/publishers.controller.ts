@@ -35,7 +35,21 @@ import { PublishersService } from '../services/publishers.service.ts';
 export class PublishersController {
   constructor(@Inject(PublishersService) private readonly publishersService: PublishersService) {}
 
-  // User endpoints
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.VERIFICATION_OFFICER, AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.USERS_VERIFY_ALL)
+  @Get('admin/applications')
+  async listApplicationsAdmin(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.publishersService.listApplications(
+      status,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 20,
+    );
+  }
 
   @Post('applications')
   @HttpCode(HttpStatus.CREATED)
@@ -118,7 +132,7 @@ export class PublishersController {
   }
 
   @Secured(AccountType.ADMIN)
-  @RequireAdminRole(AdminRole.SUPER_ADMIN)
+  @RequireAdminRole(AdminRole.VERIFICATION_OFFICER, AdminRole.SUPER_ADMIN)
   @RequirePermissions(Permission.USERS_VERIFY_ALL)
   @Get('stats')
   async getStats() {

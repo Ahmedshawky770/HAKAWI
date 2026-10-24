@@ -462,6 +462,10 @@ export function useUserRestrictions(userId: string, includeExpired = true) {
 export const adminKeys = {
   moderationStats: () => ["admin", "moderation", "stats"] as const,
   roleAssignments: () => ["admin", "roles", "assignments"] as const,
+  payments: () => ["admin", "financial", "payments"] as const,
+  paymentStats: () => ["admin", "financial", "stats"] as const,
+  publisherApplications: () => ["admin", "verification", "applications"] as const,
+  publisherStats: () => ["admin", "verification", "stats"] as const,
 };
 
 export function useAdminModerationStats(enabled = true) {
@@ -472,10 +476,43 @@ export function useAdminModerationStats(enabled = true) {
   });
 }
 
-export function useAdminRoleAssignments() {
+export function useAdminRoleAssignments(enabled = true) {
   return useQuery({
     queryKey: adminKeys.roleAssignments(),
     queryFn: () => api.getAdminRoleAssignments(),
+    enabled,
+  });
+}
+
+export function useAdminPayments(params?: { status?: string; page?: number; limit?: number }, enabled = true) {
+  return useQuery({
+    queryKey: [...adminKeys.payments(), params ?? {}],
+    queryFn: () => api.getAdminPayments(params),
+    enabled,
+  });
+}
+
+export function useAdminPaymentStats(enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.paymentStats(),
+    queryFn: () => api.getAdminPaymentStats(),
+    enabled,
+  });
+}
+
+export function useAdminPublisherApplications(params?: { status?: string; page?: number; limit?: number }, enabled = true) {
+  return useQuery({
+    queryKey: [...adminKeys.publisherApplications(), params ?? {}],
+    queryFn: () => api.getAdminPublisherApplications(params),
+    enabled,
+  });
+}
+
+export function useAdminPublisherStats(enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.publisherStats(),
+    queryFn: () => api.getAdminPublisherStats(),
+    enabled,
   });
 }
 

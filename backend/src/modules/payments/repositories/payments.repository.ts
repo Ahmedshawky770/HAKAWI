@@ -34,6 +34,30 @@ type PaymentsTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class PaymentsRepository implements IPaymentsRepository {
   constructor(@Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService) {}
 
+  async getAdminStats(): Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }> {
+    this.logger.debug('Computing admin payment stats');
+    const rows = await db
+      .select({
+        status: payments.status,
+        count: count(),
+        totalAmount: sql<number>`COALESCE(SUM(${payments.amount}), 0)`,
+      })
+      .from(payments)
+      .where(isNull(payments.deletedAt))
+      .groupBy(payments.status);
+
+    const byStatus: Record<string, number> = {};
+    let total = 0;
+    let totalAmount = 0;
+    for (const row of rows) {
+      const c = Number(row.count);
+      byStatus[row.status] = c;
+      total += c;
+      totalAmount += Number(row.totalAmount);
+    }
+    return { total, byStatus, totalAmount };
+  }
+
   async findById(id: string): Promise<Payment | null> {
     this.logger.debug(`Finding payment by id: ${id}`);
     try {

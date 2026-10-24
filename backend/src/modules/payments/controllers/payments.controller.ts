@@ -33,6 +33,22 @@ import { CreatePaymentDto, UpdatePaymentStatusDto, CreateRefundDto, PaymentsQuer
 export class PaymentsController {
   constructor(@Inject(PaymentsService) private readonly paymentsService: PaymentsService) {}
 
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.FINANCIAL_OFFICER, AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.FINANCIAL_READ_ALL)
+  @Get('admin')
+  async findAllAdmin(@Query() query: PaymentsQueryDto) {
+    return this.paymentsService.findAll({ status: query.status, page: query.page, limit: query.limit });
+  }
+
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.FINANCIAL_OFFICER, AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.FINANCIAL_READ_ALL)
+  @Get('admin/stats')
+  async getAdminStats() {
+    return this.paymentsService.getAdminStats();
+  }
+
   @Secured()
   @UseGuards(RestrictionGuard)
   @Post()

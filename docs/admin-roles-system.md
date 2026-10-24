@@ -103,7 +103,7 @@ Response:
 ## Security Features
 
 ### MFA Enforcement
-All admin role management endpoints require MFA:
+All admin role write operations (assign, revoke, break-glass) require MFA:
 - `@RequireMfa()` on all write operations
 - `MfaGuard` registered in `CommonModule`
 

@@ -132,6 +132,7 @@ export interface IPaymentsRepository {
     page?: number;
     limit?: number;
   }): Promise<{ payments: Payment[]; total: number }>;
+  getAdminStats(): Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }>;
   create(data: CreatePaymentInput): Promise<Payment>;
   update(id: string, data: Partial<Payment>): Promise<Payment>;
   softDelete(id: string): Promise<void>;

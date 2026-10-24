@@ -93,6 +93,7 @@ type MockPaymentsRepository = {
     >
   >;
   reconcileRefundCapacity: ReturnType<typeof vi.fn<(paymentId: string) => Promise<RefundCapacityReconciliation>>>;
+  getAdminStats: ReturnType<typeof vi.fn<() => Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }>>>;
 };
 
 type MockPaymobGateway = {
@@ -300,6 +301,7 @@ describe('PaymentsService', () => {
           }) => Promise<RefundReservation>
         >(),
       reconcileRefundCapacity: vi.fn<(paymentId: string) => Promise<RefundCapacityReconciliation>>(),
+      getAdminStats: vi.fn<() => Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }>>(),
     };
 
     logger = {

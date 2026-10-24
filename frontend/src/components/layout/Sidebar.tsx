@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
 import { useUnreadMessageCount, useUnreadNotificationCount } from "@/lib/queries";
 import { useStoredUser } from "@/lib/use-stored-user";
+import { normalizeAdminRole } from "@hakawi/shared-types";
 import { Brand } from "./Brand";
 import { LogoutButton } from "./LogoutButton";
 import { UnreadBadge } from "./UnreadBadge";
@@ -51,7 +52,11 @@ export function Sidebar() {
   const unreadMessages = useUnreadMessageCount();
   const user = useStoredUser();
 
-  const isAdmin = user?.accountType === "admin" && typeof user.adminRole === "string";
+  const normalizedAdminRole =
+    user?.accountType === "admin" && typeof user.adminRole === "string"
+      ? normalizeAdminRole(user.adminRole)
+      : undefined;
+  const isAdmin = normalizedAdminRole !== undefined;
 
   const primary: NavItem[] = [
     { href: AUTHENTICATED_HOME_ROUTE, label: strings.shell.navHome, icon: "home" },

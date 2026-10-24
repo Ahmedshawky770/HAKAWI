@@ -9,7 +9,8 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Icon } from "@/components/ui/Icon";
 import { StatCard } from "@/components/ui/StatCard";
 import { useStrings } from "@/components/providers/LocaleProvider";
-import { useAdminModerationStats, useAdminRoleAssignments, isFailedLoad, useInvalidation } from "@/lib/queries";
+import { useStoredUser } from "@/lib/use-stored-user";
+import { useAdminModerationStats, useAdminRoleAssignments, useAdminPaymentStats, useAdminPublisherStats, isFailedLoad, useInvalidation } from "@/lib/queries";
 import { useToast } from "@/components/providers/ToastProvider";
 
 /**
@@ -33,12 +34,19 @@ export default function AdminHubPage() {
   const { notify } = useToast();
   const invalidate = useInvalidation();
 
-  const moderationStats = useAdminModerationStats();
-  const roleAssignments = useAdminRoleAssignments();
+  const user = useStoredUser();
+  const isSuperAdmin = user?.accountType === "admin" && user?.adminRole === "super_admin";
+
+  const moderationStats = useAdminModerationStats(isSuperAdmin);
+  const roleAssignments = useAdminRoleAssignments(isSuperAdmin);
+  const paymentStats = useAdminPaymentStats(isSuperAdmin);
+  const publisherStats = useAdminPublisherStats(isSuperAdmin);
 
   const failed =
     isFailedLoad(moderationStats) ||
-    isFailedLoad(roleAssignments);
+    isFailedLoad(roleAssignments) ||
+    isFailedLoad(paymentStats) ||
+    isFailedLoad(publisherStats);
 
   if (failed) {
     return (
@@ -50,6 +58,8 @@ export default function AdminHubPage() {
           onRetry={() => {
             void moderationStats.refetch();
             void roleAssignments.refetch();
+            void paymentStats.refetch();
+            void publisherStats.refetch();
             void invalidate.admin();
           }}
         />
@@ -59,6 +69,8 @@ export default function AdminHubPage() {
 
   const m = moderationStats.data;
   const r = roleAssignments.data;
+  const p = paymentStats.data;
+  const v = publisherStats.data;
 
   const cards = [
     {
@@ -69,6 +81,24 @@ export default function AdminHubPage() {
       href: "/admin/moderation",
       value: m?.totalReports ?? 0,
       hint: strings.admin.hub.statsReports,
+    },
+    {
+      key: "financial",
+      label: strings.admin.hub.financialCardTitle,
+      description: strings.admin.hub.financialCardDescription,
+      icon: "wallet",
+      href: "/admin/financial",
+      value: p?.total ?? 0,
+      hint: strings.admin.hub.statsPayments,
+    },
+    {
+      key: "verification",
+      label: strings.admin.hub.verificationCardTitle,
+      description: strings.admin.hub.verificationCardDescription,
+      icon: "user",
+      href: "/admin/verification",
+      value: v ? v.pendingApplications + v.approvedApplications + v.rejectedApplications : 0,
+      hint: strings.admin.hub.statsVerifications,
     },
     {
       key: "roles",

@@ -68,7 +68,7 @@ export default function RolesAdminPage() {
     onSuccess: async () => {
       await invalidate.admin();
       notify(strings.admin.roles.breakGlassButton, "success");
-      setAdminRole("");
+      setAdminRole("content_moderator");
       setReason("");
     },
     onError: (err: Error) => {
@@ -81,8 +81,8 @@ export default function RolesAdminPage() {
       api.postAdminAssignRole({
         userId,
         adminRole,
-        reason: reason || undefined,
-        expiresAt: expiresAt || undefined,
+        reason,
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
       }),
     onSuccess: async () => {
       await invalidate.admin();
@@ -98,7 +98,7 @@ export default function RolesAdminPage() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (data: { userId: string; adminRole: string }) =>
+    mutationFn: (data: { userId: string; adminRole: string; revokeReason: string }) =>
       api.deleteAdminRevokeRole(data),
     onSuccess: async () => {
       await invalidate.admin();
@@ -233,12 +233,13 @@ export default function RolesAdminPage() {
                     onChange={(e) => setAdminRole(e.target.value)}
                     options={roleOptions}
                   />
-                  <Input
-                    type="text"
-                    label={strings.admin.roles.assignReason("—")}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                  />
+                   <Input
+                     type="text"
+                     required
+                     label={strings.admin.roles.assignReason("—")}
+                     value={reason}
+                     onChange={(e) => setReason(e.target.value)}
+                   />
                   <Input
                     type="date"
                     label={strings.admin.roles.assignExpiresAt("—")}
@@ -286,11 +287,17 @@ export default function RolesAdminPage() {
                           variant="danger"
                           loading={revokeMutation.isPending}
                           disabled={revokeMutation.isPending}
-                          onClick={() => {
-                            if (window.confirm(strings.admin.roles.revokeConfirm)) {
-                              revokeMutation.mutate({ userId: assignment.userId, adminRole: assignment.adminRole });
-                            }
-                          }}
+                           onClick={() => {
+                             const revokeReason = window.prompt(strings.admin.roles.assignReason("—"));
+                             if (!revokeReason || revokeReason.trim().length === 0) return;
+                             if (window.confirm(strings.admin.roles.revokeConfirm)) {
+                               revokeMutation.mutate({
+                                 userId: assignment.userId,
+                                 adminRole: assignment.adminRole,
+                                 revokeReason: revokeReason.trim(),
+                               });
+                             }
+                           }}
                         >
                           {strings.admin.roles.revokeButton}
                         </Button>
@@ -340,14 +347,15 @@ export default function RolesAdminPage() {
                     value="60"
                     readOnly
                   />
-                  <Input
-                    type="text"
-                    required
-                    label={strings.admin.roles.breakGlassReason("—")}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Emergency reason"
-                  />
+                   <Input
+                     type="text"
+                     required
+                     minLength={10}
+                     label={strings.admin.roles.breakGlassReason("—")}
+                     value={reason}
+                     onChange={(e) => setReason(e.target.value)}
+                     placeholder="Emergency reason"
+                   />
                   <Button type="submit" loading={breakGlassMutation.isPending} variant="primary">
                     {strings.admin.roles.breakGlassButton}
                   </Button>
