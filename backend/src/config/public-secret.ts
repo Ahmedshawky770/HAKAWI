@@ -32,6 +32,10 @@ export const PUBLICLY_KNOWN_SECRETS: ReadonlySet<string> = new Set([
   'default-refresh-secret-for-testing-only-change-in-production-1234567890',
   'your-jwt-secret-key-here-change-in-production',
   'your-refresh-token-secret-here-change-in-production',
+  // `docker-compose.yml` published compose defaults (lines 244-245). These ship in the repository
+  // and are therefore public; production must refuse them by name.
+  'local-dev-jwt-secret-change-me-32-chars-min',
+  'local-dev-refresh-secret-change-me-32-chars',
   // `encryption.config.ts`
   'your-encryption-key-here-change-in-production',
 ]);
@@ -82,6 +86,27 @@ export function findPubliclyKnownSecret(nodeEnv: string, values: Readonly<Record
     return undefined;
   }
   return Object.keys(values).find((name) => PUBLICLY_KNOWN_SECRETS.has(values[name] ?? ''));
+}
+
+/**
+ * Strict environmental validation: in production a publicly known secret must never be allowed to
+ * reach the running application. Throws a runtime exception so the NestJS bootstrap boundary
+ * (`main.ts`) logs it and `process.exit(1)` before the application initializes.
+ *
+ * Returns normally when every supplied value is operator-chosen and acceptable.
+ */
+export function assertNoPubliclyKnownSecret(
+  nodeEnv: string,
+  values: Readonly<Record<string, string>>,
+  subject: string,
+): void {
+  if (nodeEnv !== 'production') {
+    return;
+  }
+  const offending = findPubliclyKnownSecret(nodeEnv, values);
+  if (offending !== undefined) {
+    throw unsafeConfigurationError(subject, [productionSecretError(offending)]);
+  }
 }
 
 /**

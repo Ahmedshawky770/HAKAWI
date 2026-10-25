@@ -2,8 +2,7 @@ import { registerAs } from '@nestjs/config';
 import { z } from 'zod';
 
 import {
-  findPubliclyKnownSecret,
-  productionSecretError,
+  assertNoPubliclyKnownSecret,
   secretSchema,
   unsafeConfigurationError,
 } from './public-secret.ts';
@@ -37,15 +36,6 @@ const envSchema = z
      * configuration gap instead of silently becoming "accept whatever audience is presented".
      */
     APPLE_CLIENT_ID: z.string().optional(),
-  })
-  .superRefine((env, ctx) => {
-    const offending = findPubliclyKnownSecret(env.NODE_ENV, {
-      JWT_SECRET: env.JWT_SECRET,
-      REFRESH_TOKEN_SECRET: env.REFRESH_TOKEN_SECRET,
-    });
-    if (offending !== undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [offending], message: productionSecretError(offending) });
-    }
   });
 
 export interface JwtConfig {
@@ -65,6 +55,11 @@ export function buildJwtConfig(source: NodeJS.ProcessEnv = process.env): JwtConf
       parsed.error.issues.map((issue) => issue.message),
     );
   }
+
+  assertNoPubliclyKnownSecret(parsed.data.NODE_ENV, {
+    JWT_SECRET: parsed.data.JWT_SECRET,
+    REFRESH_TOKEN_SECRET: parsed.data.REFRESH_TOKEN_SECRET,
+  }, 'JWT');
 
   return {
     secret: parsed.data.JWT_SECRET,
