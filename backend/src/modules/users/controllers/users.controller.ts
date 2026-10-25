@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -21,7 +20,7 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RequireAdminRole, RequirePermissions, RequireMfa } from '../../../common/decorators/roles.decorator.ts';
 import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
 import { Permission } from '../../../common/permissions/permissions.ts';
-import { CreateUserDto, UpdateUserDto, UpgradeDto, VerifyUserDto } from '../dto/users.dto.ts';
+import { CreateUserDto, UpdateUserProfileDto, AdminUpdateUserDto, UpgradeDto, VerifyUserDto } from '../dto/users.dto.ts';
 import { UsersService } from '../users.service.ts';
 import { UserVerificationService } from '../services/user-verification.service.ts';
 import type { CreateUserInput } from '../types.ts';
@@ -46,12 +45,8 @@ export class UsersController {
   }
 
   @Patch('me')
-  async updateMe(@Request() req: { user: { sub: string } }, @Body() updateUserDto: UpdateUserDto) {
-    const updateInput: UpdateUserDto = { ...updateUserDto };
-    // caller can never change their own accountType/adminRole — escalates only via admin
-    delete updateInput.accountType;
-    delete updateInput.adminRole;
-    return this.usersService.update(req.user.sub, updateInput);
+  async updateMe(@Request() req: { user: { sub: string } }, @Body() dto: UpdateUserProfileDto) {
+    return this.usersService.update(req.user.sub, dto);
   }
 
   @Post('me/upgrade')
@@ -114,35 +109,30 @@ export class UsersController {
     return this.usersService.create(dto as unknown as CreateUserInput);
   }
 
+  @Secured(AccountType.ADMIN)
+  @RequireAdminRole(AdminRole.SUPER_ADMIN)
+  @RequirePermissions(Permission.USERS_MANAGE_ALL)
+  @RequireMfa()
   @Patch(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateUserDto: UpdateUserDto,
+    @Body() dto: AdminUpdateUserDto,
     @Request() req: { user: { sub: string; adminRole?: string } },
   ) {
     const isOwn = req.user.sub === id;
-    const callerRole = req.user.adminRole;
-    const isSuperAdmin = callerRole === AdminRole.SUPER_ADMIN;
-
-    const updateInput: UpdateUserDto = { ...updateUserDto };
 
     if (isOwn) {
-      // caller cannot escalate their own accountType/adminRole
-      delete updateInput.accountType;
-      delete updateInput.adminRole;
-    } else {
-      // super_admin can change any accountType; verification_officer may
-      // provision a publisher account or approve a professional upgrade
-      const allowed =
-        isSuperAdmin ||
-        (callerRole === AdminRole.VERIFICATION_OFFICER &&
-          (updateInput.accountType === AccountType.PUBLISHER || updateInput.accountType === AccountType.PROFESSIONAL));
-      if (!allowed) {
-        throw new ForbiddenException('You can only update your own profile');
-      }
+      // A super_admin editing their own profile can never reach accountType or adminRole
+      // through this route — those fields are stripped before the service is called.
+      delete dto.accountType;
+      delete dto.adminRole;
+      return this.usersService.update(id, dto);
     }
 
-    return this.usersService.update(id, updateInput as UpdateUserDto);
+    // Mutating another user's accountType/adminRole is a super_admin-only operation,
+    // already gated by the route guards above (@RequireAdminRole(SUPER_ADMIN),
+    // @RequirePermissions(USERS_MANAGE_ALL), @RequireMfa()).
+    return this.usersService.update(id, dto);
   }
 
   @Delete('me')

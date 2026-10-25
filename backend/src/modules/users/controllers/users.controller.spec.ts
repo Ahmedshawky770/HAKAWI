@@ -14,7 +14,7 @@ import { UsersService } from '../users.service.ts';
 import { UserVerificationService } from '../services/user-verification.service.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { MfaService } from "../../../modules/auth/mfa.service.ts";
-import { AccountType, ACCOUNT_TYPES } from '../../../common/constants/roles.ts';
+import { AccountType, ACCOUNT_TYPES, AdminRole } from '../../../common/constants/roles.ts';
 import type { ClientUser } from '../types.ts';
 
 import { UsersController } from './users.controller.ts';
@@ -271,8 +271,8 @@ describe('UsersController', () => {
   });
 
   describe('PATCH /users/:id', () => {
-    it('should update a user by id when authenticated as owner', async () => {
-      const token = await generateToken('923e4567-e89b-12d3-a456-426614174000', 'public@example.com', 'reader');
+    it('should update a user by id when authenticated as super admin', async () => {
+      const token = await superAdminToken();
 
       vi.mocked(usersService.update).mockResolvedValue({
         id: '923e4567-e89b-12d3-a456-426614174000',
@@ -296,7 +296,7 @@ describe('UsersController', () => {
       });
     });
 
-    it('should forbid updating another user when not admin', async () => {
+    it('should forbid updating another user when not super admin', async () => {
       const token = await generateToken('user-1', 'test@example.com', 'reader');
 
       await request(httpServer)
@@ -304,6 +304,56 @@ describe('UsersController', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Updated Public User' })
         .expect(403);
+
+      expect(usersService.update).not.toHaveBeenCalled();
+    });
+
+    it('should forbid updating another user when verification_officer (no super_admin role)', async () => {
+      const token = await generateToken(
+        'verification-1',
+        'verification@example.com',
+        'admin',
+        AdminRole.VERIFICATION_OFFICER,
+      );
+
+      await request(httpServer)
+        .patch('/users/923e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Updated Public User', adminRole: AdminRole.SUPER_ADMIN })
+        .expect(403);
+
+      expect(usersService.update).not.toHaveBeenCalled();
+    });
+
+    it('should allow super admin to update another user including adminRole', async () => {
+      const token = await superAdminToken();
+
+      vi.mocked(usersService.update).mockResolvedValue({
+        id: '923e4567-e89b-12d3-a456-426614174000',
+        email: 'public@example.com',
+        username: 'publicuser',
+        name: 'Updated Public User',
+        accountType: AccountType.ADMIN,
+        adminRole: AdminRole.CONTENT_MODERATOR,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as unknown as ClientUser);
+
+      await request(httpServer)
+        .patch('/users/923e4567-e89b-12d3-a456-426614174000')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Updated Public User',
+          accountType: AccountType.ADMIN,
+          adminRole: AdminRole.CONTENT_MODERATOR,
+        })
+        .expect(200);
+
+      expect(usersService.update).toHaveBeenCalledWith('923e4567-e89b-12d3-a456-426614174000', {
+        name: 'Updated Public User',
+        accountType: AccountType.ADMIN,
+        adminRole: AdminRole.CONTENT_MODERATOR,
+      });
     });
   });
 

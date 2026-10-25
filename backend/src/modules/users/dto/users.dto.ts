@@ -1,4 +1,5 @@
 import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsBoolean, Matches, IsInt, Min, IsIn } from 'class-validator';
+
 import { ACCOUNT_TYPES, ADMIN_ROLES } from '../../../common/constants/roles.ts';
 
 export class CreateUserDto {
@@ -35,7 +36,34 @@ export class CreateUserDto {
   bio?: string;
 }
 
-export class UpdateUserDto {
+export class UpdateUserProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2, { message: 'Name must be at least 2 characters' })
+  @MaxLength(100, { message: 'Name must not exceed 100 characters' })
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Avatar URL must not exceed 255 characters' })
+  avatar?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'Bio must not exceed 500 characters' })
+  bio?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  onboardingCompleted?: boolean;
+}
+
+/**
+ * Admin-only update DTO. Contains `accountType` and `adminRole` — fields that
+ * must never be reachable from a self-edit route or any route that is not
+ * guarded by `@RequireAdminRole(AdminRole.SUPER_ADMIN)`.
+ */
+export class AdminUpdateUserDto {
   @IsOptional()
   @IsString()
   @MinLength(2, { message: 'Name must be at least 2 characters' })
@@ -84,7 +112,7 @@ export class UserResponseDto {
 
 export class UpgradeDto {
   @IsString()
-  @IsIn(['rising_star', 'professional'], { message: 'Invalid upgrade target' })
+  @IsIn(['writer', 'rising_star', 'professional'], { message: 'Invalid upgrade target' })
   target: string;
 }
 
