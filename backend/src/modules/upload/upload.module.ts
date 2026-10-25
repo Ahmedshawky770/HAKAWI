@@ -4,6 +4,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { CommonModule } from '../../common/common.module.ts';
 import { DatabaseModule } from '../../db/database.module.ts';
 
+import { StorageCleanupSchedulerModule } from './storage-cleanup-scheduler.module.ts';
 import { UploadService } from './upload.service.ts';
 import { UploadController } from './upload.controller.ts';
 
@@ -44,7 +45,7 @@ export function createS3Client(): S3Client {
 }
 
 @Module({
-  imports: [CommonModule, DatabaseModule],
+  imports: [CommonModule, DatabaseModule, StorageCleanupSchedulerModule],
   controllers: [UploadController],
   providers: [
     UploadService,

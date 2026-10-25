@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import type { User, CreateUserInput, UpdateUserInput } from '../../common/users/users-repository.interface.ts';
 import { AccountType } from '../../common/constants/roles.ts';
@@ -8,7 +9,7 @@ import { ValkeyService } from '../../common/services/valkey.service.ts';
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
 import { TaggedCacheService } from '../shared/cache/tagged-cache.service.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-import { ConfigService } from '@nestjs/config';
+
 
 import { USER_CACHE_NAMESPACE, USER_PUBLIC_CACHE_NAMESPACE, UsersService } from './users.service.ts';
 

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, integer, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
 
@@ -76,6 +76,25 @@ export const refunds = pgTable(
   },
   (table) => ({
     paymentIdx: index('refunds_payment_id_idx').on(table.paymentId),
+  }),
+);
+
+
+export const paymentTransactionsP = pgTable(
+  'payment_transactions_p',
+  {
+    id: uuid('id').notNull(),
+    paymentId: uuid('payment_id').notNull(),
+    type: varchar('type', { length: 20 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull(),
+    amount: integer('amount').notNull(),
+    currency: varchar('currency', { length: 3 }).notNull(),
+    gatewayResponse: text('gateway_response'),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.id, table.createdAt] }),
+    paymentIdx: index('payment_transactions_p_payment_id_idx').on(table.paymentId),
   }),
 );
 

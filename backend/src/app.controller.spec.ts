@@ -27,6 +27,23 @@ const mockValkeyService: MockValkeyService = {
   ping: vi.fn().mockResolvedValue('PONG'),
 };
 
+// Mock replicas matching the `checkDatabaseHealth` return shape
+// (see `backend/src/db/router.ts`).
+const healthyReplica = {
+  host: 'replica-1',
+  port: 5432,
+  healthy: true,
+  lagMs: null,
+  usable: true,
+};
+const unhealthyReplica = {
+  host: 'replica-1',
+  port: 5432,
+  healthy: false,
+  lagMs: null,
+  usable: false,
+};
+
 @Module({
   controllers: [AppController],
   providers: [
@@ -57,7 +74,7 @@ describe('AppController', () => {
     mockValkeyService.ping.mockResolvedValue('PONG');
     vi.mocked(checkDatabaseHealth).mockResolvedValue({
       primary: true,
-      replicas: [true, true],
+      replicas: [healthyReplica, healthyReplica],
     });
 
     app = moduleRef.createNestApplication();
@@ -105,7 +122,7 @@ describe('AppController', () => {
       // most needs it. The degradation is in the body, not the status code.
       vi.mocked(checkDatabaseHealth).mockResolvedValue({
         primary: false,
-        replicas: [false, false],
+        replicas: [unhealthyReplica, unhealthyReplica],
       });
 
       const res = await request(httpServer).get('/').expect(200);
@@ -131,7 +148,7 @@ describe('AppController', () => {
       expect(res.body).toEqual({
         status: 'healthy',
         database: 'connected',
-        replicas: ['connected', 'connected'],
+        replicas: [healthyReplica, healthyReplica],
         valkey: 'connected',
         timestamp: (res.body as HealthResponse).timestamp,
       });
@@ -151,7 +168,7 @@ describe('AppController', () => {
     it('should degrade when the database primary is unreachable', async () => {
       vi.mocked(checkDatabaseHealth).mockResolvedValue({
         primary: false,
-        replicas: [true, true],
+        replicas: [healthyReplica, healthyReplica],
       });
 
       const res = await request(httpServer).get('/health').expect(200);
@@ -159,7 +176,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
-        replicas: ['connected', 'connected'],
+        replicas: [healthyReplica, healthyReplica],
         valkey: 'connected',
       });
     });
@@ -172,7 +189,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'connected',
-        replicas: ['connected', 'connected'],
+        replicas: [healthyReplica, healthyReplica],
         valkey: 'disconnected',
       });
     });
@@ -180,7 +197,7 @@ describe('AppController', () => {
     it('should degrade when both dependencies are unreachable', async () => {
       vi.mocked(checkDatabaseHealth).mockResolvedValue({
         primary: false,
-        replicas: [false, false],
+        replicas: [unhealthyReplica, unhealthyReplica],
       });
       mockValkeyService.ping.mockRejectedValue(new Error('connection reset'));
 
@@ -189,7 +206,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
-        replicas: ['disconnected', 'disconnected'],
+        replicas: [unhealthyReplica, unhealthyReplica],
         valkey: 'disconnected',
       });
     });
@@ -197,7 +214,7 @@ describe('AppController', () => {
     it('should still return an ISO timestamp when degraded', async () => {
       vi.mocked(checkDatabaseHealth).mockResolvedValue({
         primary: false,
-        replicas: [false, false],
+        replicas: [unhealthyReplica, unhealthyReplica],
       });
 
       const res = await request(httpServer).get('/health').expect(200);
@@ -243,7 +260,7 @@ describe('AppController', () => {
     });
 
     it('should answer 503 and name postgres when the primary is unreachable', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [true, true] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [healthyReplica, healthyReplica] });
 
       const res = await request(httpServer).get('/health/ready').expect(503);
       const body = res.body as ReadinessFailureBody;
@@ -264,7 +281,7 @@ describe('AppController', () => {
     });
 
     it('should name both dependencies when both are unreachable', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [false, false] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [unhealthyReplica, unhealthyReplica] });
       mockValkeyService.ping.mockRejectedValue(new Error('connection reset'));
 
       const res = await request(httpServer).get('/health/ready').expect(503);
@@ -278,13 +295,13 @@ describe('AppController', () => {
     it('should answer 503 even when a replica is down but the primary is up', async () => {
       // Readiness is a property of the primary and the cache, not of the read replicas. This is the
       // case `GET /health` answers `degraded` for and that must not become a 503.
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: true, replicas: [false] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: true, replicas: [unhealthyReplica] });
 
       await request(httpServer).get('/health/ready').expect(200);
     });
 
     it('should not change GET /health, which stays 200 on a dead database', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [false, false] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [unhealthyReplica, unhealthyReplica] });
 
       await request(httpServer).get('/health').expect(200);
     });
@@ -298,7 +315,7 @@ describe('AppController', () => {
      * controller -> exception -> filter -> response.
      */
     it('should throw a ServiceUnavailableException carrying every failing dependency', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [true] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [healthyReplica] });
       mockValkeyService.ping.mockRejectedValue(new Error('connection reset'));
 
       const error = await appController
@@ -346,7 +363,7 @@ describe('AppController', () => {
     });
 
     it('serves GET /api/v1/health/ready with 503 when the primary is unreachable', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [true] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [healthyReplica] });
 
       const res = await request(prefixedServer).get('/api/v1/health/ready').expect(503);
 
@@ -354,7 +371,7 @@ describe('AppController', () => {
     });
 
     it('keeps GET /api/v1/health answering 200 on the same dead database', async () => {
-      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [false] });
+      vi.mocked(checkDatabaseHealth).mockResolvedValue({ primary: false, replicas: [unhealthyReplica] });
 
       // Two routes, one dependency state, two answers — and that is the whole reason the second one
       // exists. A probe needs a binary; an operator needs the description.

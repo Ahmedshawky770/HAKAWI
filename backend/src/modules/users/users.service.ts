@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
 import { sql, eq, and, isNull, count } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
 
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
-import { ConfigService } from '@nestjs/config';
 import { parseDurationToMs } from '../auth/auth.service.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';

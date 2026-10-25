@@ -20,8 +20,18 @@ import {
   NewPaymentTransaction,
   NewRefund,
 } from '../../../db/schema/payments.schema.ts';
-import { db } from '../../../db/index.ts';
+import { db, dbPrimary } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+/**
+ * Reads that must observe the latest committed write (read-after-write) run
+ * against `dbPrimary` — never a lagging replica. Payments are a strong
+ * consistency island (Principle #16): a reader that just completed a payment
+ * must see `completed`, not `pending` served from a stale replica.
+ *
+ * Writes (`insert`/`update`/`delete`) and transactions already route to the
+ * primary through the routed `db` proxy, so they are unchanged here.
+ */
 
 /**
  * The transaction handle Drizzle hands to a `db.transaction` callback, taken from the driver that
@@ -36,7 +46,9 @@ export class PaymentsRepository implements IPaymentsRepository {
 
   async getAdminStats(): Promise<{ total: number; byStatus: Record<string, number>; totalAmount: number }> {
     this.logger.debug('Computing admin payment stats');
-    const rows = await db
+    // Financial aggregates read from primary: a dashboard counting completed
+    // payments must not under-count because a replica lags behind.
+    const rows = await dbPrimary
       .select({
         status: payments.status,
         count: count(),
@@ -61,7 +73,14 @@ export class PaymentsRepository implements IPaymentsRepository {
   async findById(id: string): Promise<Payment | null> {
     this.logger.debug(`Finding payment by id: ${id}`);
     try {
-      const [payment] = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+      // Read-after-write consistency: a payment just created or completed must
+      // be readable immediately. Replica reads risk serving `pending` after a
+      // `completed` write (Principle #16 — payments are a CP island).
+      const [payment] = await dbPrimary
+        .select()
+        .from(payments)
+        .where(eq(payments.id, id))
+        .limit(1);
       return payment ?? null;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
@@ -74,13 +93,23 @@ export class PaymentsRepository implements IPaymentsRepository {
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
     this.logger.debug(`Finding payment by order id: ${orderId}`);
-    const [payment] = await db.select().from(payments).where(eq(payments.paymobOrderId, orderId)).limit(1);
+    // Read-after-write: the webhook handler calls this right after createPayment.
+    const [payment] = await dbPrimary
+      .select()
+      .from(payments)
+      .where(eq(payments.paymobOrderId, orderId))
+      .limit(1);
     return payment ?? null;
   }
 
   async findByTransactionId(transactionId: string): Promise<Payment | null> {
     this.logger.debug(`Finding payment by transaction id: ${transactionId}`);
-    const [payment] = await db.select().from(payments).where(eq(payments.paymobTransactionId, transactionId)).limit(1);
+    // Read-after-write: the webhook handler reconciles against the latest state.
+    const [payment] = await dbPrimary
+      .select()
+      .from(payments)
+      .where(eq(payments.paymobTransactionId, transactionId))
+      .limit(1);
     return payment ?? null;
   }
 
@@ -107,8 +136,14 @@ export class PaymentsRepository implements IPaymentsRepository {
     const whereClause = and(...conditions);
 
     const [paymentsResult, [{ total }]] = await Promise.all([
-      db.select().from(payments).where(whereClause).orderBy(desc(payments.createdAt)).limit(limit).offset(offset),
-      db.select({ total: count() }).from(payments).where(whereClause),
+      dbPrimary
+        .select()
+        .from(payments)
+        .where(whereClause)
+        .orderBy(desc(payments.createdAt))
+        .limit(limit)
+        .offset(offset),
+      dbPrimary.select({ total: count() }).from(payments).where(whereClause),
     ]);
 
     return { payments: paymentsResult, total: Number(total) };
@@ -152,8 +187,15 @@ export class PaymentsRepository implements IPaymentsRepository {
       currency: data.currency,
       gatewayResponse: data.gatewayResponse ?? null,
     };
-    const [transaction] = await db.insert(paymentTransactions).values(values).returning();
-    return transaction;
+    return await dbPrimary.transaction(async (tx) => {
+      const [transaction] = await tx.insert(paymentTransactions).values(values).returning();
+      // Dual-write to the partitioned table during the migration phase. Same transaction
+      // as the legacy write so both succeed or neither does.
+      await tx.execute(sql`INSERT INTO payment_transactions_p (id, payment_id, type, status, amount, currency, gateway_response, created_at)
+          VALUES (${transaction.id}, ${data.paymentId}, ${data.type}, ${data.status}, ${data.amount}, ${data.currency}, ${data.gatewayResponse ?? null}, ${transaction.createdAt?.toISOString() ?? new Date().toISOString()})
+          ON CONFLICT (id) DO NOTHING`);
+      return transaction;
+    });
   }
 
   async createRefund(data: {

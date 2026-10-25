@@ -3,8 +3,8 @@ import { Module, forwardRef } from '@nestjs/common';
 import { CommonModule } from '../../common/common.module.ts';
 import { UsersModule } from '../users/users.module.ts';
 import { SharedCacheModule } from '../shared/cache/shared-cache.module.ts';
-import { AdminRolesSchedulerModule } from './admin-roles-scheduler.module.ts';
 
+import { AdminRolesSchedulerModule } from './admin-roles-scheduler.module.ts';
 import { AdminWafController } from './admin-waf.controller.ts';
 import { AdminRolesController } from './controllers/admin-roles.controller.ts';
 import { AdminRolesService } from './services/admin-roles.service.ts';

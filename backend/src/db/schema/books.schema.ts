@@ -32,19 +32,23 @@ export const books = pgTable(
     /**
      * The author's DISPLAY name. Not an identity — see `ownerId` below.
      *
-     * `ownerId` was added by migration 0021 precisely because this field was being compared against a
-     * UUID by four write guards, so it could never match. Keep the two separate: renaming an author on
-     * a book must not change who may edit it, and a display name must not be load-bearing for
-     * authorization.
+     * Treated as a read-only display field. Authorization MUST NOT consult this
+     * column: it is a free-text name, not a UUID, and it can be edited or shared
+     * by multiple users. See migration 0021 for the full rationale (Principle #9).
      */
     author: varchar('author', { length: 255 }).notNull(),
     /**
      * The account that owns this book, and the ONLY field the write guards consult.
      *
-     * Nullable because it cannot be derived from `author` — that would be a guess, and a wrong guess
-     * silently transfers a book to the wrong account. Books that predate migration 0021 have
-     * `ownerId === null`, which every write path treats as UNOWNED: editable by an administrator,
-     * by nobody else, and claimable through `PATCH /books/:id`.
+     * Nullable because it cannot be derived from `author` — that would be a guess,
+     * and a wrong guess silently transfers a book to the wrong account. Books that
+     * predate migration 0021 have `ownerId === null`, which every write path treats
+     * as UNOWNED: editable by an administrator, by nobody else, and claimable
+     * through `PATCH /books/:id`.
+     *
+     * Once every environment has run the admin-claiming flow and
+     * `SELECT COUNT(*) FROM books WHERE owner_id IS NULL;` returns 0, migration
+     * 0037 applies `SET NOT NULL` to make this invariant database-enforced.
      */
     ownerId: uuid('owner_id').references(() => users.id),
     description: text('description'),

@@ -1,6 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
@@ -11,7 +10,27 @@ import type {
   UpsertNotificationPreferencesInput,
 } from '../interfaces/notifications-repository.interface.ts';
 import { notifications, notificationPreferences } from '../../../db/schema/social.schema.ts';
-import { db } from '../../../db/index.ts';
+import { db, dbPrimary } from '../../../db/index.ts';
+
+/**
+ * Notifications are eventual-consistency data (Principle #16), BUT reads that
+ * follow a create (e.g. a user opening the bell drawer right after a new
+ * notification lands) must observe the latest write. `findById`, `findByUser`,
+ * `findUnread` and `countUnread` therefore read from `dbPrimary`. Writes
+ * (`create`, `markAsRead`, `markAllAsRead`, `delete`) already route to the
+ * primary through the routed `db` proxy.
+ *
+ * CUTOVER PHASE: reads now target `notifications_p` (the partitioned parent)
+ * instead of the legacy `notifications` table. PostgreSQL partition pruning
+ * makes time-range queries cheaper, and each monthly child partition is small
+ * enough to vacuum/reindex independently.
+ *
+ * Prerequisite (must be satisfied before this code is deployed):
+ *   1. Migration 0035 applied — `notifications_p` exists.
+ *   2. `npm run db:backfill-partitions` run — legacy data copied to `notifications_p`.
+ *   3. `npm run db:verify-cutover` passed — row counts match.
+ *   4. Migration 0039 run — legacy `notifications` table dropped.
+ */
 
 @Injectable()
 export class NotificationsRepository implements INotificationsRepository {
@@ -20,10 +39,33 @@ export class NotificationsRepository implements INotificationsRepository {
   async findById(id: string): Promise<Notification | null> {
     this.logger.debug(`Finding notification by id: ${id}`);
     try {
-      const [notification] = await db.select().from(notifications).where(eq(notifications.id, id)).limit(1);
-      return notification ?? null;
+      // CUTOVER: read from notifications_p (partitioned parent).
+      const result = await dbPrimary.execute(sql`SELECT id, user_id, type, title, message, data, is_read, read_at, created_at
+          FROM notifications_p WHERE id = ${id} LIMIT 1`);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        userId: row.user_id,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        data: row.data,
+        isRead: row.is_read,
+        readAt: row.read_at,
+        createdAt: row.created_at,
+      } as Notification;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
+      // 42P01 = undefined_table: fall back to legacy notifications table.
+      if (code === '42P01') {
+        const [notification] = await db
+          .select()
+          .from(notifications)
+          .where(eq(notifications.id, id))
+          .limit(1);
+        return notification ?? null;
+      }
       if (code === '22P02') {
         return null;
       }
@@ -39,21 +81,51 @@ export class NotificationsRepository implements INotificationsRepository {
     this.logger.debug(`Finding notifications for user: ${userId}`);
     const offset = (page - 1) * limit;
 
-    const [notificationsList, [{ total }]] = await Promise.all([
-      db
-        .select()
-        .from(notifications)
-        .where(eq(notifications.userId, userId))
-        .orderBy(desc(notifications.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db
-        .select({ total: sql<number>`count(*)` })
-        .from(notifications)
-        .where(eq(notifications.userId, userId)),
-    ]);
+    try {
+      // CUTOVER: read from notifications_p (partitioned parent).
+      const [notificationsResult, countResult] = await Promise.all([
+        dbPrimary.execute(sql`SELECT id, user_id, type, title, message, data, is_read, read_at, created_at
+            FROM notifications_p
+            WHERE user_id = ${userId}
+            ORDER BY created_at DESC
+            LIMIT ${limit} OFFSET ${offset}`),
+        dbPrimary.execute(sql`SELECT count(*) AS total FROM notifications_p WHERE user_id = ${userId}`),
+      ]);
 
-    return { notifications: notificationsList, total: Number(total) };
+      const notificationsList = notificationsResult.rows.map((row: Record<string, unknown>) => ({
+        id: row.id,
+        userId: row.user_id,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        data: row.data,
+        isRead: row.is_read,
+        readAt: row.read_at,
+        createdAt: row.created_at,
+      }));
+
+      return { notifications: notificationsList as Notification[], total: Number(countResult.rows[0]?.total ?? 0) };
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      // 42P01 = undefined_table: fall back to legacy notifications table.
+      if (code === '42P01') {
+        const [notificationsList, [{ total }]] = await Promise.all([
+          db
+            .select()
+            .from(notifications)
+            .where(eq(notifications.userId, userId))
+            .orderBy(desc(notifications.createdAt))
+            .limit(limit)
+            .offset(offset),
+          db
+            .select({ total: sql<number>`count(*)` })
+            .from(notifications)
+            .where(eq(notifications.userId, userId)),
+        ]);
+        return { notifications: notificationsList as Notification[], total: Number(total) };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -66,36 +138,82 @@ export class NotificationsRepository implements INotificationsRepository {
    */
   async findUnread(userId: string, limit: number): Promise<Notification[]> {
     this.logger.debug(`Finding unread notifications for user: ${userId}`);
-    return db
-      .select()
-      .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
-      .orderBy(desc(notifications.createdAt))
-      .limit(limit);
+    // Read after a create: the unread badge must reflect the latest write.
+    try {
+      // CUTOVER: read from notifications_p (partitioned parent).
+      const result = await dbPrimary.execute(sql`SELECT id, user_id, type, title, message, data, is_read, read_at, created_at
+          FROM notifications_p
+          WHERE user_id = ${userId} AND is_read = FALSE
+          ORDER BY created_at DESC
+          LIMIT ${limit}`);
+
+      return result.rows.map((row: Record<string, unknown>) => ({
+        id: row.id,
+        userId: row.user_id,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        data: row.data,
+        isRead: row.is_read,
+        readAt: row.read_at,
+        createdAt: row.created_at,
+      })) as Notification[];
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      // 42P01 = undefined_table: fall back to legacy notifications table.
+      if (code === '42P01') {
+        return db
+          .select()
+          .from(notifications)
+          .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
+          .orderBy(desc(notifications.createdAt))
+          .limit(limit);
+      }
+      throw error;
+    }
   }
 
   async create(data: CreateNotificationInput): Promise<Notification> {
     this.logger.info(`Creating notification for user: ${data.userId}`);
-    const [notification] = await db.insert(notifications).values(data).returning();
-    return notification;
+    return await dbPrimary.transaction(async (tx) => {
+      // Writes route to primary via the transaction so the returning row is read from the same primary (read-after-write).
+      const [notification] = await tx
+        .insert(notifications)
+        .values(data)
+        .returning();
+      // Dual-write to the partitioned table during the migration phase. Same transaction.
+      await tx.execute(sql`INSERT INTO notifications_p (id, user_id, type, title, message, data, is_read, read_at, created_at)
+          VALUES (${notification.id}, ${data.userId}, ${data.type}, ${data.title}, ${data.message}, ${data.data ?? null}, ${notification.isRead}, ${notification.readAt ?? null}, ${notification.createdAt?.toISOString() ?? new Date().toISOString()})
+          ON CONFLICT (id) DO NOTHING`);
+      return notification;
+    });
   }
 
   async markAsRead(id: string): Promise<Notification> {
     this.logger.debug(`Marking notification as read: ${id}`);
-    const [notification] = await db
-      .update(notifications)
-      .set({ isRead: true, readAt: new Date() })
-      .where(eq(notifications.id, id))
-      .returning();
-    return notification;
+    return await dbPrimary.transaction(async (tx) => {
+      const [notification] = await tx
+        .update(notifications)
+        .set({ isRead: true, readAt: new Date() })
+        .where(eq(notifications.id, id))
+        .returning();
+      // Dual-write the status change to the partitioned table. Same transaction.
+      await tx.execute(sql`UPDATE notifications_p SET is_read = TRUE, read_at = ${new Date().toISOString()} WHERE id = ${notification.id}`);
+      return notification;
+    });
   }
 
   async markAllAsRead(userId: string): Promise<void> {
     this.logger.info(`Marking all notifications as read for user: ${userId}`);
-    await db
-      .update(notifications)
-      .set({ isRead: true, readAt: new Date() })
-      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    return await dbPrimary.transaction(async (tx) => {
+      await tx
+        .update(notifications)
+        .set({ isRead: true, readAt: new Date() })
+        .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+      // Dual-write the status change to the partitioned table. Same transaction.
+      await tx.execute(sql`UPDATE notifications_p SET is_read = TRUE, read_at = ${new Date().toISOString()}
+          WHERE user_id = ${userId} AND is_read = FALSE`);
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -104,11 +222,24 @@ export class NotificationsRepository implements INotificationsRepository {
   }
 
   async countUnread(userId: string): Promise<number> {
-    const [{ total }] = await db
-      .select({ total: sql<number>`count(*)` })
-      .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
-    return Number(total);
+    try {
+      // Read after a create: the unread count must reflect the latest write.
+      // CUTOVER: read from notifications_p (partitioned parent).
+      const countResult = await dbPrimary.execute(sql`SELECT count(*) AS total FROM notifications_p
+          WHERE user_id = ${userId} AND is_read = FALSE`);
+      return Number(countResult.rows[0]?.total ?? 0);
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      // 42P01 = undefined_table: fall back to legacy notifications table.
+      if (code === '42P01') {
+        const [{ total }] = await db
+          .select({ total: sql<number>`count(*)` })
+          .from(notifications)
+          .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+        return Number(total);
+      }
+      throw error;
+    }
   }
 
   async findPreferences(userId: string): Promise<NotificationPreferencesResponseDto> {

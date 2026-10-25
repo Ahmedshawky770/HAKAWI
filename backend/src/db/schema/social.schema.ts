@@ -8,6 +8,7 @@ import {
   integer,
   index,
   type AnyPgColumn,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 import { users } from './users.schema.ts';
@@ -200,6 +201,62 @@ export const messages = pgTable(
   (table) => ({
     conversationIdx: index('messages_conversation_id_idx').on(table.conversationId),
     senderIdx: index('messages_sender_id_idx').on(table.senderId),
+  }),
+);
+
+
+export const messagesP = pgTable(
+  'messages_p',
+  {
+    id: uuid('id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    senderId: uuid('sender_id').notNull(),
+    content: text('content').notNull(),
+    isRead: boolean('is_read').default(false).notNull(),
+    readAt: timestamp('read_at'),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.id, table.createdAt] }),
+    conversationIdx: index('messages_p_conversation_id_idx').on(table.conversationId),
+    senderIdx: index('messages_p_sender_id_idx').on(table.senderId),
+  }),
+);
+
+export const notificationsP = pgTable(
+  'notifications_p',
+  {
+    id: uuid('id').notNull(),
+    userId: uuid('user_id').notNull(),
+    type: varchar('type', { length: 50 }).notNull(),
+    title: varchar('title', { length: 255 }).notNull(),
+    message: text('message').notNull(),
+    data: text('data'),
+    isRead: boolean('is_read').default(false).notNull(),
+    readAt: timestamp('read_at'),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.id, table.createdAt] }),
+    userIdx: index('notifications_p_user_id_idx').on(table.userId),
+    readIdx: index('notifications_p_read_idx').on(table.userId, table.isRead),
+  }),
+);
+
+export const reactionsP = pgTable(
+  'reactions_p',
+  {
+    id: uuid('id').notNull(),
+    userId: uuid('user_id').notNull(),
+    storyId: uuid('story_id').notNull(),
+    type: varchar('type', { length: 20 }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.id, table.createdAt] }),
+    userIdx: index('reactions_p_user_id_idx').on(table.userId),
+    storyIdx: index('reactions_p_story_id_idx').on(table.storyId),
+    uniqueReaction: index('reactions_p_unique_idx').on(table.userId, table.storyId, table.createdAt),
   }),
 );
 

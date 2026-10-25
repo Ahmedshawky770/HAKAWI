@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -110,8 +111,6 @@ export class UsersController {
   }
 
   @Secured(AccountType.ADMIN)
-  @RequireAdminRole(AdminRole.SUPER_ADMIN)
-  @RequirePermissions(Permission.USERS_MANAGE_ALL)
   @RequireMfa()
   @Patch(':id')
   async update(
@@ -120,18 +119,38 @@ export class UsersController {
     @Request() req: { user: { sub: string; adminRole?: string } },
   ) {
     const isOwn = req.user.sub === id;
+    const callerRole = req.user.adminRole;
+    const isSuperAdmin = callerRole === AdminRole.SUPER_ADMIN;
+    const isVerificationOfficer = callerRole === AdminRole.VERIFICATION_OFFICER;
 
     if (isOwn) {
-      // A super_admin editing their own profile can never reach accountType or adminRole
-      // through this route — those fields are stripped before the service is called.
+      // Self-edit can never reach accountType/adminRole through this route.
       delete dto.accountType;
       delete dto.adminRole;
       return this.usersService.update(id, dto);
     }
 
-    // Mutating another user's accountType/adminRole is a super_admin-only operation,
-    // already gated by the route guards above (@RequireAdminRole(SUPER_ADMIN),
-    // @RequirePermissions(USERS_MANAGE_ALL), @RequireMfa()).
+    // Editing another user: only super_admin (full) or verification_officer
+    // (provision publisher/professional only) may proceed.
+    if (!isSuperAdmin && !isVerificationOfficer) {
+      throw new ForbiddenException('You can only update your own profile');
+    }
+
+    if (isVerificationOfficer) {
+      // Verification officers may provision publisher/professional accounts only.
+      // adminRole is never injectable by them.
+      if (dto.adminRole !== undefined) {
+        throw new ForbiddenException('Verification officers cannot modify admin roles');
+      }
+      if (
+        dto.accountType !== undefined &&
+        dto.accountType !== AccountType.PUBLISHER &&
+        dto.accountType !== AccountType.PROFESSIONAL
+      ) {
+        throw new ForbiddenException('Verification officers may only provision publisher or professional accounts');
+      }
+    }
+
     return this.usersService.update(id, dto);
   }
 

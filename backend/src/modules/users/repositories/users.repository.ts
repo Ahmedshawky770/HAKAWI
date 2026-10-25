@@ -3,8 +3,18 @@ import { eq, inArray } from 'drizzle-orm';
 
 import { IUsersRepository, User, CreateUserInput, UpdateUserInput } from '../interfaces/users-repository.interface.ts';
 import { users } from '../../../db/schema/users.schema.ts';
-import { db } from '../../../db/index.ts';
+import { db, dbPrimary } from '../../../db/index.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+
+/**
+ * Identity lookups (findByEmail, findById, findBy*Id) run against `dbPrimary`:
+ * they feed sign-in, registration and OAuth, so a reader must observe the
+ * latest committed write (read-after-write). Users are a strong consistency
+ * island for auth state (Principle #16).
+ *
+ * Writes (`create`, `update`, `softDelete`) already route to the primary
+ * through the routed `db` proxy, so they are unchanged here.
+ */
 
 @Injectable()
 export class UsersRepository implements IUsersRepository {
@@ -13,7 +23,7 @@ export class UsersRepository implements IUsersRepository {
   async findById(id: string): Promise<User | null> {
     this.logger.debug(`Finding user by id: ${id}`);
     try {
-      const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      const [user] = await dbPrimary.select().from(users).where(eq(users.id, id)).limit(1);
       return user ?? null;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
@@ -29,54 +39,54 @@ export class UsersRepository implements IUsersRepository {
       return [];
     }
     this.logger.debug(`Finding users by ids: ${ids.join(', ')}`);
-    return db.select().from(users).where(inArray(users.id, ids));
+    return dbPrimary.select().from(users).where(inArray(users.id, ids));
   }
 
   async findByEmail(email: string): Promise<User | null> {
     this.logger.debug(`Finding user by email: ${email}`);
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.email, email)).limit(1);
     return user ?? null;
   }
 
   async findByUsername(username: string): Promise<User | null> {
     this.logger.debug(`Finding user by username: ${username}`);
-    const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.username, username)).limit(1);
     return user ?? null;
   }
 
   async findByGoogleId(googleId: string): Promise<User | null> {
     this.logger.debug(`Finding user by googleId: ${googleId}`);
-    const [user] = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.googleId, googleId)).limit(1);
     return user ?? null;
   }
 
   async findByFacebookId(facebookId: string): Promise<User | null> {
     this.logger.debug(`Finding user by facebookId: ${facebookId}`);
-    const [user] = await db.select().from(users).where(eq(users.facebookId, facebookId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.facebookId, facebookId)).limit(1);
     return user ?? null;
   }
 
   async findByTwitterId(twitterId: string): Promise<User | null> {
     this.logger.debug(`Finding user by twitterId: ${twitterId}`);
-    const [user] = await db.select().from(users).where(eq(users.twitterId, twitterId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.twitterId, twitterId)).limit(1);
     return user ?? null;
   }
 
   async findByGithubId(githubId: string): Promise<User | null> {
     this.logger.debug(`Finding user by githubId: ${githubId}`);
-    const [user] = await db.select().from(users).where(eq(users.githubId, githubId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.githubId, githubId)).limit(1);
     return user ?? null;
   }
 
   async findByAppleId(appleId: string): Promise<User | null> {
     this.logger.debug(`Finding user by appleId: ${appleId}`);
-    const [user] = await db.select().from(users).where(eq(users.appleId, appleId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.appleId, appleId)).limit(1);
     return user ?? null;
   }
 
   async findByTiktokId(tiktokId: string): Promise<User | null> {
     this.logger.debug(`Finding user by tiktokId: ${tiktokId}`);
-    const [user] = await db.select().from(users).where(eq(users.tiktokId, tiktokId)).limit(1);
+    const [user] = await dbPrimary.select().from(users).where(eq(users.tiktokId, tiktokId)).limit(1);
     return user ?? null;
   }
 

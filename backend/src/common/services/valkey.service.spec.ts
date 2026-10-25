@@ -413,6 +413,36 @@ describe('ValkeyService', () => {
       expect(connected().hmset).toHaveBeenCalledWith('oauth:state:abc', values);
     });
 
+    it('should report whether setIfAbsent won the write', async () => {
+      connected().set.mockResolvedValueOnce('OK');
+
+      await expect(service.setIfAbsent('cooldown:key', '1', 60)).resolves.toBe(true);
+      expect(connected().set).toHaveBeenCalledWith('cooldown:key', '1', 'EX', 60, 'NX');
+
+      connected().set.mockResolvedValueOnce(null as unknown as string);
+
+      await expect(service.setIfAbsent('cooldown:key', '1', 60)).resolves.toBe(false);
+    });
+
+    it('should return the incremented counter from incrWithTtl', async () => {
+      connected().eval.mockResolvedValue(4);
+
+      await expect(service.incrWithTtl('counter:key', 60)).resolves.toBe(4);
+      expect(connected().eval).toHaveBeenCalledWith(expect.any(String), 1, 'counter:key', '60');
+    });
+
+    it('should treat a non-numeric incrWithTtl reply as zero', async () => {
+      connected().eval.mockResolvedValue('4');
+
+      await expect(service.incrWithTtl('counter:key', 60)).resolves.toBe(0);
+    });
+
+    it('should treat a non-finite incrWithTtl reply as zero', async () => {
+      connected().eval.mockResolvedValue(Number.NaN);
+
+      await expect(service.incrWithTtl('counter:key', 60)).resolves.toBe(0);
+    });
+
     it('should scan every page of a multi-page cursor walk', async () => {
       connected()
         .scan.mockResolvedValueOnce(['128', ['session:1', 'session:2']])
@@ -540,6 +570,18 @@ describe('ValkeyService', () => {
 
       await expect(service.hSet('oauth:state:abc', 'k', 'v')).resolves.toBeUndefined();
       await expect(service.hSetMultiple('oauth:state:abc', { k: 'v' })).resolves.toBeUndefined();
+    });
+
+    it('should report setIfAbsent as false when there is no client', async () => {
+      await service.onModuleInit();
+
+      await expect(service.setIfAbsent('cooldown:key', '1', 60)).resolves.toBe(false);
+    });
+
+    it('should report incrWithTtl as zero when there is no client', async () => {
+      await service.onModuleInit();
+
+      await expect(service.incrWithTtl('counter:key', 60)).resolves.toBe(0);
     });
   });
 });

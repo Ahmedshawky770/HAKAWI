@@ -296,6 +296,33 @@ describe('BadgesService', () => {
       await expect(service.evaluateForUser(USER_ID, 'story.published')).resolves.toEqual([]);
       expect(db.insert).not.toHaveBeenCalled();
     });
+
+    it('should award a badge when its threshold is met', async () => {
+      db.select.mockReturnValueOnce(makeChain([{ total: 1 }]));
+      db.select.mockReturnValueOnce(makeChain([badgeRow()]));
+      db.select.mockReturnValueOnce(makeChain([]));
+      db.insert.mockReturnValueOnce(makeChain([userBadgeRow()]));
+      db.select.mockReturnValueOnce(makeChain([{ total: 1 }]));
+
+      const awarded = await service.evaluateForUser(USER_ID, 'winner.selected');
+
+      expect(awarded).toHaveLength(1);
+      expect(awarded[0]).toMatchObject({ badgeKey: 'Contest Champion' });
+    });
+
+    it('should treat a missing aggregate as zero', async () => {
+      db.select.mockReturnValue(makeChain([]));
+
+      await expect(service.evaluateForUser(USER_ID, 'winner.selected')).resolves.toEqual([]);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('should cover the follower and moderation count paths', async () => {
+      db.select.mockReturnValue(makeChain([]));
+
+      await expect(service.evaluateForUser(USER_ID, 'user.followed')).resolves.toEqual([]);
+      await expect(service.evaluateForUser(USER_ID, 'moderation.action.taken')).resolves.toEqual([]);
+    });
   });
 
   describe('awardManual', () => {
@@ -307,6 +334,16 @@ describe('BadgesService', () => {
       db.select.mockReturnValueOnce(makeChain([badgeRow()]));
       db.select.mockReturnValueOnce(makeChain([{ id: 'ub-existing' }]));
       db.select.mockReturnValueOnce(makeChain([{ userBadge: userBadgeRow(), badge: badgeRow() }]));
+
+      await expect(service.awardManual(USER_ID, 'contest-champion')).resolves.toMatchObject({
+        badgeKey: 'Contest Champion',
+      });
+    });
+
+    it('should return the newly awarded badge on a fresh manual award', async () => {
+      db.select.mockReturnValueOnce(makeChain([badgeRow()]));
+      db.select.mockReturnValueOnce(makeChain([]));
+      db.insert.mockReturnValueOnce(makeChain([userBadgeRow()]));
 
       await expect(service.awardManual(USER_ID, 'contest-champion')).resolves.toMatchObject({
         badgeKey: 'Contest Champion',
