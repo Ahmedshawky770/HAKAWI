@@ -9,6 +9,7 @@ import { BadgeCard, BadgeGridSkeleton } from "@/components/social/BadgeCard";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { classifyError } from "@/lib/errors";
 import { isFailedLoad, useBadgeCatalog, useUserBadges } from "@/lib/queries";
+import { BadgeCatalogEntry } from "@hakawi/shared-types";
 
 /**
  * The badge catalogue.
@@ -69,7 +70,7 @@ export default function BadgesPage() {
    * list is the reader's, and the reader's list is empty for a visitor who is
    * not signed in.
    */
-  const earnedKeys = new Set((earnedQuery.data?.badges ?? []).map((badge) => badge.badgeKey));
+  const earnedKeys = new Set((earnedQuery.data?.badges ?? []).map((badge: { badgeKey: string; }) => badge.badgeKey));
 
   return (
     <div className="animate-rise">
@@ -82,7 +83,7 @@ export default function BadgesPage() {
         <div className="text-center text-ink-muted">{strings.profile.badgesEmpty}</div>
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2">
-          {badges.map((badge) => (
+          {badges.map((badge: BadgeCatalogEntry) => (
             <li key={badge.key}>
               <BadgeCard badge={badge} isEarned={earnedKeys.has(badge.key)} />
             </li>

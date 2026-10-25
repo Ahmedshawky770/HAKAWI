@@ -75,7 +75,7 @@ export default function EditProfilePage() {
   }, [router, hasSession]);
 
   const saveMutation = useMutation({
-    mutationFn: () => api.updateUser(userId, { name, bio }),
+    mutationFn: () => api.updateMe({ name, bio }),
     onSuccess: async () => {
       await invalidate.users(userId);
       router.push("/profile");

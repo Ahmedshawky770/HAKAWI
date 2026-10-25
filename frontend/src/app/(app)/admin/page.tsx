@@ -6,7 +6,7 @@ import { AdminGuard } from "@/components/admin/AdminGuard";
 import { PageHeader } from "@/components/ui/Card";
 import { Card, CardBody } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
-import { Icon } from "@/components/ui/Icon";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import { StatCard } from "@/components/ui/StatCard";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { useStoredUser } from "@/lib/use-stored-user";
@@ -126,7 +126,7 @@ export default function AdminHubPage() {
                 <StatCard
                   label={card.label}
                   value={card.value}
-                  icon={card.icon as any}
+                  icon={card.icon as IconName}
                   hint={card.hint}
                 />
               </CardBody>

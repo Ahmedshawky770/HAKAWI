@@ -28,6 +28,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     getUser: vi.fn(),
+    updateMe: vi.fn(),
   },
   getStoredUser: vi.fn(),
 }));

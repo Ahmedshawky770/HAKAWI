@@ -139,31 +139,9 @@ spacing *of components* is a decision:
 ### 3.2 Radius
 
 `rounded-lg` 8px on controls · `rounded-xl` 12px on cards, buttons and toasts ·
-`rounded-full` on avatars, pills and the progress bar. Nothing is sharper than
-8px: the product is made of paper and ink, and a hard 2px corner reads as a
-developer tool.
-
-The brand mark carries NO radius of its own. It is the product's real logo —
-the magnifier emblem cut out of `frontend/public/logo.png`, drawn as
-`frontend/public/logo-mark-dark.png` and `frontend/public/logo-mark-light.png`
-by `frontend/scripts/generate-brand-assets.mjs` — and the artwork is already
-round, with the quill and the crescent breaking out of it at the top right; a
-rounded container would cut them off. The `rounded-2xl` this table used to list
-for the large brand mark described the amber `ح` tile that stood in for the logo
-before the logo existed, and it went with it.
-
-The artwork is a PRINT — violet ink, a teal glass, gold leaf, on cream paper —
-so the mark has one version for each canvas: the light one is the drawing as it
-was made, and the dark one is the same drawing reprinted for a dark ground,
-where the frame's violet ink would otherwise sit at 1.15:1 against the canvas.
-The two are generated from one source and are measured by the generator, not by
-eye.
-
-The icons the browser and the launchers draw sit on a DISC — the lens, the
-circle the artwork's own frame draws — and never on a square of paper. A square
-behind a round mark reads as a white square with a logo in it; a circle is a
-shape a brand can have. The generator finds that circle in the artwork, so the
-paper is always the size of the mark it carries.
+`rounded-2xl` 16px on the large brand mark · `rounded-full` on avatars, pills and
+the progress bar. Nothing is sharper than 8px: the product is made of paper and
+ink, and a hard 2px corner reads as a developer tool.
 
 ### 3.3 Elevation
 
@@ -308,7 +286,6 @@ Every ratio below is recomputed from the tokens by
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (dark) | 12.77:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (dark) | 11.67:1 | 4.5:1 |
 | label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (dark) | 8.70:1 | 4.5:1 |
-| the focused skip link | `--hk-on-accent` on `--hk-accent-fill` (dark) | 8.70:1 | 4.5:1 |
 | label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 5.22:1 | 4.5:1 |
 | success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.34:1 | 4.5:1 |
 | warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 10.76:1 | 4.5:1 |
@@ -332,7 +309,6 @@ Every ratio below is recomputed from the tokens by
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (light) | 4.97:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (light) | 5.36:1 | 4.5:1 |
 | label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (light) | 5.18:1 | 4.5:1 |
-| the focused skip link | `--hk-on-accent` on `--hk-accent-fill` (light) | 5.18:1 | 4.5:1 |
 | label on the danger button | `--hk-on-error` on `--hk-error-fill` (light) | 4.83:1 | 4.5:1 |
 | success text | `--hk-success-ink` on `--hk-surface` (light) | 5.48:1 | 4.5:1 |
 | warning text | `--hk-warning-ink` on `--hk-surface` (light) | 5.02:1 | 4.5:1 |
@@ -348,24 +324,13 @@ product had the two facts that cost the most: **the currency** and **the unit**.
 - `RENTAL_CURRENCY` is `EGP`, and the backend sends `EGP` to the gateway. The book
   surfaces used to print `$`.
 - Every amount the API sends is an integer in **piastres** (1 EGP = 100) —
-  `books.price`, `RENTAL_PRICE_PER_DAY_PIASTRES`, and `payments.amount`, which is
-  the integer the gateway was asked to charge. The rental quote divided by 100;
+  `books.price`, `RENTAL_PRICE_PER_DAY_PIASTRES`. The rental quote divided by 100;
   the book price printed the raw integer, so a book at 25 piastres was shown as
-  25 pounds; and the payments history printed the raw integer next to the raw
-  currency code, so a payment of 2500 piastres read "2500 EGP" instead of
-  "25.00 ج.م" — a reader told the transaction cost a hundred times what it cost.
-- **Every** amount now goes through `formatPrice` in `frontend/src/lib/money.ts`,
-  which is the only division by 100 in the product. Its symbol comes from the
-  transaction's OWN currency column — the backend validates and stores the
-  currency it charged (`payments.service.ts` — `validateCurrency`, defaulting
-  to EGP), so the record is the authority on what was paid in, and a payment
-  made in another currency must not be labelled in pounds. For the ordinary
-  EGP payment the symbol is the product's own "ج.م" on every screen; the
-  currency argument defaults to `RENTAL_CURRENCY` where there is no record to
-  read it from. A price is always two decimals, because a price is never
-  rounded for display. The day count in a rental quote is a WORD and a word has
-  a language, so `formatRentalQuote` takes the locale and `formatDayCount` says
-  "14 يوماً" or "14 days" accordingly.
+  25 pounds.
+- Both now go through `formatPrice` in `frontend/src/lib/money.ts`, which is the
+  only division by 100 in the product and takes its symbol from
+  `RENTAL_CURRENCY`. A price is always two decimals, because a price is never
+  rounded for display.
 - **Western digits in both locales.** `toLocaleString("ar-EG")` renders
   Arabic-Indic digits, which is how a book price came to read "25.00" two inches
   above a quote reading "٢٥٫٠٠" for the same product. Egyptian readers
@@ -513,7 +478,7 @@ quoted in the anatomy blocks are the real ones.
 | Property | Values |
 |----------|--------|
 | `variant` | `primary` (default) · `secondary` · `ghost` · `danger` · `success` |
-| `size` | `sm` (`min-h-11`) · `md` (`min-h-11`) · `lg` (`min-h-12`) |
+| `size` | `sm` (`min-h-9`) · `md` (`min-h-11`) · `lg` (`min-h-12`) |
 | `loading` | disables the control, adds a spinner, sets `aria-busy="true"` |
 | `block` | stretches to the container — every full-width form CTA |
 
@@ -526,14 +491,6 @@ quoted in the anatomy blocks are the real ones.
   pages did — produces one control with two roles and two behaviours.
 - **`IconButton` requires a `label`.** An icon alone is not a control; the label
   becomes both `aria-label` and `title`.
-- **NO SIZE IS BELOW 44px.** `sm` used to be `min-h-9` (36px) on the strength of
-  a padding that belonged to the row rather than to the target; the buttons that
-  are actually small — a delete control in a list row, a reaction chip, a
-  dismiss button — are the ones a reader has to hit accurately, one-handed, on a
-  phone. Every size is now at least 44px tall, and `sm` and `md` differ in
-  their horizontal padding and their type size rather than in the height of the
-  target. `IconButton` follows the same rule: `size-11` for `sm` and `md`,
-  `size-12` for `lg`.
 
 ### 6.2 Card — `components/ui/Card.tsx`
 
@@ -595,7 +552,7 @@ off the screen.
 
 ```
 ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐
-│ ❤  │ │ ♥  │ │ 💡 │ │ ☹  │ │ ◕  │ │ ☻  │
+│ ❤  │ │ 💛  │ │ ✨  │ │ 💧  │ │ 🔥  │ │ 👻  │
 │ 42 │ │  7 │ │  3 │ │  1 │ │  0 │ │  2 │
 └────┘ └────┘ └────┘ └────┘ └────┘ └────┘
  default          pressed: border-accent/40 + bg-accent-soft + animate-beat
@@ -603,20 +560,9 @@ off the screen.
 
 - Six types, from `REACTION_TYPES` in `@hakawi/shared-types`. A local list would
   be a second source of truth for an API contract.
-- **THE GLYPHS ARE THE PRODUCT'S OWN ART**, in `public/Reactions/`, mapped to
-  the six types by `ReactionGlyph`. They used to be emoji — `❤ 💛 ✨ 💧 🔥 👻` —
-  and emoji are drawn by the operating system, not by the product: the same six
-  characters are a red heart on Android, a yellow one on iOS and a monochrome
-  outline on Windows, so the reaction row looked like a different product on
-  every device. `Funny.svg` is deliberately unmapped: the API's vocabulary has
-  no "funny" reaction, and offering a seventh button the server would answer
-  with a 400 is worse than leaving an asset unused.
 - Each button carries its name and the total: `aria-label="أعجبني (42)"`, and
   `aria-pressed` for its own state.
 - `ReactionCount` is the read-only variant for cards. Amber, per §4.7.
-- **The query keys live in `lib/queries.ts`**, not in the component: a key
-  declared next to the component that uses it is a key another surface can
-  invent a second version of.
 
 ### 6.7 Badge — `components/ui/Badge.tsx`
 
@@ -721,22 +667,11 @@ a failure that explains itself is not.
 
 ### 7.3 One query key per fact
 
-`lib/queries.ts` owns the query keys, the fetch functions and the invalidation
-helpers for EVERY fact the product reads: stories, books, the library, rentals,
-payments, messages, notifications, contests, moderation, profiles, badges and
-search. The feed, the grid, the dashboard and the trending rail read the same
-cache entry, so a page showing both the feed and the rail makes **one**
-request. A second fetch of the same list is not a performance detail: it is a
-second answer that can disagree with the first.
-
-**NO PAGE KEEPS ITS OWN COPY OF THE WORLD.** A page that fetches with
-`useState` + `useEffect` + an `attempt` counter has no shared cache, no
-invalidation after a write, no dedupe between tabs and no stale time — and the
-first symptom of that is a dashboard that keeps showing a story as unpublished
-until the reader presses refresh. A page asks for a fact
-(`useBook(id)`), renders `isLoading` / `isError` / `data`, and lets a mutation
-invalidate the keys it changed (`invalidate.books()`). There is no `useEffect`
-that fetches and no counter that re-arms one.
+`lib/queries.ts` owns the story query key and the fetch function. The feed, the
+grid, the dashboard and the trending rail read the same cache entry, so a page
+showing both the feed and the rail makes **one** request. A second fetch of the
+same list is not a performance detail: it is a second answer that can disagree
+with the first.
 
 ### 7.4 A view is a URL
 
@@ -766,22 +701,18 @@ reverted under the reader's finger.
 | Visible focus on everything interactive | one global rule in `globals.css`: `outline: 2px solid var(--hk-accent)` + 2px offset |
 | Full keyboard operation | every control is a real `<button>`, `<a>`, `<input>`, `<select>`; no click-only affordance |
 | `aria-current="page"` on the active destination | `Sidebar`, `BottomNav` — never colour alone |
-| Landmarks | `header`, `nav` (three, each labelled — `mainNavigation` for the sidebar's start column, `secondaryNavigation` for the sidebar's second column, `bottomNavigation` for the bottom bar), `main#main-content`, `aside`, `role="status"`, `role="alert"` |
+| Landmarks | `header`, `nav` (two, each labelled), `main#main-content`, `aside`, `role="status"`, `role="alert"` |
 | Live regions | loading `status`, errors `alert`, toasts polite, chat `log` |
-| Touch targets ≥ 44×44px | `min-h-11` on EVERY button size, `size-11` on every icon button, `min-h-14` on bottom-bar items |
+| Touch targets ≥ 44×44px | `min-h-11` on buttons, `min-h-14` on bottom-bar items, `min-h-9`+padding on `sm` buttons |
 | `prefers-reduced-motion` | one global block in `globals.css` collapses every animation and transition |
 | No colour-only meaning | active nav, unread items and status pills all carry text or an icon too |
 | Decorative icons hidden | `Icon` sets `aria-hidden` unless given a `title` |
-| Skip link | `.hk-skip-link` in the root layout, targeting `#main-content` — the target is rendered by `AppShell` (the authenticated routes), by `AuthShell` (the auth routes), by the `(app)` layout's own session-guard branches, and by the OAuth callback. The focused link paints the accent fill with its own on-accent text (8.70:1 dark, 5.18:1 light), and both the pair and the tokens it names are asserted by `design-system.test.ts` |
+| Skip link | `.hk-skip-link` in the root layout, targeting `#main-content` |
 | Numbers in RTL | `.hk-numeric` isolates and LTR-orders digits, signs and currency |
 
 WCAG A/AA on `/login` and `/register` is asserted by
 `frontend/e2e/accessibility.e2e-spec.ts` with axe-core, and those two pages keep a
-fixed field count and stable Arabic labels — not by copying those labels into the
-spec, but because the spec derives them from the application's own dictionary
-(`frontend/e2e/copy.ts`), so a copy edit moves the selector and the page together.
-The button selectors read the button's key and the headings read the heading's;
-the two literals with no dictionary key are commented in the spec as gaps.
+fixed field count and fixed Arabic labels because that spec queries them by name.
 
 ### 8.1 RTL
 
@@ -911,26 +842,9 @@ first paint
 - Arabic is the default and RTL; English is available and flips the document.
 - The toggle writes `lang` and `dir` on `<html>` and persists under
   `hakawi.locale`; `LocaleProvider` subscribes the same way the theme does.
-- **THE DICTIONARY COVERS EVERY SURFACE THE PRODUCT SPEAKS IN.** One namespace
-  per surface, in `src/lib/i18n/`: `shell`, `common`, `auth`, `story`, `errors`,
-  `account`, `library`, `rentals`, `payments`, `contests`, `moderation`,
-  `social`, `profile`, `books`, `checkout`, `dashboard`. Each namespace is an
-  interface, an Arabic table and an English table **in one file**, so the two
-  languages of a sentence cannot drift apart, and the interface is exhaustive:
-  a key cannot be added without a sentence in both languages. **Authored content
-  is not translated** — a story body is Arabic by definition. What the PRODUCT
-  says about that content is.
-- **A SERVER-READ ERROR IS CLASSIFIED, NOT QUOTED.** The API answers in English
-  and in the vocabulary of the implementation; those strings were shown to the
-  reader verbatim. `classifyError` in `lib/errors.ts` maps what came back onto one
-  of the codes in the `errors` namespace, and the dictionary says it in the
-  reader's language. A screen that shows "Invalid email or password" inside an
-  Arabic interface is reporting the API's opinion, not the reader's situation.
-- **A PAGE THAT FETCHES ON THE SERVER SAYS SO WHEN IT FAILS.** `.catch(() => null)`
-  followed by an empty list makes a failure indistinguishable from an empty
-  result, and an empty state that lies is worse than an error. The comments and
-  reactions pages render `RetryBoundary` instead, which re-renders the route
-  server-side.
+- Shell copy is bilingual (`src/lib/i18n.ts`): navigation, header, bottom bar and
+  the empty states. **Authored content is not translated** — a story body is
+  Arabic by definition. See §14.
 - RTL adaptations:
 
 | Element | Arabic (RTL) | English (LTR) |
@@ -939,16 +853,7 @@ first paint
 | Layout | mirrored | normal |
 | Icons | directional glyphs mirror | normal |
 | Navigation | start column on the right | start column on the left |
-| Digits | Western, in both locales | Western, in both locales |
-| Dates | `ar-EG` via `formatDate`/`formatLongDate`, month names in Arabic | `en-GB` through the same helpers |
-
-Digits and dates are Western **in both** locales, and that is a rule rather than an accident:
-Egyptian readers read Western digits, every other figure in the product is Western, and
-`hk-numeric` isolates these runs as LTR to begin with — the same argument §4.7 records for
-money. `toLocaleDateString("ar-EG")` on its own renders Arabic-Indic digits, which is how a row
-ended up showing "١٤ أكتوبر ٢٠٢٦" beside "1,234" views; the helpers in `frontend/src/lib/i18n/`
-pin the numbering system to Latin and leave the month and weekday names in the reader's language,
-so the Arabic date reads "14 أكتوبر 2026".
+| Dates | `ar-EG` via `toLocaleDateString` | `en-GB` |
 
 ---
 
@@ -964,9 +869,8 @@ Every rule in this document, and the file that implements it.
 | Font loading | `frontend/src/app/fonts.ts` |
 | Theme and locale bootstrap | `frontend/src/lib/preferences.ts`, `frontend/src/app/layout.tsx` |
 | Theme and locale state | `frontend/src/components/providers/ThemeProvider.tsx`, `frontend/src/components/providers/LocaleProvider.tsx` |
-| The document title and description, in the reader's language | `frontend/src/components/providers/TitleMirror.tsx` (rendered by the root layout) |
 | Transient feedback | `frontend/src/components/providers/ToastProvider.tsx` |
-| Shell copy, both locales | `frontend/src/lib/i18n/` (`shell`, `common`, `auth`, `story`) |
+| Shell copy, both locales | `frontend/src/lib/i18n.ts` |
 | Buttons, links, icon buttons | `frontend/src/components/ui/Button.tsx` |
 | Cards, card parts, page header | `frontend/src/components/ui/Card.tsx` |
 | Field wiring, input, textarea, select | `frontend/src/components/ui/Field.tsx`, `frontend/src/components/ui/Input.tsx` |
@@ -992,17 +896,8 @@ Every rule in this document, and the file that implements it.
 | Reactions, optimism, reaction counts | `frontend/src/components/story/ReactionBar.tsx` |
 | Infinite feed, sentinel, "load more" | `frontend/src/components/story/StoryFeed.tsx` |
 | Byline, category, date | `frontend/src/components/story/StoryMeta.tsx` |
-| One query key per fact, paging maths, trending derivation, invalidation | `frontend/src/lib/queries.ts` |
-| The reaction keys, with the rest of the contract | `frontend/src/lib/queries.ts` (`reactionKeys`) |
-| The error taxonomy and the code→sentence map | `frontend/src/lib/errors.ts`, `frontend/src/lib/i18n/errors.ts` |
-| The checkout: method choice, the gateway frame, the hosted-page fallback | `frontend/src/components/commerce/CheckoutDialog.tsx` |
-| The unread counter on a navigation target | `frontend/src/components/layout/UnreadBadge.tsx` |
-| Reading progress and the time left | `frontend/src/components/story/ReadingProgress.tsx` |
-| The failure surface of a server-rendered page | `frontend/src/components/ui/RetryBoundary.tsx` |
-| The route-level 404, error, root-error and loading screens | `frontend/src/app/not-found.tsx`, `error.tsx`, `global-error.tsx`, `loading.tsx` |
-| The manifest, the robots file, the sitemap and the link previews | `frontend/src/app/manifest.ts`, `robots.ts`, `sitemap.ts`, `opengraph-image.tsx` |
+| One query key per fact, paging maths, trending derivation | `frontend/src/lib/queries.ts` |
 | Money: one currency, one unit, one division | `frontend/src/lib/money.ts` |
-| Dates and digits: one numbering system, both locales | `frontend/src/lib/i18n/index.ts` |
 | **This document, held against the stylesheet** | `frontend/src/app/design-system.test.ts` |
 
 ---
@@ -1019,20 +914,9 @@ is worse than one that does not exist.
    Deep Aqua `#00b8d4` are still in the palette as hues, but they cannot carry
    text or a button label. Text and fills use the darker variants in §4.4, with
    the measurements.
-3. **The surface is bilingual, with one stated exception.** The toggle flips
-   `lang`, `dir` and every string the product says: the chrome, the auth flows,
-   the dashboard, the catalogue and a book, the library, the rentals, the
-   payments, the contests, the moderation surfaces, the messages and
-   notifications, the profile and its badges, the search surface and the
-   checkout. **Authored content is not translated** — a story body, a comment, a
-   contest brief and the prose a reader writes are Arabic by definition. What
-   the product SAYS about that content is translated.
-   The remaining gap is honest and small: a server component cannot read the
-   reader's locale (it is a `localStorage` preference), so the copy that a
-   server-rendered page writes on its own — the comments and reactions page
-   headings, the story metadata — is Arabic. The client islands inside those
-   pages read the dictionary, so the parts a reader interacts with follow the
-   toggle.
+3. **Only shell copy is bilingual.** The language toggle flips `lang`, `dir` and
+   the chrome. Page content — story bodies, contest copy, notifications — is
+   Arabic. A full dictionary is not built; this document does not claim one.
 4. **Trending is derived, not served.** `GET /stories` takes only `page`,
    `limit` and `category`, so the rail sorts the recent page by reactions on the
    client. A server-side trending endpoint is the correct answer; until it
@@ -1048,14 +932,10 @@ is worse than one that does not exist.
 7. **No rich text editor.** The original document named TipTap for the composer.
    The composer is a plain textarea: it posts the same content, and shipping an
    editor nobody has asked for yet is not a design decision.
-8. **Four pages are server-rendered, and they say so when they fail.**
-   `stories/[id]/comments`, `stories/[id]/reactions`, `users/[id]/followers` and
-   `users/[id]/following` read the API on the server. Two of them used to
-   swallow the failure with `.catch(() => null)` and render an empty list, which
-   is a statement about the world that is not true; they now render
-   `RetryBoundary`, and the follow lists are client components with the shared
-   query cache. A server-rendered page cannot read the reader's locale, so the
-   headings those pages write themselves are Arabic — see §14.3.
+8. **Four pages are honest placeholders.** `stories/[id]/comments`,
+   `stories/[id]/reactions`, `users/[id]/followers` and `users/[id]/following`
+   have API routes but no client. Each states that plainly instead of rendering a
+   spinner that never resolves.
 
 ---
 

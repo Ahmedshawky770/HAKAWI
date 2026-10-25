@@ -6,7 +6,7 @@ export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
 export const isReportTargetType = (value: string): value is ReportTargetType => isOneOf(REPORT_TARGET_TYPES, value);
 
-export const REPORT_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const;
+export const REPORT_STATUSES = ['open', 'in_review', 'escalated', 'resolved', 'dismissed'] as const;
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 
 export const isReportStatus = (value: string): value is ReportStatus => isOneOf(REPORT_STATUSES, value);

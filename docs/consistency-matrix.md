@@ -50,13 +50,16 @@ tables are live**, and this is the full picture.
 | Content | `stories`, `categories`, `tags`, `story_tags` | Eventual | Cache-aside at 600s, tags `stories` |
 | Books | `books`, `book_categories`, `book_tags`, `reading_progress` | Eventual | Cache-aside at 600s, tags `books` |
 | Commerce | `rentals`, `rental_extensions`, `library` | Strong (per row) | ⛔ no cross-row locking |
-| Payments | `payments`, `payment_transactions`, `refunds` | Strong by intent | Cache 300s, tags `payments`; ⛔ no row locking |
-| Social | `follows`, `reactions`, `comments`, `comment_reactions` | Causal / Eventual | Event-driven; the cache is not the source of truth |
-| Messaging | `conversations`, `messages`, `notifications`, `notification_preferences` | Causal | Socket.IO + Redis adapter for delivery; PostgreSQL for order |
+| Payments | `payments`, `payment_transactions`, `refunds` | Strong | Cache 300s, tags `payments`; reads/writes forced to primary via `withPrimary()`/`dbPrimary` (ADR-007). `payment_status` enum includes `processing` (SSOT in shared-types, ADR-008). |
+| Social | `follows`, `reactions`, `comments`, `comment_reactions` | Causal / Eventual | Event-driven; the cache is not the source of truth. `reactions` partitioned monthly (`reactions_p`, ADR-010). |
+| Messaging | `conversations`, `messages`, `notifications`, `notification_preferences` | Causal | Socket.IO + Redis adapter for delivery; PostgreSQL for order. `messages` and `notifications` partitioned monthly (ADR-010). |
+| Commerce transactions | `payment_transactions` | Strong | Partitioned monthly (`payment_transactions_p`, ADR-010). |
+| Counters | `counters` | Eventual (cache) / Strong (via `withPrimary`) | Single Source of Truth for `view_count`/`like_count`/`comment_count`/`download_count`/`reply_count`. Main-table columns are read-only caches (ADR-011). |
 | Contests | `contests`, `contest_submissions`, `contest_votes`, `contest_prizes` | Strong per contest | ⛔ no transaction across vote-count and winner selection |
 | Gamification | `badges`, `user_badges` | Eventual | Awarded by event handler |
-| Moderation | `reports`, `moderation_actions` | Strong | Admin dashboard reads live |
-| Uploads | `uploads` | Eventual | S3 is the object store; PostgreSQL holds the row |
+| Moderation | `reports`, `moderation_actions` | Strong | Admin dashboard reads live. `report_status` enum includes `escalated` (SSOT in shared-types, ADR-008). |
+| Uploads | `uploads` | Eventual | S3 is the object store; PostgreSQL holds the row. Soft-deleted objects reclaimed by `cleanup-orphaned-uploads` (ADR-013). |
+| Encrypted mirrors | `users.phone_encrypted`, `users.email_encrypted`, `payments.metadata_encrypted` | Strong | Column-level pgcrypto encryption; plaintext columns deprecated (ADR-012). Key set via `ALTER SYSTEM SET app.encryption_key`. |
 
 ---
 
@@ -98,13 +101,78 @@ redeploying.
 
 ---
 
+## Operational Data Concerns
+
+### Declarative Partitioning (ADR-010)
+High-growth append-only tables are partitioned monthly by `created_at` onto `*_p` parents:
+`messages_p`, `notifications_p`, `payment_transactions_p`, `reactions_p`. Legacy tables remain in
+place (additive migration). Archiving functions `archive_*_before(ts)` detach old partitions into
+standalone `*_archived_*` tables for cold storage (S3) or retention-based drop.
+
+**Cutover status (implemented in code, pending DB execution):**
+- Dual-write is active in all four repositories (messages, notifications, reactions,
+  payments.createTransaction) — every write targets both legacy and `*_p` tables.
+- Repository read paths have been switched to `*_p` tables via `dbPrimary.execute()` / `$client.query()`.
+- `npm run db:backfill-partitions` — copies legacy data to `*_p` tables (idempotent).
+- `npm run db:verify-cutover` — verifies row-count parity before cutover.
+- `migrations/0039_partition_cutover.sql` — drops legacy tables after parity verified.
+- These three steps require a live PostgreSQL instance and must be executed in order:
+  backfill → verify → migration 0039.
+
+### Counters — Single Source of Truth (ADR-011)
+`counters` is the authoritative source for every counter
+(`view_count`, `like_count`, `comment_count`, `download_count`, `reply_count`). The denormalized
+columns on `stories`, `books` and `comments` are read-only caches refreshed from `counters` by a
+backfill job. Exact-consistency reads use `counters` via `withPrimary()`.
+
+### Column-Level Encryption (ADR-012)
+`users.phone`, `users.email` and `payments.metadata` have `*_encrypted` bytea mirrors encrypted
+with pgcrypto (`encrypt_sensitive` / `decrypt_sensitive`), keyed by
+`current_setting('app.encryption_key', true)`. Plaintext columns are deprecated. The operator must
+set `app.encryption_key` identically on every replica and node.
+
+### Object Storage Lifecycle (ADR-013)
+Soft-deleted uploads (`uploads.deleted_at` set) retain their S3 objects until reclaimed by
+`cleanup-orphaned-uploads` (default 30-day retention, `--dry-run` supported). Reads from
+`dbPrimary` for an accurate soft-deleted list.
+
+---
+
+## Logical Sharding Strategy (P3 — Future)
+
+If the dataset outgrows a single PostgreSQL node, the recommended sharding key is **`user_id`**
+(or `book_id` for book-centric workloads). Rationale:
+
+- Most queries are user-scoped (`/users/:id/stories`, `/users/:id/books`,
+  `/users/:id/notifications`, `/users/:id/payments`), so `user_id` sharding keeps the hot path
+  on a single shard.
+- Cross-shard queries (global feeds, search, admin dashboards) go through a scatter-gather
+  router or the OLAP store.
+- Globally unique indexes (e.g. `users.email`, `users.username`, `stories.slug`) require a
+  shard-aware uniqueness service or a centralized coordination table.
+
+Sharding is **not implemented** in this version. The partitioning layer (ADR-010) is the
+intermediate step: it keeps individual tables small enough to delay sharding, and the monthly
+partition boundaries align with future shard boundaries.
+
+---
+
 ## Monitoring
 
 | Signal | Status |
 |---|---|
 | **Cache hit rate** | ✅ **Live.** `GET /api/v1/metrics/cache` returns `{ hits, misses, hitRate, … }` from `CacheMetrics` (`backend/src/common/interceptors/cache.interceptor.ts:62-72`) |
 | **Consistency-violation detection** | ⛔ **NOT BUILT.** No code compares a cache read against the database to detect divergence |
-| **Replication lag monitoring** | ✅ **Built and active** — `db/router.ts` implements the split (`select` → replica round-robin with primary fallback, writes → primary) and is registered in `database.module.ts`. `db/index.ts` re-exports the routed database, so all imports of `db` from `db/index.ts` (5 files: badges, moderation×2, upload, users) automatically get read/write splitting. Explicit `DATABASE_PRIMARY` and `DATABASE_REPLICA` tokens are available for modules needing direct control. |
+| **Replication lag monitoring** | ✅ **Built and active** — `db/router.ts` probes every replica via
+  `pg_last_wal_replay_lag()` every 5s. Replicas exceeding `MAX_REPLICA_LAG_MS` (2s) or failing a
+  health check are excluded from the read path until they recover. `checkReplicaHealth()` exposes
+  per-replica health, lag, and usability. `checkDatabaseHealth()` includes replica usability for
+  `/api/v1/metrics/degradation`. |
+| **Enum drift detection (CI)** | ✅ **Built** — `npm run db:check-enums` (`backend/scripts/check-db-enums.ts`) compares
+  every application-declared enum value in `@hakawi/shared-types` against `pg_enum` in the database
+  and fails CI on any mismatch (ADR-008). Prevents the `incident 0034` class of `22P02` failures. |
+| **Cache hit rate** | ✅ **Live.** `GET /api/v1/metrics/cache` returns `{ hits, misses, hitRate, … }` from `CacheMetrics` (`backend/src/common/interceptors/cache.interceptor.ts:62-72`) |
+| **Consistency-violation detection** | ⛔ **NOT BUILT.** No code compares a cache read against the database to detect divergence |
 | **Payment double-charge detection** | ⛔ **NOT BUILT.** The `uniqueIndex` on `paymob_transaction_id` prevents duplicate *rows*, not duplicate *charges* |
 | **Event DLQ depth** | ⚠️ A DLQ exists (`dlq.service.ts`) but there is no metric or alert on its size |
 

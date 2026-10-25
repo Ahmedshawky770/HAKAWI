@@ -204,6 +204,41 @@
       "when": 1791386090005,
       "tag": "0029_add_mfa_support",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792417275000,
+      "tag": "0030_add_user_representation_and_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792445428000,
+      "tag": "0031_add_publisher_applications_and_writers",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792495121000,
+      "tag": "0032_create_admin_role_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792495121001,
+      "tag": "0033_add_admin_role_expires_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792592844000,
+      "tag": "0034_restore_missing_enum_values",
+      "breakpoints": true
     }
   ]
 }

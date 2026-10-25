@@ -658,6 +658,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  updateMe: (data: { name?: string; bio?: string }) =>
+    apiRequest(publicUserProfileSchema, "/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
   listStories: (params?: { page?: number; limit?: number; category?: string }) =>
     apiRequest(
       storiesListResponseSchema,

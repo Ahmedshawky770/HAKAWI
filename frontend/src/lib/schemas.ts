@@ -370,6 +370,14 @@ export const paymentSchema: z.ZodType<Payment> = z.object({
   updatedAt: isoDate,
 });
 
+export const paymentsListResponseSchema = z.object({
+  payments: z.array(paymentSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+
+
 export const paymentStatsSchema = z.object({
   total: z.number(),
   byStatus: z.record(z.string(), z.number()),
