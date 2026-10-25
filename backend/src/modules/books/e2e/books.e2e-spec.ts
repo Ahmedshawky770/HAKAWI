@@ -68,8 +68,25 @@ describe('Books E2E', () => {
   });
 
   describe('GET /books', () => {
-    it('should return books', async () => {
-      const res = await request(httpServer).get('/books').expect(200);
+    it('should return 401 without a token', async () => {
+      await request(httpServer).get('/books').expect(401);
+    });
+
+    it('should return books for an authenticated caller', async () => {
+      const res = await request(httpServer)
+        .get('/books')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('books');
+      expect(res.body).toHaveProperty('total');
+    });
+
+    it('should scope draft listing to the caller', async () => {
+      const res = await request(httpServer)
+        .get('/books?status=draft')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total');

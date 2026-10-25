@@ -95,6 +95,7 @@ export interface IBooksRepository {
     status?: string;
     search?: string;
     author?: string;
+    ownerId?: string;
   }): Promise<{ books: Book[]; total: number }>;
   create(data: CreateBookInput): Promise<Book>;
   update(id: string, data: UpdateBookInput): Promise<Book>;

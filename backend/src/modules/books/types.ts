@@ -5,6 +5,7 @@ import type {
   BooksListResponse as SharedBooksListResponse,
   Exact,
 } from '@hakawi/shared-types';
+import { isAdminAccount } from '@hakawi/shared-types';
 
 import { reviveNullableDate, reviveRequiredDate } from '../shared/cache/date-revival.ts';
 
@@ -62,6 +63,17 @@ export type BookRecord = SharedBookRecord;
 export type BooksListResponse = SharedBooksListResponse;
 
 /**
+ * Whether the caller is a verified content administrator who may view any draft book.
+ *
+ * An `admin` account type can manage all content; `content_moderator` and `super_admin` roles
+ * are the content-administration roles. Any other account/role combination is a reader and is
+ * restricted to their own drafts.
+ */
+export function isContentAdmin(accountType: string | null | undefined, adminRole: string | null | undefined): boolean {
+  return isAdminAccount(accountType) || adminRole === 'content_moderator' || adminRole === 'super_admin';
+}
+
+/**
  * Restores the `Date` fields of a book that came back from the cache.
  *
  * `toBookResponse`/`toBookRecord` call `.toISOString()` on `createdAt` and `updatedAt`; a value
@@ -80,7 +92,7 @@ export function reviveBookDates(book: Book): Book {
   };
 }
 
-export function toBookResponse(book: Book): BookResponse {
+export function toBookResponse(book: Book, options?: { redactFileUrl?: boolean }): BookResponse {
   return {
     id: book.id,
     title: book.title,
@@ -98,7 +110,7 @@ export function toBookResponse(book: Book): BookResponse {
     publishDate: book.publishDate?.toISOString() ?? null,
     language: book.language,
     pageCount: book.pageCount,
-    fileUrl: book.fileUrl,
+    fileUrl: options?.redactFileUrl ? null : book.fileUrl,
     fileType: book.fileType,
     price: book.price,
     isFree: book.isFree,

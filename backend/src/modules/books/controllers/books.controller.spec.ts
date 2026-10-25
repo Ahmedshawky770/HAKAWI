@@ -25,16 +25,18 @@ type BooksFindAllParams = {
   status?: string;
   search?: string;
   author?: string;
+  userId?: string;
+  isAdmin?: boolean;
 };
 
-async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader'): Promise<string> {
-  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType });
+async function generateToken(sub = 'user-1', email = 'test@example.com', accountType = 'reader', adminRole?: string): Promise<string> {
+  return new JwtService({ secret: JWT_SECRET }).signAsync({ sub, email, accountType, ...(adminRole ? { adminRole } : {}) });
 }
 
 type MockBooksService = {
   findAll: ReturnType<typeof vi.fn<(params: BooksFindAllParams) => Promise<BooksListResponse>>>;
-  findById: ReturnType<typeof vi.fn<(id: string) => Promise<Book>>>;
-  findByIsbn: ReturnType<typeof vi.fn<(isbn: string) => Promise<Book>>>;
+  findById: ReturnType<typeof vi.fn<(id: string, userId: string, isAdmin: boolean) => Promise<Book>>>;
+  findByIsbn: ReturnType<typeof vi.fn<(isbn: string, userId: string, isAdmin: boolean) => Promise<Book>>>;
   create: ReturnType<typeof vi.fn<(userId: string, input: CreateBookInput) => Promise<Book>>>;
   update: ReturnType<typeof vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>>;
   publish: ReturnType<typeof vi.fn<(id: string, userId: string) => Promise<Book>>>;
@@ -79,8 +81,8 @@ describe('BooksController', () => {
   beforeAll(async () => {
     booksService = {
       findAll: vi.fn<(params: BooksFindAllParams) => Promise<BooksListResponse>>(),
-      findById: vi.fn<(id: string) => Promise<Book>>(),
-      findByIsbn: vi.fn<(isbn: string) => Promise<Book>>(),
+      findById: vi.fn<(id: string, userId: string, isAdmin: boolean) => Promise<Book>>(),
+      findByIsbn: vi.fn<(isbn: string, userId: string, isAdmin: boolean) => Promise<Book>>(),
       create: vi.fn<(userId: string, input: CreateBookInput) => Promise<Book>>(),
       update: vi.fn<(id: string, input: UpdateBookInput, userId: string) => Promise<Book>>(),
       publish: vi.fn<(id: string, userId: string) => Promise<Book>>(),
@@ -135,7 +137,13 @@ describe('BooksController', () => {
   });
 
   describe('GET /books', () => {
-    it('should return paginated books', async () => {
+    it('should return 401 without a token', async () => {
+      await request(app.getHttpServer()).get('/books').expect(401);
+    });
+
+    it('should return paginated books for an authenticated caller', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
       vi.mocked(booksService.findAll).mockResolvedValue({
         books: [],
         total: 0,
@@ -143,33 +151,96 @@ describe('BooksController', () => {
         limit: 20,
       });
 
-      const res = await request(app.getHttpServer()).get('/books').expect(200);
+      const res = await request(app.getHttpServer())
+        .get('/books')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       expect(res.body).toHaveProperty('books');
       expect(res.body).toHaveProperty('total', 0);
-      expect(booksService.findAll).toHaveBeenCalled();
+      expect(booksService.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', isAdmin: false }),
+      );
+    });
+
+    it('should pass status=draft only with the caller as owner for non-admins', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
+      vi.mocked(booksService.findAll).mockResolvedValue({
+        books: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+      });
+
+      await request(app.getHttpServer())
+        .get('/books?status=draft')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(booksService.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft', userId: 'user-1', isAdmin: false }),
+      );
+    });
+
+    it('should allow a content administrator to list drafts without an owner filter', async () => {
+      const token = await generateToken('admin-1', 'admin@example.com', 'admin', 'content_moderator');
+
+      vi.mocked(booksService.findAll).mockResolvedValue({
+        books: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+      });
+
+      await request(app.getHttpServer())
+        .get('/books?status=draft')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(booksService.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft', userId: 'admin-1', isAdmin: true }),
+      );
     });
   });
 
   describe('GET /books/:id', () => {
-    it('should return a book by id', async () => {
+    it('should return 401 without a token', async () => {
+      await request(app.getHttpServer()).get('/books/book-1').expect(401);
+    });
+
+    it('should return a book by id for an authenticated caller', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
       vi.mocked(booksService.findById).mockResolvedValue(makeBook());
 
-      const res = await request(app.getHttpServer()).get('/books/book-1').expect(200);
+      const res = await request(app.getHttpServer())
+        .get('/books/book-1')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       expect(res.body).toHaveProperty('id', 'book-1');
-      expect(booksService.findById).toHaveBeenCalledWith('book-1');
+      expect(booksService.findById).toHaveBeenCalledWith('book-1', 'user-1', false);
     });
   });
 
   describe('GET /books/isbn/:isbn', () => {
-    it('should return a book by isbn', async () => {
+    it('should return 401 without a token', async () => {
+      await request(app.getHttpServer()).get('/books/isbn/9781234567890').expect(401);
+    });
+
+    it('should return a book by isbn for an authenticated caller', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+
       vi.mocked(booksService.findByIsbn).mockResolvedValue(makeBook({ isbn: '9781234567890' }));
 
-      const res = await request(app.getHttpServer()).get('/books/isbn/9781234567890').expect(200);
+      const res = await request(app.getHttpServer())
+        .get('/books/isbn/9781234567890')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       expect(res.body).toHaveProperty('isbn', '9781234567890');
-      expect(booksService.findByIsbn).toHaveBeenCalledWith('9781234567890');
+      expect(booksService.findByIsbn).toHaveBeenCalledWith('9781234567890', 'user-1', false);
     });
   });
 

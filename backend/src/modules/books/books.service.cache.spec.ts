@@ -151,8 +151,8 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
   it('serves the same response on a cache hit as on a cache miss', async () => {
     repository.findById.mockResolvedValue(buildRow());
 
-    const cold = await service.findById('book-1');
-    const warm = await service.findById('book-1');
+    const cold = await service.findById('book-1', 'user-1', false);
+    const warm = await service.findById('book-1', 'user-1', false);
 
     expect(repository.findById).toHaveBeenCalledTimes(1);
     expect(warm).toEqual(cold);
@@ -165,7 +165,7 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
   it('really does persist dates as strings, which is what used to break the hit', async () => {
     repository.findById.mockResolvedValue(buildRow());
 
-    await service.findById('book-1');
+    await service.findById('book-1', 'user-1', false);
     const persisted = JSON.parse(valkey.strings.get('cache:book:book-1') ?? 'null') as { createdAt: unknown };
 
     expect(typeof persisted.createdAt).toBe('string');
@@ -174,8 +174,8 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
   it('returns real Date instances from a cache hit', async () => {
     repository.findById.mockResolvedValue(buildRow());
 
-    await service.findById('book-1');
-    const warm = await service.findById('book-1');
+    await service.findById('book-1', 'user-1', false);
+    const warm = await service.findById('book-1', 'user-1', false);
 
     expect(warm.createdAt).toBeInstanceOf(Date);
     expect(warm.updatedAt).toBeInstanceOf(Date);
@@ -187,8 +187,8 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
   it('round-trips the ISBN lookup through the same cache', async () => {
     repository.findByIsbn.mockResolvedValue(buildRow());
 
-    const cold = await service.findByIsbn('9781234567890');
-    const warm = await service.findByIsbn('9781234567890');
+    const cold = await service.findByIsbn('9781234567890', 'user-1', false);
+    const warm = await service.findByIsbn('9781234567890', 'user-1', false);
 
     expect(repository.findByIsbn).toHaveBeenCalledTimes(1);
     expect(toBookResponse(warm)).toEqual(toBookResponse(cold));
@@ -199,7 +199,7 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
     repository.findById.mockResolvedValue(buildRow());
     valkey.strings.set('cache:book:book-1', JSON.stringify({ id: 'book-1', createdAt: {} }));
 
-    const recovered = await service.findById('book-1');
+    const recovered = await service.findById('book-1', 'user-1', false);
 
     expect(repository.findById).toHaveBeenCalledTimes(1);
     expect(toBookResponse(recovered).createdAt).toBe('2024-01-01T00:00:00.000Z');
@@ -209,8 +209,8 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
     repository.findById.mockResolvedValue(buildRow());
     repository.findByIsbn.mockResolvedValue(buildRow());
     repository.update.mockResolvedValue(buildRow({ title: 'Renamed' }));
-    await service.findById('book-1');
-    await service.findByIsbn('9781234567890');
+    await service.findById('book-1', 'user-1', false);
+    await service.findByIsbn('9781234567890', 'user-1', false);
 
     await service.update('book-1', { title: 'Renamed' }, 'user-1');
 
@@ -223,7 +223,7 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
     // The conflict check asks the repository whether the new ISBN is already taken.
     repository.findByIsbn.mockImplementation(async (isbn: string) => (isbn === '9781234567890' ? buildRow() : null));
     repository.update.mockResolvedValue(buildRow({ isbn: '9780000000000' }));
-    await service.findByIsbn('9781234567890');
+    await service.findByIsbn('9781234567890', 'user-1', false);
 
     await service.update('book-1', { isbn: '9780000000000' }, 'user-1');
 
@@ -234,13 +234,13 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
   it('does not evict an unrelated book when one book is viewed', async () => {
     repository.findById.mockImplementation(async (id: string) => buildRow({ id }));
     repository.incrementViewCount.mockResolvedValue(undefined);
-    await service.findById('book-1');
-    await service.findById('book-2');
+    await service.findById('book-1', 'user-1', false);
+    await service.findById('book-2', 'user-1', false);
 
     await service.incrementViewCount('book-1');
 
     expect(valkey.strings.has('cache:book:book-2')).toBe(true);
-    await expect(service.findById('book-2')).resolves.toMatchObject({ id: 'book-2' });
+    await expect(service.findById('book-2', 'user-1', false)).resolves.toMatchObject({ id: 'book-2' });
     // The second read of book-2 came from the cache, not the database.
     expect(vi.mocked(repository.findById).mock.calls.filter(([id]) => id === 'book-2')).toHaveLength(1);
     expect(metrics.snapshot()).toMatchObject({ hits: 1, misses: 2 });
@@ -252,11 +252,11 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
     repository.incrementViewCount.mockImplementation(async () => {
       viewCount += 1;
     });
-    await service.findById('book-1');
+    await service.findById('book-1', 'user-1', false);
 
     await service.incrementViewCount('book-1');
 
-    await expect(service.findById('book-1')).resolves.toMatchObject({ viewCount: 8 });
+    await expect(service.findById('book-1', 'user-1', false)).resolves.toMatchObject({ viewCount: 8 });
   });
 
   it('drops the cached copy of a book that has just been published', async () => {
@@ -266,17 +266,17 @@ describe('BooksService against a real tagged cache (serialize → deserialize ro
       status = 'published';
       return buildRow({ status, publishDate: new Date('2024-03-01') });
     });
-    await service.findById('book-1');
+    await service.findById('book-1', 'user-1', false);
 
     await service.publish('book-1', 'user-1');
 
-    await expect(service.findById('book-1')).resolves.toMatchObject({ status: 'published' });
+    await expect(service.findById('book-1', 'user-1', false)).resolves.toMatchObject({ status: 'published' });
   });
 
   it('indexes every book key under the books tag so a tag sweep can still reach them', async () => {
     repository.findById.mockResolvedValue(buildRow());
 
-    await service.findById('book-1');
+    await service.findById('book-1', 'user-1', false);
 
     expect(valkey.sets.get('cache:tag:books')?.has('cache:book:book-1')).toBe(true);
   });

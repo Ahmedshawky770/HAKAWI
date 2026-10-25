@@ -112,20 +112,22 @@ export class BooksService {
     return book;
   }
 
-  async findById(id: string): Promise<Book> {
+  async findById(id: string, userId: string, isAdmin: boolean): Promise<Book> {
     const { value } = await this.cache.getOrSet<Book>({
       namespace: BOOK_CACHE_NAMESPACE,
       key: id,
       ttl: BOOK_CACHE_TTL_SECONDS,
       tags: [BOOKS_CACHE_TAG],
-      // Without this the cached copy of a book carries ISO strings where the repository returns
-      // `Date`s, and `toBookResponse` throws `TypeError: createdAt.toISOString is not a function`
-      // on every cache hit while the first, cold request succeeds.
       revive: reviveBookDates,
       load: async () => {
         const book = await this.booksRepository.findById(id);
         if (!book || book.deletedAt) {
           throw new NotFoundException('Book not found');
+        }
+        // A draft is readable only by its owner or a content administrator. Any other account
+        // receives a 403 rather than the draft's content or file URL.
+        if (book.status === 'draft' && !isAdmin && book.ownerId !== userId) {
+          throw new ForbiddenException('You can only view your own drafts');
         }
         return book;
       },
@@ -143,7 +145,7 @@ export class BooksService {
    * paths are cached under the same tag with the same TTL, and `invalidateBookCache` drops both
    * keys, so the two can never disagree.
    */
-  async findByIsbn(isbn: string): Promise<Book> {
+  async findByIsbn(isbn: string, userId: string, isAdmin: boolean): Promise<Book> {
     const { value } = await this.cache.getOrSet<Book>({
       namespace: BOOK_CACHE_NAMESPACE,
       key: bookIsbnCacheKey(isbn),
@@ -154,6 +156,11 @@ export class BooksService {
         const book = await this.booksRepository.findByIsbn(isbn);
         if (!book || book.deletedAt) {
           throw new NotFoundException('Book not found');
+        }
+        // A draft is readable only by its owner or a content administrator. Any other account
+        // receives a 403 rather than the draft's content or file URL.
+        if (book.status === 'draft' && !isAdmin && book.ownerId !== userId) {
+          throw new ForbiddenException('You can only view your own drafts');
         }
         return book;
       },
@@ -168,12 +175,32 @@ export class BooksService {
     status?: string;
     search?: string;
     author?: string;
+    userId?: string;
+    isAdmin?: boolean;
   }): Promise<BooksListResponse> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
 
-    const result = await this.booksRepository.findAll(params);
-    const books = result.books.map((book) => toBookResponse(book));
+    // Drafts are owner-scoped: a non-administrator may only list their own drafts. An
+    // administrator may list every draft. Published and archived books are not owner-scoped.
+    const ownerId = params.status === 'draft' && !params.isAdmin ? params.userId : undefined;
+
+    const result = await this.booksRepository.findAll({
+      page,
+      limit,
+      categoryId: params.categoryId,
+      status: params.status,
+      search: params.search,
+      author: params.author,
+      ownerId,
+    });
+    const books = result.books.map((book) =>
+      toBookResponse(book, {
+        // Defense in depth: a non-owner should never see a draft's file URL even if the owner
+        // filter somehow failed to exclude the row.
+        redactFileUrl: params.status === 'draft' && !params.isAdmin && book.ownerId !== params.userId,
+      }),
+    );
 
     return {
       books,

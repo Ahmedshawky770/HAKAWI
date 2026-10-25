@@ -14,34 +14,38 @@ import {
   Request,
 } from '@nestjs/common';
 
-import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
+import type { AuthRequest } from '../../../common/types/auth-request.interface.ts';
 import { BooksService } from '../books.service.ts';
 import { CreateBookDto, UpdateBookDto, BooksQueryDto, PurchaseBookDto, RentBookDto } from '../dto/books.dto.ts';
 import type { CreateBookInput } from '../types.ts';
-import { toBookResponse } from '../types.ts';
+import { toBookResponse, isContentAdmin } from '../types.ts';
 
 @Controller('books')
 export class BooksController {
   constructor(@Inject(BooksService) private readonly booksService: BooksService) {}
 
-  @Public()
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Get()
-  async findAll(@Query() query: BooksQueryDto) {
-    return this.booksService.findAll(query);
+  async findAll(@Query() query: BooksQueryDto, @Request() req: AuthRequest) {
+    return this.booksService.findAll({
+      ...query,
+      userId: req.user.sub,
+      isAdmin: isContentAdmin(req.user.accountType, req.user.adminRole),
+    });
   }
 
-  @Public()
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Get('isbn/:isbn')
-  async findByIsbn(@Param('isbn') isbn: string) {
-    return toBookResponse(await this.booksService.findByIsbn(isbn));
+  async findByIsbn(@Param('isbn') isbn: string, @Request() req: AuthRequest) {
+    return toBookResponse(await this.booksService.findByIsbn(isbn, req.user.sub, isContentAdmin(req.user.accountType, req.user.adminRole)));
   }
 
-  @Public()
+  @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Get(':id')
-  async findById(@Param('id') id: string) {
-    return toBookResponse(await this.booksService.findById(id));
+  async findById(@Param('id') id: string, @Request() req: AuthRequest) {
+    return toBookResponse(await this.booksService.findById(id, req.user.sub, isContentAdmin(req.user.accountType, req.user.adminRole)));
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)

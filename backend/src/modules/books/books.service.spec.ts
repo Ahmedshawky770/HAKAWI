@@ -31,6 +31,7 @@ type MockBooksRepository = {
         status?: string;
         search?: string;
         author?: string;
+        ownerId?: string;
       }) => Promise<{ books: Book[]; total: number }>
     >
   >;
@@ -157,6 +158,7 @@ describe('BooksService', () => {
             status?: string;
             search?: string;
             author?: string;
+            ownerId?: string;
           }) => Promise<{ books: Book[]; total: number }>
         >(),
       create: vi.fn<(data: CreateBookInput) => Promise<Book>>(),
@@ -267,7 +269,7 @@ describe('BooksService', () => {
     it('should return a book by id', async () => {
       vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
 
-      const result = await booksService.findById('book-123');
+      const result = await booksService.findById('book-123', 'user-123', false);
 
       expect(result).toEqual(mockBook);
       expect(booksRepository.findById).toHaveBeenCalledWith('book-123');
@@ -276,7 +278,31 @@ describe('BooksService', () => {
     it('should throw NotFoundException when book not found', async () => {
       vi.mocked(booksRepository.findById).mockResolvedValue(null);
 
-      await expect(booksService.findById('book-999')).rejects.toThrow('Book not found');
+      await expect(booksService.findById('book-999', 'user-123', false)).rejects.toThrow('Book not found');
+    });
+
+    it('should throw ForbiddenException when a non-owner reads a draft', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+
+      await expect(booksService.findById('book-123', 'other-user', false)).rejects.toThrow(
+        'You can only view your own drafts',
+      );
+    });
+
+    it('should allow the owner to read their own draft', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+
+      const result = await booksService.findById('book-123', 'user-123', false);
+
+      expect(result).toEqual(mockBook);
+    });
+
+    it('should allow a content administrator to read any draft', async () => {
+      vi.mocked(booksRepository.findById).mockResolvedValue(mockBook);
+
+      const result = await booksService.findById('book-123', 'other-user', true);
+
+      expect(result).toEqual(mockBook);
     });
   });
 
@@ -285,7 +311,7 @@ describe('BooksService', () => {
       const mockBooks = [mockBook];
       vi.mocked(booksRepository.findAll).mockResolvedValue({ books: mockBooks, total: 1 });
 
-      const result = await booksService.findAll({ page: 1, limit: 20 });
+      const result = await booksService.findAll({ page: 1, limit: 20, userId: 'user-123', isAdmin: false });
 
       expect(result.books).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -296,7 +322,7 @@ describe('BooksService', () => {
     it('should pass filters to repository', async () => {
       vi.mocked(booksRepository.findAll).mockResolvedValue({ books: [], total: 0 });
 
-      await booksService.findAll({ page: 2, limit: 10, categoryId: 'cat-123', status: 'published', search: 'test' });
+      await booksService.findAll({ page: 2, limit: 10, categoryId: 'cat-123', status: 'published', search: 'test', userId: 'user-123', isAdmin: false });
 
       expect(booksRepository.findAll).toHaveBeenCalledWith({
         page: 2,
@@ -307,6 +333,44 @@ describe('BooksService', () => {
         author: undefined,
         ownerId: undefined,
       });
+    });
+
+    it('should scope draft listing to the caller when not an administrator', async () => {
+      vi.mocked(booksRepository.findAll).mockResolvedValue({ books: [], total: 0 });
+
+      await booksService.findAll({ status: 'draft', userId: 'user-123', isAdmin: false });
+
+      expect(booksRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft', ownerId: 'user-123' }),
+      );
+    });
+
+    it('should not scope draft listing for a content administrator', async () => {
+      vi.mocked(booksRepository.findAll).mockResolvedValue({ books: [], total: 0 });
+
+      await booksService.findAll({ status: 'draft', userId: 'other-user', isAdmin: true });
+
+      expect(booksRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft', ownerId: undefined }),
+      );
+    });
+
+    it('should redact fileUrl for drafts the caller does not own', async () => {
+      const draftBook = { ...mockBook, status: 'draft' as const, ownerId: 'someone-else', fileUrl: 'https://cdn.example.com/secret.pdf' };
+      vi.mocked(booksRepository.findAll).mockResolvedValue({ books: [draftBook], total: 1 });
+
+      const result = await booksService.findAll({ status: 'draft', userId: 'user-123', isAdmin: false });
+
+      expect(result.books[0].fileUrl).toBeNull();
+    });
+
+    it('should not redact fileUrl for the caller\u2019s own drafts', async () => {
+      const ownDraft = { ...mockBook, status: 'draft' as const, fileUrl: 'https://cdn.example.com/mine.pdf' };
+      vi.mocked(booksRepository.findAll).mockResolvedValue({ books: [ownDraft], total: 1 });
+
+      const result = await booksService.findAll({ status: 'draft', userId: 'user-123', isAdmin: false });
+
+      expect(result.books[0].fileUrl).toBe('https://cdn.example.com/mine.pdf');
     });
   });
 

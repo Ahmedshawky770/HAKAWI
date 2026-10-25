@@ -37,6 +37,7 @@ export class BooksRepository implements IBooksRepository {
     status?: string;
     search?: string;
     author?: string;
+    ownerId?: string;
   }): Promise<{ books: Book[]; total: number }> {
     this.logger.debug('Finding all books');
     const page = params.page ?? 1;
@@ -50,6 +51,9 @@ export class BooksRepository implements IBooksRepository {
     }
     if (params.status) {
       conditions.push(eq(books.status, params.status));
+    }
+    if (params.ownerId) {
+      conditions.push(eq(books.ownerId, params.ownerId));
     }
     if (params.author) {
       conditions.push(eq(books.author, params.author));
