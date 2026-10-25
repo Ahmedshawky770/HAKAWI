@@ -97,6 +97,7 @@ export class AdminRolesService {
       assignedBy: assignedById,
       reason: input.reason,
       environment,
+      expiresAt: finalExpiresAt,
     });
 
     await this.usersService.update(input.userId, {
@@ -287,6 +288,7 @@ export class AdminRolesService {
       assignedBy: userId,
       reason: `BREAK-GLASS: ${dto.reason}`,
       environment,
+      expiresAt,
     });
 
     await this.usersService.update(userId, {
