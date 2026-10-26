@@ -95,12 +95,10 @@ const ENUM_REGISTRY: Array<{
  * Queries PostgreSQL for the labelled values of one enum type.
  */
 async function enumValuesInDb(pgType: string): Promise<string[]> {
-  const rows = await dbPrimary.$client.query<{ enumlabel: string }>(
-    sql`SELECT enumlabel FROM pg_enum
-        WHERE enumtypid = ${pgType}::regtype
-        ORDER BY enumsortorder`,
+  const result = await dbPrimary.execute(
+    sql.raw(`SELECT enumlabel FROM pg_enum WHERE enumtypid = '${pgType}'::regtype ORDER BY enumsortorder`),
   );
-  return rows.map((row) => row.enumlabel);
+  return (result.rows as Array<{ enumlabel: string }>).map((row) => row.enumlabel);
 }
 
 async function main(): Promise<number> {

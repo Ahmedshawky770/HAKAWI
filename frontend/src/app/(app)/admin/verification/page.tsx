@@ -4,7 +4,6 @@ import React, { useState } from "react";
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { PageHeader } from "@/components/ui/Card";
-import { Card, CardBody } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
 import { Badge, toneFor, SUBMISSION_STATUS_TONES } from "@/components/ui/Badge";
@@ -32,9 +31,12 @@ export default function VerificationAdminPage() {
   const reviewMutation = useMutation({
     mutationFn: ({ id, status, rejectionReason }: { id: string; status: "approved" | "rejected"; rejectionReason?: string }) =>
       api.reviewPublisherApplication(id, { status, rejectionReason }),
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
       await invalidate.admin();
-      notify(strings.admin.verification.approveVerification, "success");
+      const msg = variables.status === "approved"
+        ? strings.admin.verification.approveVerification
+        : strings.admin.verification.rejectVerification;
+      notify(msg, "success");
     },
     onError: (err: Error) => {
       notify(classifyError(err), "error");

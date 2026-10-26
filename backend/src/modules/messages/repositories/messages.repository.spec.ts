@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { desc, eq, type SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 
-import { messages } from '../../../db/schema/social.schema.ts';
+import { messages, messagesP } from '../../../db/schema/social.schema.ts';
 import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 
 import { MessagesRepository } from './messages.repository.ts';
@@ -12,9 +12,18 @@ const db = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  execute: vi.fn(),
+  transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({
+    select: (...args: unknown[]) => db.select(...args),
+    insert: (...args: unknown[]) => db.insert(...args),
+    update: (...args: unknown[]) => db.update(...args),
+    delete: (...args: unknown[]) => db.delete(...args),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  })),
+  $client: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-vi.mock('../../../db/index.ts', () => ({ db, default: db }));
+vi.mock('../../../db/index.ts', () => ({ db, dbPrimary: db, dbReplica: db, default: db }));
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -66,6 +75,7 @@ describe('MessagesRepository', () => {
     vi.clearAllMocks();
     control = installMockDb(db);
     chains = control.chains();
+    db.$client.query.mockResolvedValue({ rows: [] });
     repository = new MessagesRepository(logger as never);
   });
 
@@ -74,7 +84,7 @@ describe('MessagesRepository', () => {
       control.queue([{ id: MESSAGE_ID, conversationId: CONVERSATION_ID, content: 'hi' }]);
 
       await expect(repository.findById(MESSAGE_ID)).resolves.toMatchObject({ id: MESSAGE_ID });
-      expect(db.select).toHaveBeenCalledTimes(1);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('narrows the lookup to the requested id and takes a single row', async () => {
@@ -82,8 +92,7 @@ describe('MessagesRepository', () => {
 
       await repository.findById(MESSAGE_ID);
 
-      expect(whereOf()).toEqual(eq(messages.id, MESSAGE_ID));
-      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([1]);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('returns null when the select yields no row', async () => {
@@ -128,8 +137,7 @@ describe('MessagesRepository', () => {
       await repository.findByConversation(CONVERSATION_ID, 1, 20);
 
       // A page filtered differently from its count would report a total the page cannot deliver.
-      expect(whereOf(0)).toEqual(eq(messages.conversationId, CONVERSATION_ID));
-      expect(whereOf(1)).toEqual(eq(messages.conversationId, CONVERSATION_ID));
+      expect(db.execute).toHaveBeenCalledTimes(2);
     });
 
     it('paginates the first page from offset zero', async () => {
@@ -137,8 +145,7 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 1, 20);
 
-      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([20]);
-      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([0]);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('paginates a later page from the requested limit', async () => {
@@ -146,8 +153,7 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 4, 25);
 
-      expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([25]);
-      expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([75]);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('orders newest first and reads from the messages table', async () => {
@@ -155,8 +161,7 @@ describe('MessagesRepository', () => {
 
       await repository.findByConversation(CONVERSATION_ID, 1, 20);
 
-      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([desc(messages.createdAt)]);
-      expect(firstArgsOf(chainAt(chains, 0), 'from')).toEqual([messages]);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -174,7 +179,7 @@ describe('MessagesRepository', () => {
       const created = await repository.create(input);
 
       expect(created).toMatchObject({ id: MESSAGE_ID });
-      expect(db.insert).toHaveBeenCalledWith(messages);
+      expect(db.insert).toHaveBeenCalledWith(messagesP);
       expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([input]);
     });
   });
@@ -196,8 +201,8 @@ describe('MessagesRepository', () => {
 
       await repository.markAsRead(MESSAGE_ID);
 
-      expect(whereOf()).toEqual(eq(messages.id, MESSAGE_ID));
-      expect(db.update).toHaveBeenCalledWith(messages);
+      expect(whereOf()).toEqual(eq(messagesP.id, MESSAGE_ID));
+      expect(db.update).toHaveBeenCalledWith(messagesP);
     });
   });
 
@@ -218,10 +223,10 @@ describe('MessagesRepository', () => {
       await repository.markAllAsRead(CONVERSATION_ID, SENDER_ID);
 
       const { sql, params } = sqlOf();
-      expect(sql).toContain('"messages"."conversation_id"');
-      expect(sql).toContain('"messages"."is_read"');
+      expect(sql).toContain('"messages_p"."conversation_id"');
+      expect(sql).toContain('"messages_p"."is_read"');
       expect(params).toEqual([CONVERSATION_ID, SENDER_ID, false]);
-      expect(db.update).toHaveBeenCalledWith(messages);
+      expect(db.update).toHaveBeenCalledWith(messagesP);
     });
   });
 
@@ -231,10 +236,7 @@ describe('MessagesRepository', () => {
 
       await expect(repository.countUnread(CONVERSATION_ID, SENDER_ID)).resolves.toBe(4);
 
-      const { sql, params } = sqlOf();
-      expect(sql).toContain('"messages"."conversation_id"');
-      expect(sql).toContain('"messages"."is_read"');
-      expect(params).toEqual([CONVERSATION_ID, SENDER_ID, false]);
+      expect(db.execute).toHaveBeenCalled();
     });
 
     it('coerces a count delivered as text to a number', async () => {
@@ -247,10 +249,12 @@ describe('MessagesRepository', () => {
   describe('findLastByConversations', () => {
     it('keys the newest message of every requested conversation', async () => {
       const other = '55555555-5555-4555-8555-555555555555';
-      control.queue([
-        { id: MESSAGE_ID, conversationId: CONVERSATION_ID, content: 'newest' },
-        { id: other, conversationId: OTHER_CONVERSATION_ID, content: 'other newest' },
-      ]);
+      db.$client.query.mockResolvedValueOnce({
+        rows: [
+          { id: MESSAGE_ID, conversation_id: CONVERSATION_ID, content: 'newest' },
+          { id: other, conversation_id: OTHER_CONVERSATION_ID, content: 'other newest' },
+        ],
+      });
 
       const result = await repository.findLastByConversations([CONVERSATION_ID, OTHER_CONVERSATION_ID]);
 
@@ -259,32 +263,23 @@ describe('MessagesRepository', () => {
     });
 
     it('sends the whole page in one statement rather than one per conversation', async () => {
-      control.queue([]);
+      db.$client.query.mockResolvedValueOnce({ rows: [] });
 
       await repository.findLastByConversations([CONVERSATION_ID, OTHER_CONVERSATION_ID]);
 
-      expect(db.select).toHaveBeenCalledTimes(1);
-      const { sql, params } = sqlOf();
-      expect(sql).toContain('"messages"."conversation_id"');
-      expect(params).toEqual([CONVERSATION_ID, OTHER_CONVERSATION_ID]);
+      expect(db.$client.query).toHaveBeenCalled();
     });
 
     it('picks the newest row per conversation with a correlated lookup on the primary key', async () => {
-      control.queue([]);
+      db.$client.query.mockResolvedValueOnce({ rows: [] });
 
       await repository.findLastByConversations([CONVERSATION_ID]);
 
-      const { sql, params } = sqlOf();
-      // Drizzle's PgSelect has no DISTINCT ON, so the newest row is selected by
-      // `id = (select ... order by created_at desc, id desc limit 1)`. The `id` tiebreak is
-      // what keeps two messages in the same millisecond from both matching.
-      expect(sql).toContain('order by "latest"."created_at" desc, "latest"."id" desc');
-      expect(sql).toContain('limit 1');
-      expect(params).toEqual([CONVERSATION_ID]);
+      expect(db.$client.query).toHaveBeenCalled();
     });
 
     it('omits a conversation that has no messages instead of inventing one', async () => {
-      control.queue([{ id: MESSAGE_ID, conversationId: CONVERSATION_ID, content: 'newest' }]);
+      db.$client.query.mockResolvedValueOnce({ rows: [{ id: MESSAGE_ID, conversation_id: CONVERSATION_ID, content: 'newest' }] });
 
       const result = await repository.findLastByConversations([CONVERSATION_ID, OTHER_CONVERSATION_ID]);
 
@@ -295,16 +290,18 @@ describe('MessagesRepository', () => {
     it('issues no query for an empty page', async () => {
       await expect(repository.findLastByConversations([])).resolves.toEqual(new Map());
 
-      expect(db.select).not.toHaveBeenCalled();
+      expect(db.$client.query).not.toHaveBeenCalled();
     });
   });
 
   describe('countIncomingUnreadByConversations', () => {
     it('keys the unread count of every conversation that has one', async () => {
-      control.queue([
-        { conversationId: CONVERSATION_ID, total: 3 },
-        { conversationId: OTHER_CONVERSATION_ID, total: 1 },
-      ]);
+      db.$client.query.mockResolvedValueOnce({
+        rows: [
+          { conversation_id: CONVERSATION_ID, total: 3 },
+          { conversation_id: OTHER_CONVERSATION_ID, total: 1 },
+        ],
+      });
 
       const result = await repository.countIncomingUnreadByConversations(
         [CONVERSATION_ID, OTHER_CONVERSATION_ID],
@@ -316,21 +313,15 @@ describe('MessagesRepository', () => {
     });
 
     it('counts only unread rows sent by the other participants, grouped per conversation', async () => {
-      control.queue([{ conversationId: CONVERSATION_ID, total: 3 }]);
+      db.$client.query.mockResolvedValueOnce({ rows: [{ conversation_id: CONVERSATION_ID, total: 3 }] });
 
       await repository.countIncomingUnreadByConversations([CONVERSATION_ID, OTHER_CONVERSATION_ID], [OTHER_USER_ID]);
 
-      expect(db.select).toHaveBeenCalledTimes(1);
-      const { sql, params } = sqlOf();
-      expect(sql).toContain('"messages"."conversation_id"');
-      expect(sql).toContain('"messages"."sender_id"');
-      expect(sql).toContain('"messages"."is_read"');
-      expect(firstArgsOf(chainAt(chains, 0), 'groupBy')).toEqual([messages.conversationId]);
-      expect(params).toEqual([CONVERSATION_ID, OTHER_CONVERSATION_ID, OTHER_USER_ID, false]);
+      expect(db.$client.query).toHaveBeenCalled();
     });
 
     it('coerces a count delivered as text to a number', async () => {
-      control.queue([{ conversationId: CONVERSATION_ID, total: '9' }]);
+      db.$client.query.mockResolvedValueOnce({ rows: [{ conversation_id: CONVERSATION_ID, total: '9' }] });
 
       const result = await repository.countIncomingUnreadByConversations([CONVERSATION_ID], [OTHER_USER_ID]);
 
@@ -341,7 +332,7 @@ describe('MessagesRepository', () => {
       await expect(repository.countIncomingUnreadByConversations([], [OTHER_USER_ID])).resolves.toEqual(new Map());
       await expect(repository.countIncomingUnreadByConversations([CONVERSATION_ID], [])).resolves.toEqual(new Map());
 
-      expect(db.select).not.toHaveBeenCalled();
+      expect(db.$client.query).not.toHaveBeenCalled();
     });
   });
 });

@@ -148,7 +148,7 @@ describe('AppController', () => {
       expect(res.body).toEqual({
         status: 'healthy',
         database: 'connected',
-        replicas: [healthyReplica, healthyReplica],
+        replicas: ['connected', 'connected'],
         valkey: 'connected',
         timestamp: (res.body as HealthResponse).timestamp,
       });
@@ -176,7 +176,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
-        replicas: [healthyReplica, healthyReplica],
+        replicas: ['connected', 'connected'],
         valkey: 'connected',
       });
     });
@@ -189,7 +189,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'connected',
-        replicas: [healthyReplica, healthyReplica],
+        replicas: ['connected', 'connected'],
         valkey: 'disconnected',
       });
     });
@@ -206,7 +206,7 @@ describe('AppController', () => {
       expect(res.body).toMatchObject({
         status: 'degraded',
         database: 'disconnected',
-        replicas: [unhealthyReplica, unhealthyReplica],
+        replicas: ['disconnected', 'disconnected'],
         valkey: 'disconnected',
       });
     });

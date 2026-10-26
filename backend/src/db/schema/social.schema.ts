@@ -7,6 +7,7 @@ import {
   boolean,
   integer,
   index,
+  uniqueIndex,
   type AnyPgColumn,
   primaryKey,
 } from 'drizzle-orm/pg-core';
@@ -256,7 +257,7 @@ export const reactionsP = pgTable(
     pk: primaryKey({ columns: [table.id, table.createdAt] }),
     userIdx: index('reactions_p_user_id_idx').on(table.userId),
     storyIdx: index('reactions_p_story_id_idx').on(table.storyId),
-    uniqueReaction: index('reactions_p_unique_idx').on(table.userId, table.storyId, table.createdAt),
+    uniqueReaction: uniqueIndex('reactions_p_unique_idx').on(table.userId, table.storyId),
   }),
 );
 

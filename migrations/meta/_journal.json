@@ -239,6 +239,48 @@
       "when": 1792592844000,
       "tag": "0034_restore_missing_enum_values",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792592845000,
+      "tag": "0035_create_partitioned_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792592846000,
+      "tag": "0036_create_counters_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792592847000,
+      "tag": "0037_books_owner_id_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792592848000,
+      "tag": "0038_column_level_encryption",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792592849000,
+      "tag": "0039_partition_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792592850000,
+      "tag": "0040_backfill_admin_role_expires_at",
+      "breakpoints": true
     }
   ]
 }

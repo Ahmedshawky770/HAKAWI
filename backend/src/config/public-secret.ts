@@ -82,10 +82,14 @@ export function secretSchema(name: string, nonProductionValue: string) {
  * rather than an opaque boot failure.
  */
 export function findPubliclyKnownSecret(nodeEnv: string, values: Readonly<Record<string, string>>): string | undefined {
-  if (nodeEnv !== 'production') {
+  if (nodeEnv.toLowerCase() !== 'production') {
     return undefined;
   }
-  return Object.keys(values).find((name) => PUBLICLY_KNOWN_SECRETS.has(values[name] ?? ''));
+  const weakPattern = /default|placeholder|change[-_ ]?me|your[-_ ].*[-_ ]here/i;
+  return Object.keys(values).find((name) => {
+    const v = values[name] ?? '';
+    return PUBLICLY_KNOWN_SECRETS.has(v) || weakPattern.test(v);
+  });
 }
 
 /**
@@ -100,7 +104,7 @@ export function assertNoPubliclyKnownSecret(
   values: Readonly<Record<string, string>>,
   subject: string,
 ): void {
-  if (nodeEnv !== 'production') {
+  if (nodeEnv.toLowerCase() !== 'production') {
     return;
   }
   const offending = findPubliclyKnownSecret(nodeEnv, values);

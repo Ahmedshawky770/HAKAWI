@@ -53,21 +53,21 @@ CREATE INDEX IF NOT EXISTS counters_updated_at_idx
 -- Backfill story counters from the stories table.
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'story', id, 'view_count', view_count, updated_at FROM stories
-WHERE view_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
 
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'story', id, 'like_count', like_count, updated_at FROM stories
-WHERE like_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
 
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'story', id, 'comment_count', comment_count, updated_at FROM stories
-WHERE comment_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
@@ -75,21 +75,21 @@ ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 -- Backfill book counters from the books table.
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'book', id, 'view_count', view_count, updated_at FROM books
-WHERE view_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
 
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'book', id, 'like_count', like_count, updated_at FROM books
-WHERE like_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
 
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'book', id, 'download_count', download_count, updated_at FROM books
-WHERE download_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
@@ -97,14 +97,14 @@ ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 -- Backfill comment counters from the comments table.
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'comment', id, 'like_count', like_count, updated_at FROM comments
-WHERE like_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 --> statement-breakpoint
 
 INSERT INTO counters (entity_type, entity_id, counter_name, value, updated_at)
 SELECT 'comment', id, 'reply_count', reply_count, updated_at FROM comments
-WHERE reply_count > 0
+WHERE true
 ON CONFLICT (entity_type, entity_id, counter_name) DO NOTHING;
 
 -- ============================================================

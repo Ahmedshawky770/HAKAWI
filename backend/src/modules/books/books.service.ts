@@ -132,6 +132,12 @@ export class BooksService {
         return book;
       },
     });
+    // Defense in depth: the cache is keyed by id/isbn only, so a draft cached for its owner
+    // could otherwise be served to a non-owner on a cache hit (the load-time check is skipped
+    // on hit). Re-check ownership here so no draft content or file URL leaks.
+    if (value.status === 'draft' && !isAdmin && value.ownerId !== userId) {
+      throw new ForbiddenException('You can only view your own drafts');
+    }
     return value;
   }
 
@@ -165,6 +171,10 @@ export class BooksService {
         return book;
       },
     });
+    // Defense in depth: see findById — cache is keyed by isbn only.
+    if (value.status === 'draft' && !isAdmin && value.ownerId !== userId) {
+      throw new ForbiddenException('You can only view your own drafts');
+    }
     return value;
   }
 

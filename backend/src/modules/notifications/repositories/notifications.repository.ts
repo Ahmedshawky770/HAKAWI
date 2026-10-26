@@ -9,27 +9,13 @@ import type {
   NotificationPreferencesResponseDto,
   UpsertNotificationPreferencesInput,
 } from '../interfaces/notifications-repository.interface.ts';
-import { notifications, notificationPreferences } from '../../../db/schema/social.schema.ts';
+import { notifications, notificationPreferences, notificationsP } from '../../../db/schema/social.schema.ts';
 import { db, dbPrimary } from '../../../db/index.ts';
 
 /**
- * Notifications are eventual-consistency data (Principle #16), BUT reads that
- * follow a create (e.g. a user opening the bell drawer right after a new
- * notification lands) must observe the latest write. `findById`, `findByUser`,
- * `findUnread` and `countUnread` therefore read from `dbPrimary`. Writes
- * (`create`, `markAsRead`, `markAllAsRead`, `delete`) already route to the
- * primary through the routed `db` proxy.
- *
- * CUTOVER PHASE: reads now target `notifications_p` (the partitioned parent)
- * instead of the legacy `notifications` table. PostgreSQL partition pruning
- * makes time-range queries cheaper, and each monthly child partition is small
- * enough to vacuum/reindex independently.
- *
- * Prerequisite (must be satisfied before this code is deployed):
- *   1. Migration 0035 applied — `notifications_p` exists.
- *   2. `npm run db:backfill-partitions` run — legacy data copied to `notifications_p`.
- *   3. `npm run db:verify-cutover` passed — row counts match.
- *   4. Migration 0039 run — legacy `notifications` table dropped.
+ * Single source of truth is now `notifications_p` (the partitioned parent). Reads target
+ * `notifications_p` with a 42P01 fallback to the legacy `notifications` table. Writes target
+ * `notifications_p` directly.
  */
 
 @Injectable()
@@ -178,13 +164,9 @@ export class NotificationsRepository implements INotificationsRepository {
     return await dbPrimary.transaction(async (tx) => {
       // Writes route to primary via the transaction so the returning row is read from the same primary (read-after-write).
       const [notification] = await tx
-        .insert(notifications)
-        .values(data)
+        .insert(notificationsP)
+        .values(data as never)
         .returning();
-      // Dual-write to the partitioned table during the migration phase. Same transaction.
-      await tx.execute(sql`INSERT INTO notifications_p (id, user_id, type, title, message, data, is_read, read_at, created_at)
-          VALUES (${notification.id}, ${data.userId}, ${data.type}, ${data.title}, ${data.message}, ${data.data ?? null}, ${notification.isRead}, ${notification.readAt ?? null}, ${notification.createdAt?.toISOString() ?? new Date().toISOString()})
-          ON CONFLICT (id) DO NOTHING`);
       return notification;
     });
   }
@@ -193,12 +175,10 @@ export class NotificationsRepository implements INotificationsRepository {
     this.logger.debug(`Marking notification as read: ${id}`);
     return await dbPrimary.transaction(async (tx) => {
       const [notification] = await tx
-        .update(notifications)
+        .update(notificationsP)
         .set({ isRead: true, readAt: new Date() })
-        .where(eq(notifications.id, id))
+        .where(eq(notificationsP.id, id))
         .returning();
-      // Dual-write the status change to the partitioned table. Same transaction.
-      await tx.execute(sql`UPDATE notifications_p SET is_read = TRUE, read_at = ${new Date().toISOString()} WHERE id = ${notification.id}`);
       return notification;
     });
   }
@@ -207,18 +187,15 @@ export class NotificationsRepository implements INotificationsRepository {
     this.logger.info(`Marking all notifications as read for user: ${userId}`);
     return await dbPrimary.transaction(async (tx) => {
       await tx
-        .update(notifications)
+        .update(notificationsP)
         .set({ isRead: true, readAt: new Date() })
-        .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
-      // Dual-write the status change to the partitioned table. Same transaction.
-      await tx.execute(sql`UPDATE notifications_p SET is_read = TRUE, read_at = ${new Date().toISOString()}
-          WHERE user_id = ${userId} AND is_read = FALSE`);
+        .where(and(eq(notificationsP.userId, userId), eq(notificationsP.isRead, false)));
     });
   }
 
   async delete(id: string): Promise<void> {
     this.logger.info(`Deleting notification: ${id}`);
-    await db.delete(notifications).where(eq(notifications.id, id));
+    await db.delete(notificationsP).where(eq(notificationsP.id, id));
   }
 
   async countUnread(userId: string): Promise<number> {

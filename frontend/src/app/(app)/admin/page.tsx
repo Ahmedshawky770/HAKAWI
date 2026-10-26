@@ -11,7 +11,6 @@ import { StatCard } from "@/components/ui/StatCard";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { useStoredUser } from "@/lib/use-stored-user";
 import { useAdminModerationStats, useAdminRoleAssignments, useAdminPaymentStats, useAdminPublisherStats, isFailedLoad, useInvalidation } from "@/lib/queries";
-import { useToast } from "@/components/providers/ToastProvider";
 
 /**
  * The admin hub — the landing screen every admin sees first.
@@ -31,7 +30,6 @@ import { useToast } from "@/components/providers/ToastProvider";
  */
 export default function AdminHubPage() {
   const strings = useStrings();
-  const { notify } = useToast();
   const invalidate = useInvalidation();
 
   const user = useStoredUser();

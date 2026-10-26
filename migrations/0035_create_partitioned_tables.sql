@@ -385,7 +385,7 @@ ALTER TABLE reactions_p
 
 --> statement-breakpoint
 
-CREATE UNIQUE INDEX IF NOT EXISTS reactions_p_unique_idx ON reactions_p (user_id, story_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS reactions_p_unique_idx ON reactions_p (user_id, story_id);
 CREATE INDEX IF NOT EXISTS reactions_p_user_id_idx ON reactions_p (user_id);
 CREATE INDEX IF NOT EXISTS reactions_p_story_id_idx ON reactions_p (story_id);
 CREATE INDEX IF NOT EXISTS reactions_p_created_at_idx ON reactions_p (created_at DESC);
@@ -410,6 +410,8 @@ BEGIN
     JOIN pg_class c ON c.oid = pg_inherits.inhrelid
     JOIN pg_class p ON p.oid = pg_inherits.inhparent
     WHERE p.relname = 'messages_p'
+      AND c.relname ~ '_[0-9]{4}_[0-9]{2}$'
+      AND to_date(substring(c.relname from '[0-9]{4}_[0-9]{2}$'), 'YYYY_MM') < date_trunc('month', before_ts)
   LOOP
     -- Detach partitions whose name indicates a month fully before `before_ts`.
     -- Partition names are messages_p_YYYY_MM.
@@ -435,6 +437,8 @@ BEGIN
     JOIN pg_class c ON c.oid = pg_inherits.inhrelid
     JOIN pg_class p ON p.oid = pg_inherits.inhparent
     WHERE p.relname = 'notifications_p'
+      AND c.relname ~ '_[0-9]{4}_[0-9]{2}$'
+      AND to_date(substring(c.relname from '[0-9]{4}_[0-9]{2}$'), 'YYYY_MM') < date_trunc('month', before_ts)
   LOOP
     EXECUTE format(
       'ALTER TABLE notifications_p DETACH PARTITION %I',
@@ -458,6 +462,8 @@ BEGIN
     JOIN pg_class c ON c.oid = pg_inherits.inhrelid
     JOIN pg_class p ON p.oid = pg_inherits.inhparent
     WHERE p.relname = 'payment_transactions_p'
+      AND c.relname ~ '_[0-9]{4}_[0-9]{2}$'
+      AND to_date(substring(c.relname from '[0-9]{4}_[0-9]{2}$'), 'YYYY_MM') < date_trunc('month', before_ts)
   LOOP
     EXECUTE format(
       'ALTER TABLE payment_transactions_p DETACH PARTITION %I',
@@ -481,6 +487,8 @@ BEGIN
     JOIN pg_class c ON c.oid = pg_inherits.inhrelid
     JOIN pg_class p ON p.oid = pg_inherits.inhparent
     WHERE p.relname = 'reactions_p'
+      AND c.relname ~ '_[0-9]{4}_[0-9]{2}$'
+      AND to_date(substring(c.relname from '[0-9]{4}_[0-9]{2}$'), 'YYYY_MM') < date_trunc('month', before_ts)
   LOOP
     EXECUTE format(
       'ALTER TABLE reactions_p DETACH PARTITION %I',

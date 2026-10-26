@@ -118,7 +118,7 @@ export class AppController {
     return {
       status: primaryUp && valkeyHealthy && replicasUp ? 'healthy' : 'degraded',
       database: primaryUp ? 'connected' : 'disconnected',
-      replicas: dbHealth.replicas.map((r) => (r ? 'connected' : 'disconnected')),
+      replicas: dbHealth.replicas.map((r) => (r?.healthy ? 'connected' : 'disconnected')),
       valkey: valkeyHealthy ? 'connected' : 'disconnected',
       timestamp: new Date().toISOString(),
     };

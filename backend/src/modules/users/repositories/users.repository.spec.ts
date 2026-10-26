@@ -18,9 +18,14 @@ const db = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  execute: vi.fn(),
+  transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  })),
+  $client: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-vi.mock('../../../db/index.ts', () => ({ db, default: db }));
+vi.mock('../../../db/index.ts', () => ({ db, dbPrimary: db, dbReplica: db, default: db }));
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),

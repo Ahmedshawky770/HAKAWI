@@ -20,7 +20,7 @@ resource "helm_release" "prometheus" {
       # stack embeds the same file so an alert edit is a one-file change (Principle #9). The file's
       # document root is `groups:`, so indenting the whole file under the additionalPrometheusRules
       # list item yields valid values YAML with no transformation in between.
-      hakawi_alert_rules = indent(8, file("${path.module}/rules/hakawi-alerts.yml"))
+      hakawi_alert_rules = indent(8, file("${path.module}/../../../../monitoring/prometheus/rules/hakawi-alerts.yml"))
       smtp_host          = var.smtp_smarthost
       smtp_port          = var.smtp_smarthost_port
       smtp_from          = var.smtp_from

@@ -15,9 +15,8 @@ import {
 } from '../interfaces/payments-repository.interface.ts';
 import {
   payments,
-  paymentTransactions,
+  paymentTransactionsP,
   refunds,
-  NewPaymentTransaction,
   NewRefund,
 } from '../../../db/schema/payments.schema.ts';
 import { db, dbPrimary } from '../../../db/index.ts';
@@ -179,7 +178,7 @@ export class PaymentsRepository implements IPaymentsRepository {
     gatewayResponse?: string | null;
   }): Promise<PaymentTransaction> {
     this.logger.info(`Creating transaction for payment: ${data.paymentId}`);
-    const values: NewPaymentTransaction = {
+    const values = {
       paymentId: data.paymentId,
       type: data.type,
       status: data.status,
@@ -188,12 +187,7 @@ export class PaymentsRepository implements IPaymentsRepository {
       gatewayResponse: data.gatewayResponse ?? null,
     };
     return await dbPrimary.transaction(async (tx) => {
-      const [transaction] = await tx.insert(paymentTransactions).values(values).returning();
-      // Dual-write to the partitioned table during the migration phase. Same transaction
-      // as the legacy write so both succeed or neither does.
-      await tx.execute(sql`INSERT INTO payment_transactions_p (id, payment_id, type, status, amount, currency, gateway_response, created_at)
-          VALUES (${transaction.id}, ${data.paymentId}, ${data.type}, ${data.status}, ${data.amount}, ${data.currency}, ${data.gatewayResponse ?? null}, ${transaction.createdAt?.toISOString() ?? new Date().toISOString()})
-          ON CONFLICT (id) DO NOTHING`);
+      const [transaction] = await tx.insert(paymentTransactionsP).values(values as never).returning();
       return transaction;
     });
   }

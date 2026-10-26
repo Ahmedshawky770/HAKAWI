@@ -3,22 +3,13 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type { IReactionsRepository, Reaction } from '../interfaces/reactions-repository.interface.ts';
-import { reactions } from '../../../db/schema/social.schema.ts';
+import { reactions, reactionsP } from '../../../db/schema/social.schema.ts';
 import { db, dbPrimary } from '../../../db/index.ts';
 
 /**
- * during the dual-write phase (migration to `reactions_p`), every write targets both the legacy
- * `reactions` table and the partitioned `reactions_p` parent.
- *
- * CUTOVER PHASE: reads now target `reactions_p` (the partitioned parent) instead of the legacy
- * `reactions` table. PostgreSQL partition pruning makes time-range queries cheaper, and each
- * monthly child partition is small enough to vacuum/reindex independently.
- *
- * Prerequisite (must be satisfied before this code is deployed):
- *   1. Migration 0035 applied — `reactions_p` exists.
- *   2. `npm run db:backfill-partitions` run — legacy data copied to `reactions_p`.
- *   3. `npm run db:verify-cutover` passed — row counts match.
- *   4. Migration 0039 run — legacy `reactions` table dropped.
+ * Single source of truth is now `reactions_p` (the partitioned parent). Reads target
+ * `reactions_p` with a 42P01 fallback to the legacy `reactions` table. Writes target
+ * `reactions_p` directly.
  */
 
 @Injectable()
@@ -147,11 +138,7 @@ export class ReactionsRepository implements IReactionsRepository {
   async create(data: { userId: string; storyId: string; type: string }): Promise<Reaction> {
     this.logger.info(`Creating reaction: ${data.type} on story ${data.storyId}`);
     return await dbPrimary.transaction(async (tx) => {
-      const [reaction] = await tx.insert(reactions).values(data).returning();
-      // Dual-write to the partitioned table during the migration phase. Same transaction.
-      await tx.execute(sql`INSERT INTO reactions_p (id, user_id, story_id, type, created_at)
-          VALUES (${reaction.id}, ${data.userId}, ${data.storyId}, ${data.type}, ${reaction.createdAt?.toISOString() ?? new Date().toISOString()})
-          ON CONFLICT (id) DO NOTHING`);
+      const [reaction] = await tx.insert(reactionsP).values(data as never).returning();
       return reaction;
     });
   }
@@ -159,9 +146,7 @@ export class ReactionsRepository implements IReactionsRepository {
   async update(id: string, data: { type: string }): Promise<Reaction> {
     this.logger.debug(`Updating reaction: ${id}`);
     return await dbPrimary.transaction(async (tx) => {
-      const [reaction] = await tx.update(reactions).set(data).where(eq(reactions.id, id)).returning();
-      // Dual-write the type change to the partitioned table. Same transaction.
-      await tx.execute(sql`UPDATE reactions_p SET type = ${data.type} WHERE id = ${reaction.id}`);
+      const [reaction] = await tx.update(reactionsP).set(data).where(eq(reactionsP.id, id)).returning();
       return reaction;
     });
   }
@@ -169,18 +154,14 @@ export class ReactionsRepository implements IReactionsRepository {
   async delete(id: string): Promise<void> {
     this.logger.info(`Deleting reaction: ${id}`);
     return await dbPrimary.transaction(async (tx) => {
-      await tx.delete(reactions).where(eq(reactions.id, id));
-      // Dual-write the deletion to the partitioned table. Same transaction.
-      await tx.execute(sql`DELETE FROM reactions_p WHERE id = ${id}`);
+      await tx.delete(reactionsP).where(eq(reactionsP.id, id));
     });
   }
 
   async deleteByUserAndStory(userId: string, storyId: string): Promise<void> {
     this.logger.info(`Deleting reaction: ${userId} on story ${storyId}`);
     return await dbPrimary.transaction(async (tx) => {
-      await tx.delete(reactions).where(and(eq(reactions.userId, userId), eq(reactions.storyId, storyId)));
-      // Dual-write the deletion to the partitioned table. Same transaction.
-      await tx.execute(sql`DELETE FROM reactions_p WHERE user_id = ${userId} AND story_id = ${storyId}`);
+      await tx.delete(reactionsP).where(and(eq(reactionsP.userId, userId), eq(reactionsP.storyId, storyId)));
     });
   }
 
@@ -241,7 +222,7 @@ export class ReactionsRepository implements IReactionsRepository {
           WHERE story_id = ${storyId}
           GROUP BY type`);
 
-      return Object.fromEntries(rows.rows.map((row: Record<string, unknown>) => [String(row.type), Number(row.total)]));
+      return Object.fromEntries((rows?.rows ?? rows ?? []).map((row: Record<string, unknown>) => [String(row.type), Number(row.total)]));
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       // 42P01 = undefined_table: fall back to legacy reactions table.

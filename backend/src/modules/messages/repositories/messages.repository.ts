@@ -9,7 +9,7 @@ import type {
   Message,
   CreateMessageInput,
 } from '../interfaces/messages-repository.interface.ts';
-import { messages } from '../../../db/schema/social.schema.ts';
+import { messages, messagesP } from '../../../db/schema/social.schema.ts';
 import { db, dbPrimary } from '../../../db/index.ts';
 
 type MessagePgRow = {
@@ -28,19 +28,9 @@ type ConversationCountPgRow = {
 };
 
 /**
- * CUTOVER PHASE: reads now target `messages_p` (the partitioned parent) instead of the legacy
- * `messages` table. PostgreSQL partition pruning makes time-range queries cheaper, and each
- * monthly child partition is small enough to vacuum/reindex independently.
- *
- * Writes (`create`, `markAsRead`, `markAllAsRead`) continue to target the legacy `messages`
- * table via the routed `db` proxy, plus dual-write to `messages_p`. Once migration 0039 drops
- * the legacy tables, `messages_p` becomes the Single Source of Truth.
- *
- * Prerequisite (must be satisfied before this code is deployed):
- *   1. Migration 0035 applied — `messages_p` exists.
- *   2. `npm run db:backfill-partitions` run — legacy data copied to `messages_p`.
- *   3. `npm run db:verify-cutover` passed — row counts match.
- *   4. Migration 0039 run — legacy `messages` table dropped.
+ * Single source of truth is now `messages_p` (the partitioned parent). Reads target
+ * `messages_p` with a 42P01 fallback to the legacy `messages` table for pre-cutover
+ * environments. Writes target `messages_p` directly.
  */
 
 @Injectable()
@@ -134,13 +124,7 @@ export class MessagesRepository implements IMessagesRepository {
   async create(data: CreateMessageInput): Promise<Message> {
     this.logger.info(`Creating message in conversation: ${data.conversationId}`);
     return await dbPrimary.transaction(async (tx) => {
-      const [message] = await tx.insert(messages).values(data).returning();
-      // Dual-write to the partitioned table during the migration phase. The partitioned parent
-      // routes the row to the correct monthly child partition automatically. Same transaction
-      // as the legacy write so both succeed or neither does.
-      await tx.execute(sql`INSERT INTO messages_p (id, conversation_id, sender_id, content, is_read, read_at, created_at)
-          VALUES (${message.id}, ${data.conversationId}, ${data.senderId}, ${data.content}, FALSE, NULL, ${message.createdAt?.toISOString() ?? new Date().toISOString()})
-          ON CONFLICT (id) DO NOTHING`);
+      const [message] = await tx.insert(messagesP).values(data as never).returning();
       return message;
     });
   }
@@ -149,12 +133,10 @@ export class MessagesRepository implements IMessagesRepository {
     this.logger.debug(`Marking message as read: ${id}`);
     return await dbPrimary.transaction(async (tx) => {
       const [message] = await tx
-        .update(messages)
+        .update(messagesP)
         .set({ isRead: true, readAt: new Date() })
-        .where(eq(messages.id, id))
+        .where(eq(messagesP.id, id))
         .returning();
-      // Dual-write the status change to the partitioned table. Same transaction.
-      await tx.execute(sql`UPDATE messages_p SET is_read = TRUE, read_at = ${new Date().toISOString()} WHERE id = ${message.id}`);
       return message;
     });
   }
@@ -183,14 +165,11 @@ export class MessagesRepository implements IMessagesRepository {
     this.logger.info(`Marking all incoming messages as read in conversation: ${conversationId}`);
     return await dbPrimary.transaction(async (tx) => {
       await tx
-        .update(messages)
+        .update(messagesP)
         .set({ isRead: true, readAt: new Date() })
         .where(
-          and(eq(messages.conversationId, conversationId), ne(messages.senderId, userId), eq(messages.isRead, false)),
+          and(eq(messagesP.conversationId, conversationId), ne(messagesP.senderId, userId), eq(messagesP.isRead, false)),
         );
-      // Dual-write the status change to the partitioned table. Same transaction.
-      await tx.execute(sql`UPDATE messages_p SET is_read = TRUE, read_at = ${new Date().toISOString()}
-          WHERE conversation_id = ${conversationId} AND sender_id <> ${userId} AND is_read = FALSE`);
     });
   }
 
@@ -228,11 +207,10 @@ export class MessagesRepository implements IMessagesRepository {
     try {
       // CUTOVER: read from messages_p (partitioned parent).
       const placeholders = conversationIds.map((_, i) => `$${i + 1}`).join(', ');
-      const queryText = `SELECT id, conversation_id, sender_id, content, is_read, read_at, created_at
+      const queryText = `SELECT DISTINCT ON (conversation_id) id, conversation_id, sender_id, content, is_read, read_at, created_at
           FROM messages_p
           WHERE conversation_id IN (${placeholders})
-          GROUP BY conversation_id, id, sender_id, content, is_read, read_at, created_at
-          HAVING created_at = MAX(created_at)`;
+          ORDER BY conversation_id, created_at DESC, id DESC`;
       const result = await dbPrimary.$client.query(queryText, [...conversationIds]);
 
       for (const row of result.rows as MessagePgRow[]) {

@@ -51,7 +51,7 @@ BEGIN
   END IF;
   RETURN pgp_sym_encrypt(plaintext, key);
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql STABLE;
 
 --> statement-breakpoint
 

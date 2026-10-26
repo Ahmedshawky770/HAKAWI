@@ -9,7 +9,6 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -55,6 +54,7 @@ export default function RolesAdminPage() {
   const [adminRole, setAdminRole] = useState("content_moderator");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState(60);
 
   const assignmentsQuery = useAdminRoleAssignments();
 
@@ -62,7 +62,7 @@ export default function RolesAdminPage() {
     mutationFn: () =>
       api.postAdminBreakGlass({
         adminRole,
-        durationMinutes: 60,
+        durationMinutes,
         reason,
       }),
     onSuccess: async () => {
@@ -194,7 +194,7 @@ export default function RolesAdminPage() {
           />
           <StatCard
             label={strings.admin.roles.statsBreakGlassUses}
-            value={0}
+            value={assignments.filter((a: RoleAssignmentShape) => String(a.reason ?? "").startsWith("BREAK-GLASS")).length}
             icon="warning"
             hint=""
           />
@@ -341,11 +341,11 @@ export default function RolesAdminPage() {
                   <Input
                     type="number"
                     min="1"
-                    max="60"
-                    label={strings.admin.roles.breakGlassDuration(60)}
+                    max="240"
+                    label={strings.admin.roles.breakGlassDuration(durationMinutes)}
                     hint={strings.admin.roles.breakGlassMaxMinutes}
-                    value="60"
-                    readOnly
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
                   />
                    <Input
                      type="text"

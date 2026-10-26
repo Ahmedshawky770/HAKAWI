@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 
-import { payments, paymentTransactions, refunds } from '../../../db/schema/payments.schema.ts';
+import { payments, paymentTransactions, paymentTransactionsP, refunds } from '../../../db/schema/payments.schema.ts';
 import { chainAt, installMockDb, firstArgsOf, type MockChain, type MockDbControl } from '../../../test/helpers/mock-db.ts';
 import {
   REFUND_CAPACITY_STATUSES,
@@ -16,10 +16,14 @@ const db = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
-  transaction: vi.fn(),
+  execute: vi.fn(),
+  transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  })),
+  $client: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-vi.mock('../../../db/index.ts', () => ({ db, default: db }));
+vi.mock('../../../db/index.ts', () => ({ db, dbPrimary: db, dbReplica: db, default: db }));
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -347,7 +351,7 @@ describe('PaymentsRepository', () => {
       });
 
       expect(transaction).toMatchObject({ status: 'success' });
-      expect(db.insert).toHaveBeenCalledWith(paymentTransactions);
+      expect(db.insert).toHaveBeenCalledWith(paymentTransactionsP);
       expect(valuesOf()).toEqual({
         paymentId: PAYMENT_ID,
         type: 'capture',

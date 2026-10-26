@@ -82,6 +82,7 @@ export type MockDb = {
   insert: Mock;
   update: Mock;
   delete: Mock;
+  execute: Mock;
 };
 
 type DbEntryPoints = 'select' | 'insert' | 'update' | 'delete';
@@ -127,6 +128,20 @@ for (const name of ENTRY_POINTS) {
       );
       built.push(chain);
       return chain;
+    });
+  }
+
+  // `execute` (raw SQL) is not a fluent chain: it resolves to { rows } (or a
+  // rejected promise for error paths). It shares the same result queue so tests
+  // can queue its results in call order alongside select/insert/update/delete.
+  if (db.execute) {
+    db.execute.mockReset();
+    db.execute.mockImplementation(() => {
+      const result = queue.length > 0 ? (queue.shift() as () => unknown)() : [];
+      if (result && typeof (result as { then?: unknown }).then === 'function') {
+        return result;
+      }
+      return { rows: result };
     });
   }
 

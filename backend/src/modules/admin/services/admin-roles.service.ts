@@ -89,6 +89,14 @@ export class AdminRolesService {
     const environment = input.environment ?? this.configService.get<string>('app.environment') ?? 'production';
 
     const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) {
+      throw new BadRequestException('expiresAt must be a valid future date');
+    }
+    const MAX_EXPIRY_DAYS = 365;
+    const requestedDays = expiresAt ? (expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000) : DEFAULT_EXPIRY_DAYS;
+    if (requestedDays > MAX_EXPIRY_DAYS) {
+      throw new BadRequestException(`expiresAt cannot exceed ${MAX_EXPIRY_DAYS} days from now`);
+    }
     const finalExpiresAt = expiresAt ?? new Date(Date.now() + DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
     const assignment = await this.adminRolesRepository.create({
@@ -232,7 +240,7 @@ export class AdminRolesService {
       limit: 1,
     });
     if (result.assignments.length > 0 && result.assignments[0].revokedAt === null) {
-      return result.assignments[0].assignedAt;
+      return result.assignments[0].expiresAt ? new Date(result.assignments[0].expiresAt) : null;
     }
     return null;
   }
@@ -251,7 +259,7 @@ export class AdminRolesService {
       revokedByName: revokedByName ?? null,
       revokeReason: assignment.revokeReason ?? null,
       environment: assignment.environment,
-      isActive: assignment.revokedAt === null && (assignment.expiresAt === null || assignment.expiresAt === undefined || new Date(assignment.expiresAt) > new Date()),
+      isActive: assignment.revokedAt === null && assignment.expiresAt !== null && assignment.expiresAt !== undefined && new Date(assignment.expiresAt) > new Date(),
       expiresAt: assignment.expiresAt ? assignment.expiresAt.toISOString() : null,
     };
   }
@@ -280,6 +288,9 @@ export class AdminRolesService {
     }
 
     const environment = this.configService.get<string>('app.environment') ?? 'production';
+    if (dto.durationMinutes < 1 || dto.durationMinutes > 240) {
+      throw new BadRequestException('durationMinutes must be between 1 and 240');
+    }
     const expiresAt = new Date(Date.now() + dto.durationMinutes * 60 * 1000);
 
     const assignment = await this.adminRolesRepository.create({

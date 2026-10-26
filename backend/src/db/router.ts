@@ -157,13 +157,13 @@ async function probeReplicaHealth(
   let client;
   try {
     client = await pool.connect();
-    const result = await client.query<{ pg_last_wal_replay_lag: string }>(
-      `SELECT pg_last_wal_replay_lag() AS pg_last_wal_replay_lag`,
+    const result = await client.query<{ lag_ms: string | null }>(
+      `SELECT EXTRACT(EPOCH FROM pg_last_wal_replay_lag()) * 1000 AS lag_ms`,
     );
-    const raw = result.rows[0]?.pg_last_wal_replay_lag;
+    const raw = result.rows[0]?.lag_ms;
     entry.healthy = true;
     entry.unhealthySince = null;
-    entry.lagMs = raw === null || raw === undefined ? null : parseInt(raw, 10);
+    entry.lagMs = raw === null || raw === undefined ? null : Number(raw);
   } catch (error) {
     entry.healthy = false;
     entry.unhealthySince = now;
@@ -276,6 +276,8 @@ export const db = new Proxy({} as DrizzleDb, {
 
     // SELECT → healthy replica, fallback to primary
     if (isReadOperation(prop)) {
+      // Refresh replica health lazily without blocking the read path.
+      void refreshReplicaHealth();
       const target: DrizzleDb = getNextReplica() ?? primary;
       return (...args: Parameters<typeof target.select>) => target.select(...args);
     }
