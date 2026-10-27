@@ -263,11 +263,17 @@ export class MfaService {
   }
 
   /**
-   * Check if MFA should be enforced for a user (admin accounts).
+   * Check if MFA should be enforced for a user.
+   *
+   * A route decorated with `@RequireMfa()` asks for a second factor from whoever
+   * calls it, regardless of account type, so enforcement is not gated on holding an
+   * admin role. (Previously this returned true only for admin accounts, which made
+   * `@RequireMfa()` a no-op for every non-admin caller and left the decorated
+   * routes reachable with a single factor.)
    */
   async shouldEnforceMfa(userId: string): Promise<boolean> {
     const user = await this.usersRepository.findById(userId);
-    return user?.adminRole !== null && user?.adminRole !== undefined;
+    return user !== null && user !== undefined;
   }
 
   private generateBackupCodes(): string[] {

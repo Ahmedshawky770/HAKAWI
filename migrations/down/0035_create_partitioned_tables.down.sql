@@ -1,3 +1,4 @@
+-- hakawi:down reversibility=data-loss data-loss=rows reason=Rollback reverses this migration; data written to affected tables may be lost.
 -- Down script for 0035_create_partitioned_tables.sql
 -- Reversibility: data-loss — drops the partitioned tables and all their
 -- partitions, plus the archiving functions. No data in the legacy tables is

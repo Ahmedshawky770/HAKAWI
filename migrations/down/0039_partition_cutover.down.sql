@@ -1,3 +1,4 @@
+-- hakawi:down reversibility=data-loss data-loss=rows reason=Rollback reverses this migration; data written to affected tables may be lost.
 -- Down script for 0039_partition_cutover.sql
 -- Reversibility: data-loss — the legacy tables (`messages`, `notifications`,
 -- `payment_transactions`, `reactions`) were dropped and cannot be recreated from

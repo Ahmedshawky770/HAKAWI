@@ -18,8 +18,7 @@ image:
   pullPolicy: IfNotPresent
   tag: "latest"
 
-imagePullSecrets:
-  - name: ghcr-secret
+imagePullSecrets: []  # ECR images are pulled via the node IAM role; no registry secret needed.
 
 # WHY `prometheus.io/path` IS `/api/v1/metrics` AND NOT `/api/v1/health`. These are the
 # annotations kube-prometheus-stack discovers pods with (`role: pod` +

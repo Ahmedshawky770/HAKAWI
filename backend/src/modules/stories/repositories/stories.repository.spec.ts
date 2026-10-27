@@ -19,6 +19,7 @@ const db = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  execute: vi.fn(),
 }));
 
 vi.mock('../../../db/index.ts', () => ({ db, default: db }));

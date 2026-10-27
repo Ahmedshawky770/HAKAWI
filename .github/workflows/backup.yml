@@ -28,7 +28,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name hakawi-production-eks --alias production
+        run: aws eks update-kubeconfig --name production-hakawi --alias production
 
       - name: Install PostgreSQL client
         run: |
@@ -42,7 +42,7 @@ jobs:
           SNAPSHOT_ID="hakawi-prod-backup-${TIMESTAMP}"
           aws rds create-db-snapshot \
             --db-snapshot-identifier "${SNAPSHOT_ID}" \
-            --db-instance-identifier hakawi-production-db
+            --db-instance-identifier production-hakawi-primary
           echo "snapshot_id=${SNAPSHOT_ID}" >> $GITHUB_OUTPUT
 
       - name: Wait for snapshot completion
@@ -55,20 +55,20 @@ jobs:
           aws rds export-snapshot-to-s3 \
             --export-task-identifier "hakawi-export-${{ steps.snapshot.outputs.snapshot_id }}" \
             --source-arn "arn:aws:rds:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:snapshot:${{ steps.snapshot.outputs.snapshot_id }}" \
-            --s3-bucket hakawi-production-backups \
+            --s3-bucket production-hakawi-prometheus-backups \
             --s3-prefix rds-exports
 
       - name: Verify export
         run: |
           sleep 60
-          aws s3 ls s3://hakawi-production-backups/rds-exports/ | head -5
+          aws s3 ls s3://production-hakawi-prometheus-backups/rds-exports/ | head -5
 
       - name: Cleanup old snapshots (keep 30 days)
         run: |
           RETENTION_DAYS=30
           CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%Y-%m-%d)
           aws rds describe-db-snapshots \
-            --db-instance-identifier hakawi-production-db \
+            --db-instance-identifier production-hakawi-primary \
             --query "reverse(sort_by(DBSnapshots,&SnapshotCreateTime))[?contains(SnapshotType, 'manual') & contains(SnapshotIdentifier, 'hakawi-prod-backup')]" \
             --output text | while read line; do
               snap_time=$(echo "$line" | grep -oP 'hakawi-prod-backup-\d{8}' | cut -d'-' -f3-5)

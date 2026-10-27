@@ -1,0 +1,1 @@
+-- hakawi:down reversibility=irreversible reason=Backfill converted NULL expires_at to a concrete date; the original NULL values (meaning "active forever") cannot be recovered, so rollback is refused.

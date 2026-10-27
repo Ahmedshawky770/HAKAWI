@@ -13,8 +13,7 @@ image:
   pullPolicy: IfNotPresent
   tag: "latest"
 
-imagePullSecrets:
-  - name: ghcr-secret
+imagePullSecrets: []  # ECR images are pulled via the node IAM role; no registry secret needed.
 
 podAnnotations:
   prometheus.io/scrape: "true"

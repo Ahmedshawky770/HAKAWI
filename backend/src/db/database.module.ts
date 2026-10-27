@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { db, dbPrimary, dbReplica, closeDatabase, checkDatabaseHealth } from './router.ts';
+import { dbPrimary, closeDatabase, checkDatabaseHealth } from './router.ts';
 import { users } from './schema/users.schema.ts';
 import { categories, tags, stories, storyTags } from './schema/stories.schema.ts';
 import {
@@ -18,9 +18,7 @@ import { adminRoleAssignments } from './schema/admin-role-assignments.schema.ts'
 
 @Module({
   providers: [
-    { provide: 'DATABASE', useValue: db },
     { provide: 'DATABASE_PRIMARY', useValue: dbPrimary },
-    { provide: 'DATABASE_REPLICA', useValue: dbReplica },
     { provide: 'DATABASE_HEALTH', useFactory: checkDatabaseHealth },
     { provide: 'DATABASE_SHUTDOWN', useFactory: closeDatabase },
     { provide: 'USERS_SCHEMA', useValue: users },
@@ -42,9 +40,7 @@ import { adminRoleAssignments } from './schema/admin-role-assignments.schema.ts'
     { provide: 'ADMIN_ROLE_ASSIGNMENTS_SCHEMA', useValue: adminRoleAssignments },
   ],
   exports: [
-    'DATABASE',
     'DATABASE_PRIMARY',
-    'DATABASE_REPLICA',
     'DATABASE_HEALTH',
     'DATABASE_SHUTDOWN',
     'USERS_SCHEMA',

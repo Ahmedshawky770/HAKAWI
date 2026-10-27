@@ -230,7 +230,7 @@ describe('MfaService', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false for non-admin users', async () => {
+    it('should return true for any existing user (enforcement is not admin-gated)', async () => {
       usersRepository.findById = vi.fn<(id: string) => Promise<MockUser | null>>().mockResolvedValue({
         id: 'user-123',
         email: 'test@example.com',
@@ -239,7 +239,7 @@ describe('MfaService', () => {
       });
 
       const result = await mfaService.shouldEnforceMfa('user-123');
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
   });
 });
