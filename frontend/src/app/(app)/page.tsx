@@ -115,13 +115,11 @@ export default function DashboardPage() {
               />
             ) : (
               <>
-                <ul className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {stories.map((story) => (
-                    <li key={story.id}>
-                      <StoryCard story={story} />
-                    </li>
+                    <StoryCard key={story.id} story={story} />
                   ))}
-                </ul>
+                </div>
 
                 {feed.hasNextPage && (
                   <StoryLoadMore

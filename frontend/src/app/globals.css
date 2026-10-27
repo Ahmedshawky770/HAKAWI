@@ -39,50 +39,47 @@
 :root {
   color-scheme: dark;
 
-  /* Surfaces — the 60/30 of the 60-30-10 rule. */
-  --hk-canvas: #0d0b0a; /* Deep Obsidian Ink — page background          */
-  --hk-surface: #1a1615; /* Warm Charcoal — cards, panels              */
-  --hk-surface-raised: #241f1d; /* one step up, for hover/inset rows     */
-  --hk-line: #2a2624; /* Warm Gray — dividers and card edges        */
-  --hk-line-strong: #3a3532; /* emphasised edges, non-interactive     */
+  /* Surfaces — Tinted Velvet dark theme.
+   * Deep eggplant/velvet purple canvas, elevated purple-gray surfaces.
+   */
+  --hk-canvas: #140a1f; /* Deep Eggplant Velvet — page background       */
+  --hk-surface: #1f122b; /* Elevated Velvet Purple — cards, panels       */
+  --hk-surface-raised: #2b1a40; /* one step up, for hover/inset rows       */
+  --hk-line: #3a2e4e; /* Velvet Divider — dividers and card edges     */
+  --hk-line-strong: #4a3e5e; /* emphasised edges, non-interactive       */
   /*
    * The form-control boundary, and the only border token whose contrast is
    * load-bearing. WCAG 1.4.11 asks for 3:1 on anything a reader must be able to
-   * identify: `--hk-line` is 1.20:1 on a card and 1.48:1 on a control, both
-   * decorative, but an input whose edge is 1.2:1 against its own background is
-   * an input a low-vision reader may not see at all. This value is 3.18:1 against
-   * `--hk-surface-raised`, which is what an input is filled with.
+   * identify. `--hk-control-line` is 4.02:1 against `--hk-surface-raised`,
+   * which is what an input is filled with.
    */
-  --hk-control-line: #726d66;
+  --hk-control-line: #8a7a9a;
 
-  /* Ink — text. Every ratio below is measured against --hk-surface and is
-     reproduced in the contrast table in the design system. */
-  --hk-ink: #efece6; /* Muted Papyrus — headings and body            */
-  --hk-ink-muted: #a8a49e; /* Faded Papyrus — metadata, 7.24:1        */
-  --hk-ink-faint: #85807a; /* decorative ink, 5.02:1                   */
+  /* Ink — text. Soft cream-white body text eliminates high-contrast glare
+     on the dark velvet canvas. */
+  --hk-ink: #f5f5f0; /* Soft Cream White — headings and body         */
+  --hk-ink-muted: #c9b8d6; /* Muted Lilac — metadata                       */
+  --hk-ink-faint: #9a8aa8; /* decorative ink                               */
 
-  /* Accents. `*-ink` is the text-safe variant of the same hue, `*-fill` is the
-     button fill and `*-on-fill` is the only legible text colour on that fill.
-     The three are separate tokens because a single hue cannot satisfy both
-     "amber is the reaction colour" and "white on amber is 3.8:1". */
-  --hk-accent: #ff9100; /* Glowing Amber — reactions, marks, glows     */
-  --hk-accent-ink: #ff9100; /* accent text, 7.95:1                      */
-  --hk-accent-fill: #ff9100; /* primary CTA fill                        */
-  --hk-on-accent: #0d0b0a; /* text on that fill, 8.70:1                */
-  --hk-accent-hover: #ffa733;
-  --hk-accent-soft: rgb(255 145 0 / 12%);
+  /* Accents. Warm matte gold from the logo typography; deep teal for primary
+     buttons and active states. `*-ink` is the text-safe variant, `*-fill` is
+     the button fill, `*-on-fill` is the only legible text on that fill. */
+  --hk-accent: #d4af37; /* Warm Matte Gold — headings, marks, glows     */
+  --hk-accent-ink: #f0e6d2; /* accent text on dark surfaces, 15.51:1        */
+  --hk-accent-fill: #1a5e63; /* Deep Teal — primary CTA fill                 */
+  --hk-on-accent: #ffffff; /* white on teal, 7.43:1                        */
+  --hk-accent-hover: #2a7e83;
+  --hk-accent-soft: rgb(212 175 55 / 12%);
 
-  --hk-chrome: #00e5ff; /* Mystic Aqua — navigation and UI chrome      */
-  --hk-chrome-ink: #00e5ff; /* navigation text, 11.68:1                 */
-  --hk-chrome-hover: #66efff;
-  --hk-chrome-soft: rgb(0 229 255 / 12%);
+  --hk-chrome: #1a5e63; /* Deep Teal — navigation and UI chrome         */
+  --hk-chrome-ink: #ffffff; /* navigation text                              */
+  --hk-chrome-hover: #2a7e83;
+  --hk-chrome-soft: rgb(26 94 99 / 10%);
 
-  /* Error gets the same fill/on-fill split, because white on #EF4444 is
-     3.76:1 and obsidian on #EF4444 is 5.22:1 — only one of them can be right,
-     and which one depends on the theme. */
+  /* Error keeps its fill/on-fill split. White on #DC2626 is 4.83:1. */
   --hk-error: #ef4444;
-  --hk-error-fill: #ef4444;
-  --hk-on-error: #0d0b0a; /* 5.22:1 on --hk-error-fill                */
+  --hk-error-fill: #dc2626;
+  --hk-on-error: #ffffff;
   --hk-error-ink: #f87171;
   --hk-error-soft: rgb(239 68 68 / 14%);
 
@@ -99,8 +96,8 @@
   --hk-info-soft: rgb(59 130 246 / 14%);
 
   /* Interaction shadows. */
-  --hk-glow-accent: 0 0 15px rgb(255 145 0 / 0.2);
-  --hk-glow-chrome: 0 0 15px rgb(0 229 255 / 0.15);
+  --hk-glow-accent: 0 0 15px rgb(26 94 99 / 0.2);
+  --hk-glow-chrome: 0 0 15px rgb(212 175 55 / 0.15);
   --hk-shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.24);
   --hk-shadow-pop: 0 12px 40px rgb(0 0 0 / 0.45);
 
@@ -111,47 +108,53 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --hk-canvas: #faf6ee; /* Soft Cream Book-page                         */
-  --hk-surface: #ffffff; /* Warm White                                  */
-  --hk-surface-raised: #f4efe6;
-  --hk-line: #e8e4de; /* Light Sepia — dividers and card edges         */
-  --hk-line-strong: #d6d0c7;
+  /* Surfaces — Ancient Parchment light theme.
+   * Warm ivory parchment canvas, clean white cards.
+   */
+  --hk-canvas: #fdfbf7; /* Warm Ivory Parchment — page background       */
+  --hk-surface: #ffffff; /* Clean White — cards, panels                  */
+  --hk-surface-raised: #f4efe6; /* Warm Ivory Raised — inputs, hovered rows */
+  --hk-line: #e8e4de; /* Light Sepia — dividers and card edges        */
+  --hk-line-strong: #d6d0c7; /* emphasised edges, non-interactive       */
   /* 3.27:1 against --hk-surface-raised. Same role as the dark value. */
   --hk-control-line: #8a837b;
 
-  --hk-ink: #2a2421; /* Dark Sepia, 14.20:1                          */
-  --hk-ink-muted: #6b6560; /* Medium Sepia, 5.33:1                     */
-  --hk-ink-faint: #6f6963; /* decorative ink, 5.02:1                   */
+  /* Ink — text. Rich royal purple for high-contrast reading clarity. */
+  --hk-ink: #4b286d; /* Royal Purple — headings and body             */
+  --hk-ink-muted: #6b6560; /* Medium Sepia — metadata                      */
+  --hk-ink-faint: #6f6963; /* decorative ink                               */
 
-  --hk-accent: #e65100; /* Burnt Amber — marks, glows, ≥24px text     */
-  --hk-accent-ink: #b34700; /* accent text and links, 5.10:1           */
-  --hk-accent-fill: #c2410c; /* CTA fill; white on it is 5.18:1       */
+  /* Accents. Warm matte gold hues, deep teal for links and secondary actions.
+     `*-ink` is the text-safe variant, `*-fill` is the button fill. */
+  --hk-accent: #d4af37; /* Warm Matte Gold — marks, glows               */
+  --hk-accent-ink: #7a5a12; /* accent text and links, 6.16:1 on canvas      */
+  --hk-accent-fill: #1a5e63; /* Deep Teal — CTA fill; white on it is 7.43:1  */
   --hk-on-accent: #ffffff;
-  --hk-accent-hover: #a8390a;
-  --hk-accent-soft: rgb(230 81 0 / 10%);
+  --hk-accent-hover: #0e4a4f;
+  --hk-accent-soft: rgb(212 175 55 / 10%);
 
-  --hk-chrome: #00b8d4; /* Deep Aqua — chrome fills, marks            */
-  --hk-chrome-ink: #0e7490; /* navigation and links, 5.36:1           */
-  --hk-chrome-hover: #0b5e74;
-  --hk-chrome-soft: rgb(0 184 212 / 10%);
+  --hk-chrome: #1a5e63; /* Deep Teal — chrome fills, marks              */
+  --hk-chrome-ink: #0e4a4f; /* navigation and links, 9.62:1 on canvas       */
+  --hk-chrome-hover: #0b3a3e;
+  --hk-chrome-soft: rgb(26 94 99 / 10%);
 
+  --hk-error: #ef4444;
+  --hk-error-fill: #dc2626; /* white on it is 4.83:1                        */
+  --hk-on-error: #ffffff;
+  --hk-error-ink: #b91c1c;
+  --hk-error-soft: rgb(185 28 28 / 10%);
   --hk-success: #10b981;
-  --hk-success-ink: #047857; /* 5.36:1 on --hk-surface                   */
+  --hk-success-ink: #047857;
   --hk-success-soft: rgb(4 120 87 / 10%);
   --hk-warning: #f59e0b;
-  --hk-warning-ink: #b45309; /* 4.66:1 on --hk-surface                   */
+  --hk-warning-ink: #b45309;
   --hk-warning-soft: rgb(180 83 9 / 10%);
-  --hk-error: #ef4444;
-  --hk-error-fill: #dc2626; /* white on it is 4.83:1                    */
-  --hk-on-error: #ffffff;
-  --hk-error-ink: #b91c1c; /* 6.30:1 on --hk-surface                    */
-  --hk-error-soft: rgb(185 28 28 / 10%);
   --hk-info: #3b82f6;
-  --hk-info-ink: #1d4ed8; /* 6.51:1 on --hk-surface                    */
+  --hk-info-ink: #1d4ed8;
   --hk-info-soft: rgb(29 78 216 / 10%);
 
-  --hk-glow-accent: 0 0 15px rgb(230 81 0 / 0.16);
-  --hk-glow-chrome: 0 0 15px rgb(0 184 212 / 0.14);
+  --hk-glow-accent: 0 0 15px rgb(26 94 99 / 0.16);
+  --hk-glow-chrome: 0 0 15px rgb(212 175 55 / 0.14);
   --hk-shadow-card: 0 1px 2px rgb(42 36 33 / 0.06), 0 8px 24px rgb(42 36 33 / 0.08);
   --hk-shadow-pop: 0 12px 40px rgb(42 36 33 / 0.12);
 
@@ -217,10 +220,10 @@
   @keyframes glow {
     0%,
     100% {
-      box-shadow: 0 0 15px rgb(0 229 255 / 0.15);
+      box-shadow: 0 0 15px rgb(26 94 99 / 0.15);
     }
     50% {
-      box-shadow: 0 0 25px rgb(255 145 0 / 0.2);
+      box-shadow: 0 0 25px rgb(212 175 55 / 0.2);
     }
   }
 

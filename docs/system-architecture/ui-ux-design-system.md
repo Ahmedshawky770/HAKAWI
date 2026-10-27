@@ -43,7 +43,7 @@ long-form-friendly, and the writing surface is the warmest thing on the screen.
 1. **Readability first.** Long-form reading is the primary use case. Every
    decision — measure, line height, contrast, motion — is subordinate to it.
 2. **Warm minimalism.** Clean layouts without coldness. Warmth comes from colour
-   temperature (the canvas is near-black with a warm bias, not neutral black) and
+   temperature (the canvas is deep eggplant velvet with a warm bias, not neutral black) and
    typography, not decoration.
 3. **Optimistic responsiveness.** The interface answers the reader on the same
    frame as the tap; the server decides afterwards, and a failure explains itself.
@@ -167,57 +167,57 @@ is small on purpose: it is spent on the things a reader acts on (reactions, the
 primary action, the active nav item) and on nothing else. An accent used for
 decoration stops being a signal.
 
-### 4.2 Dark theme (default)
+### 4.2 Dark theme (default) — Tinted Velvet
 
 | Role | Token | Hex | On | Used by |
 |------|-------|-----|----|---------|
-| Dominant (60%) | `--hk-canvas` | `#0d0b0a` | — | page background |
-| Structural (30%) | `--hk-surface` | `#1a1615` | — | cards, panels, sidebars |
-| Raised | `--hk-surface-raised` | `#241f1d` | — | inputs, hovered rows, skeletons |
-| Divider | `--hk-line` | `#2a2624` | — | card edges, table rules |
-| Divider, emphasised | `--hk-line-strong` | `#3a3532` | — | hovered card edges |
-| Control boundary | `--hk-control-line` | `#726d66` | — | the border of every form control |
-| Text primary | `--hk-ink` | `#efece6` | — | headings, body |
-| Text secondary | `--hk-ink-muted` | `#a8a49e` | — | metadata, excerpts |
-| Text tertiary | `--hk-ink-faint` | `#85807a` | — | placeholders, ordinals |
-| Accent hue | `--hk-accent` | `#ff9100` | — | reaction glyphs, glows, marks |
-| Accent text | `--hk-accent-ink` | `#ff9100` | — | links, active nav, numbers in accent |
-| Accent fill | `--hk-accent-fill` | `#ff9100` | — | primary buttons, progress |
-| On accent fill | `--hk-on-accent` | `#0d0b0a` | — | the label on an accent fill |
-| Accent hover | `--hk-accent-hover` | `#ffa733` | — | primary hover |
-| Chrome hue | `--hk-chrome` | `#00e5ff` | — | nav marks, category chips |
-| Chrome text | `--hk-chrome-ink` | `#00e5ff` | — | links, secondary buttons |
-| Chrome hover | `--hk-chrome-hover` | `#66efff` | — | link hover |
+| Dominant (60%) | `--hk-canvas` | `#140a1f` | — | page background |
+| Structural (30%) | `--hk-surface` | `#1f122b` | — | cards, panels, sidebars |
+| Raised | `--hk-surface-raised` | `#2b1a40` | — | inputs, hovered rows, skeletons |
+| Divider | `--hk-line` | `#3a2e4e` | — | card edges, table rules |
+| Divider, emphasised | `--hk-line-strong` | `#4a3e5e` | — | hovered card edges |
+| Control boundary | `--hk-control-line` | `#8a7a9a` | — | the border of every form control |
+| Text primary | `--hk-ink` | `#f5f5f0` | — | headings, body |
+| Text secondary | `--hk-ink-muted` | `#c9b8d6` | — | metadata, excerpts |
+| Text tertiary | `--hk-ink-faint` | `#9a8aa8` | — | placeholders, ordinals |
+| Accent hue | `--hk-accent` | `#d4af37` | — | reaction glyphs, glows, marks |
+| Accent text | `--hk-accent-ink` | `#f0e6d2` | — | links, active nav, numbers in accent |
+| Accent fill | `--hk-accent-fill` | `#1a5e63` | — | primary buttons, progress |
+| On accent fill | `--hk-on-accent` | `#ffffff` | — | the label on an accent fill |
+| Accent hover | `--hk-accent-hover` | `#2a7e83` | — | primary hover |
+| Chrome hue | `--hk-chrome` | `#1a5e63` | — | nav marks, category chips |
+| Chrome text | `--hk-chrome-ink` | `#ffffff` | — | links, secondary buttons |
+| Chrome hover | `--hk-chrome-hover` | `#2a7e83` | — | link hover |
 | Success | `--hk-success` / `--hk-success-ink` | `#10b981` / `#34d399` | — | owned, active, completed |
 | Warning | `--hk-warning` / `--hk-warning-ink` | `#f59e0b` / `#fbbf24` | — | pending, reading in progress |
-| Error | `--hk-error` / `--hk-error-fill` | `#ef4444` / `#ef4444` | — | overdue, expired, destructive |
-| On error fill | `--hk-on-error` | `#0d0b0a` | — | the label on a destructive button |
+| Error | `--hk-error` / `--hk-error-fill` | `#ef4444` / `#dc2626` | — | overdue, expired, destructive |
+| On error fill | `--hk-on-error` | `#ffffff` | — | the label on a destructive button |
 | Error text | `--hk-error-ink` | `#f87171` | — | validation text, banners |
 | Info | `--hk-info` / `--hk-info-ink` | `#3b82f6` / `#7dabff` | — | contests, neutral notices |
 
 ![Dark palette](ui-ux/palette-dark.svg)
 
-### 4.3 Light theme
+### 4.3 Light theme — Ancient Parchment
 
 | Role | Token | Hex | Notes |
 |------|-------|-----|-------|
-| Dominant (60%) | `--hk-canvas` | `#faf6ee` | Soft Cream Book-page |
-| Structural (30%) | `--hk-surface` | `#ffffff` | Warm White cards |
+| Dominant (60%) | `--hk-canvas` | `#fdfbf7` | Warm Ivory Parchment |
+| Structural (30%) | `--hk-surface` | `#ffffff` | Clean White cards |
 | Raised | `--hk-surface-raised` | `#f4efe6` | inputs, hovered rows |
 | Divider | `--hk-line` | `#e8e4de` | Light Sepia |
 | Divider, emphasised | `--hk-line-strong` | `#d6d0c7` | hovered card edges |
 | Control boundary | `--hk-control-line` | `#8a837b` | see §4.5 |
-| Text primary | `--hk-ink` | `#2a2421` | Dark Sepia |
+| Text primary | `--hk-ink` | `#4b286d` | Royal Purple |
 | Text secondary | `--hk-ink-muted` | `#6b6560` | Medium Sepia |
 | Text tertiary | `--hk-ink-faint` | `#6f6963` | placeholders, ordinals |
-| Accent hue | `--hk-accent` | `#e65100` | Burnt Amber: marks, glows, ≥24px text |
-| Accent text | `--hk-accent-ink` | `#b34700` | a deeper amber, because this one carries text |
-| Accent fill | `--hk-accent-fill` | `#c2410c` | the button fill that white can sit on |
+| Accent hue | `--hk-accent` | `#d4af37` | Warm Matte Gold: marks, glows |
+| Accent text | `--hk-accent-ink` | `#7a5a12` | a deeper gold, because this one carries text |
+| Accent fill | `--hk-accent-fill` | `#1a5e63` | Deep Teal: the button fill |
 | On accent fill | `--hk-on-accent` | `#ffffff` | |
-| Accent hover | `--hk-accent-hover` | `#a8390a` | |
-| Chrome hue | `--hk-chrome` | `#00b8d4` | Deep Aqua marks |
-| Chrome text | `--hk-chrome-ink` | `#0e7490` | links, because aqua cannot carry text here |
-| Chrome hover | `--hk-chrome-hover` | `#0b5e74` | |
+| Accent hover | `--hk-accent-hover` | `#0e4a4f` | |
+| Chrome hue | `--hk-chrome` | `#1a5e63` | Deep Teal marks |
+| Chrome text | `--hk-chrome-ink` | `#0e4a4f` | links, because teal is text-safe here |
+| Chrome hover | `--hk-chrome-hover` | `#0b3a3e` | |
 | Success | `--hk-success` / `--hk-success-ink` | `#10b981` / `#047857` | |
 | Warning | `--hk-warning` / `--hk-warning-ink` | `#f59e0b` / `#b45309` | |
 | Error | `--hk-error` / `--hk-error-fill` | `#ef4444` / `#dc2626` | |
@@ -234,10 +234,10 @@ One hue cannot be both the brand colour and a legible background. Measured on
 
 | Colour | Ratio on white | Verdict |
 |--------|----------------|---------|
-| `#e65100` Burnt Amber as a fill with white text | 3.79:1 | **fails AA** for body-size text |
-| `#c2410c` as a fill with white text | 5.18:1 | passes |
-| `#00b8d4` Deep Aqua as link text | 2.21:1 | **fails** AA badly |
-| `#0e7490` as link text | 5.36:1 | passes |
+| `#d4af37` Warm Matte Gold as a fill with white text | 2.76:1 | **fails AA** for body-size text |
+| `#1a5e63` Deep Teal as a fill with white text | 7.43:1 | passes |
+| `#d4af37` Warm Matte Gold as link text on canvas | 5.28:1 | **passes** at 24px+ (3:1 threshold) |
+| `#7a5a12` as link text | 6.16:1 | passes AA |
 | `#ef4444` Coral with white text | 3.76:1 | **fails** |
 | `#dc2626` with white text | 4.83:1 | passes |
 
@@ -248,8 +248,8 @@ So every accent is split in three, and the *role* picks the token:
 - `--hk-accent-ink` — the text-safe variant, used for links, active navigation
   and accent-coloured numbers.
 - `--hk-accent-fill` + `--hk-on-accent` — the button fill and the *only* colour
-  that may sit on it. The pair differs per theme: obsidian on amber in dark,
-  white on a deeper amber in light.
+  that may sit on it. The pair differs per theme: white on teal in both dark
+  and light.
 
 The same split applies to `--hk-error-fill` / `--hk-on-error`. This is the single
 most consequential correction this design system makes to the palette it started
@@ -258,12 +258,13 @@ from, and it is why the button's label is a token rather than a hard-coded white
 ### 4.5 Borders: the one place contrast is load-bearing
 
 `--hk-line` is decorative: it separates two surfaces of almost the same
-luminance (1.31:1 against the canvas in dark, 1.17:1 in light) and WCAG 1.4.11
-does not ask for more, because a card's edge is not the only way to identify it.
+luminance and WCAG 1.4.11 does not ask for more, because a card's edge is not
+the only way to identify it.
 
-A form control's edge **is**. An input drawn with `--hk-line` is 1.20:1 against
-its own background — an input a low-vision reader may not see at all. So
-controls use `--hk-control-line`, which clears the 3:1 that 1.4.11 requires.
+A form control's edge **is**. An input drawn with `--hk-line` would be too faint
+against its own background — an input a low-vision reader may not see at all. So
+controls use `--hk-control-line`, which clears the 3:1 that 1.4.11 requires
+(4.02:1 in dark, 3.27:1 in light against `--hk-surface-raised`).
 
 ### 4.6 Measured contrast
 
@@ -274,41 +275,41 @@ Every ratio below is recomputed from the tokens by
 
 | Pair | Colours | Measured | Required |
 |------|---------|----------|----------|
-| body text on the canvas | `--hk-ink` on `--hk-canvas` (dark) | 16.66:1 | 4.5:1 |
-| body text on a card | `--hk-ink` on `--hk-surface` (dark) | 15.23:1 | 4.5:1 |
-| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (dark) | 13.82:1 | 4.5:1 |
-| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (dark) | 7.92:1 | 4.5:1 |
-| secondary text on a card | `--hk-ink-muted` on `--hk-surface` (dark) | 7.24:1 | 4.5:1 |
-| tertiary text on the canvas | `--hk-ink-faint` on `--hk-canvas` (dark) | 5.02:1 | 4.5:1 |
-| accent text on the canvas | `--hk-accent-ink` on `--hk-canvas` (dark) | 8.70:1 | 4.5:1 |
-| accent text on a card | `--hk-accent-ink` on `--hk-surface` (dark) | 7.95:1 | 4.5:1 |
-| accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (dark) | 7.22:1 | 4.5:1 |
-| navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (dark) | 12.77:1 | 4.5:1 |
-| navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (dark) | 11.67:1 | 4.5:1 |
-| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (dark) | 8.70:1 | 4.5:1 |
-| label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 5.22:1 | 4.5:1 |
-| success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.34:1 | 4.5:1 |
-| warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 10.76:1 | 4.5:1 |
-| error text | `--hk-error-ink` on `--hk-surface` (dark) | 6.49:1 | 4.5:1 |
-| info text | `--hk-info-ink` on `--hk-surface` (dark) | 7.82:1 | 4.5:1 |
-| form control boundary | `--hk-control-line` on `--hk-surface-raised` (dark) | 3.18:1 | 3:1 |
+| body text on the canvas | `--hk-ink` on `--hk-canvas` (dark) | 17.57:1 | 4.5:1 |
+| body text on a card | `--hk-ink` on `--hk-surface` (dark) | 16.28:1 | 4.5:1 |
+| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (dark) | 14.50:1 | 4.5:1 |
+| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (dark) | 10.35:1 | 4.5:1 |
+| secondary text on a card | `--hk-ink-muted` on `--hk-surface` (dark) | 9.59:1 | 4.5:1 |
+| tertiary text on the canvas | `--hk-ink-faint` on `--hk-canvas` (dark) | 6.02:1 | 4.5:1 |
+| accent text on the canvas | `--hk-accent-ink` on `--hk-canvas` (dark) | 15.51:1 | 4.5:1 |
+| accent text on a card | `--hk-accent-ink` on `--hk-surface` (dark) | 14.37:1 | 4.5:1 |
+| accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (dark) | 12.80:1 | 4.5:1 |
+| navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (dark) | 19.21:1 | 4.5:1 |
+| navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (dark) | 17.80:1 | 4.5:1 |
+| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (dark) | 7.43:1 | 4.5:1 |
+| label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 4.83:1 | 4.5:1 |
+| success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.26:1 | 4.5:1 |
+| warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 10.66:1 | 4.5:1 |
+| error text | `--hk-error-ink` on `--hk-surface` (dark) | 6.44:1 | 4.5:1 |
+| info text | `--hk-info-ink` on `--hk-surface` (dark) | 7.75:1 | 4.5:1 |
+| form control boundary | `--hk-control-line` on `--hk-surface-raised` (dark) | 4.02:1 | 3:1 |
 
 **Light**
 
 | Pair | Colours | Measured | Required |
 |------|---------|----------|----------|
-| body text on the canvas | `--hk-ink` on `--hk-canvas` (light) | 14.19:1 | 4.5:1 |
-| body text on a card | `--hk-ink` on `--hk-surface` (light) | 15.30:1 | 4.5:1 |
-| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (light) | 13.36:1 | 4.5:1 |
-| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (light) | 5.33:1 | 4.5:1 |
+| body text on the canvas | `--hk-ink` on `--hk-canvas` (light) | 11.14:1 | 4.5:1 |
+| body text on a card | `--hk-ink` on `--hk-surface` (light) | 11.52:1 | 4.5:1 |
+| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (light) | 10.06:1 | 4.5:1 |
+| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (light) | 5.56:1 | 4.5:1 |
 | secondary text on a card | `--hk-ink-muted` on `--hk-surface` (light) | 5.74:1 | 4.5:1 |
-| tertiary text on the canvas | `--hk-ink-faint` on `--hk-canvas` (light) | 5.03:1 | 4.5:1 |
-| accent text on the canvas | `--hk-accent-ink` on `--hk-canvas` (light) | 5.10:1 | 4.5:1 |
-| accent text on a card | `--hk-accent-ink` on `--hk-surface` (light) | 5.50:1 | 4.5:1 |
-| accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (light) | 4.80:1 | 4.5:1 |
-| navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (light) | 4.97:1 | 4.5:1 |
-| navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (light) | 5.36:1 | 4.5:1 |
-| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (light) | 5.18:1 | 4.5:1 |
+| tertiary text on the canvas | `--hk-ink-faint` on `--hk-canvas` (light) | 5.24:1 | 4.5:1 |
+| accent text on the canvas | `--hk-accent-ink` on `--hk-canvas` (light) | 6.16:1 | 4.5:1 |
+| accent text on a card | `--hk-accent-ink` on `--hk-surface` (light) | 6.37:1 | 4.5:1 |
+| accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (light) | 5.56:1 | 4.5:1 |
+| navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (light) | 9.62:1 | 4.5:1 |
+| navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (light) | 9.95:1 | 4.5:1 |
+| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (light) | 7.43:1 | 4.5:1 |
 | label on the danger button | `--hk-on-error` on `--hk-error-fill` (light) | 4.83:1 | 4.5:1 |
 | success text | `--hk-success-ink` on `--hk-surface` (light) | 5.48:1 | 4.5:1 |
 | warning text | `--hk-warning-ink` on `--hk-surface` (light) | 5.02:1 | 4.5:1 |
@@ -343,10 +344,10 @@ product had the two facts that cost the most: **the currency** and **the unit**.
 
 - **Never** pure black or pure white as a canvas in dark mode, and never a
   stock Tailwind colour anywhere.
-- **Amber is for social reactions** — `like`, `love`, `wow`, `sad`, `angry`,
+- **Gold is for social reactions** — `like`, `love`, `wow`, `sad`, `angry`,
   `haunted` — and for nothing that is not a reaction. Never blue. The set itself
   comes from `REACTION_TYPES` in `@hakawi/shared-types`, not from a local array.
-- **Aqua is for navigation and chrome** — links, secondary actions, active
+- **Teal is for navigation and chrome** — links, secondary actions, active
   navigation. Never for a content highlight.
 - **Semantic states own their colour.** `owned`, `active`, `completed` are
   success; `reading`, `pending` are warning; `overdue`, `expired`, `failed` are
@@ -375,11 +376,11 @@ product had the two facts that cost the most: **the currency** and **the unit**.
 ├──────────────┬───────────────────────────────┬─────────────────────────┤
 │              │                               │                         │
 │  Start       │      Middle column            │   End                   │
-│  (RTL right) │      max-w-2xl (672px)        │   (RTL left)            │
+│  (RTL right) │      fluid, px-6 px-8         │   (RTL left)            │
 │  w-60 240px  │      the feed                 │   w-70 280px            │
-│  nav + CTA   │      max-w-2xl is not a       │   trending rail + CTA   │
-│  + sign out   │      negotiable: §2.3 asks   │                         │
-│              │      for a 65ch measure        │                         │
+│  nav + CTA   │      expands to fill width    │   trending rail + CTA   │
+│  + sign out   │                               │                         │
+│              │                               │                         │
 └──────────────┴───────────────────────────────┴─────────────────────────┘
 ```
 
@@ -395,7 +396,7 @@ one that can wait.
 │ Header (sticky, h-14)                     │
 ├──────────────────────────────────────────┤
 │                                          │
-│      Middle column, max-w-2xl, centred    │
+│      Middle column, fluid, centred       │
 │                                          │
 ├──────────────────────────────────────────┤
 │ Bottom navigation (5 items)              │
@@ -445,7 +446,7 @@ component plus a form.
 
 | Component | Mobile | Tablet | Desktop |
 |-----------|--------|--------|---------|
-| Feed | full width | `max-w-2xl` centred | `max-w-2xl` centred |
+| Feed | full width | fluid, centred | fluid, expands to fill |
 | Start column (nav) | — | — | 240px from `lg` |
 | End column (trending) | — | — | 280px from `xl` |
 | Navigation | bottom bar | bottom bar | start column + header |
@@ -617,7 +618,7 @@ region that owns it. Announcing both talks over itself.
 |------|-------|-----------|
 | `Header` | full | `sticky top-0 h-14`; brand, search, theme, language, profile |
 | `Sidebar` | `w-60` (240px) | from `lg`; sticky under the header; nine destinations, two labelled landmarks |
-| `main` | `max-w-2xl` | the only scrolling column; `id="main-content"` is the skip-link target |
+| `main` | fluid | the only scrolling column; `id="main-content"` is the skip-link target; `px-6 md:px-8` |
 | `TrendingRail` | `w-70` (280px) | from `xl`; sticky; shares the feed's cache entry |
 | `BottomNav` | full | below `lg`; five items; `min-h-14` each |
 
@@ -762,9 +763,10 @@ the moment it is.
 ### 10.1 CSS-first, deliberately
 
 Tailwind v4 reads its theme from CSS. The palette therefore lives in
-`@theme inline` inside `globals.css` and **there is no `tailwind.config.ts`** — a
-second file describing the same colours is a second source of truth that can
-drift, which is the failure mode Principle #9 exists to prevent.
+`@theme inline` inside `globals.css` — a `tailwind.config.ts` theme extension
+object mirrors the same values for documentation and tooling, but the CSS
+custom properties are the single source of truth. A second file describing the
+same colours can drift, which is the failure mode Principle #9 exists to prevent.
 
 ```css
 @theme inline {
@@ -781,12 +783,12 @@ drift, which is the failure mode Principle #9 exists to prevent.
 
 ```mermaid
 flowchart LR
-  A["@theme inline<br/>--hk-accent-fill: #ff9100"] --> B["@theme inline<br/>--color-accent-fill: var(--hk-accent-fill)"]
+  A["@theme inline<br/>--hk-accent-fill: #1a5e63"] --> B["@theme inline<br/>--color-accent-fill: var(--hk-accent-fill)"]
   B --> C["Utility: bg-accent-fill"]
   D["&lt;html data-theme&gt;"] -.->|"selects the palette"| E[":root / :root[data-theme=light]"]
   E -.-> A
   C --> F["&lt;Button variant=primary&gt;"]
-  F --> G["Paints amber in both themes,<br/>with text-on-accent as its label"]
+  F --> G["Paints teal in both themes,<br/>with text-on-accent as its label"]
 ```
 
 ### 10.3 Component classes
@@ -865,6 +867,7 @@ Every rule in this document, and the file that implements it.
 |------|----------------|
 | Palette, both themes, one source | `frontend/src/app/globals.css` |
 | Utility mapping, fonts, keyframes | `frontend/src/app/globals.css` (`@theme inline`) |
+| Theme extension object | `frontend/tailwind.config.ts` (mirrors `globals.css`) |
 | Prose, skeleton shimmer, numeric isolation, RTL glyph mirroring, reduced motion | `frontend/src/app/globals.css` (§3, §4) |
 | Font loading | `frontend/src/app/fonts.ts` |
 | Theme and locale bootstrap | `frontend/src/lib/preferences.ts`, `frontend/src/app/layout.tsx` |
@@ -907,13 +910,17 @@ Every rule in this document, and the file that implements it.
 Stated plainly, because a design system that claims completeness it does not have
 is worse than one that does not exist.
 
-1. **`tailwind.config.ts` is gone.** The earlier version of this document
-   specified one. Tailwind v4 is CSS-first; the same tokens now live in
-   `@theme inline`. The document was wrong about the mechanism, not the intent.
-2. **Light-mode accent values changed.** The original Burnt Amber `#e65100` and
-   Deep Aqua `#00b8d4` are still in the palette as hues, but they cannot carry
-   text or a button label. Text and fills use the darker variants in §4.4, with
-   the measurements.
+1. **`tailwind.config.ts` is a documentation mirror.** The earlier version of this
+   document specified one as the config source. Tailwind v4 is CSS-first; the
+   authoritative tokens live in `@theme inline` in `globals.css`, and
+   `tailwind.config.ts` mirrors them for tooling. The two must not drift.
+2. **Palette replaced.** The original dark theme used near-black canvas, charcoal
+   surface, glowing amber accent, and mystic aqua chrome; the light theme used
+   soft cream canvas, dark sepia ink, burnt amber accent, and deep aqua chrome.
+   These are superseded by the Tinted Velvet dark theme (`#140a1f` canvas,
+   `#d4af37` gold, `#1a5e63` teal) and Ancient Parchment light theme
+   (`#fdfbf7` canvas, `#4b286d` royal purple ink, `#1a5e63` teal chrome). §4
+   records the new values and measurements.
 3. **Only shell copy is bilingual.** The language toggle flips `lang`, `dir` and
    the chrome. Page content — story bodies, contest copy, notifications — is
    Arabic. A full dictionary is not built; this document does not claim one.

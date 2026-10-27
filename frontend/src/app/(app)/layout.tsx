@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -34,6 +35,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   const { status, retry } = useAuthGuard();
   const { auth } = useStrings();
   const queryClient = useQueryClient();
+  const pathname = usePathname();
 
   /**
    * THE CACHE IS EMPTIED WHEN THE SESSION ENDS — AND NOT ONE MOMENT EARLIER.
@@ -50,7 +52,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
    * is a trap: emptying the cache DESTROYS the queries, and destroying a query
    * whose request is still in flight CANCELS that request. The error the server
    * sent would then never reach the component that was waiting for it, and that
-   * component would sit in the loading state for ever, on every page, with no
+   * component would sit in the loading state for ever, on all pages, with no
    * error and no retry. That is not a corner case: the header fetches an
    * unread count on every route, so one expired token froze the whole product.
    *

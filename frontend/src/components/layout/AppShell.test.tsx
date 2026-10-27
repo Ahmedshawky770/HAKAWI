@@ -46,9 +46,13 @@ describe("AppShell", () => {
     expect(main).toHaveTextContent("المحتوى");
   });
 
-  it("caps the feed at the measure the type scale asks for", () => {
+  it("fills the available width instead of a boxed measure", () => {
     renderWithProviders(<AppShell>المحتوى</AppShell>);
-    expect(screen.getByRole("main").className).toContain("max-w-2xl");
+    expect(screen.getByRole("main").className).toContain("w-full");
+    expect(screen.getByRole("main").className).toContain("flex-1");
+    expect(screen.getByRole("main").className).toContain("px-6");
+    expect(screen.getByRole("main").className).toContain("md:px-8");
+    expect(screen.getByRole("main").className).not.toContain("max-w-2xl");
   });
 
   it("reserves room for the mobile bar so the last card is never covered", () => {
