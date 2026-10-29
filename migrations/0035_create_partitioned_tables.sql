@@ -385,7 +385,7 @@ ALTER TABLE reactions_p
 
 --> statement-breakpoint
 
-CREATE UNIQUE INDEX IF NOT EXISTS reactions_p_unique_idx ON reactions_p (user_id, story_id);
+CREATE UNIQUE INDEX IF NOT EXISTS reactions_p_unique_idx ON reactions_p (user_id, story_id, created_at);
 CREATE INDEX IF NOT EXISTS reactions_p_user_id_idx ON reactions_p (user_id);
 CREATE INDEX IF NOT EXISTS reactions_p_story_id_idx ON reactions_p (story_id);
 CREATE INDEX IF NOT EXISTS reactions_p_created_at_idx ON reactions_p (created_at DESC);

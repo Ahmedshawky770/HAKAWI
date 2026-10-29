@@ -14,6 +14,7 @@ import { useStoredUser } from "@/lib/use-stored-user";
 import type { Payment } from "@hakawi/shared-types";
 import { useAdminPayments, useAdminPaymentStats, isFailedLoad, useInvalidation } from "@/lib/queries";
 import { useToast } from "@/components/providers/ToastProvider";
+import { formatPrice } from "@/lib/money";
 
 export default function FinancialAdminPage() {
   const strings = useStrings();
@@ -100,7 +101,7 @@ export default function FinancialAdminPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-medium text-ink">{strings.admin.financial.paymentId(payment.id)}</p>
-                        <p className="text-sm text-ink-muted">{strings.admin.financial.paymentAmount(String(payment.amount))}</p>
+                        <p className="text-sm text-ink-muted">{formatPrice(payment.amount)}</p>
                         <p className="text-sm text-ink-muted">{strings.admin.financial.paymentCurrency(payment.currency)}</p>
                         <p className="text-sm text-ink-muted">{strings.admin.financial.paymentMethod(payment.paymentMethod)}</p>
                         <p className="text-sm text-ink-muted">{strings.admin.financial.paymentCreatedAt(payment.createdAt)}</p>

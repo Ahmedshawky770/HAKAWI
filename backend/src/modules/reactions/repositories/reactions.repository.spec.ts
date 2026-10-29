@@ -210,7 +210,7 @@ describe('ReactionsRepository', () => {
 
       await repository.create({ userId: USER_ID, storyId: STORY_ID, type: TYPE });
 
-      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ userId: USER_ID, storyId: STORY_ID, type: TYPE }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ userId: USER_ID, storyId: STORY_ID, type: TYPE, createdAt: expect.any(Date) }]);
     });
   });
 

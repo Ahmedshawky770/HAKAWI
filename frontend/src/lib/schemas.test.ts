@@ -80,9 +80,9 @@ describe("story schemas", () => {
     expect(story.author.id).toBe(STORY_RECORD.authorId);
   });
 
-  it("does not carry a comment counter into the wire shape", () => {
+  it("carries the comment counter into the wire shape", () => {
     const story = storyResponseSchema.parse(STORY_RECORD);
-    expect(story).not.toHaveProperty("commentCount");
+    expect(story.commentCount).toBe(STORY_RECORD.commentCount);
   });
 
   it("defaults the tags of a normalized record to an empty list", () => {

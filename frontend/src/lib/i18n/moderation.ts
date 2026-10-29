@@ -35,6 +35,7 @@ export interface ModerationStrings {
   targetTypeLabels: Record<string, string>;
 
   /* ---- filing a report ---- */
+  reportTitle: string;
   reportPageTitle: string;
   reportPageDescription: string;
   reportTargetTypeLabel: string;
@@ -96,6 +97,7 @@ export const AR: ModerationStrings = {
   },
 
   reportPageTitle: "إبلاغ عن محتوى",
+  reportTitle: "إبلاغ عن محتوى",
   reportPageDescription: "ساعدنا في الحفاظ على بيئة آمنة من خلال الإبلاغ عن المحتوى المخالف.",
   reportTargetTypeLabel: "نوع الهدف",
   reportTargetTypeStory: "قصة",
@@ -161,6 +163,7 @@ export const EN: ModerationStrings = {
   },
 
   reportPageTitle: "Report content",
+  reportTitle: "Report content",
   reportPageDescription: "Help us keep the space safe by reporting content that breaks the rules.",
   reportTargetTypeLabel: "Target type",
   reportTargetTypeStory: "Story",

@@ -21,6 +21,9 @@ import {
   bookRecordResponseSchema,
   bookResponseSchema,
   booksListResponseSchema,
+  commentReactionSchema,
+  commentReactionsListResponseSchema,
+  commentRepliesResponseSchema,
   commentSchema,
   commentsListResponseSchema,
   contestPrizesResponseSchema,
@@ -1023,6 +1026,14 @@ export const api = {
       withQuery(`/comments/story/${storyId}`, { page: params?.page, limit: params?.limit }),
     ),
 
+  // `backend/src/modules/comments/controllers/comments.controller.ts` → `CommentsController`:
+  // `@Controller('comments')` with `@Get(':id/replies')`.
+  getCommentReplies: (commentId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      commentRepliesResponseSchema,
+      withQuery(`/comments/${commentId}/replies`, { page: params?.page, limit: params?.limit }),
+    ),
+
   /**
    * WHY `storyId` MOVES INTO THE BODY AND NOT INTO THE PATH.
    *
@@ -1058,6 +1069,27 @@ export const api = {
   /** Same reasoning as `updateComment`: `CommentsController` → `@Delete(':id')`. */
   deleteComment: (storyId: string, commentId: string) =>
     apiRequest(messageOnlySchema, `/comments/${commentId}`, { method: "DELETE" }),
+
+  // `backend/src/modules/comments/reactions/comment-reactions.controller.ts` → `CommentReactionsController`:
+  // `@Controller('comments')` with `@Post(':commentId/reactions')`.
+  addCommentReaction: (commentId: string, type: ReactionType) =>
+    apiRequest(commentReactionSchema, `/comments/${commentId}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({ type }),
+    }),
+
+  // `backend/src/modules/comments/reactions/comment-reactions.controller.ts` → `CommentReactionsController`:
+  // `@Controller('comments')` with `@Delete(':commentId/reactions')`.
+  removeCommentReaction: (commentId: string) =>
+    apiRequest(messageOnlySchema, `/comments/${commentId}/reactions`, { method: "DELETE" }),
+
+  // `backend/src/modules/comments/reactions/comment-reactions.controller.ts` → `CommentReactionsController`:
+  // `@Controller('comments')` with `@Get(':commentId/reactions')`.
+  getCommentReactions: (commentId: string, params?: { page?: number; limit?: number }) =>
+    apiRequest(
+      commentReactionsListResponseSchema,
+      withQuery(`/comments/${commentId}/reactions`, { page: params?.page, limit: params?.limit }),
+    ),
 
   /**
    * WHY `query` AND NOT `q`.
@@ -1156,7 +1188,7 @@ export const api = {
       withQuery("/moderation/reports", { page: params?.page, limit: params?.limit, status: params?.status }),
     ),
 
-  moderateItem: (itemId: string, data: { status: "open" | "in_review" | "resolved" | "dismissed" }) =>
+  moderateItem: (itemId: string, data: { status: "open" | "in_review" | "resolved" | "dismissed" | "escalated" }) =>
     apiRequest(reportSchema, `/moderation/reports/${itemId}`, {
       method: "PATCH",
       body: JSON.stringify(data),

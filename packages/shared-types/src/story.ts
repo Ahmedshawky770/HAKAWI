@@ -18,6 +18,7 @@ export type Story = {
   tags: string[];
   views: number;
   reactions: number;
+  commentCount: number;
   author: AuthorSummary;
   createdAt: string;
   updatedAt: string;

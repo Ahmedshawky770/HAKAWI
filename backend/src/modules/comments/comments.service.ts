@@ -60,12 +60,24 @@ export class CommentsService {
       await this.commentsRepository.incrementReplyCount(input.parentId);
     }
 
-    await this.eventBus.emit('comment.created', {
-      commentId: comment.id,
-      storyId: comment.storyId,
-      authorId: comment.authorId,
-      parentId: input.parentId,
-    } as CommentCreatedEvent);
+    // Events are side effects: notifications, counters and moderation. A failure in any event
+    // consumer must never fail the comment creation itself — the comment is already committed.
+    try {
+      await this.eventBus.emit('comment.created', {
+        commentId: comment.id,
+        storyId: comment.storyId,
+        authorId: comment.authorId,
+        parentId: input.parentId,
+      } as CommentCreatedEvent);
+    } catch (error) {
+      this.logger.error(
+        `Comment created event failed for comment ${comment.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        undefined,
+        'CommentsService',
+      );
+    }
 
     return comment;
   }
@@ -118,7 +130,17 @@ export class CommentsService {
     }
 
     const updated = await this.commentsRepository.update(id, input);
-    await this.eventBus.emit('comment.updated', { commentId: id, storyId: comment.storyId } as CommentUpdatedEvent);
+    try {
+      await this.eventBus.emit('comment.updated', { commentId: id, storyId: comment.storyId } as CommentUpdatedEvent);
+    } catch (error) {
+      this.logger.error(
+        `Comment updated event failed for comment ${id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        undefined,
+        'CommentsService',
+      );
+    }
     return updated;
   }
 
@@ -140,7 +162,17 @@ export class CommentsService {
     }
 
     await this.commentsRepository.softDelete(id);
-    await this.eventBus.emit('comment.deleted', { commentId: id, storyId: comment.storyId } as CommentDeletedEvent);
+    try {
+      await this.eventBus.emit('comment.deleted', { commentId: id, storyId: comment.storyId, parentId: comment.parentId } as CommentDeletedEvent);
+    } catch (error) {
+      this.logger.error(
+        `Comment deleted event failed for comment ${id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        undefined,
+        'CommentsService',
+      );
+    }
   }
 
   /**

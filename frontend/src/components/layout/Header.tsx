@@ -42,7 +42,7 @@ export function Header() {
   const nextThemeLabel = theme === "dark" ? strings.shell.themeToLight : strings.shell.themeToDark;
 
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-line bg-canvas/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 h-14 border-b border-line bg-canvas/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
       <div className="mx-auto flex h-full max-w-7xl items-center gap-3 px-4 sm:px-6">
         <Brand href="/" size="sm" className="lg:hidden" />
 

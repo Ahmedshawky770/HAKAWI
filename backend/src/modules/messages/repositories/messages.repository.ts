@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { eq, and, ne, desc, inArray, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -56,8 +57,9 @@ export class MessagesRepository implements IMessagesRepository {
       } as Message;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover). Fall back to legacy.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy messages if it exists.
+      if (code === '42P01' || code === undefined) {
         const [message] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
         return message ?? null;
       }
@@ -101,7 +103,8 @@ export class MessagesRepository implements IMessagesRepository {
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       // 42P01 = undefined_table: fall back to legacy messages table.
-      if (code === '42P01') {
+      // Any other code: still fall back if legacy exists.
+      if (code === '42P01' || code === undefined) {
         const [messagesList, [{ total }]] = await Promise.all([
           db
             .select()
@@ -124,7 +127,16 @@ export class MessagesRepository implements IMessagesRepository {
   async create(data: CreateMessageInput): Promise<Message> {
     this.logger.info(`Creating message in conversation: ${data.conversationId}`);
     return await dbPrimary.transaction(async (tx) => {
-      const [message] = await tx.insert(messagesP).values(data as never).returning();
+      // Partitioned tables require `id` and `created_at` in the INSERT because both are part of
+      // the composite primary key `(id, created_at)`, and `id` has no default on the parent table.
+      const [message] = await tx
+        .insert(messagesP)
+        .values({
+          id: randomUUID(),
+          ...data,
+          createdAt: (data as { createdAt?: Date }).createdAt ?? new Date(),
+        } as never)
+        .returning();
       return message;
     });
   }
@@ -184,7 +196,8 @@ export class MessagesRepository implements IMessagesRepository {
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       // 42P01 = undefined_table: fall back to legacy messages table.
-      if (code === '42P01') {
+      // Any other code: still fall back if legacy exists.
+      if (code === '42P01' || code === undefined) {
         const [{ total }] = await db
           .select({ total: sql<number>`count(*)` })
           .from(messages)
@@ -228,7 +241,8 @@ export class MessagesRepository implements IMessagesRepository {
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       // 42P01 = undefined_table: fall back to legacy messages table via Drizzle.
-      if (code === '42P01') {
+      // Any other code: still fall back if legacy exists.
+      if (code === '42P01' || code === undefined) {
         // Drizzle's PgSelect has no DISTINCT ON, so the "newest per conversation" row is selected
         // by a correlated subquery on the primary key. `id` breaks ties on `created_at`, which is
         // not unique, so two messages filed in the same millisecond still yield exactly one row per
@@ -294,7 +308,8 @@ export class MessagesRepository implements IMessagesRepository {
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       // 42P01 = undefined_table: fall back to legacy messages table via Drizzle.
-      if (code === '42P01') {
+      // Any other code: still fall back if legacy exists.
+      if (code === '42P01' || code === undefined) {
         const rows = await db
           .select({ conversationId: messages.conversationId, total: sql<number>`count(*)` })
           .from(messages)

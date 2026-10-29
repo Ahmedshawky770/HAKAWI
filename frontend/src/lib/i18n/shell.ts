@@ -36,9 +36,11 @@ export interface ShellStrings {
   unreadNotificationsLabel: string;
   navPayments: string;
   navRentals: string;
+  navBadges: string;
   navProfile: string;
   navAdmin: string;
   navSearch: string;
+  mainNavigation: string;
   searchPlaceholder: string;
   searchLabel: string;
   searchDescription: string;
@@ -64,11 +66,12 @@ export interface ShellStrings {
   languageEnglish: string;
   trendingTitle: string;
   noStories: string;
-  mainNavigation: string;
   bottomNavigation: string;
   secondaryNavigation: string;
   trendingRailLabel: string;
   skipToContent: string;
+  backToStories: string;
+  editStory: string;
 }
 
 export const AR: ShellStrings = {
@@ -89,6 +92,7 @@ export const AR: ShellStrings = {
   navRentals: "الإيجارات",
   navProfile: "حسابي",
   navAdmin: "لوحة المسؤول",
+  navBadges: "الشارات",
   navSearch: "البحث",
   searchPlaceholder: "ابحث عن قصص، مستخدمين، كتب…",
   searchLabel: "البحث في الحكاوي",
@@ -119,6 +123,8 @@ export const AR: ShellStrings = {
   secondaryNavigation: "روابط جانبية",
   trendingRailLabel: "استكشاف",
   skipToContent: "تخطَّ إلى المحتوى",
+  backToStories: "العودة للقصص",
+  editStory: "تعديل القصة",
 };
 
 export const EN: ShellStrings = {
@@ -139,6 +145,7 @@ export const EN: ShellStrings = {
   navRentals: "Rentals",
   navProfile: "Profile",
   navAdmin: "Admin panel",
+  navBadges: "Badges",
   navSearch: "Search",
   searchPlaceholder: "Search stories, people, books…",
   searchLabel: "Search Hakawi",
@@ -165,4 +172,6 @@ export const EN: ShellStrings = {
   secondaryNavigation: "Sidebar links",
   trendingRailLabel: "Explore",
   skipToContent: "Skip to content",
+  backToStories: "Back to stories",
+  editStory: "Edit story",
 };

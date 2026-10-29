@@ -25,6 +25,7 @@ import type { OptionalAuthRequest } from '../../../common/types/optional-auth-re
 import { StoriesService } from '../stories.service.ts';
 import { CreateStoryDto, UpdateStoryDto, StoriesQueryDto, MyStoriesQueryDto } from '../dto/stories.dto.ts';
 import { PUBLIC_STORY_STATUS } from '../types.ts';
+import { CategoriesService } from '../../categories/categories.service.ts';
 
 /**
  * `AuthRequest` rather than a local `Request & { user: { sub: string } }`.
@@ -37,7 +38,10 @@ import { PUBLIC_STORY_STATUS } from '../types.ts';
  */
 @Controller('stories')
 export class StoriesController {
-  constructor(@Inject(StoriesService) private readonly storiesService: StoriesService) {}
+  constructor(
+    @Inject(StoriesService) private readonly storiesService: StoriesService,
+    @Inject(CategoriesService) private readonly categoriesService: CategoriesService,
+  ) {}
 
   /**
    * The public list, and the one rule that governs it: `status` is PINNED to `published` here and
@@ -68,11 +72,12 @@ export class StoriesController {
   @Public()
   @Get()
   async findAll(@Query() query: StoriesQueryDto) {
+    const categoryId = await this.resolveCategoryId(query.category);
     return this.storiesService.findAll({
       page: query.page,
       limit: query.limit,
       search: query.search,
-      categoryId: query.category,
+      categoryId,
       status: PUBLIC_STORY_STATUS,
     });
   }
@@ -113,11 +118,12 @@ export class StoriesController {
   @UseGuards(JwtAuthGuard)
   @Get('mine')
   async findMine(@Query() query: MyStoriesQueryDto, @Request() req: AuthRequest) {
+    const categoryId = await this.resolveCategoryId(query.category);
     return this.storiesService.findUnpublishedByAuthor(req.user.sub, {
       page: query.page,
       limit: query.limit,
       search: query.search,
-      categoryId: query.category,
+      categoryId,
       status: query.status,
     });
   }
@@ -337,5 +343,22 @@ export class StoriesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async recordView(@Param('id') id: string, @Request() req: AuthRequest): Promise<void> {
     await this.storiesService.incrementViewCount(id, req.user);
+  }
+
+  /**
+   * The public list takes a category *slug* (`?category=fiction`), but `stories.category_id` is a UUID
+   * FK to `categories.id`. Resolve the slug to the row's id before handing it to the service, so the
+   * repository's `WHERE category_id = $1` compares UUID to UUID instead of UUID to slug text (which
+   * raises Postgres `22P02 invalid input syntax for type uuid` and surfaces as a 500).
+   *
+   * A slug that names no category is a 404 from `CategoriesService.findBySlug` — there is no such
+   * filter to apply, so there is nothing to list.
+   */
+  private async resolveCategoryId(slug?: string): Promise<string | undefined> {
+    if (!slug) {
+      return undefined;
+    }
+    const category = await this.categoriesService.findBySlug(slug);
+    return category.id;
   }
 }

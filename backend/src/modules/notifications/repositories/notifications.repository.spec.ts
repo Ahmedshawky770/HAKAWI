@@ -214,7 +214,7 @@ describe('NotificationsRepository', () => {
 
       expect(created).toMatchObject({ id: NOTIFICATION_ID });
       expect(db.insert).toHaveBeenCalledWith(notificationsP);
-      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([input]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ ...input, createdAt: expect.any(Date) }]);
     });
   });
 

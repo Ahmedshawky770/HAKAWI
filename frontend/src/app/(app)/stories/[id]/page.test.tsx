@@ -40,12 +40,19 @@ import StoryDetailPage from "./page";
 const mockStory = {
   id: "story-1",
   title: "قصة مميزة",
-  author: { id: "user-1", name: "أحمد محمد", username: "ahmed", avatar: null },
-  category: "fiction",
+  slug: "qasa-mumayiza",
+  excerpt: "مقتطف",
   content: "<p>محتوى القصة التجريبي</p>",
+  coverImage: null,
+  status: "published",
+  category: "fiction",
+  tags: [],
   views: 1500,
   reactions: 42,
+  commentCount: 3,
+  author: { id: "user-1", name: "أحمد محمد" },
   createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 };
 
 // The banner title is dictionary copy; a literal here would drift from the page

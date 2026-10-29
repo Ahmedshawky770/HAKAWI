@@ -91,6 +91,7 @@ export default function StoryDetailPage() {
    */
   const viewsReadout = story ? strings.story.views(story.views) : null;
   const reactionsReadout = story ? strings.story.reactions(story.reactions) : null;
+  const commentsReadout = story ? strings.social.commentCount(story.commentCount) : null;
 
   const isOwner = story !== null && viewerId !== null && story.author.id === viewerId;
 
@@ -118,7 +119,7 @@ export default function StoryDetailPage() {
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-chrome-ink transition-colors duration-200 hover:text-chrome-hover"
       >
         <Icon name="chevron" size="sm" />
-        العودة للقصص
+        {strings.shell.backToStories}
       </Link>
 
       {loading ? (
@@ -188,6 +189,17 @@ export default function StoryDetailPage() {
                     <span className="hk-numeric">{reactionsReadout.count}</span> {reactionsReadout.label}
                   </span>
                 )}
+                {commentsReadout && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name="comment" size="sm" className="text-accent-ink" />
+                    <Link
+                      href={`/stories/${id}/comments`}
+                      className="flex items-center gap-1.5 text-accent-ink underline underline-offset-4 hover:text-accent"
+                    >
+                      <span className="hk-numeric">{commentsReadout.count}</span> {commentsReadout.label}
+                    </Link>
+                  </span>
+                )}
               </div>
             </div>
           </header>
@@ -219,7 +231,7 @@ export default function StoryDetailPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <ButtonLink href={`/stories/${story.id}/edit`} variant="secondary" size="sm">
                     <Icon name="edit" size="sm" />
-                    تعديل القصة
+                    {strings.shell.editStory}
                   </ButtonLink>
                   <Button
                     variant={deleteArmed ? "danger" : "ghost"}

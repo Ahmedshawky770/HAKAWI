@@ -35,7 +35,7 @@ const CONTROL_BASE =
   // of the same specificity (`focus:border-chrome` and `focus:border-error`)
   // are separated by nothing but the order in which the stylesheet happens to
   // emit them, which is not a thing to build a colour decision on.
-  "w-full rounded-lg border border-control-line bg-surface-raised px-3 py-2 text-base text-ink " +
+  "w-full rounded-lg border border-control-line bg-surface-raised px-3 py-2.5 text-base text-ink " +
   "placeholder:text-ink-faint transition-colors duration-200 hover:border-chrome " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 

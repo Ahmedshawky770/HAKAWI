@@ -49,6 +49,7 @@ export interface RentalsStrings {
   actionsHeading: string;
   extendRentalAction: string;
   returnBookAction: string;
+  returnConfirm: string;
   extensionPriceLabel: string;
   authorByline: (name: string) => string;
   updateFromLibrary: string;
@@ -95,6 +96,7 @@ export const AR: RentalsStrings = {
   actionsHeading: "إجراءات",
   extendRentalAction: "تمديد الإيجار",
   returnBookAction: "إرجاع الكتاب",
+  returnConfirm: "تأكيد إرجاع الكتاب؟",
   extensionPriceLabel: "سعر التمديد",
   authorByline: (name) => `بواسطة ${name}`,
   updateFromLibrary: "تحديث القراءة من مكتبتي",
@@ -141,6 +143,7 @@ export const EN: RentalsStrings = {
   actionsHeading: "Actions",
   extendRentalAction: "Extend rental",
   returnBookAction: "Return the book",
+  returnConfirm: "Confirm returning the book?",
   extensionPriceLabel: "Extension price",
   authorByline: (name) => `By ${name}`,
   updateFromLibrary: "Update reading from my library",

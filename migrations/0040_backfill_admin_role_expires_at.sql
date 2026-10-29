@@ -1,3 +1,8 @@
+-- Ensure the column exists on legacy tables before backfilling.
+ALTER TABLE admin_role_assignments ADD COLUMN IF NOT EXISTS expires_at timestamp with time zone;
+
+--> statement-breakpoint
+
 -- Backfill NULL expires_at on admin_role_assignments so legacy "active forever"
 -- rows get a concrete expiry (default 365 days from now). After this, isActive
 -- can treat NULL as inactive safely.

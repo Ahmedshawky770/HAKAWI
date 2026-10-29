@@ -85,13 +85,40 @@ export function Sidebar() {
     { href: "/payments", label: strings.shell.navPayments, icon: "wallet" },
   ];
 
-  const admin: NavItem[] = [
-    { href: "/admin", label: strings.shell.navAdmin, icon: "user" },
-    { href: "/admin/moderation", label: strings.admin?.moderation?.pageTitle ?? "Content moderation", icon: "comment" },
-    { href: "/admin/financial", label: strings.admin?.financial?.pageTitle ?? "Financial", icon: "wallet" },
-    { href: "/admin/verification", label: strings.admin?.verification?.pageTitle ?? "Identity verification", icon: "user" },
-    { href: "/admin/roles", label: strings.admin?.roles?.pageTitle ?? "Role management", icon: "users" },
-  ];
+  const admin: NavItem[] = (() => {
+    const items: NavItem[] = [];
+    if (!normalizedAdminRole) return items;
+    // Super admin sees all
+    if (normalizedAdminRole === "super_admin") {
+      items.push(
+        { href: "/admin", label: strings.shell.navAdmin, icon: "user" },
+        { href: "/admin/moderation", label: strings.admin?.moderation?.pageTitle ?? "Content moderation", icon: "comment" },
+        { href: "/admin/financial", label: strings.admin?.financial?.pageTitle ?? "Financial", icon: "wallet" },
+        { href: "/admin/verification", label: strings.admin?.verification?.pageTitle ?? "Identity verification", icon: "user" },
+        { href: "/admin/roles", label: strings.admin?.roles?.pageTitle ?? "Role management", icon: "users" },
+      );
+      return items;
+    }
+    if (normalizedAdminRole === "content_moderator") {
+      items.push(
+        { href: "/admin/moderation", label: strings.admin?.moderation?.pageTitle ?? "Content moderation", icon: "comment" },
+      );
+      return items;
+    }
+    if (normalizedAdminRole === "financial_officer") {
+      items.push(
+        { href: "/admin/financial", label: strings.admin?.financial?.pageTitle ?? "Financial", icon: "wallet" },
+      );
+      return items;
+    }
+    if (normalizedAdminRole === "verification_officer") {
+      items.push(
+        { href: "/admin/verification", label: strings.admin?.verification?.pageTitle ?? "Identity verification", icon: "user" },
+      );
+      return items;
+    }
+    return items;
+  })();
 
   const isActive = (href: string) =>
     href === AUTHENTICATED_HOME_ROUTE ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -109,7 +136,7 @@ export function Sidebar() {
         <Nav items={primary} isActive={isActive} label={strings.shell.mainNavigation} />
         <Nav items={secondary} isActive={isActive} label={strings.shell.secondaryNavigation} />
 
-        {isAdmin && (
+        {isAdmin && admin.length > 0 && (
           <Nav items={admin} isActive={isActive} label={strings.shell.navAdmin} />
         )}
 

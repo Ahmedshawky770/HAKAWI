@@ -8,6 +8,8 @@ import { ContestCard, ContestListEmpty, ContestListSkeleton } from "@/components
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { classifyError } from "@/lib/errors";
 import { isFailedLoad, useContests } from "@/lib/queries";
+import { ButtonLink } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 
 export default function ContestsPage() {
   const strings = useStrings();
@@ -28,11 +30,14 @@ export default function ContestsPage() {
 
   if (isFailedLoad(contestsQuery)) {
     return (
-      <ErrorMessage
-        error={strings.errors[classifyError(error)]}
-        title={strings.contests.listLoadFailed}
-        onRetry={() => void refetch()}
-      />
+      <>
+        <PageHeader title={strings.contests.listTitle} />
+        <ErrorMessage
+          error={strings.errors[classifyError(error)]}
+          title={strings.contests.listLoadFailed}
+          onRetry={() => void refetch()}
+        />
+      </>
     );
   }
 

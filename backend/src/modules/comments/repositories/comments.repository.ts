@@ -75,7 +75,12 @@ export class CommentsRepository implements ICommentsRepository {
 
   async create(data: CreateCommentInput): Promise<Comment> {
     this.logger.info(`Creating comment on story: ${data.storyId}`);
-    const [comment] = (await db.insert(comments).values(data).returning()) as Comment[];
+    // `parentId` is optional in `CreateCommentInput`. `undefined` would reach Postgres as an unbound
+    // parameter and can break the insert, so normalise it to `null` before writing.
+    const [comment] = (await db
+      .insert(comments)
+      .values({ ...data, parentId: data.parentId ?? null })
+      .returning()) as Comment[];
     return comment;
   }
 

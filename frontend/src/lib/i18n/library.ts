@@ -30,6 +30,7 @@ export interface LibraryStrings {
   /* One entry of the shelf. */
   detailsAction: string;
   removeAction: string;
+  removeConfirm: string;
   /** The title of an entry whose book could not be fetched. */
   unknownBookTitle: string;
   /** The vocabulary of the shelf: owned, rented, reading, completed. */
@@ -68,6 +69,7 @@ export const AR: LibraryStrings = {
 
   detailsAction: "عرض التفاصيل",
   removeAction: "إزالة",
+  removeConfirm: "تأكيد إزالة الكتاب من المكتبة؟",
   unknownBookTitle: "كتاب",
   statusLabels: {
     owned: "مملوك",
@@ -106,6 +108,7 @@ export const EN: LibraryStrings = {
 
   detailsAction: "View details",
   removeAction: "Remove",
+  removeConfirm: "Confirm removing this book from your library?",
   unknownBookTitle: "Book",
   statusLabels: {
     owned: "Owned",

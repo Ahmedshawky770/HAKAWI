@@ -117,6 +117,7 @@ export const MODERATION_STATUS_TONES: Record<string, BadgeTone> = {
   in_review: "warning",
   resolved: "success",
   dismissed: "neutral",
+  escalated: "warning",
 };
 
 export function toneFor(map: Record<string, BadgeTone>, status: string): BadgeTone {

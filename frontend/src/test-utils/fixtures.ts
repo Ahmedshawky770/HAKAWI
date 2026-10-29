@@ -40,6 +40,7 @@ export const STORY: Story = {
   tags: ["غموض"],
   views: 1500,
   reactions: 42,
+  commentCount: 3,
   author: { id: "user-1", name: "أحمد محمد" },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-02T00:00:00.000Z",

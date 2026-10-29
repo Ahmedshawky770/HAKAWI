@@ -102,6 +102,7 @@ describe("Stories list page", () => {
           tags: [],
           views: 150,
           reactions: 42,
+          commentCount: 3,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },

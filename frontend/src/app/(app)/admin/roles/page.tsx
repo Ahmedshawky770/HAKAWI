@@ -288,13 +288,13 @@ export default function RolesAdminPage() {
                           loading={revokeMutation.isPending}
                           disabled={revokeMutation.isPending}
                            onClick={() => {
-                             const revokeReason = window.prompt(strings.admin.roles.assignReason("—"));
-                             if (!revokeReason || revokeReason.trim().length === 0) return;
-                             if (window.confirm(strings.admin.roles.revokeConfirm)) {
+                             if (confirm(strings.admin.roles.revokeConfirm)) {
+                               const revokeReason = prompt(strings.admin.roles.assignReason("—"));
+                               if (!revokeReason || revokeReason.trim().length === 0) return;
                                revokeMutation.mutate({
                                  userId: assignment.userId,
                                  adminRole: assignment.adminRole,
-                                 revokeReason: revokeReason.trim(),
+                                  revokeReason: revokeReason.trim(),
                                });
                              }
                            }}

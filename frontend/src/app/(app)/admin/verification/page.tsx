@@ -142,7 +142,7 @@ export default function VerificationAdminPage() {
                           loading={reviewMutation.isPending}
                           disabled={reviewMutation.isPending}
                           onClick={() => {
-                            const reason = window.prompt(strings.admin.verification.rejectVerification);
+                            const reason = prompt(strings.admin.verification.rejectVerification);
                             if (reason === null) return;
                             reviewMutation.mutate({ id: app.id, status: "rejected", rejectionReason: reason || undefined });
                           }}

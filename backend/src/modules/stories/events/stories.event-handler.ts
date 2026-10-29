@@ -80,11 +80,15 @@ export class StoriesEventHandler {
     authorId: string;
     parentId?: string;
   }): Promise<void> {
+    // Only top-level comments count toward the story's comment_count, matching what
+    // `commentsListResponse.total` reports (replies are excluded from the listing and its count).
+    if (event.parentId !== null && event.parentId !== undefined) return;
     await this.bump('comment.created', event.storyId, (repository) => repository.incrementCommentCount(event.storyId));
   }
 
   @OnEvent('comment.deleted')
-  async handleCommentDeleted(event: { commentId: string; storyId: string }): Promise<void> {
+  async handleCommentDeleted(event: { commentId: string; storyId: string; parentId?: string }): Promise<void> {
+    if (event.parentId !== null && event.parentId !== undefined) return;
     await this.bump('comment.deleted', event.storyId, (repository) => repository.decrementCommentCount(event.storyId));
   }
 

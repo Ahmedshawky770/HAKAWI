@@ -127,7 +127,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           a test and ambiguous for a screen reader scanning landmarks. A bare
           `aria-live` announces additions exactly the same. */}
       <div
-        className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6"
         aria-live="polite"
       >
         {toasts.map((toast) => (

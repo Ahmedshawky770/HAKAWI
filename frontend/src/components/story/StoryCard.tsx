@@ -151,9 +151,9 @@ export function StoryCardSkeleton({ variant = "full" }: { variant?: "full" | "co
  * the page height is roughly right before the data lands and the scrollbar does
  * not jump on arrival (Cumulative Layout Shift < 0.1, §10).
  */
-export function StoryFeedSkeleton({ count = 3, variant = "full" }: { count?: number; variant?: "full" | "compact" }) {
+export function StoryFeedSkeleton({ count = 8, variant = "full" }: { count?: number; variant?: "full" | "compact" }) {
   return (
-    <div className={`${variant === "compact" ? "space-y-4" : "space-y-6"}`} aria-hidden="true">
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden="true">
       {Array.from({ length: count }, (_, index) => (
         <StoryCardSkeleton key={index} variant={variant} />
       ))}

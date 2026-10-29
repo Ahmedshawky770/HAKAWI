@@ -1,5 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 
+import { api, clearStoredUser, getStoredRefreshToken } from "@/lib/api";
+import { LOGOUT_REDIRECT_ROUTE } from "@/lib/routes";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { setStoredUser, type StoredUser } from "@/lib/api";
 
 /**
@@ -54,4 +58,21 @@ export function startSession(queryClient: QueryClient, user: StoredUser): void {
   // cache and the new session, and never the other order round.
   queryClient.clear();
   setStoredUser(user);
+}
+
+/**
+ * A hook that returns a logout function. It calls the backend logout endpoint,
+ * clears the stored user, clears the query cache, and redirects to the logout
+ * redirect route.
+ */
+export function useLogout(): () => Promise<void> {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  return async () => {
+    await api.logout(getStoredRefreshToken() ?? undefined).catch(() => null);
+    clearStoredUser();
+    queryClient.clear();
+    router.push(LOGOUT_REDIRECT_ROUTE);
+  };
 }

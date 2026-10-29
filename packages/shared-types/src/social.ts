@@ -34,7 +34,7 @@ export type Comment = {
 
 export type CommentsListResponse = NamedPage<'comments', Comment>;
 
-export type CommentRepliesResponse = Paginated<Comment>;
+export type CommentRepliesResponse = NamedPage<'replies', Comment>;
 
 export type Follow = {
   id: string;

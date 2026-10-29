@@ -21,6 +21,7 @@ import { MAX_STORY_TAGS } from '../dto/stories.dto.ts';
 import { PUBLIC_STORY_STATUS } from '../types.ts';
 import type { Story } from '../types.ts';
 
+import { CategoriesService } from '../../categories/categories.service.ts';
 import { StoriesController } from './stories.controller.ts';
 
 const JWT_SECRET = 'test-jwt-secret-for-controller-specs';
@@ -82,10 +83,15 @@ type MockStoriesService = {
   incrementViewCount: ReturnType<typeof vi.fn>;
 };
 
+type MockCategoriesService = {
+  findBySlug: ReturnType<typeof vi.fn>;
+};
+
 describe('StoriesController', () => {
   let app: INestApplication;
   let httpServer: Server;
   let storiesService: MockStoriesService;
+  let categoriesService: MockCategoriesService;
   let resolveOwnerId: Mock<OwnershipResolver['resolveOwnerId']>;
 
   beforeAll(async () => {
@@ -104,6 +110,15 @@ describe('StoriesController', () => {
       delete: vi.fn(),
       incrementViewCount: vi.fn(),
     };
+    categoriesService = {
+      findBySlug: vi.fn(),
+    };
+    vi.mocked(categoriesService.findBySlug).mockImplementation(async (slug: string) => {
+      if (slug === 'cat-1') {
+        return { id: 'cat-1', slug: 'cat-1', name: 'Cat 1' };
+      }
+      throw new NotFoundException('Category not found');
+    });
     resolveOwnerId = vi.fn<OwnershipResolver['resolveOwnerId']>().mockResolvedValue('user-1');
 
     const moduleRef = await Test.createTestingModule({
@@ -113,6 +128,10 @@ describe('StoriesController', () => {
         {
           provide: StoriesService,
           useValue: storiesService,
+        },
+        {
+          provide: CategoriesService,
+          useValue: categoriesService,
         },
         JwtAuthGuard,
         // The two public detail routes resolve the caller's identity through this one, so it has to
@@ -222,6 +241,15 @@ describe('StoriesController', () => {
       await request(httpServer).get('/stories?category=cat-1').expect(200);
 
       expect(storiesService.findAll).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'cat-1' }));
+    });
+
+    it('should answer a category slug that names no row with 404', async () => {
+      vi.mocked(storiesService.findAll).mockResolvedValue({ stories: [], total: 0, page: 1, limit: 20 });
+
+      await request(httpServer).get('/stories?category=does-not-exist').expect(404);
+
+      expect(storiesService.findAll).not.toHaveBeenCalled();
+      expect(vi.mocked(categoriesService.findBySlug)).toHaveBeenCalledWith('does-not-exist');
     });
 
     it('should forward the search filter and pin the status instead of reading it', async () => {

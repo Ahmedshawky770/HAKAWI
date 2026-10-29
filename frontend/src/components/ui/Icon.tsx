@@ -53,6 +53,8 @@ const PATHS = {
   tag: "M4 5.5A1.5 1.5 0 0 1 5.5 4H11l8 8-6.5 6.5-8-8Zm4.5 3.5h.01",
   users: "M9 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.5.5a3 3 0 1 0 0-6m3 13.5a6 6 0 0 0-5-5.9m-11 5.9a6 6 0 0 1 5-5.9",
   download: "M12 4v10m0 0 4-4m-4 4-4-4M5 18.5h14",
+  badge: "M12 2L3 7v6a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4V7zM3 7l9-5 9 5v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7z",
+  flag: "M4 15S1 12 1 4V1s5 3 5 12M7 13l5-3 5 3V4l-5-3-5 3z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

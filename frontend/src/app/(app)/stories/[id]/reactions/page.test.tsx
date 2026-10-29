@@ -63,6 +63,7 @@ describe("Story reactions page", () => {
       tags: [],
       views: 0,
       reactions: 0,
+      commentCount: 0,
       author: { id: "user-1", name: "أحمد" },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

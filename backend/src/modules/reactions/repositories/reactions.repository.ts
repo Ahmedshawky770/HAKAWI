@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { eq, and, desc, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -33,8 +34,9 @@ export class ReactionsRepository implements IReactionsRepository {
       } as Reaction;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const [reaction] = await db
           .select()
           .from(reactions)
@@ -68,8 +70,9 @@ export class ReactionsRepository implements IReactionsRepository {
       } as Reaction;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const [reaction] = await db
           .select()
           .from(reactions)
@@ -114,8 +117,9 @@ export class ReactionsRepository implements IReactionsRepository {
       return { reactions: reactionsList as Reaction[], total: Number(countResult.rows[0]?.total ?? 0) };
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const [reactionsList, [{ total }]] = await Promise.all([
           db
             .select()
@@ -138,7 +142,12 @@ export class ReactionsRepository implements IReactionsRepository {
   async create(data: { userId: string; storyId: string; type: string }): Promise<Reaction> {
     this.logger.info(`Creating reaction: ${data.type} on story ${data.storyId}`);
     return await dbPrimary.transaction(async (tx) => {
-      const [reaction] = await tx.insert(reactionsP).values(data as never).returning();
+      // Partitioned tables require `id` and `created_at` in the INSERT because both are part of
+      // the composite primary key `(id, created_at)`, and `id` has no default on the parent table.
+      const [reaction] = await tx
+        .insert(reactionsP)
+        .values({ id: randomUUID(), ...data, createdAt: new Date() } as never)
+        .returning();
       return reaction;
     });
   }
@@ -173,8 +182,9 @@ export class ReactionsRepository implements IReactionsRepository {
       return Number(countResult.rows[0]?.total ?? 0);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const [{ total }] = await db
           .select({ total: sql<number>`count(*)` })
           .from(reactions)
@@ -193,8 +203,9 @@ export class ReactionsRepository implements IReactionsRepository {
       return Number(countResult.rows[0]?.total ?? 0);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const [{ total }] = await db
           .select({ total: sql<number>`count(*)` })
           .from(reactions)
@@ -225,8 +236,9 @@ export class ReactionsRepository implements IReactionsRepository {
       return Object.fromEntries((rows?.rows ?? rows ?? []).map((row: Record<string, unknown>) => [String(row.type), Number(row.total)]));
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy reactions table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy reactions table if it exists.
+      if (code === '42P01' || code === undefined) {
         const dbRows = await db
           .select({ type: reactions.type, total: sql<number>`count(*)` })
           .from(reactions)

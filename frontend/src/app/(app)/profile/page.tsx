@@ -21,6 +21,7 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 import { useToast } from "@/components/providers/ToastProvider";
 import { classifyError } from "@/lib/errors";
 import { isFailedLoad, useInvalidation, useUserProfile, useUserStats } from "@/lib/queries";
+import { useLogout } from "@/lib/session";
 
 function ProgressRow({
   label,
@@ -79,8 +80,9 @@ function ProgressRow({
 export default function ProfilePage() {
   const router = useRouter();
   const strings = useStrings();
-  const { notify } = useToast();
+  const toast = useToast();
   const invalidate = useInvalidation();
+  const logout = useLogout();
 
   const storedUser = useStoredUser();
   const hasSession = Boolean(storedUser);
@@ -115,12 +117,12 @@ export default function ProfilePage() {
     mutationFn: () => api.professionalRequest(),
     onSuccess: async (result) => {
       if (result.eligible) {
-        notify(strings.profile.upgradeRequested, "success");
+        toast.notify(strings.profile.upgradeRequested, "success");
         await invalidate.users(userId);
         return;
       }
       const reasons = result.reasons?.length ? result.reasons.join("، ") : "";
-      notify(
+      toast.notify(
         reasons
           ? `${strings.profile.upgradeNotEligible} ${reasons}`
           : strings.profile.upgradeNotEligible,
@@ -128,7 +130,7 @@ export default function ProfilePage() {
       );
     },
     onError: (err) => {
-      notify(strings.errors[classifyError(err)], "error");
+      toast.notify(strings.errors[classifyError(err)], "error");
     },
   });
 
@@ -296,6 +298,25 @@ export default function ProfilePage() {
           </CardBody>
         </Card>
       )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <ButtonLink href="/badges" variant="secondary">
+          <Icon name="badge" size="sm" />
+          {strings.shell.navBadges}
+        </ButtonLink>
+        <ButtonLink href="/moderation/report" variant="secondary">
+          <Icon name="flag" size="sm" />
+          {strings.moderation.reportTitle}
+        </ButtonLink>
+        <Button
+          variant="ghost"
+          onClick={() => logout()}
+          className="text-error-ink hover:bg-error-soft hover:text-error-ink"
+        >
+          <Icon name="logout" size="sm" />
+          {strings.shell.signOut}
+        </Button>
+      </div>
     </div>
   );
 }

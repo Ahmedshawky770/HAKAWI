@@ -71,11 +71,12 @@ export class CommentReactionsService {
     commentId: string,
     page = 1,
     limit = 20,
-  ): Promise<{ reactions: CommentReaction[]; total: number }> {
+  ): Promise<{ reactions: CommentReaction[]; total: number; page: number; limit: number }> {
     const comment = await this.commentsRepository.findById(commentId);
     if (!comment || comment.isDeleted) {
       throw new NotFoundException('Comment not found');
     }
-    return this.commentReactionsRepository.findByComment(commentId, page, limit);
+    const { reactions, total } = await this.commentReactionsRepository.findByComment(commentId, page, limit);
+    return { reactions, total, page, limit };
   }
 }

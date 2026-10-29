@@ -123,13 +123,14 @@ export function MfaChallengeDialog({ open, onSubmit, onClose, error, pending = f
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-chrome/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/80 p-4 backdrop-blur-sm">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="mfa-challenge-title"
-        className="w-full max-w-md rounded-2xl bg-paper p-6 shadow-xl"
+        aria-labelledby="mfa-title"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-pop"
       >
         <h2 id="mfa-challenge-title" className="text-lg font-bold text-ink">
           {strings.auth.mfaChallengeTitle}

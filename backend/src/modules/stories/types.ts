@@ -167,6 +167,7 @@ export function toStoryResponse(
     tags: relations.tags ? [...relations.tags] : [],
     views: story.viewCount,
     reactions: story.likeCount,
+    commentCount: story.commentCount,
     author,
     createdAt: story.createdAt.toISOString(),
     updatedAt: story.updatedAt.toISOString(),

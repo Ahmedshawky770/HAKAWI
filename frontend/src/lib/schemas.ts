@@ -105,6 +105,7 @@ const storyWireSchema = z.object({
   tags: z.array(z.string()),
   views: z.number(),
   reactions: z.number(),
+  commentCount: z.number(),
   author: storyAuthorSchema,
   createdAt: isoDate,
   updatedAt: isoDate,
@@ -154,6 +155,7 @@ const toWireStory = (record: StoryRecord): Story => ({
   tags: [],
   views: record.viewCount,
   reactions: record.likeCount,
+  commentCount: record.commentCount,
   author: { id: record.authorId, name: readAuthorName(record.authorName) },
   createdAt: record.createdAt,
   updatedAt: record.updatedAt,
@@ -470,6 +472,19 @@ export const reactionsListResponseSchema = z.object({
   ...pageEnvelope,
 });
 
+export const commentReactionSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  commentId: z.string(),
+  type: reactionTypeSchema,
+  createdAt: isoDate,
+});
+
+export const commentReactionsListResponseSchema = z.object({
+  reactions: z.array(commentReactionSchema),
+  ...pageEnvelope,
+});
+
 export const reactionCountsSchema = z.object({
   like: z.number().optional(),
   love: z.number().optional(),
@@ -479,21 +494,32 @@ export const reactionCountsSchema = z.object({
   haunted: z.number().optional(),
 });
 
-export const commentSchema: z.ZodType<Comment> = z.object({
-  id: z.string(),
-  storyId: z.string(),
-  authorId: z.string(),
-  authorName: z.string(),
-  parentId: nullableString,
-  content: z.string(),
-  likeCount: z.number(),
-  replyCount: z.number(),
-  createdAt: isoDate,
-  updatedAt: isoDate,
-});
+export const commentSchema: z.ZodType<Comment, z.ZodTypeDef, unknown> = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    storyId: z.string(),
+    authorId: z.string(),
+    // `CommentsController.create`/`update` return the raw `comments` row, which has no
+    // `authorName` (the list endpoint is the one that joins the author). Defaulting keeps
+    // the create/update responses parseable instead of failing with a 502.
+    authorName: z.string().default(""),
+    parentId: nullableString,
+    content: z.string(),
+    likeCount: z.number(),
+    replyCount: z.number(),
+    replies: z.array(commentSchema).optional(),
+    createdAt: isoDate,
+    updatedAt: isoDate,
+  }),
+);
 
 export const commentsListResponseSchema = z.object({
   comments: z.array(commentSchema),
+  ...pageEnvelope,
+});
+
+export const commentRepliesResponseSchema = z.object({
+  replies: z.array(commentSchema),
   ...pageEnvelope,
 });
 

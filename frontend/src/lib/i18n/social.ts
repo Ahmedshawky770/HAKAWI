@@ -90,6 +90,40 @@ export interface SocialStrings {
   commentListEmpty: string;
   reactionListEmpty: string;
 
+  /* ---- the comment form ---- */
+  commentInputLabel: string;
+  commentInputPlaceholder: string;
+  commentSendButton: string;
+  commentSendFailed: string;
+  commentSentAnnouncement: string;
+  /** The word shown for the reader's own comment instead of their name. */
+  commentOwnLabel: string;
+  /** The character-limit hint under the composer. */
+  commentLimitReached: string;
+  commentRemaining: (count: number) => string;
+
+  /* ---- comment actions ---- */
+  commentReplyButton: string;
+  commentReplyPlaceholder: string;
+  commentEditButton: string;
+  commentDeleteButton: string;
+  commentDeleteConfirmButton: string;
+  commentDeleteUndoButton: string;
+  commentDeletedAnnouncement: string;
+  commentUpdateFailed: string;
+  commentDeleteFailed: string;
+  commentLoadingReplies: string;
+
+  /* ---- comment reactions ---- */
+  commentReactionLabel: string;
+  commentReactionFailed: string;
+  /** The word a comment count is read with on a story surface. */
+  commentCountLabel: string;
+  /** A comment count readout, split into digits and noun. */
+  commentCount: (count: number) => CountReadout;
+  /** Shown in the composer when the reader is not signed in. */
+  commentSignInRequired: string;
+
   /* ---- a reader's public profile ---- */
   profileLoadFailed: string;
   profileIdMissing: string;
@@ -157,6 +191,33 @@ export const AR: SocialStrings = {
   commentListEmpty: "لا توجد تعليقات بعد. كن أول من يعلق!",
   reactionListEmpty: "لا توجد تفاعلات بعد. كن أول من يتفاعل!",
 
+  commentInputLabel: "أضف تعليقاً",
+  commentInputPlaceholder: "اكتب تعليقك هنا…",
+  commentSendButton: "إرسال",
+  commentSendFailed: "تعذّر إرسال التعليق",
+  commentSentAnnouncement: "تم إرسال تعليقك",
+  commentOwnLabel: "أنت",
+  commentLimitReached: "وصلت الحد الأقصى لطول التعليق",
+  commentRemaining: (count) => `${count} حرفاً متبقياً`,
+
+  commentReplyButton: "الرد",
+  commentReplyPlaceholder: "اكتب ردك…",
+  commentEditButton: "تعديل",
+  commentDeleteButton: "حذف",
+  commentDeleteConfirmButton: "تأكيد الحذف",
+  commentDeleteUndoButton: "تراجع",
+  commentDeletedAnnouncement: "تم حذف التعليق",
+  commentUpdateFailed: "فشل تحديث التعليق",
+  commentDeleteFailed: "فشل حذف التعليق",
+  commentLoadingReplies: "جاري تحميل الردود…",
+
+  commentReactionLabel: "تفاعل",
+  commentReactionFailed: "تعذّر تسجيل التفاعل.",
+  commentCountLabel: "تعليق",
+  commentCount: (count) =>
+    countReadout(count, "ar", { zero: "تعليقات", one: "تعليق", two: "تعليقان", few: "تعليقات", many: "تعليقاً", other: "تعليق" }),
+  commentSignInRequired: "سجّل الدخول لتتمكن من التعليق",
+
   profileLoadFailed: "تعذّر تحميل الملف الشخصي",
   profileIdMissing: "معرف المستخدم مفقود",
   profileUserNotFound: "المستخدم غير موجود",
@@ -223,6 +284,32 @@ export const EN: SocialStrings = {
   commentReplies: (count) => countReadout(count, "en", { one: "reply", other: "replies" }),
   commentListEmpty: "No comments yet. Be the first to comment!",
   reactionListEmpty: "No reactions yet. Be the first to react!",
+
+  commentInputLabel: "Add a comment",
+  commentInputPlaceholder: "Write your comment here…",
+  commentSendButton: "Send",
+  commentSendFailed: "Couldn't send the comment",
+  commentSentAnnouncement: "Your comment was sent",
+  commentOwnLabel: "You",
+  commentLimitReached: "You've reached the comment length limit",
+  commentRemaining: (count) => `${count} characters left`,
+
+  commentReplyButton: "Reply",
+  commentReplyPlaceholder: "Write your reply…",
+  commentEditButton: "Edit",
+  commentDeleteButton: "Delete",
+  commentDeleteConfirmButton: "Confirm deletion",
+  commentDeleteUndoButton: "Undo",
+  commentDeletedAnnouncement: "The comment was deleted",
+  commentUpdateFailed: "Couldn't update the comment",
+  commentDeleteFailed: "Couldn't delete the comment",
+  commentLoadingReplies: "Loading replies…",
+
+  commentReactionLabel: "React",
+  commentReactionFailed: "Couldn't record the reaction.",
+  commentCountLabel: "comment",
+  commentCount: (count) => countReadout(count, "en", { one: "comment", other: "comments" }),
+  commentSignInRequired: "Sign in to comment",
 
   profileLoadFailed: "Couldn't load the profile",
   profileIdMissing: "The user's id is missing",

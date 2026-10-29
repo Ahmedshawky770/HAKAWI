@@ -33,7 +33,7 @@ describe('toStoryResponse', () => {
 
     expect(response).not.toHaveProperty('viewCount');
     expect(response).not.toHaveProperty('likeCount');
-    expect(response).not.toHaveProperty('commentCount');
+    expect(response.commentCount).toBe(1);
     expect(response).not.toHaveProperty('categoryId');
     expect(response).not.toHaveProperty('authorId');
     expect(response).not.toHaveProperty('readingTime');

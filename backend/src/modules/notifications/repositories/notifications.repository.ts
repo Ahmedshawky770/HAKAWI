@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { and, eq, desc, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
@@ -43,14 +44,19 @@ export class NotificationsRepository implements INotificationsRepository {
       } as Notification;
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy notifications table.
-      if (code === '42P01') {
-        const [notification] = await db
-          .select()
-          .from(notifications)
-          .where(eq(notifications.id, id))
-          .limit(1);
-        return notification ?? null;
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy notifications if it exists.
+      if (code === '42P01' || code === undefined) {
+        try {
+          const [notification] = await db
+            .select()
+            .from(notifications)
+            .where(eq(notifications.id, id))
+            .limit(1);
+          return notification ?? null;
+        } catch {
+          return null;
+        }
       }
       if (code === '22P02') {
         return null;
@@ -93,8 +99,9 @@ export class NotificationsRepository implements INotificationsRepository {
       return { notifications: notificationsList as Notification[], total: Number(countResult.rows[0]?.total ?? 0) };
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy notifications table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy notifications if it exists.
+      if (code === '42P01' || code === undefined) {
         const [notificationsList, [{ total }]] = await Promise.all([
           db
             .select()
@@ -146,8 +153,9 @@ export class NotificationsRepository implements INotificationsRepository {
       })) as Notification[];
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy notifications table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy notifications if it exists.
+      if (code === '42P01' || code === undefined) {
         return db
           .select()
           .from(notifications)
@@ -162,10 +170,15 @@ export class NotificationsRepository implements INotificationsRepository {
   async create(data: CreateNotificationInput): Promise<Notification> {
     this.logger.info(`Creating notification for user: ${data.userId}`);
     return await dbPrimary.transaction(async (tx) => {
-      // Writes route to primary via the transaction so the returning row is read from the same primary (read-after-write).
+      // Partitioned tables require `id` and `created_at` in the INSERT because both are part of
+      // the composite primary key `(id, created_at)`, and `id` has no default on the parent table.
       const [notification] = await tx
         .insert(notificationsP)
-        .values(data as never)
+        .values({
+          id: randomUUID(),
+          ...data,
+          createdAt: (data as { createdAt?: Date }).createdAt ?? new Date(),
+        } as never)
         .returning();
       return notification;
     });
@@ -207,8 +220,9 @@ export class NotificationsRepository implements INotificationsRepository {
       return Number(countResult.rows[0]?.total ?? 0);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
-      // 42P01 = undefined_table: fall back to legacy notifications table.
-      if (code === '42P01') {
+      // 42P01 = undefined_table: partitioned table doesn't exist yet (pre-cutover).
+      // Any other code: still fall back to legacy notifications if it exists.
+      if (code === '42P01' || code === undefined) {
         const [{ total }] = await db
           .select({ total: sql<number>`count(*)` })
           .from(notifications)

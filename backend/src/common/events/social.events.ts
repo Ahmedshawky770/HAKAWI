@@ -47,6 +47,7 @@ export class CommentDeletedEvent {
   constructor(
     public readonly commentId: string,
     public readonly storyId: string,
+    public readonly parentId?: string,
   ) {}
 }
 

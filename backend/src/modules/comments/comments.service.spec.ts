@@ -405,6 +405,7 @@ describe('CommentsService', () => {
       expect(eventEmitter.emit).toHaveBeenCalledWith('comment.deleted', {
         commentId: 'comment-123',
         storyId: 'story-1',
+        parentId: null,
       });
     });
   });

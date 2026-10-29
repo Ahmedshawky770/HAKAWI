@@ -236,7 +236,11 @@ export default function RentalDetailPage() {
               <Button
                 variant="danger"
                 loading={returnMutation.isPending}
-                onClick={() => returnMutation.mutate(rental.id)}
+                onClick={() => {
+                  if (confirm(strings.rentals.returnConfirm)) {
+                    returnMutation.mutate(rental.id);
+                  }
+                }}
                 className={canExtend ? "" : "sm:flex-1"}
               >
                 {copy.returnBookAction}

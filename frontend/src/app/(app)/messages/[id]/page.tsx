@@ -121,7 +121,7 @@ export default function ConversationPage() {
 
       <PageHeader title={strings.social.conversationTitle} />
 
-      <Card className="flex h-[70dvh] flex-col overflow-hidden">
+      <Card className="flex h-[calc(100dvh-14rem)] max-h-[calc(100dvh-12rem)] flex-col overflow-hidden sm:h-[70dvh] sm:max-h-none">
         <CardBody className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
             <EmptyState

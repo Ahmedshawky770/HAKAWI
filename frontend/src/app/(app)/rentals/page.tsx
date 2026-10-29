@@ -173,7 +173,11 @@ export default function RentalsPage() {
                   if (!days) return;
                   extendMutation.mutate({ id: rental.id, days });
                 }}
-                onReturn={() => returnMutation.mutate(rental.id)}
+                onReturn={() => {
+                  if (confirm(strings.rentals.returnConfirm)) {
+                    returnMutation.mutate(rental.id);
+                  }
+                }}
               />
             </li>
           ))}

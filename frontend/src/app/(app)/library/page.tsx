@@ -141,7 +141,11 @@ export default function LibraryPage() {
               <LibraryCard
                 item={item}
                 removing={removingId === item.id}
-                onRemove={() => removeMutation.mutate(item.id)}
+                onRemove={() => {
+                  if (confirm(strings.library.removeConfirm)) {
+                    removeMutation.mutate(item.id);
+                  }
+                }}
               />
             </li>
           ))}

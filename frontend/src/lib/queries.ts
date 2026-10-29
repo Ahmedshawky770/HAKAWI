@@ -181,8 +181,33 @@ export const reactionKeys = {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  BOOKS                                                                      */
+/*  COMMENTS                                                                  */
 /* -------------------------------------------------------------------------- */
+
+export const commentKeys = {
+  list: (storyId: string, params?: { page?: number; limit?: number }) =>
+    ["comments", "story", storyId, params ?? {}] as const,
+  replies: (commentId: string, params?: { page?: number; limit?: number }) =>
+    ["comments", "replies", commentId, params ?? {}] as const,
+};
+
+export function useComments(storyId: string, params?: { page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: commentKeys.list(storyId, params),
+    queryFn: () => api.getComments(storyId, params),
+    enabled: storyId.length > 0,
+  });
+}
+
+export function useCommentReplies(commentId: string, params?: { page?: number; limit?: number; enabled?: boolean }) {
+  return useQuery({
+    queryKey: commentKeys.replies(commentId, params),
+    queryFn: () => api.getCommentReplies(commentId, params),
+    enabled: commentId.length > 0 && (params?.enabled ?? true),
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
+  });
+}
 
 export const bookKeys = {
   list: (params?: { page?: number; limit?: number; categoryId?: string }) =>
@@ -658,6 +683,14 @@ export function useInvalidation() {
           await queryClient.invalidateQueries({ queryKey: rentalKeys.detail(rentalId) });
         }
         await queryClient.invalidateQueries({ queryKey: ["library"] });
+      },
+
+      /** A comment was created, updated or deleted. */
+      comments: async (storyId?: string) => {
+        await queryClient.invalidateQueries({ queryKey: ["comments"] });
+        if (storyId) {
+          await queryClient.invalidateQueries({ queryKey: commentKeys.list(storyId) });
+        }
       },
 
       /** A payment moved. */
