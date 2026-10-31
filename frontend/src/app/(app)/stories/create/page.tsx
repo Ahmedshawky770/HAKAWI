@@ -58,7 +58,10 @@ const categoryOptions =
     categoriesQuery.data && categoriesQuery.data.length > 0
       ? [
           { value: "", label: strings.story.uncategorized },
-          ...categoriesQuery.data.map((c) => ({ value: c.slug, label: c.name })),
+          ...categoriesQuery.data.map((c) => ({
+            value: c.slug,
+            label: storyCategories(locale).find((x) => x.value === c.slug)?.label ?? c.name,
+          })),
         ]
       : [
           { value: "", label: strings.story.uncategorized },
