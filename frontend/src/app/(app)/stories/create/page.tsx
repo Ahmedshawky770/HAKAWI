@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import type { StoryMutationInput } from "@hakawi/shared-types";
 
 import { api } from "@/lib/api";
 import { classifyError } from "@/lib/errors";
-import { useInvalidation } from "@/lib/queries";
+import { useCategories, useInvalidation } from "@/lib/queries";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -42,13 +42,28 @@ const TITLE_LIMIT = 120;
 export default function CreateStoryPage() {
   const router = useRouter();
   const { locale, strings } = useLocale();
-  const invalidation = useInvalidation();
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [category, setCategory] = useState("fiction");
-  const [tags, setTags] = useState("");
+const invalidation = useInvalidation();
+const categoriesQuery = useCategories();
+const [title, setTitle] = useState("");
+const [content, setContent] = useState("");
+const [category, setCategory] = useState("");
+const [tags, setTags] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remaining = TITLE_LIMIT - title.trim().length;
+const categoryOptions =
+    categoriesQuery.data && categoriesQuery.data.length > 0
+      ? [
+          { value: "", label: strings.story.uncategorized },
+          ...categoriesQuery.data.map((c) => ({ value: c.slug, label: c.name })),
+        ]
+      : [
+          { value: "", label: strings.story.uncategorized },
+          ...storyCategories(locale),
+        ];
 
   const createStory = useMutation({
     mutationFn: (payload: StoryMutationInput) => api.createStory(payload),
@@ -69,12 +84,45 @@ export default function CreateStoryPage() {
     },
   });
 
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
+  const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImageError(null);
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError(strings.story.unsupportedImageType);
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageError(strings.story.imageTooLarge);
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const ticket = await api.uploadFile(file);
+      const url = ticket.cdnUrl || ticket.url;
+      setCoverImage(url);
+    } catch {
+      setImageError(strings.story.imageUploadFailed);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedCategory = categoriesQuery.data?.find((c) => c.slug === category);
     createStory.mutate({
       title,
       content,
-      category,
+      // Only send a categoryId when the chosen slug actually resolves to a seeded category.
+      // A selection made before the categories list loaded cannot be resolved, so it is
+      // dropped rather than sent as an unresolvable slug.
+      ...(selectedCategory ? { categoryId: selectedCategory.id } : {}),
+      ...(coverImage ? { coverImage } : {}),
       tags: tags
         .split(",")
         .map((t) => t.trim())
@@ -123,11 +171,43 @@ export default function CreateStoryPage() {
               hint={strings.story.contentHint}
             />
 
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleImageSelected}
+              aria-label={strings.story.addImageLabel}
+            />
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                loading={uploadingImage}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? strings.story.imageUploadingLabel : strings.story.addImageLabel}
+              </Button>
+              {coverImage && (
+                <img
+                  src={coverImage}
+                  alt=""
+                  className="h-16 w-16 rounded-md object-cover border border-line"
+                />
+              )}
+              {imageError && (
+                <span role="alert" className="text-sm text-error-ink">
+                  {imageError}
+                </span>
+              )}
+            </div>
+
             <Select
               label={strings.story.storiesCategoryLabel}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              options={storyCategories(locale)}
+              options={categoryOptions}
             />
 
             <Input

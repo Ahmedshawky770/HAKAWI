@@ -180,7 +180,7 @@ describe('MessagesRepository', () => {
 
       expect(created).toMatchObject({ id: MESSAGE_ID });
       expect(db.insert).toHaveBeenCalledWith(messagesP);
-      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ ...input, createdAt: expect.any(Date) }]);
+      expect(firstArgsOf(chainAt(chains, 0), 'values')).toEqual([{ ...input, id: expect.any(String), createdAt: expect.any(Date) }]);
     });
   });
 

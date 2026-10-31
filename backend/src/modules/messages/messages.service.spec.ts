@@ -506,7 +506,7 @@ describe('MessagesService', () => {
       vi.mocked(messagesRepository.findById).mockResolvedValue(message({ senderId: 'user-2' }));
       vi.mocked(conversationsRepository.findById).mockResolvedValue(CONVERSATION);
 
-      await expect(messagesService.markAsRead('msg-123', 'attacker-999')).rejects.toThrow(ForbiddenException);
+      await expect(messagesService.markAsRead('msg-123', 'attacker-999')).rejects.toThrow(NotFoundException);
       expect(messagesRepository.markAsRead).not.toHaveBeenCalled();
     });
 
@@ -536,7 +536,7 @@ describe('MessagesService', () => {
       vi.mocked(messagesRepository.findById).mockResolvedValue(message({ senderId: 'user-2' }));
       vi.mocked(conversationsRepository.findById).mockResolvedValue(null);
 
-      await expect(messagesService.markAsRead('msg-123', 'user-1')).rejects.toThrow(ForbiddenException);
+      await expect(messagesService.markAsRead('msg-123', 'user-1')).rejects.toThrow(NotFoundException);
       expect(messagesRepository.markAsRead).not.toHaveBeenCalled();
     });
   });

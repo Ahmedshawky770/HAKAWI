@@ -672,6 +672,15 @@ export const userBadgesResponseSchema = z.object({
   badges: z.array(awardedBadgeSchema),
 });
 
+export const categorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  isActive: z.boolean().optional(),
+});
+
+export type Category = z.infer<typeof categorySchema>;
+
 export const publisherStatsSchema = z.object({
   totalContests: z.number(),
   activeContests: z.number(),
@@ -823,7 +832,7 @@ export const uploadTicketSchema: z.ZodType<UploadTicket> = z.object({
   mimetype: z.string(),
   size: z.number(),
   url: z.string(),
-  cdnUrl: z.string().optional(),
+  cdnUrl: z.string().nullable().optional(),
   uploadedAt: z.string().optional(),
 });
 

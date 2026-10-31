@@ -55,5 +55,6 @@ export function verifyAccessToken(
 ): Promise<JwtPayload> {
   return jwtService.verifyAsync<JwtPayload>(token, {
     secret: configService.get<string>('jwt.secret'),
+    algorithms: ['HS256'],
   });
 }

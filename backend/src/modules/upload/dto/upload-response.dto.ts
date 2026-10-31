@@ -28,7 +28,7 @@ export class UploadResponseDto {
 
 export type UploadResponse = UploadResponseDto;
 
-export const UPLOAD_FILENAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+export const UPLOAD_FILENAME_PATTERN = /^[A-Za-z0-9._\-/]+$/;
 
 export class GenerateUploadUrlDto {
   @IsOptional()
@@ -40,6 +40,11 @@ export class GenerateUploadUrlDto {
   @IsString()
   @MaxLength(100, { message: 'Content type must not exceed 100 characters' })
   contentType?: string;
+
+  @IsOptional()
+  @IsInt({ message: 'Size must be an integer' })
+  @Min(0, { message: 'Size must not be negative' })
+  size?: number;
 }
 
 /**

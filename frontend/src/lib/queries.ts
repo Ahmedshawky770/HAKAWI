@@ -88,6 +88,22 @@ export const storyKeys = {
   detail: (storyId: string) => ["stories", "detail", storyId] as const,
 };
 
+/* -------------------------------------------------------------------------- */
+/*  CATEGORIES                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const categoryKeys = {
+  list: () => ["categories", "list"] as const,
+};
+
+export function useCategories() {
+  return useQuery({
+    queryKey: categoryKeys.list(),
+    queryFn: () => api.listCategories(),
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
 /**
  * How many pages exist, from the totals the API already returns.
  *

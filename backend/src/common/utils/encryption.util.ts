@@ -74,6 +74,9 @@ export class EncryptionService {
 
   decrypt(ciphertext: string): string {
     const combined = Buffer.from(ciphertext, 'base64');
+    if (combined.length < IV_LENGTH + AUTH_TAG_LENGTH) {
+      throw new Error('Invalid ciphertext: too short');
+    }
     const iv = combined.subarray(0, IV_LENGTH);
     const encrypted = combined.subarray(IV_LENGTH, combined.length - AUTH_TAG_LENGTH);
     const authTag = combined.subarray(combined.length - AUTH_TAG_LENGTH);

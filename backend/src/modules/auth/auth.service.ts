@@ -53,6 +53,15 @@ import {
  * short-circuits, which is unavoidable with this primitive; what it removes is the per-byte
  * early exit that `===` performs on a value of the same length.
  */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function timingSafeEqualStrings(a: string, b: string): boolean {
   const bufferA = Buffer.from(a, 'utf8');
   const bufferB = Buffer.from(b, 'utf8');
@@ -124,12 +133,20 @@ export class AuthService {
     @Inject(AccountRestrictionService) private readonly accountRestrictions: AccountRestrictionService,
   ) {}
 
-  async getAuthorizationUrl(provider: string, state?: string): Promise<string> {
+  async getAuthorizationUrl(provider: string): Promise<string> {
     if (!isOAuthProvider(provider)) {
       throw new BadRequestException(`Unsupported OAuth provider: ${provider}`);
     }
 
-    const stateToken = state || this.generateState();
+    // WHY THE STATE IS MINTED HERE AND NOT TAKEN FROM THE CALLER. The OAuth callback
+    // compares the state the provider returns against the one stored in Valkey, and that
+    // comparison is the whole CSRF defence of the flow. If the caller supplied the state,
+    // a request that forged a provider redirect could also forge a state the server had
+    // already stored — the check would still pass. The state is a secret the server owns,
+    // so it is generated here, 256 bits from `crypto.randomBytes`, and the caller never
+    // touches it. The controller route no longer reads a `state` query parameter at all, so
+    // no caller can influence the value that gets stored.
+    const stateToken = this.generateState();
     // WHY this is awaited and not `void`-ed: this write is the CSRF defence for the entire OAuth
     // flow, and the callback reads it. Fired without awaiting, the callback could arrive before
     // the write landed and a legitimate sign-in would fail with a state mismatch; a Valkey
@@ -187,7 +204,7 @@ export class AuthService {
   }
 
   private generateState(): string {
-    return crypto.randomUUID();
+    return crypto.randomBytes(32).toString('hex');
   }
 
   private buildGoogleAuthUrl(state: string): string {
@@ -980,7 +997,7 @@ export class AuthService {
       return;
     }
 
-    const resetToken = crypto.randomUUID();
+    const resetToken = crypto.randomBytes(32).toString('hex');
     const encryptedToken = this.encryptionService.encrypt(resetToken);
 
     await this.usersRepository.update(user.id, {
@@ -1036,7 +1053,7 @@ export class AuthService {
         `Your Hakawi password reset code is ${resetToken}. It expires in 1 hour. ` +
         'If you did not request a password reset, no action is needed and your password is unchanged.',
       html:
-        `<p>Your Hakawi password reset code is <strong>${resetToken}</strong>. It expires in 1 hour.</p>` +
+        `<p>Your Hakawi password reset code is <strong>${escapeHtml(resetToken)}</strong>. It expires in 1 hour.</p>` +
         '<p>If you did not request a password reset, no action is needed and your password is unchanged.</p>',
     });
 
@@ -1053,6 +1070,9 @@ export class AuthService {
     if (!userId) {
       throw new BadRequestException('Invalid or expired reset token');
     }
+
+    // Consume the code up front so a failed validation cannot be retried against the same code.
+    await this.valkeyService.del(`password:reset:${token}`);
 
     const user = await this.usersRepository.findById(userId);
     if (!user || !user.passwordResetToken) {

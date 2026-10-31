@@ -17,6 +17,7 @@ export { onSessionChanged, onSessionLost, notifySessionChanged, notifySessionLos
 import {
   authResponseSchema,
   badgeCatalogSchema,
+  categorySchema,
   bookCheckoutSchema,
   bookRecordResponseSchema,
   bookResponseSchema,
@@ -677,6 +678,8 @@ export const api = {
       }),
     ),
 
+  listCategories: () => apiRequest(z.array(categorySchema), "/categories"),
+
   /**
    * One story.
    *
@@ -1123,12 +1126,12 @@ export const api = {
       mimetype: z.string(),
       size: z.number(),
       url: z.string(),
-      cdnUrl: z.string().optional(),
+      cdnUrl: z.string().nullable().optional(),
     });
 
     const presignedResponse = await apiRequest(generateUploadUrlSchema, endpoint, {
       method: 'POST',
-      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
     });
 
     const uploadResponse = await fetch(presignedResponse.url, {

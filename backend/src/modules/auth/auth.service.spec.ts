@@ -1226,9 +1226,9 @@ describe('AuthService', () => {
     });
 
     it('writes the CSRF state before returning, so the callback cannot race it', async () => {
-      await authService.getAuthorizationUrl('google', 'fixed-state-token');
+      await authService.getAuthorizationUrl('google');
 
-      expect(valkeyService.set).toHaveBeenCalledWith('oauth:state:fixed-state-token', 'google', 600);
+      expect(valkeyService.set).toHaveBeenCalledWith(expect.stringMatching(/^oauth:state:/), 'google', 600);
     });
 
     it('should generate Facebook authorization URL', async () => {

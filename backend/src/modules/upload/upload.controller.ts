@@ -11,13 +11,17 @@ import {
   HttpStatus,
   BadRequestException,
   Request,
+  StreamableFile,
+  Res,
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../common/guards/restriction.guard.ts';
 import { ThrottleTier } from '../../common/decorators/throttle-tier.decorator.ts';
+import { Public } from '../../common/decorators/roles.decorator.ts';
 
 import { UploadService } from './upload.service.ts';
+import type { Response as ExpressResponse } from 'express';
 import { ConfirmUploadDto, GenerateUploadUrlDto, UPLOAD_FILENAME_PATTERN } from './dto/upload-response.dto.ts';
 
 interface AuthenticatedRequest {
@@ -31,18 +35,18 @@ export class UploadController {
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('image')
-  async generateImageUploadUrl(@Body() body: GenerateUploadUrlDto) {
+  async generateImageUploadUrl(@Body() body: GenerateUploadUrlDto, @Request() req: AuthenticatedRequest) {
     const filename = this.resolveFilename(body.filename, 'image.png');
     const contentType = body.contentType || 'image/png';
-    return this.uploadService.generatePresignedUrl(filename, contentType, 'images');
+    return this.uploadService.generatePresignedUrl(filename, contentType, 'images', body.size, req.user.sub);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard)
   @Post('pdf')
-  async generatePdfUploadUrl(@Body() body: GenerateUploadUrlDto) {
+  async generatePdfUploadUrl(@Body() body: GenerateUploadUrlDto, @Request() req: AuthenticatedRequest) {
     const filename = this.resolveFilename(body.filename, 'document.pdf');
     const contentType = body.contentType || 'application/pdf';
-    return this.uploadService.generatePresignedUrl(filename, contentType, 'pdfs');
+    return this.uploadService.generatePresignedUrl(filename, contentType, 'pdfs', body.size, req.user.sub);
   }
 
   /**
@@ -58,7 +62,7 @@ export class UploadController {
   @Post('confirm')
   @HttpCode(HttpStatus.CREATED)
   async confirmUpload(@Body() body: ConfirmUploadDto, @Request() req: AuthenticatedRequest) {
-    if (!UPLOAD_FILENAME_PATTERN.test(body.filename)) {
+    if (!UPLOAD_FILENAME_PATTERN.test(body.filename) || body.filename.includes('..')) {
       throw new BadRequestException('Filename contains unsupported characters');
     }
     return this.uploadService.confirmUpload(
@@ -77,11 +81,32 @@ export class UploadController {
     return this.uploadService.findByStory(storyId);
   }
 
+  @Public()
+  @Get('file/*')
+  async serveFile(@Request() req: AuthenticatedRequest & { params?: Record<string, string>; url?: string }, @Res({ passthrough: true }) res: ExpressResponse) {
+    // The filename may contain slashes (e.g. "images/foo.png"); Express wildcard
+    // captures the rest of the path.
+    const raw = (req.params && req.params[0]) || req.url?.split('/upload/file/')[1] || '';
+    const filename = decodeURIComponent(raw.split('?')[0]);
+    if (!filename || filename.includes('..') || filename.includes('\\') || !UPLOAD_FILENAME_PATTERN.test(filename)) {
+      throw new BadRequestException('Filename contains unsupported characters');
+    }
+    const file = await this.uploadService.getFile(filename);
+    res.set({
+      'Content-Type': file.contentType,
+      ...(file.contentLength ? { 'Content-Length': String(file.contentLength) } : {}),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    });
+    return new StreamableFile(file.stream);
+  }
   @UseGuards(JwtAuthGuard, RestrictionGuard)
-  @Delete(':filename')
+  @Delete('*')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteFile(@Param('filename') filename: string, @Request() req: AuthenticatedRequest) {
-    if (!UPLOAD_FILENAME_PATTERN.test(filename)) {
+  async deleteFile(@Request() req: AuthenticatedRequest & { params?: Record<string, string>; url?: string }) {
+    const raw = req.params?.[0] || req.url?.split('/upload/')[1] || '';
+    const filename = decodeURIComponent(String(raw).split('?')[0]);
+    if (!filename || !UPLOAD_FILENAME_PATTERN.test(filename) || filename.includes('..')) {
       throw new BadRequestException('Filename contains unsupported characters');
     }
     await this.uploadService.deleteFile(filename, req.user.sub, req.user.adminRole === 'super_admin');
@@ -91,7 +116,7 @@ export class UploadController {
     if (requested === undefined || requested.length === 0) {
       return fallback;
     }
-    if (!UPLOAD_FILENAME_PATTERN.test(requested)) {
+    if (requested.includes('..') || requested.includes('/') || requested.includes('\\') || requested.includes('\u0000')) {
       throw new BadRequestException('Filename contains unsupported characters');
     }
     return requested;

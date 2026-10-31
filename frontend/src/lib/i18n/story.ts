@@ -70,6 +70,11 @@ export interface StoryStrings {
   contentPlaceholder: string;
   contentHint: string;
   contentEditHint: string;
+  addImageLabel: string;
+  imageUploadingLabel: string;
+  unsupportedImageType: string;
+  imageTooLarge: string;
+  imageUploadFailed: string;
   tagsLabel: string;
   tagsPlaceholder: string;
   tagsHint: string;
@@ -179,6 +184,11 @@ export const AR: StoryStrings = {
   contentPlaceholder: "اكتب قصتك هنا...",
   contentHint: "اكتب الحكاية كما تُروى: فقرات قصيرة، وفصل بين المشاهد.",
   contentEditHint: "اترك الحقل فارغاً إن كنت تريد حذف نص القصة.",
+  addImageLabel: "إضافة صورة",
+  imageUploadingLabel: "جارٍ رفع الصورة…",
+  unsupportedImageType: "نوع الصورة غير مدعوم",
+  imageTooLarge: "حجم الصورة كبير جداً",
+  imageUploadFailed: "فشل رفع الصورة",
   tagsLabel: "الوسوم (مفصولة بفاصلة)",
   tagsPlaceholder: "مغامرة، غموض",
   tagsHint: "افصل بين الوسوم بفاصلة",
@@ -266,6 +276,11 @@ export const EN: StoryStrings = {
   contentPlaceholder: "Write your story here…",
   contentHint: "Write the tale as it is told: short paragraphs, with a break between scenes.",
   contentEditHint: "Leave the field empty if you want to remove the story's text.",
+  addImageLabel: "Add image",
+  imageUploadingLabel: "Uploading image…",
+  unsupportedImageType: "Unsupported image type",
+  imageTooLarge: "Image is too large",
+  imageUploadFailed: "Image upload failed",
   tagsLabel: "Tags (comma separated)",
   tagsPlaceholder: "Adventure, mystery",
   tagsHint: "Separate tags with a comma",

@@ -4,6 +4,6 @@ export type UploadTicket = {
   mimetype: string;
   size: number;
   url: string;
-  cdnUrl?: string;
+  cdnUrl?: string | null;
   uploadedAt?: string;
 };

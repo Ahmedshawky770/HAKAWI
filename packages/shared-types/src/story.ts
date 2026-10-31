@@ -57,13 +57,15 @@ export type StoryWriteResult = {
 export type StoryMutationInput = {
   title: string;
   content: string;
-  category: string;
+  categoryId?: string;
+  coverImage?: string;
   tags?: string[];
 };
 
 export type StoryPatchInput = {
   title?: string;
   content?: string;
-  category?: string;
+  categoryId?: string | null;
+  coverImage?: string;
   tags?: string[];
 };

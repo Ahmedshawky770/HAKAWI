@@ -26,6 +26,7 @@ type MockUploadService = {
   confirmUpload: ReturnType<typeof vi.fn>;
   findByStory: ReturnType<typeof vi.fn>;
   deleteFile: ReturnType<typeof vi.fn>;
+  getFile: ReturnType<typeof vi.fn>;
 };
 
 describe('UploadController', () => {
@@ -39,6 +40,7 @@ describe('UploadController', () => {
       confirmUpload: vi.fn(),
       findByStory: vi.fn(),
       deleteFile: vi.fn(),
+      getFile: vi.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -119,7 +121,7 @@ describe('UploadController', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('url');
-      expect(uploadService.generatePresignedUrl).toHaveBeenCalledWith('test.png', 'image/png', 'images');
+      expect(uploadService.generatePresignedUrl).toHaveBeenCalledWith('test.png', 'image/png', 'images', undefined, 'user-1');
     });
 
     // Both presign routes used to be `@Public()`, so anyone on the internet could mint a signed
@@ -151,7 +153,7 @@ describe('UploadController', () => {
         .expect(201);
 
       expect(res.body).toHaveProperty('url');
-      expect(uploadService.generatePresignedUrl).toHaveBeenCalledWith('test.pdf', 'application/pdf', 'pdfs');
+      expect(uploadService.generatePresignedUrl).toHaveBeenCalledWith('test.pdf', 'application/pdf', 'pdfs', undefined, 'user-1');
     });
 
     it('should reject an unauthenticated request', async () => {
@@ -241,6 +243,46 @@ describe('UploadController', () => {
         .expect(400);
 
       expect(uploadService.deleteFile).not.toHaveBeenCalled();
+    });
+  });
+  describe('GET /upload/file', () => {
+    it('streams a stored file without authentication', async () => {
+      const { Readable } = await import('node:stream');
+      uploadService.getFile.mockResolvedValue({
+        stream: Readable.from(['hello']),
+        contentType: 'image/png',
+        contentLength: 5,
+      });
+
+      const res = await request(httpServer).get('/upload/file/images/test.png').expect(200);
+
+      expect(res.headers['content-type']).toContain('image/png');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['cache-control']).toContain('immutable');
+      expect(uploadService.getFile).toHaveBeenCalledWith('images/test.png');
+    });
+
+    it('rejects traversal attempts', async () => {
+      await request(httpServer).get('/upload/file/..%2F..%2Fetc%2Fpasswd').expect(400);
+      expect(uploadService.getFile).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the service cannot find the file', async () => {
+      const { NotFoundException } = await import('@nestjs/common');
+      uploadService.getFile.mockRejectedValue(new NotFoundException('File not found'));
+
+      await request(httpServer).get('/upload/file/images/missing.png').expect(404);
+    });
+  });
+
+  describe('DELETE /upload/:filename (slashed keys)', () => {
+    it('passes the full slashed key to the service', async () => {
+      const token = await generateToken('user-1', 'test@example.com', 'reader');
+      vi.mocked(uploadService.deleteFile).mockResolvedValue(undefined);
+
+      await request(httpServer).delete('/upload/images/test.png').set('Authorization', `Bearer ${token}`).expect(204);
+
+      expect(uploadService.deleteFile).toHaveBeenCalledWith('images/test.png', 'user-1', false);
     });
   });
 });

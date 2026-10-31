@@ -38,8 +38,20 @@ export function createS3Client(): S3Client {
     typeof secretAccessKey === 'string' &&
     secretAccessKey.length > 0;
 
+  // S3-compatible endpoints (Neon, MinIO, R2, …) are addressed as
+  // `https://<host>/<bucket>/<key>` — path style — because the bucket name would
+  // otherwise be prepended to the host (`<bucket>.<host>`), which the storage
+  // host's TLS certificate does not cover and which breaks the browser PUT.
+  // AWS S3 keeps virtual-hosted style (no endpoint override).
+  const endpoint = process.env.STORAGE_ENDPOINT || process.env.AWS_ENDPOINT_URL_S3;
+  const forcePathStyle = Boolean(endpoint);
+
+  const region =
+    process.env.STORAGE_REGION || process.env.AWS_REGION || 'us-east-1';
+
   return new S3Client({
-    region: process.env.STORAGE_REGION || 'us-east-1',
+    region,
+    ...(endpoint ? { endpoint, forcePathStyle } : {}),
     ...(hasStaticCredentials ? { credentials: { accessKeyId, secretAccessKey } } : {}),
   });
 }

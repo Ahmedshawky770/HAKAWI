@@ -195,5 +195,5 @@ export const S3_UPLOAD_ORIGINS: readonly string[] = (() => {
     return [origin.origin];
   }
 
-  return [GLOBAL_ORIGIN, ...REGIONAL_ORIGINS];
+  return [GLOBAL_ORIGIN, ...REGIONAL_ORIGINS, "https://*.aws.neon.tech"];
 })();

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import type { StoryMutationInput } from "@hakawi/shared-types";
@@ -43,6 +43,10 @@ export function StoryCreatorCard() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remaining = 120 - title.trim().length;
 
@@ -52,6 +56,7 @@ export function StoryCreatorCard() {
       notify(strings.story.creatorPublishedToast, "success");
       setTitle("");
       setContent("");
+      setCoverImage(null);
       setTags("");
       setOpen(false);
       // WHY THE NAVIGATION GOES FIRST. `invalidateQueries` resolves only after
@@ -70,12 +75,40 @@ export function StoryCreatorCard() {
     },
   });
 
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
+  const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImageError(null);
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError(strings.story.unsupportedImageType);
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageError(strings.story.imageTooLarge);
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const ticket = await api.uploadFile(file);
+      const url = ticket.cdnUrl || ticket.url;
+      setCoverImage(url);
+    } catch {
+      setImageError(strings.story.imageUploadFailed);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     createStory.mutate({
       title: title.trim(),
       content,
-      category: "fiction",
+      ...(coverImage ? { coverImage } : {}),
       tags: tags
         .split(",")
         .map((tag) => tag.trim())
@@ -131,6 +164,38 @@ export function StoryCreatorCard() {
           rows={6}
           required
         />
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleImageSelected}
+          aria-label={strings.story.addImageLabel}
+        />
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            loading={uploadingImage}
+            disabled={uploadingImage}
+          >
+            {uploadingImage ? strings.story.imageUploadingLabel : strings.story.addImageLabel}
+          </Button>
+          {coverImage && (
+            <img
+              src={coverImage}
+              alt=""
+              className="h-16 w-16 rounded-md object-cover border border-line"
+            />
+          )}
+          {imageError && (
+            <span role="alert" className="text-sm text-error-ink">
+              {imageError}
+            </span>
+          )}
+        </div>
 
         <Input
           label={strings.story.creatorTagsLabel}

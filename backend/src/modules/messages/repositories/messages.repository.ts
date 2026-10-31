@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { eq, and, ne, desc, inArray, sql } from 'drizzle-orm';
+import { eq, and, ne, desc, inArray, or, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
@@ -289,16 +289,29 @@ export class MessagesRepository implements IMessagesRepository {
     }
     this.logger.debug(`Counting incoming unread messages across ${conversationIds.length} conversations`);
 
+    const paired = senderIds.length === conversationIds.length && conversationIds.length > 0;
+
     try {
       // CUTOVER: read from messages_p (partitioned parent).
-      const allParams = [...conversationIds, ...senderIds];
-      const convPlaceholders = conversationIds.map((_, i) => `$${i + 1}`).join(', ');
-      const senderPlaceholders = senderIds.map((_, i) => `$${conversationIds.length + i + 1}`).join(', ');
-      const queryText = `SELECT conversation_id, count(*) AS total FROM messages_p
+      let queryText: string;
+      let allParams: unknown[];
+      if (paired) {
+        const pairPlaceholders = conversationIds.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+        allParams = conversationIds.flatMap((convId, i) => [convId, senderIds[i]]);
+        queryText = `SELECT conversation_id, count(*) AS total FROM messages_p
+          WHERE (conversation_id, sender_id) IN (${pairPlaceholders})
+            AND is_read = FALSE
+          GROUP BY conversation_id`;
+      } else {
+        allParams = [...conversationIds, ...senderIds];
+        const convPlaceholders = conversationIds.map((_, i) => `$${i + 1}`).join(', ');
+        const senderPlaceholders = senderIds.map((_, i) => `$${conversationIds.length + i + 1}`).join(', ');
+        queryText = `SELECT conversation_id, count(*) AS total FROM messages_p
           WHERE conversation_id IN (${convPlaceholders})
             AND sender_id IN (${senderPlaceholders})
             AND is_read = FALSE
           GROUP BY conversation_id`;
+      }
       const result = await dbPrimary.$client.query(queryText, allParams);
 
       for (const row of result.rows as ConversationCountPgRow[]) {
@@ -310,16 +323,21 @@ export class MessagesRepository implements IMessagesRepository {
       // 42P01 = undefined_table: fall back to legacy messages table via Drizzle.
       // Any other code: still fall back if legacy exists.
       if (code === '42P01' || code === undefined) {
-        const rows = await db
-          .select({ conversationId: messages.conversationId, total: sql<number>`count(*)` })
-          .from(messages)
-          .where(
-            and(
+        const whereClause = paired
+          ? or(
+              ...conversationIds.map((convId, i) =>
+                and(eq(messages.conversationId, convId), eq(messages.senderId, senderIds[i])),
+              ),
+            )
+          : and(
               inArray(messages.conversationId, [...conversationIds]),
               inArray(messages.senderId, [...senderIds]),
               eq(messages.isRead, false),
-            ),
-          )
+            );
+        const rows = await db
+          .select({ conversationId: messages.conversationId, total: sql<number>`count(*)` })
+          .from(messages)
+          .where(and(whereClause, eq(messages.isRead, false)))
           .groupBy(messages.conversationId);
 
         for (const row of rows) {

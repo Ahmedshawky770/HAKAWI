@@ -13,6 +13,7 @@ import {
   Res,
   Logger,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { type Response, type Request as ExpressRequest } from 'express';
 
@@ -59,6 +60,39 @@ function resolveRefreshToken(req: CookieBearingRequest, bodyToken: string | unde
   return cookieToken !== undefined && cookieToken.length > 0 ? cookieToken : bodyToken;
 }
 
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) {
+    return true;
+  }
+  const allowed = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  // Allow localhost variants in development by default.
+  if (process.env.NODE_ENV !== 'production') {
+    allowed.push('http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000');
+  }
+  try {
+    const parsed = new URL(origin);
+    return allowed.some((candidate) => {
+      try {
+        return new URL(candidate).origin === parsed.origin;
+      } catch {
+        return candidate === origin;
+      }
+    });
+  } catch {
+    return allowed.includes(origin);
+  }
+}
+
+function assertAllowedOrigin(req: CookieBearingRequest & { headers: { origin?: string; referer?: string } }): void {
+  const origin = req.headers.origin || req.headers.referer;
+  if (!isAllowedOrigin(origin)) {
+    throw new ForbiddenException('Invalid request origin');
+  }
+}
+
 @ThrottleTier('auth')
 @Controller('auth')
 export class AuthController {
@@ -97,6 +131,7 @@ export class AuthController {
     @Body() dto: RefreshTokenDto,
     @Res() res: Response,
   ): Promise<Response> {
+    assertAllowedOrigin(req);
     try {
       const result = await this.authService.refreshTokens({
         ...dto,
@@ -130,6 +165,7 @@ export class AuthController {
     @Body('refreshToken') refreshToken: string | undefined,
     @Res() res: Response,
   ): Promise<Response> {
+    assertAllowedOrigin(req);
     const result = await this.authService.logout(resolveRefreshToken(req, refreshToken));
     clearAuthCookies(res);
     return res.json(result);
@@ -157,10 +193,12 @@ export class AuthController {
     return { message: 'Password reset successfully' };
   }
 
-  @Get('oauth/:provider')
+@Get('oauth/:provider')
   @Public()
-  async oauth(@Param('provider') provider: string, @Query('state') state: string, @Res() res: Response) {
-    const authorizationUrl = await this.authService.getAuthorizationUrl(provider, state);
+  async oauth(@Param('provider') provider: string, @Res() res: Response) {
+    // The state is minted by the service, not taken from the query string: see
+    // `AuthService.getAuthorizationUrl`. Any `state` a legacy client sends is ignored.
+    const authorizationUrl = await this.authService.getAuthorizationUrl(provider);
     return res.redirect(authorizationUrl);
   }
 

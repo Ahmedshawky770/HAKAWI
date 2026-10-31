@@ -64,7 +64,7 @@ describe('AuthController', () => {
       logout: vi.fn<(refreshToken: string | undefined) => Promise<LogoutResponseDto>>(),
       forgotPassword: vi.fn<(email: string) => Promise<void>>(),
       resetPassword: vi.fn<(token: string, newPassword: string) => Promise<void>>(),
-      getAuthorizationUrl: vi.fn<(provider: string, state?: string) => Promise<string>>(),
+      getAuthorizationUrl: vi.fn<(provider: string) => Promise<string>>(),
       handleOAuthCallback: vi.fn<(provider: string, code: string, state?: string) => Promise<OAuthTokens>>(),
     };
 

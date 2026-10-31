@@ -129,7 +129,7 @@ export class MessagesService {
       this.messagesRepository.findLastByConversations(conversations.map((conv) => conv.id)),
       this.messagesRepository.countIncomingUnreadByConversations(
         conversations.map((conv) => conv.id),
-        [...new Set(otherParticipantIds)],
+        otherParticipantIds,
       ),
     ]);
     const namesById = new Map<string, string>(participants.map((entry: ParticipantSummary) => [entry.id, entry.name]));
@@ -208,7 +208,7 @@ export class MessagesService {
 
     const conversation = await this.conversationsRepository.findById(message.conversationId);
     if (!conversation || (conversation.participant1Id !== userId && conversation.participant2Id !== userId)) {
-      throw new ForbiddenException('You are not a participant of this conversation');
+      throw new NotFoundException('Conversation not found');
     }
 
     const updated = await this.messagesRepository.markAsRead(messageId);

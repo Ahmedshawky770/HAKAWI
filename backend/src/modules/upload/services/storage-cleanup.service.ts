@@ -60,11 +60,11 @@ export class StorageCleanupService {
    * يُنفَّذ المنظف يدوياً (للاختبار أو التشغيل اليدوي). يُعيد إحصائيات العملية.
    */
   async runCleanup(): Promise<{ deleted: number; errors: number; total: number }> {
+    const region = process.env.STORAGE_REGION || process.env.AWS_REGION || 'us-east-1';
+    const endpoint = process.env.STORAGE_ENDPOINT || process.env.AWS_ENDPOINT_URL_S3;
     const s3Client = new S3Client({
-      region: process.env.STORAGE_REGION ?? 'us-east-1',
-      ...(process.env.STORAGE_ENDPOINT
-        ? { endpoint: process.env.STORAGE_ENDPOINT, forcePathStyle: true }
-        : {}),
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
 
     const cutoff = new Date(

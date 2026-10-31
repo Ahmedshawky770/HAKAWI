@@ -28,6 +28,8 @@ vi.mock("@/lib/api", () => ({
   api: {
     createStory: vi.fn(),
     listStories: vi.fn(),
+    listCategories: vi.fn(),
+    uploadFile: vi.fn(),
   },
 }));
 
@@ -57,6 +59,9 @@ const mockStory = {
 describe("Story create page", () => {
   beforeEach(() => {
     mockedApi.createStory.mockResolvedValue(mockStory);
+    mockedApi.listCategories.mockResolvedValue([
+      { id: "cat-1", name: "Fiction", slug: "fiction", isActive: true },
+    ]);
   });
 
   it("renders the story create heading", () => {
@@ -92,7 +97,23 @@ describe("Story create page", () => {
       expect(mockedApi.createStory).toHaveBeenCalledWith({
         title: "قصة جديدة",
         content: "محتوى القصة",
-        category: "fiction",
+        tags: [],
+      });
+    });
+  });
+
+  it("sends the selected category id on submit", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<StoryCreatePage />);
+    await user.type(screen.getByLabelText("العنوان"), "قصة جديدة");
+    await user.type(screen.getByLabelText("المحتوى"), "محتوى القصة");
+    await user.selectOptions(screen.getByLabelText("التصنيف"), "fiction");
+    await user.click(screen.getByRole("button", { name: "إنشاء القصة" }));
+    await waitFor(() => {
+      expect(mockedApi.createStory).toHaveBeenCalledWith({
+        title: "قصة جديدة",
+        content: "محتوى القصة",
+        categoryId: "cat-1",
         tags: [],
       });
     });

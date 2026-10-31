@@ -28,6 +28,8 @@ vi.mock("@/lib/api", () => ({
     getStory: vi.fn(),
     updateStory: vi.fn(),
     deleteStory: vi.fn(),
+    uploadFile: vi.fn(),
+    listCategories: vi.fn(),
   },
 }));
 
@@ -70,6 +72,9 @@ describe("Story edit page", () => {
     mockedApi.getStory.mockResolvedValue(mockStory);
     mockedApi.updateStory.mockResolvedValue(mockStory);
     mockedApi.deleteStory.mockResolvedValue(undefined);
+    mockedApi.listCategories.mockResolvedValue([
+      { id: "cat-1", name: "Fiction", slug: "fiction", isActive: true },
+    ]);
   });
 
   it("renders the story edit heading", () => {

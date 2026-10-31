@@ -163,7 +163,7 @@ const CONTENT_SECURITY_POLICY = [
   `script-src 'self' 'unsafe-inline'${IS_DEVELOPMENT ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: https:",
+  "img-src 'self' data: https: " + API_ORIGIN,
   "connect-src 'self' " + API_ORIGIN + " " + S3_UPLOAD_ORIGINS.join(" "),
   // WHY `frame-src` NAMES THE PAYMENT GATEWAY. The checkout loads Paymob's
   // `/acceptance/iframes/<token>` page INSIDE a frame — that URL is a frame
