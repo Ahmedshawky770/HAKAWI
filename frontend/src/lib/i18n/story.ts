@@ -34,6 +34,19 @@ export interface StoryStrings {
   deleteStoryConfirmButton: string;
   /** The button that takes the deletion back. */
   deleteStoryUndoButton: string;
+  followAuthor: string;
+  followButton: string;
+  follow: string;
+  followUser: string;
+  unfollowAuthor: string;
+  unfollowButton: string;
+  unfollow: string;
+  unfollowUser: string;
+  following: string;
+  unfollowConfirmTitle: string;
+  unfollowConfirmMessage: string;
+  unfollowConfirmButton: string;
+  unfollowCancelButton: string;
   createPageTitle: string;
   createPageDescription: string;
   createSubmitButton: string;
@@ -226,6 +239,19 @@ export const AR: StoryStrings = {
   creatorSubmitButton: "انشر القصة",
   creatorCloseButton: "إغلاق",
   creatorPublishedToast: "تم نشر حكايتك",
+  followAuthor: "متابعة",
+  followButton: "متابعة",
+  follow: "متابعة",
+  followUser: "متابعة",
+  unfollowAuthor: "إلغاء المتابعة",
+  unfollowButton: "إلغاء المتابعة",
+  unfollow: "إلغاء المتابعة",
+  unfollowUser: "إلغاء المتابعة",
+  following: "تتابعه",
+  unfollowConfirmTitle: "إلغاء المتابعة",
+  unfollowConfirmMessage: "هل أنت متأكد أنك تريد إلغاء المتابعة",
+  unfollowConfirmButton: "تأكيد",
+  unfollowCancelButton: "تراجع",
 };
 
 export const EN: StoryStrings = {
@@ -318,6 +344,19 @@ export const EN: StoryStrings = {
   creatorSubmitButton: "Publish the story",
   creatorCloseButton: "Close",
   creatorPublishedToast: "Your story is published",
+  followAuthor: "Follow",
+  followButton: "Follow",
+  follow: "Follow",
+  followUser: "Follow",
+  unfollowAuthor: "Unfollow",
+  unfollowButton: "Unfollow",
+  unfollow: "Unfollow",
+  unfollowUser: "Unfollow",
+  following: "Following",
+  unfollowConfirmTitle: "Unfollow",
+  unfollowConfirmMessage: "Are you sure you want to unfollow?",
+  unfollowConfirmButton: "Confirm",
+  unfollowCancelButton: "Cancel",
 };
 
 /**

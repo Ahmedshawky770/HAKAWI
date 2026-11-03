@@ -64,6 +64,10 @@ export interface ProfileStrings {
   badgeThresholdLabel: (threshold: number) => string;
   /** The pill on a badge the reader has already earned. */
   badgeEarned: string;
+  /** Localized badge names keyed by badge key. */
+  badgeNames: Record<string, string>;
+  /** Localized badge descriptions keyed by badge key. */
+  badgeDescriptions: Record<string, string>;
 }
 
 export const AR: ProfileStrings = {
@@ -121,6 +125,26 @@ export const AR: ProfileStrings = {
   badgesEmpty: "لا توجد شارات بعد.",
   badgeThresholdLabel: (threshold) => `الحد: ${formatCount(threshold)}`,
   badgeEarned: "مكتسبة",
+  badgeNames: {
+    "contest-champion": "بطل المسابقة",
+    "contest-legend": "أسطورة المسابقات",
+    "first-publication": "أول منشور",
+    "prolific-author": "كاتب غزير",
+    "rising-author": "كاتب صاعد",
+    "community-pillar": "ركيزة المجتمع",
+    guardian: "حارس",
+    steward: "أمين",
+  },
+  badgeDescriptions: {
+    "contest-champion": "فاز بمسابقة كتابة",
+    "contest-legend": "فاز بثلاث مسابقات كتابة",
+    "first-publication": "نشر قصة أولى",
+    "prolific-author": "نشر خمس قصص",
+    "rising-author": "اكتسب عشرة متابعين",
+    "community-pillar": "اكتسب مئة متابع",
+    guardian: "اتخذ إجراء إشرافياً أول",
+    steward: "اتخذ عشرة إجراءات إشرافية",
+  },
 };
 
 export const EN: ProfileStrings = {
@@ -178,4 +202,24 @@ export const EN: ProfileStrings = {
   badgesEmpty: "No badges yet.",
   badgeThresholdLabel: (threshold) => `Threshold: ${formatCount(threshold)}`,
   badgeEarned: "Earned",
+  badgeNames: {
+    "contest-champion": "Contest Champion",
+    "contest-legend": "Contest Legend",
+    "first-publication": "First Publication",
+    "prolific-author": "Prolific Author",
+    "rising-author": "Rising Author",
+    "community-pillar": "Community Pillar",
+    guardian: "Guardian",
+    steward: "Steward",
+  },
+  badgeDescriptions: {
+    "contest-champion": "Won a writing contest",
+    "contest-legend": "Won three writing contests",
+    "first-publication": "Published a first story",
+    "prolific-author": "Published five stories",
+    "rising-author": "Gained ten followers",
+    "community-pillar": "Gained one hundred followers",
+    guardian: "Took a first moderation action",
+    steward: "Took ten moderation actions",
+  },
 };

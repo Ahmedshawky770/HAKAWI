@@ -9,7 +9,7 @@ export { countReadout, type CountReadout } from "./count-readout";
  */
 export function formatCount(value: number, locale: Locale = "ar"): string {
   const intlLocale = locale === "ar" ? "ar-EG" : "en-GB";
-  return new Intl.NumberFormat(intlLocale).format(value);
+  return new Intl.NumberFormat(intlLocale, { numberingSystem: "latn" }).format(value);
 }
 
 export interface CommonStrings {

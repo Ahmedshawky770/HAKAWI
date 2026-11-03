@@ -2,9 +2,10 @@
 
 import React from "react";
 
+import Image from "next/image";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { useStrings } from "@/components/providers/LocaleProvider";
+import { useLocale, useStrings } from "@/components/providers/LocaleProvider";
 import type { BadgeCatalogEntry } from "@hakawi/shared-types";
 
 /**
@@ -22,22 +23,34 @@ import type { BadgeCatalogEntry } from "@hakawi/shared-types";
  */
 export function BadgeCard({ badge, isEarned = false }: { badge: BadgeCatalogEntry; isEarned?: boolean }) {
   const strings = useStrings();
+  const { locale } = useLocale();
+
+  const iconSrc = `/images/badges/${badge.key}-${locale}.svg`;
 
   return (
     <Card>
       <CardBody>
         <div className="flex items-start gap-4">
           {badge.icon && (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-raised text-2xl">
-              {badge.icon}
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-raised">
+              <Image
+                src={iconSrc}
+                alt={strings.profile.badgeNames[badge.key] ?? badge.name}
+                className="h-12 w-12 object-contain rounded-full"
+                loading="lazy"
+                decoding="async"
+                unoptimized
+                width={48}
+                height={48}
+              />
             </div>
           )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-semibold text-ink">{badge.name}</h3>
+              <h3 className="font-semibold text-ink">{strings.profile.badgeNames[badge.key] ?? badge.name}</h3>
               {isEarned && <Badge tone="success">{strings.profile.badgeEarned}</Badge>}
             </div>
-            <p className="mt-1 text-sm leading-7 text-ink-muted">{badge.description}</p>
+            <p className="mt-1 text-sm leading-7 text-ink-muted">{strings.profile.badgeDescriptions[badge.key] ?? badge.description}</p>
             <p className="mt-2 text-xs text-ink-faint">
               {strings.profile.badgeThresholdLabel(badge.threshold)} • {badge.trigger}
             </p>

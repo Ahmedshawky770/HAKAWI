@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -102,7 +103,14 @@ export function Header() {
             }
             className="relative ms-1 flex size-11 items-center justify-center rounded-lg text-ink-muted transition-colors duration-200 hover:bg-surface-raised hover:text-ink"
           >
-            <Icon name="bell" size="md" />
+            <Image
+              src={unreadNotifications > 0 ? "/notification-icons/01-bell-unread.svg" : "/notification-icons/01-bell.svg"}
+              alt=""
+              width={24}
+              height={24}
+              className="size-6 object-contain"
+              unoptimized
+            />
             <UnreadBadge
               count={unreadNotifications}
               label={strings.shell.unreadNotificationsLabel}

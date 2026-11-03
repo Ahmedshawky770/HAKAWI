@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 
+import { api } from "@/lib/api";
 import { intlLocale, stringsFor, type AppStrings } from "@/lib/i18n";
 import {
   DEFAULT_LOCALE,
@@ -63,6 +64,11 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     root.setAttribute("dir", directionFor(next));
     window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
     emit();
+    // Persist the preference to the backend when authenticated, so notifications
+    // and other server-generated content can be localized.
+    if (window.localStorage.getItem("hakawi_tokens")) {
+      void api.updateMe({ preferredLocale: next }).catch(() => undefined);
+    }
   }, []);
 
   const toggleLocale = useCallback(() => {

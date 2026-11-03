@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" role="img" aria-label="First Publication — Published a first story">
+<defs><radialGradient id="mg" cx="50%" cy="40%" r="70%"><stop offset="0%" stop-color="#2b1a40"/><stop offset="100%" stop-color="#1f122b"/></radialGradient>
+<linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#d9d2e3"/><stop offset="100%" stop-color="#6f6280"/></linearGradient>
+<linearGradient id="ic" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#d9d2e3"/><stop offset="100%" stop-color="#9a8aa8"/></linearGradient>
+<filter id="gl" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="1000" height="1000" fill="#140a1f"/>
+<circle cx="500" cy="500" r="430" fill="none" stroke="url(#rg)" stroke-width="14"/>
+<circle cx="500" cy="500" r="400" fill="url(#mg)" stroke="#3a2e4e" stroke-width="4"/>
+<circle cx="500" cy="500" r="340" fill="none" stroke="#9a8aa8" stroke-width="6" opacity=".35"/>
+
+<g transform="translate(500,395) scale(1.2)"><circle r="150" fill="none" stroke="#9a8aa8" stroke-width="4" opacity=".6"/><g filter="url(#gl)"><path d="M0 -20 C-30 -45 -75 -50 -110 -40 V65 C-75 55 -30 60 0 85 Z" fill="url(#ic)"/><path d="M0 -20 C30 -45 75 -50 110 -40 V65 C75 55 30 60 0 85 Z" fill="url(#ic)" opacity=".8"/>
+<line x1="0" y1="-20" x2="0" y2="85" stroke="#1f122b" stroke-width="4"/><path d="M20 -30 C55 -95 105 -115 125 -120 C120 -85 95 -40 45 -5 Z" fill="#f5f5f0"/>
+<line x1="45" y1="-5" x2="8" y2="30" stroke="#f5f5f0" stroke-width="5" stroke-linecap="round"/></g></g>
+<text x="500" y="668" text-anchor="middle" dominant-baseline="middle" fill="#f5f5f0" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="64" font-weight="700" letter-spacing="0.01em">First Publication</text>
+<text x="500" y="730" text-anchor="middle" dominant-baseline="middle" fill="#c9b8d6" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="32">Published a first story</text>
+<rect x="360" y="766" width="280" height="56" rx="28" fill="#2b1a40" stroke="#9a8aa8" stroke-width="3"/>
+<text x="500" y="794" text-anchor="middle" dominant-baseline="middle" fill="#9a8aa8" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="28" font-weight="700">Tier · 1</text>
+<text x="500" y="868" text-anchor="middle" dominant-baseline="middle" fill="#d9cfe6" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="28" font-weight="700">HAKAWI</text>
+</svg>

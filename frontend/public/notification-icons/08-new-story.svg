@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="new-story">
+<defs><radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop offset="0%" stop-color="#2b1a40"/><stop offset="100%" stop-color="#1f122b"/></radialGradient>
+<linearGradient id="ic" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e1d7e8"/><stop offset="100%" stop-color="#c9b8d6"/></linearGradient>
+<linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e1d7e8"/><stop offset="100%" stop-color="#82778b"/></linearGradient></defs>
+<circle cx="48" cy="48" r="45" fill="url(#bg)" stroke="url(#rg)" stroke-width="3"/>
+<g transform="translate(48,41) scale(.34)"><path d="M0-20C-30-45-75-50-110-40V65C-75 55-30 60 0 85Z" fill="url(#ic)"/><path d="M0-20C30-45 75-50 110-40V65C75 55 30 60 0 85Z" fill="url(#ic)" opacity=".8"/><line x1="0" y1="-20" x2="0" y2="85" stroke="#1f122b" stroke-width="8"/></g><circle cx="70" cy="26" r="3" fill="url(#ic)"/><path d="M70 17v18M61 26h18" stroke="url(#ic)" stroke-width="0"/>
+</svg>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="award">
+<defs><radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop offset="0%" stop-color="#2b1a40"/><stop offset="100%" stop-color="#1f122b"/></radialGradient>
+<linearGradient id="ic" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e7d391"/><stop offset="100%" stop-color="#d4af37"/></linearGradient>
+<linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e7d391"/><stop offset="100%" stop-color="#897123"/></linearGradient></defs>
+<circle cx="48" cy="48" r="45" fill="url(#bg)" stroke="url(#rg)" stroke-width="3"/>
+<path d="M37 52 31 75l12-6 5 7V54Z" fill="url(#ic)" opacity=".8"/><path d="M59 52 65 75l-12-6-5 7V54Z" fill="url(#ic)" opacity=".8"/><circle cx="48" cy="39" r="17" fill="url(#ic)"/><polygon points="0,-42 12,-14 42,-12 19,7 27,36 0,20 -27,36 -19,7 -42,-12 -12,-14" transform="translate(48,40) scale(.3)" fill="#1f122b"/><circle cx="77" cy="19" r="10" fill="#ff5d7a" stroke="#140a1f" stroke-width="4"/>
+</svg>

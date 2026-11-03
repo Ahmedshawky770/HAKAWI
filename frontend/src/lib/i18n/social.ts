@@ -75,6 +75,15 @@ export interface SocialStrings {
   followingTitle: string;
   followingDescription: string;
   followingLoadFailed: string;
+  followAuthor: string;
+  followButton: string;
+  follow: string;
+  followUser: string;
+  unfollowAuthor: string;
+  unfollowButton: string;
+  unfollow: string;
+  unfollowUser: string;
+  following: string;
 
   /* ---- the row components ---- */
   /**
@@ -184,6 +193,15 @@ export const AR: SocialStrings = {
   followingTitle: "المتابَعون",
   followingDescription: "الحسابات التي يتابعها",
   followingLoadFailed: "تعذّر تحميل المتابَعين",
+  followAuthor: "متابعة",
+  followButton: "متابعة",
+  follow: "متابعة",
+  followUser: "متابعة",
+  unfollowAuthor: "إلغاء المتابعة",
+  unfollowButton: "إلغاء المتابعة",
+  unfollow: "إلغاء المتابعة",
+  unfollowUser: "إلغاء المتابعة",
+  following: "متابع",
 
   authorFallback: "مستخدم",
   commentReplies: (count) =>
@@ -279,6 +297,15 @@ export const EN: SocialStrings = {
   followingTitle: "Following",
   followingDescription: "The accounts this one follows",
   followingLoadFailed: "Couldn't load the following",
+  followAuthor: "Follow",
+  followButton: "Follow",
+  follow: "Follow",
+  followUser: "Follow",
+  unfollowAuthor: "Unfollow",
+  unfollowButton: "Unfollow",
+  unfollow: "Unfollow",
+  unfollowUser: "Unfollow",
+  following: "Following",
 
   authorFallback: "Reader",
   commentReplies: (count) => countReadout(count, "en", { one: "reply", other: "replies" }),
