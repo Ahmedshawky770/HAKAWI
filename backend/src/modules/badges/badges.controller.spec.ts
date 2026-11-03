@@ -93,6 +93,6 @@ describe('BadgesController', () => {
 
   it('should list badges', async () => {
     const res = await request(app.getHttpServer()).get('/badges').expect(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(Array.isArray(res.body.badges)).toBe(true);
   });
 });

@@ -15,16 +15,16 @@ export class BadgesController {
   @Secured()
   @Get()
   async listCatalog() {
-    return this.badgesService.listCatalog();
+    return { badges: await this.badgesService.listCatalog() };
   }
 
   @Secured()
   @Get('users/:userId')
   async findForUser(@Param('userId', ParseUUIDPipe) userId: string, @Query() query: ListBadgesQueryDto) {
     if (query.key === undefined) {
-      return this.badgesService.findByUser(userId);
+      return { badges: await this.badgesService.findByUser(userId) };
     }
-    return this.badgesService.findByUserAndKey(userId, query.key);
+    return { badges: [await this.badgesService.findByUserAndKey(userId, query.key)] };
   }
 
   @Secured(AccountType.ADMIN)
