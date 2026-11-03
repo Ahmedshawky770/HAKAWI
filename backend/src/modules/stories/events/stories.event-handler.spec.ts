@@ -106,7 +106,7 @@ describe('StoriesEventHandler', () => {
       expect(cache.invalidateKey).toHaveBeenCalledWith(STORY_CACHE_NAMESPACE, 'story-1', [STORIES_CACHE_TAG]);
     });
 
-    it('should count replies as comments, because the story total is what the column means', async () => {
+    it('should NOT count replies toward the story comment total, matching the listing which excludes them', async () => {
       await storiesEventHandler.handleCommentCreated({
         commentId: 'comment-1',
         storyId: 'story-1',
@@ -114,7 +114,7 @@ describe('StoriesEventHandler', () => {
         parentId: 'parent-1',
       });
 
-      expect(storiesRepository.incrementCommentCount).toHaveBeenCalledWith('story-1');
+      expect(storiesRepository.incrementCommentCount).not.toHaveBeenCalled();
     });
 
     it('should decrement the comment count when a comment is deleted', async () => {

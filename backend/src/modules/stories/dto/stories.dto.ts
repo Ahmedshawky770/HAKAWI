@@ -25,7 +25,7 @@ import { BACKEND_STORY_STATUSES, UNPUBLISHED_STORY_STATUSES } from '../types.ts'
  * choice about its own public URL and the column accepts it; a slug we derive is ours to keep
  * readable and to leave room in for a collision suffix. See `dto/story-slug.ts`.
  */
-const STORY_SLUG_PATTERN = /^[a-z0-9-]+$/;
+const STORY_SLUG_PATTERN = /^[\p{Ll}\p{Lo}\p{N}-]+$/u;
 
 /**
  * The two tag limits, and why they are what they are (Principle #15 — bound every collection at
@@ -92,7 +92,7 @@ export class CreateStoryDto {
   @IsString()
   @MinLength(1, { message: 'Slug must not be empty; omit it to have the server derive one from the title' })
   @MaxLength(255, { message: 'Slug must not exceed 255 characters' })
-  @Matches(STORY_SLUG_PATTERN, { message: 'Slug can only contain lowercase letters, numbers, and hyphens' })
+  @Matches(STORY_SLUG_PATTERN, { message: 'Slug can only contain letters, numbers, and hyphens' })
   slug?: string;
 
   @IsOptional()
@@ -168,7 +168,7 @@ export class UpdateStoryDto {
   @IsString()
   @MinLength(1, { message: 'Slug must not be empty; omit it to keep the current slug' })
   @MaxLength(255, { message: 'Slug must not exceed 255 characters' })
-  @Matches(STORY_SLUG_PATTERN, { message: 'Slug can only contain lowercase letters, numbers, and hyphens' })
+  @Matches(STORY_SLUG_PATTERN, { message: 'Slug can only contain letters, numbers, and hyphens' })
   slug?: string;
 
   @IsOptional()

@@ -268,13 +268,15 @@ export class StoriesController {
   @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Post(':id/publish')
   async publish(@Param('id') id: string, @Request() req: AuthRequest) {
-    return this.storiesService.publish(id, req.user.sub);
+    const story = await this.storiesService.publish(id, req.user.sub);
+    return this.storiesService.toRecord(story);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)
   @Post(':id/archive')
   async archive(@Param('id') id: string, @Request() req: AuthRequest) {
-    return this.storiesService.archive(id, req.user.sub);
+    const story = await this.storiesService.archive(id, req.user.sub);
+    return this.storiesService.toRecord(story);
   }
 
   @UseGuards(JwtAuthGuard, RestrictionGuard, OwnershipGuard)

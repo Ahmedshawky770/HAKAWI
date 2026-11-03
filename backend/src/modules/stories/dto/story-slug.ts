@@ -74,12 +74,11 @@ const NON_DECOMPOSING_LETTERS: Readonly<Record<string, string>> = {
  * Steps, in order, and why each one is needed:
  *   1. `NFKD` + strip Unicode marks — turns "Café" into "cafe" instead of deleting the `é` and
  *      yielding "caf".
- *   2. lowercase — the DTO's `/^[a-z0-9-]+$/` accepts only lowercase, so folding here means a
+ *   2. lowercase — the DTO's `/^[\p{L}\p{N}-]+$/u` accepts only lowercase, so folding here means a
  *      derived slug can never fail its own validation.
  *   3. the explicit letter map — for the letters NFKD leaves alone (see above).
- *   4. `[^a-z0-9]+` -> `-` — every run of punctuation, whitespace and untransliterated script
- *      collapses to ONE hyphen. The `+` is what stops "Hello,  World!" from becoming
- *      "hello--world".
+ *   4. `[^\p{L}\p{N}]+` -> `-` — every run of punctuation and whitespace collapses to ONE hyphen.
+ *      The `+` is what stops "Hello,  World!" from becoming "hello--world".
  *   5. trim `-` from both ends — no leading or trailing separator, because `GET /stories/slug/:slug`
  *      and the generated links should never have to encode one.
  *   6. truncate, then trim again — step 5's guarantee does not survive a cut, and cutting
@@ -96,7 +95,7 @@ export function deriveStorySlug(title: string): string {
     .toLowerCase()
     .replace(/\p{M}+/gu, '')
     .replace(/[ßæœøđðłþħŧıĸƒ]/g, (letter) => NON_DECOMPOSING_LETTERS[letter] ?? letter)
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '');
 
   const truncated = base.slice(0, MAX_STORY_SLUG_LENGTH).replace(/-+$/g, '');
@@ -104,7 +103,7 @@ export function deriveStorySlug(title: string): string {
   if (truncated.length === 0) {
     throw new BadRequestException(
       `Title "${title}" has no characters that can form a URL slug. ` +
-        'A story URL can only be built from Latin letters, digits and hyphens, so this title ' +
+        'A story URL can only be built from letters, digits and hyphens, so this title ' +
         'cannot be published as-is. Send an explicit "slug" to choose the URL yourself.',
     );
   }

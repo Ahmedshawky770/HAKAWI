@@ -120,6 +120,7 @@ describe('StoriesController', () => {
       throw new NotFoundException('Category not found');
     });
     resolveOwnerId = vi.fn<OwnershipResolver['resolveOwnerId']>().mockResolvedValue('user-1');
+    vi.mocked(storiesService.toRecord).mockImplementation(async (story: unknown) => story as never);
 
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, load: [] })],
@@ -903,6 +904,8 @@ describe('StoriesController', () => {
         publishedAt: new Date(),
       } as unknown as Story);
 
+      vi.mocked(storiesService.toRecord).mockImplementation(async (story: unknown) => story as never);
+
       const res = await request(httpServer)
         .post('/stories/story-1/publish')
         .set('Authorization', `Bearer ${token}`)
@@ -934,6 +937,8 @@ describe('StoriesController', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as unknown as Story);
+
+      vi.mocked(storiesService.toRecord).mockImplementation(async (story: unknown) => story as never);
 
       const res = await request(httpServer)
         .post('/stories/story-1/archive')

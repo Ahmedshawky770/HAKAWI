@@ -216,7 +216,12 @@ export class StoriesRepository implements IStoriesRepository {
    * also keeps this change additive and migration-free.
    */
   async replaceTags(storyId: string, names: readonly string[]): Promise<void> {
-    if (names.length === 0) {
+    // Free-text tags from the create/edit forms are accepted as-is: a name the taxonomy does not
+    // already hold is created on demand, so a story can be published with whatever tags its author
+    // typed instead of failing with a 400. Creating on demand keeps the frontend's comma-separated
+    // input working without an admin pre-populating the table.
+    const normalized = [...new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))];
+    if (normalized.length === 0) {
       await db.delete(storyTags).where(eq(storyTags.storyId, storyId));
       return;
     }
@@ -224,19 +229,56 @@ export class StoriesRepository implements IStoriesRepository {
     const resolved = await db
       .select({ id: tags.id, name: tags.name })
       .from(tags)
-      .where(inArray(tags.name, [...names]));
+      .where(inArray(tags.name, [...normalized]));
 
     const byName = new Map(resolved.map((tag: { id: string; name: string }) => [tag.name, tag.id]));
-    const missing = names.filter((name) => !byName.has(name));
+
+    const missing = normalized.filter((name) => !byName.has(name));
     if (missing.length > 0) {
+      try {
+        await db.insert(tags).values(
+          missing.map((name) => ({
+            name,
+            slug: this.deriveTagSlug(name),
+          })),
+        );
+      } catch {
+        // A concurrent insert (or a slug collision) may have won the race; fall through to a
+        // re-query so we resolve the existing rows instead of failing the whole request.
+      }
+
+      const resolvedAfter = await db
+        .select({ id: tags.id, name: tags.name })
+        .from(tags)
+        .where(inArray(tags.name, [...normalized]));
+      for (const tag of resolvedAfter) {
+        byName.set(tag.name, tag.id);
+      }
+    }
+
+    const stillMissing = normalized.filter((name) => !byName.has(name));
+    if (stillMissing.length > 0) {
       throw new BadRequestException(
-        `Unknown tag${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Tags are created by an administrator.`,
+        `Unknown tag${stillMissing.length > 1 ? 's' : ''}: ${stillMissing.join(', ')}. Tags are created by an administrator.`,
       );
     }
 
     await db.transaction(async (tx) => {
       await tx.delete(storyTags).where(eq(storyTags.storyId, storyId));
-      await tx.insert(storyTags).values(names.map((name) => ({ storyId, tagId: byName.get(name) as string })));
+      await tx.insert(storyTags).values(normalized.map((name) => ({ storyId, tagId: byName.get(name) as string })));
     });
+  }
+
+  private deriveTagSlug(name: string): string {
+    const base = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 42);
+    if (base.length >= 2) {
+      return base;
+    }
+    return `tag-${crypto.randomUUID()}`;
   }
 }

@@ -432,10 +432,10 @@ describe('StoriesService', () => {
     it('should reject a title it cannot slugify instead of writing an empty slug', async () => {
       acceptsInsert();
 
-      // Arabic survives NFKD but has no [a-z0-9], so the derived value would be ''. An empty slug
-      // satisfies the column's NOT NULL and would collide with every other empty slug forever.
+      // A title with no slugifiable characters leaves an empty derived slug, which would satisfy
+      // the column's NOT NULL and collide with every other empty slug forever.
       await expect(
-        storiesService.create('author-123', { authorId: 'author-123', title: 'ليلة في الحارة' }),
+        storiesService.create('author-123', { authorId: 'author-123', title: '!!!' }),
       ).rejects.toThrow(BadRequestException);
       expect(storiesRepository.create).not.toHaveBeenCalled();
     });

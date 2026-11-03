@@ -109,10 +109,10 @@ describe('deriveStorySlug', () => {
   });
 
   it('rejects a title with nothing slugifiable in it with a typed 400', () => {
-    // Arabic and other non-Latin scripts survive NFKD but contain no [a-z0-9], so they produce an
-    // empty result. That must be a readable refusal, never a row with an empty slug.
-    expect(() => deriveStorySlug('ليلة في الحارة')).toThrow(BadRequestException);
-    expect(() => deriveStorySlug('???')).toThrow(BadRequestException);
+    // A title made only of punctuation (or only of whitespace) leaves nothing that
+    // can form a URL slug, so it must be refused with a readable 400 rather than
+    // producing an empty slug that would collide for every such title.
+    expect(() => deriveStorySlug('!!!')).toThrow(BadRequestException);
     expect(() => deriveStorySlug('   ')).toThrow(BadRequestException);
   });
 
@@ -170,7 +170,7 @@ describe('CreateStoryDto through the production ValidationPipe', () => {
   it('still rejects a client-supplied slug that is not URL-safe', async () => {
     const messages = await messagesFor(CreateStoryDto, { title: 'Bad', slug: 'Not A Valid Slug' });
 
-    expect(messages.join(' ')).toContain('Slug can only contain lowercase letters, numbers, and hyphens');
+    expect(messages.join(' ')).toContain('Slug can only contain letters, numbers, and hyphens');
   });
 
   it('rejects an empty slug instead of silently deriving one, so the intent is explicit', async () => {
@@ -303,7 +303,7 @@ describe('UpdateStoryDto through the production ValidationPipe', () => {
   it('still rejects an invalid client-supplied slug', async () => {
     const messages = await messagesFor(UpdateStoryDto, { slug: 'Not A Valid Slug' });
 
-    expect(messages.join(' ')).toContain('Slug can only contain lowercase letters, numbers, and hyphens');
+    expect(messages.join(' ')).toContain('Slug can only contain letters, numbers, and hyphens');
   });
 
   it('rejects a category name for the same reason create does', async () => {
