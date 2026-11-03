@@ -640,6 +640,7 @@ export class AuthService {
         name: user.name,
         username: user.username,
         accountType: user.accountType,
+        onboardingCompleted: user.onboardingCompleted ?? false,
       },
       tokens,
     };
@@ -752,6 +753,7 @@ export class AuthService {
         name: user.name,
         username: user.username,
         accountType: user.accountType,
+        onboardingCompleted: user.onboardingCompleted ?? false,
       },
       tokens,
     };
@@ -846,6 +848,7 @@ export class AuthService {
         name: user.name,
         username: user.username,
         accountType: user.accountType,
+        onboardingCompleted: user.onboardingCompleted ?? false,
       },
       tokens,
     };
@@ -879,6 +882,7 @@ export class AuthService {
         name: user.name,
         username: user.username,
         accountType: user.accountType,
+        onboardingCompleted: user.onboardingCompleted ?? false,
       },
       expiresAt,
     };

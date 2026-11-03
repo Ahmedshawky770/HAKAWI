@@ -99,6 +99,7 @@ export type AuthUserSummary = {
   name: string;
   username: string;
   accountType: AccountType;
+  onboardingCompleted?: boolean;
 };
 
 export type AuthResponse = {
@@ -120,6 +121,7 @@ export type PublicUserProfile = {
   accountType: AccountType;
   isVerified: boolean;
   preferredLocale?: string;
+  onboardingCompleted?: boolean;
   createdAt: string;
 };
 
