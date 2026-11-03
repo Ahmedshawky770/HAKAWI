@@ -125,7 +125,7 @@ describe('ContestsEventHandler', () => {
 
       const notification = singleNotification();
       expect(notification.userId).toBe('author-1');
-      expect(notification.title).toContain('submitted');
+      expect(notification.title).toContain('تم إرسال');
     });
 
     it('should tell the entry AUTHOR it was approved', async () => {
@@ -137,7 +137,7 @@ describe('ContestsEventHandler', () => {
 
       const notification = singleNotification();
       expect(notification.userId).toBe('author-1');
-      expect(notification.title).toContain('approved');
+      expect(notification.title).toContain('تم قبول');
     });
 
     it('should tell the entry AUTHOR it was rejected, rather than saying nothing', async () => {
@@ -149,7 +149,7 @@ describe('ContestsEventHandler', () => {
 
       const notification = singleNotification();
       expect(notification.userId).toBe('author-1');
-      expect(notification.title).toContain('not accepted');
+      expect(notification.title).toContain('لم يتم قبول');
     });
   });
 
@@ -164,7 +164,7 @@ describe('ContestsEventHandler', () => {
 
       const notification = singleNotification();
       expect(notification.userId).toBe('author-1');
-      expect(notification.title).toContain('vote');
+      expect(notification.title).toContain('تصويت');
     });
 
     it('should not tell a voter about their own vote', async () => {

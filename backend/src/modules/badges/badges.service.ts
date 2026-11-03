@@ -2,6 +2,9 @@ import { Injectable, NotFoundException, Inject, Optional } from '@nestjs/common'
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../common/services/winston-logger.service.ts';
+import { USERS_REPOSITORY } from '../../common/users/users-repository.interface.ts';
+import type { IUsersRepository } from '../../common/users/users-repository.interface.ts';
+import { t, normalizeLocale, badgeName, badgeDescription } from '../../common/i18n/i18n.ts';
 import { badges, userBadges } from '../../db/schema/badges.schema.ts';
 import { moderationActions } from '../../db/schema/moderation.schema.ts';
 import { follows } from '../../db/schema/social.schema.ts';
@@ -71,6 +74,7 @@ export class BadgesService {
   constructor(
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
     @Optional() private readonly notificationsService?: NotificationsService,
+    @Optional() @Inject(USERS_REPOSITORY) private readonly usersRepository?: IUsersRepository,
   ) {}
 
   async listCatalog(): Promise<BadgeCatalogEntry[]> {
@@ -209,14 +213,18 @@ export class BadgesService {
       return;
     }
 
-    try {
-      await this.notificationsService.create({
-        userId,
-        type: BADGE_NOTIFICATION_TYPE,
-        title: `Badge earned: ${name}`,
-        message: description,
-        data: JSON.stringify({ badgeKey }),
-      });
+     try {
+       const user = this.usersRepository ? await this.usersRepository.findById(userId) : null;
+       const locale = normalizeLocale(user?.preferredLocale);
+       const localizedName = badgeName(locale, badgeKey, name);
+       const localizedDescription = badgeDescription(locale, badgeKey, description);
+       await this.notificationsService.create({
+         userId,
+         type: BADGE_NOTIFICATION_TYPE,
+         title: t('badge.earned.title', locale, { name: localizedName }),
+         message: t('badge.earned.message', locale, { description: localizedDescription }),
+         data: JSON.stringify({ badgeKey }),
+       });
     } catch (error) {
       this.logger.error(
         `Could not record the badge notification for ${userId}: ${error instanceof Error ? error.message : String(error)}`,

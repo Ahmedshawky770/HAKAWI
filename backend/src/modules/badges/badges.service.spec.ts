@@ -197,8 +197,8 @@ describe('BadgesService', () => {
         expect.objectContaining({
           userId: USER_ID,
           type: BADGE_NOTIFICATION_TYPE,
-          title: 'Badge earned: Contest Champion',
-          message: 'Won a writing contest',
+          title: 'تم الحصول على شارة: بطل المسابقة',
+          message: 'فاز في مسابقة كتابة',
         }),
       );
     });

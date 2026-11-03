@@ -24,10 +24,13 @@
  * reaction and a direct message — plus the `notification.created` log line. Every one of them writes
  * through `NotificationsService`, which is the single path that consults the recipient's preferences.
  */
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
+import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
+import { t, normalizeLocale } from '../../../common/i18n/i18n.ts';
 import type { NotificationCreatedEvent } from '../../../common/events/social.events.ts';
 import type {
   UserFollowedEvent,
@@ -60,12 +63,9 @@ export class NotificationsEventHandler {
   constructor(
     @Inject(NotificationsService) private readonly notificationsService: NotificationsService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
-    // Each is the OWNING module's public interface, not a table handle. Principle #7's enforcement is
-    // "modules communicate via interfaces only" plus "dependency injection for all dependencies" —
-    // reading `stories` and `comments` through `db` directly, as this handler used to, bypassed the
-    // modules that own them and coupled notifications to two schemas it has no reason to know.
     @Inject(STORIES_REPOSITORY) private readonly storiesRepository: IStoriesRepository,
     @Inject(COMMENTS_REPOSITORY) private readonly commentsRepository: ICommentsRepository,
+    @Optional() @Inject(USERS_REPOSITORY) private readonly usersRepository?: IUsersRepository,
   ) {}
 
   @OnEvent('notification.created')
@@ -114,15 +114,17 @@ export class NotificationsEventHandler {
       return;
     }
 
-    await this.deliver('user.followed', event.followingId, () =>
-      this.notificationsService.create({
+    await this.deliver('user.followed', event.followingId, async () => {
+      const user = this.usersRepository ? await this.usersRepository.findById(event.followingId) : null;
+      const locale = normalizeLocale(user?.preferredLocale);
+      return this.notificationsService.create({
         userId: event.followingId,
         type: 'follow',
-        title: 'New follower',
-        message: 'Someone started following you.',
+        title: t('follow.title', locale),
+        message: t('follow.message', locale),
         data: JSON.stringify({ followerId: event.followerId, followingId: event.followingId }),
-      }),
-    );
+      });
+    });
   }
 
   /**
@@ -142,19 +144,21 @@ export class NotificationsEventHandler {
       return;
     }
 
-    await this.deliver('comment.created', event.commentId, () =>
-      this.notificationsService.create({
+    await this.deliver('comment.created', event.commentId, async () => {
+      const user = this.usersRepository ? await this.usersRepository.findById(recipient) : null;
+      const locale = normalizeLocale(user?.preferredLocale);
+      return this.notificationsService.create({
         userId: recipient,
         type: isReply ? 'comment_reply' : 'comment',
-        title: isReply ? 'New reply to your comment' : 'New comment on your story',
-        message: isReply ? 'Someone replied to one of your comments.' : 'Someone commented on your story.',
+        title: t(isReply ? 'comment_reply.title' : 'comment.title', locale),
+        message: t(isReply ? 'comment_reply.message' : 'comment.message', locale),
         data: JSON.stringify({
           commentId: event.commentId,
           storyId: event.storyId,
           parentId: event.parentId ?? null,
         }),
-      }),
-    );
+      });
+    });
   }
 
   @OnEvent('comment.reacted')
@@ -164,20 +168,17 @@ export class NotificationsEventHandler {
       return;
     }
 
-    await this.deliver('comment.reacted', event.commentId, () =>
-      this.notificationsService.create({
+    await this.deliver('comment.reacted', event.commentId, async () => {
+      const user = this.usersRepository ? await this.usersRepository.findById(recipient) : null;
+      const locale = normalizeLocale(user?.preferredLocale);
+      return this.notificationsService.create({
         userId: recipient,
-        // `comment_reaction`, NOT `story_reaction`. The family a notification belongs to is resolved
-        // from its type, so writing `story_reaction` here gated a reaction to a COMMENT on the
-        // `storyReactions` preference: muting comments did not silence reactions to your comments, and
-        // muting story reactions did not spare you from comment ones. Both were wrong. See
-        // `./preference-family.ts`.
         type: 'comment_reaction',
-        title: 'New reaction to your comment',
-        message: 'Someone reacted to one of your comments.',
+        title: t('comment_reaction.title', locale),
+        message: t('comment_reaction.message', locale),
         data: JSON.stringify({ commentId: event.commentId, reactionType: event.reactionType }),
-      }),
-    );
+      });
+    });
   }
 
   @OnEvent('story.reacted')
@@ -187,15 +188,17 @@ export class NotificationsEventHandler {
       return;
     }
 
-    await this.deliver('story.reacted', event.storyId, () =>
-      this.notificationsService.create({
+    await this.deliver('story.reacted', event.storyId, async () => {
+      const user = this.usersRepository ? await this.usersRepository.findById(recipient) : null;
+      const locale = normalizeLocale(user?.preferredLocale);
+      return this.notificationsService.create({
         userId: recipient,
         type: 'story_reaction',
-        title: 'New reaction to your story',
-        message: 'Someone reacted to your story.',
+        title: t('story_reaction.title', locale),
+        message: t('story_reaction.message', locale),
         data: JSON.stringify({ storyId: event.storyId, reactionType: event.reactionType }),
-      }),
-    );
+      });
+    });
   }
 
   /**
@@ -222,15 +225,17 @@ export class NotificationsEventHandler {
       return;
     }
 
-    await this.deliver('message.sent', event.messageId, () =>
-      this.notificationsService.create({
+    await this.deliver('message.sent', event.messageId, async () => {
+      const user = this.usersRepository ? await this.usersRepository.findById(recipient) : null;
+      const locale = normalizeLocale(user?.preferredLocale);
+      return this.notificationsService.create({
         userId: recipient,
         type: 'message',
-        title: 'New message',
-        message: 'You have a new direct message.',
+        title: t('message.title', locale),
+        message: t('message.message', locale),
         data: JSON.stringify({ conversationId: event.conversationId, messageId: event.messageId }),
-      }),
-    );
+      });
+    });
   }
 
   private async authorOfStory(storyId: string): Promise<string | null> {

@@ -1,7 +1,10 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
+import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
+import { t, normalizeLocale } from '../../../common/i18n/i18n.ts';
 import type {
   ContestCreatedEvent,
   ContestStartedEvent,
@@ -62,6 +65,7 @@ export class ContestsEventHandler {
     @Inject(CONTESTS_REPOSITORY) private readonly contestsRepository: ContestSubmissionsReader,
     @Inject(NotificationsService) private readonly notifications: ContestNotifier,
     @Inject(WinstonLoggerService) private readonly logger: ContestSubscriptionsLogger,
+    @Optional() @Inject(USERS_REPOSITORY) private readonly usersRepository?: IUsersRepository,
   ) {}
 
   @OnEvent('contest.created')
@@ -81,11 +85,14 @@ export class ContestsEventHandler {
       'ContestsEventHandler',
     );
 
+    const submittedUser = this.usersRepository ? await this.usersRepository.findById(event.authorId) : null;
+    const submittedLocale = normalizeLocale(submittedUser?.preferredLocale);
+
     await this.deliver(
       event.authorId,
       'submission.review',
-      'Your story was submitted',
-      'Your entry is awaiting review.',
+      t('contest.submission.submitted.title', submittedLocale),
+      t('contest.submission.submitted.message', submittedLocale),
       {
         submissionId: event.submissionId,
         contestId: event.contestId,
@@ -100,7 +107,10 @@ export class ContestsEventHandler {
       'ContestsEventHandler',
     );
 
-    await this.deliver(event.authorId, 'contest', 'Your entry was approved', 'Your story is now in the running.', {
+    const approvedUser = this.usersRepository ? await this.usersRepository.findById(event.authorId) : null;
+    const approvedLocale = normalizeLocale(approvedUser?.preferredLocale);
+
+    await this.deliver(event.authorId, 'contest', t('contest.submission.approved.title', approvedLocale), t('contest.submission.approved.message', approvedLocale), {
       submissionId: event.submissionId,
       contestId: event.contestId,
     });
@@ -113,11 +123,14 @@ export class ContestsEventHandler {
       'ContestsEventHandler',
     );
 
+    const rejectedUser = this.usersRepository ? await this.usersRepository.findById(event.authorId) : null;
+    const rejectedLocale = normalizeLocale(rejectedUser?.preferredLocale);
+
     await this.deliver(
       event.authorId,
       'contest',
-      'Your entry was not accepted',
-      'This time it did not make the running.',
+      t('contest.submission.rejected.title', rejectedLocale),
+      t('contest.submission.rejected.message', rejectedLocale),
       {
         submissionId: event.submissionId,
         contestId: event.contestId,
@@ -144,7 +157,10 @@ export class ContestsEventHandler {
       return;
     }
 
-    await this.deliver(recipient, 'system', 'Your story got a vote', 'Someone voted for your entry.', {
+    const votedUser = this.usersRepository ? await this.usersRepository.findById(recipient) : null;
+    const votedLocale = normalizeLocale(votedUser?.preferredLocale);
+
+    await this.deliver(recipient, 'system', t('contest.vote.title', votedLocale), t('contest.vote.message', votedLocale), {
       submissionId: event.submissionId,
       contestId: event.contestId,
     });
@@ -154,7 +170,10 @@ export class ContestsEventHandler {
   async handleWinnerSelected(event: WinnerSelectedEvent): Promise<void> {
     this.logger.info(`Winner selected for contest ${event.contestId}: ${event.winnerId}`, 'ContestsEventHandler');
 
-    await this.deliver(event.winnerId, 'contest', 'Congratulations — you won', 'Your entry took first place.', {
+    const winnerUser = this.usersRepository ? await this.usersRepository.findById(event.winnerId) : null;
+    const winnerLocale = normalizeLocale(winnerUser?.preferredLocale);
+
+    await this.deliver(event.winnerId, 'contest', t('contest.winner.title', winnerLocale), t('contest.winner.message', winnerLocale), {
       contestId: event.contestId,
       submissionId: event.submissionId,
     });
@@ -185,7 +204,9 @@ export class ContestsEventHandler {
     const recipients = await this.authorsOf(submissionIds);
     const contestId = event.contestId;
     for (const authorId of recipients) {
-      await this.deliver(authorId, 'contest', 'Your contest has started', 'Voting is now open.', { contestId });
+      const startedUser = this.usersRepository ? await this.usersRepository.findById(authorId) : null;
+      const startedLocale = normalizeLocale(startedUser?.preferredLocale);
+      await this.deliver(authorId, 'contest', t('contest.started.title', startedLocale), t('contest.started.message', startedLocale), { contestId });
     }
   }
 
@@ -196,7 +217,10 @@ export class ContestsEventHandler {
       'ContestsEventHandler',
     );
 
-    await this.deliver(event.winnerId, 'payment', 'Your prize', 'Your prize has been sent.', {
+    const prizeUser = this.usersRepository ? await this.usersRepository.findById(event.winnerId) : null;
+    const prizeLocale = normalizeLocale(prizeUser?.preferredLocale);
+
+    await this.deliver(event.winnerId, 'payment', t('contest.prize.title', prizeLocale), t('contest.prize.message', prizeLocale), {
       contestId: event.contestId,
       prizeId: event.prizeId,
     });

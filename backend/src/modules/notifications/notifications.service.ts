@@ -91,7 +91,7 @@ export class NotificationsService {
     return notification;
   }
 
-  async markAsRead(id: string, userId: string): Promise<Notification> {
+  async markAsRead(id: string, userId: string): Promise<NotificationResponse> {
     const notification = await this.notificationsRepository.findById(id);
     if (!notification) {
       throw new NotFoundException('Notification not found');
@@ -101,7 +101,7 @@ export class NotificationsService {
     }
 
     const updated = await this.notificationsRepository.markAsRead(id);
-    return updated;
+    return this.toNotificationResponse(updated);
   }
 
   async markAllAsRead(userId: string): Promise<void> {
@@ -150,10 +150,15 @@ export class NotificationsService {
       type: notification.type,
       title: notification.title,
       message: notification.message,
-      data: notification.data ? (JSON.parse(notification.data) as Record<string, unknown>) : null,
+      data:
+        notification.data === null || notification.data === undefined
+          ? null
+          : typeof notification.data === 'string'
+            ? (JSON.parse(notification.data) as Record<string, unknown>)
+            : (notification.data as Record<string, unknown>),
       isRead: notification.isRead,
-      readAt: notification.readAt?.toISOString() || null,
-      createdAt: notification.createdAt.toISOString(),
+      readAt: notification.readAt ? new Date(notification.readAt).toISOString() : null,
+      createdAt: new Date(notification.createdAt).toISOString(),
     };
   }
 }
