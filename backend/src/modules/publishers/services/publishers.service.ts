@@ -1,7 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Inject, Optional } from '@nestjs/common';
 
 import { EventValidatorService } from '../../../common/events/event-validator.service.ts';
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
+import { TransactionalEmailService } from '../../../common/email/transactional-email.service.ts';
+import { USERS_REPOSITORY } from '../../../common/users/users-repository.interface.ts';
+import type { IUsersRepository } from '../../../common/users/users-repository.interface.ts';
 import { AccountType } from '../../../common/constants/roles.ts';
 import type { IPublishersRepository } from '../interfaces/publishers-repository.interface.ts';
 import { PUBLISHERS_REPOSITORY } from '../interfaces/publishers-repository.interface.ts';
@@ -15,6 +18,8 @@ export class PublishersService {
     @Inject(PUBLISHERS_REPOSITORY) private readonly publishersRepository: IPublishersRepository,
     @Inject(EventValidatorService) private readonly eventBus: EventValidatorService,
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
+    @Optional() @Inject(TransactionalEmailService) private readonly emailService?: TransactionalEmailService,
+    @Optional() @Inject(USERS_REPOSITORY) private readonly usersRepository?: IUsersRepository,
   ) {}
 
   // Publisher Applications
@@ -39,6 +44,18 @@ export class PublishersService {
     };
 
     const application = await this.publishersRepository.createApplication(data);
+
+    if (this.emailService) {
+      const user = this.usersRepository ? await this.usersRepository.findById(userId) : null;
+      const to = application.contactEmail || user?.email;
+      if (to) {
+        void this.emailService.send({
+          to,
+          subject: 'Publisher application received',
+          text: `Your publisher application for ${application.companyName} has been received and is pending review.`,
+        });
+      }
+    }
 
     await this.eventBus.emit('publisher.application.submitted', {
       applicationId: application.id,
@@ -92,6 +109,29 @@ export class PublishersService {
 
     if (newStatus === 'approved') {
       await this.approveApplication(application, adminId);
+      if (this.emailService) {
+        const user = this.usersRepository ? await this.usersRepository.findById(application.userId) : null;
+        const to = user?.email ?? application.contactEmail;
+        if (to) {
+          void this.emailService.send({
+            to,
+            subject: 'Publisher application approved',
+            text: `Your publisher application for ${application.companyName} has been approved. You can now create and manage contests.`,
+          });
+        }
+      }
+    } else if (newStatus === 'rejected') {
+      if (this.emailService) {
+        const user = this.usersRepository ? await this.usersRepository.findById(application.userId) : null;
+        const to = user?.email ?? application.contactEmail;
+        if (to) {
+          void this.emailService.send({
+            to,
+            subject: 'Publisher application rejected',
+            text: `Your publisher application for ${application.companyName} was not approved.${dto.rejectionReason ? ` Reason: ${dto.rejectionReason}` : ''}`,
+          });
+        }
+      }
     }
 
     await this.eventBus.emit('publisher.application.reviewed', {
@@ -107,6 +147,10 @@ export class PublishersService {
   }
 
   private async approveApplication(application: PublisherApplication, adminId: string): Promise<void> {
+    if (this.usersRepository) {
+      await this.usersRepository.update(application.userId, { accountType: AccountType.PUBLISHER });
+    }
+
     await this.eventBus.emit('user.upgraded', {
       userId: application.userId,
       oldType: 'reader',
