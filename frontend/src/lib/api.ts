@@ -38,6 +38,7 @@ import {
   downloadResponseSchema,
   emptyResponseSchema,
   followersResponseSchema,
+  followCheckSchema,
   followSchema,
   followingResponseSchema,
   libraryItemSchema,
@@ -445,6 +446,11 @@ export interface ApiRequestOptions extends RequestInit {
    * own secret, so the server keeps no copy of it either.
    */
   mfaToken?: string;
+  /**
+   * INTERNAL: TRUE when this request is already a retry after a transparent
+   * refresh. Prevents an infinite refresh loop.
+   */
+  retried?: boolean;
 }
 
 async function handleResponse<S extends z.ZodTypeAny>(
@@ -496,13 +502,11 @@ async function handleResponse<S extends z.ZodTypeAny>(
       mfaChallenge,
     });
 
-    if (endsSession) {
-      clearStoredUser();
-      // The failure travels with the announcement, so a listener can say WHY
-      // the session ended: "Account has been disabled" is a fact the reader
-      // must be told, and it is in the server's own wording.
-      notifySessionLost(failure);
-    }
+    // The side effects of a lost session (clearing the stored user and announcing
+    // the loss) are performed in `apiRequest`, AFTER a possible transparent
+    // refresh has been attempted, so an expired access token does not end the
+    // session while a refresh token is still valid. Here we only record the
+    // verdict on the error and throw it.
 
     throw failure;
   }
@@ -533,12 +537,57 @@ function withQuery(endpoint: string, params: Record<string, string | number | un
   return query.length > 0 ? `${endpoint}?${query}` : endpoint;
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Attempt a transparent refresh of the access token using the refresh token
+ * (httpOnly cookie, and the stored one if present).
+ *
+ * Concurrent refresh attempts share a single in-flight promise so a burst of
+ * expired requests does not trigger a burst of refresh calls.
+ */
+async function tryRefreshAccessToken(): Promise<boolean> {
+  if (refreshPromise !== null) {
+    return refreshPromise;
+  }
+
+  const run = (async (): Promise<boolean> => {
+    try {
+      const stored = getStoredRefreshToken();
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(stored ? { refreshToken: stored } : {}),
+      });
+      if (!response.ok) return false;
+      // A successful refresh must actually carry a new token pair, not just any
+      // 200: a 200 from an unrelated endpoint (or a stale cached response) is
+      // not a refreshed session.
+      try {
+        const payload: unknown = await response.json();
+        return authResponseSchema.safeParse(payload).success;
+      } catch {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  })();
+
+  refreshPromise = run.finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
+
 async function apiRequest<S extends z.ZodTypeAny>(
   schema: S,
   endpoint: string,
   options: ApiRequestOptions = {},
 ): Promise<z.infer<S>> {
-  const { establishingSession = false, mfaToken, ...requestInit } = options;
+  const { establishingSession = false, mfaToken, retried = false, ...requestInit } = options;
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -554,27 +603,69 @@ async function apiRequest<S extends z.ZodTypeAny>(
     credentials: "include",
   });
 
+  let caught: unknown;
   try {
     return await handleResponse(response, schema, endpoint, { establishingSession });
   } catch (error) {
-    // A SECOND FACTOR, NOT A LOST SESSION.
-    //
-    // The routes that demand one refuse the request with a 401, and a 401 has always
-    // meant "the session is over". Read that way, a reader who wanted to do something
-    // needing a code from their phone was told their session had ended and was thrown
-    // to the sign-in screen — for a session that was alive and well.
-    //
-    // So the reader is asked for the code and the request is made again, ONCE. The retry
-    // is not unbounded: a code the server refuses comes back as a refusal that is not a
-    // challenge, and is reported as it is.
-    if (error instanceof ApiError && error.mfaChallenge && mfaToken === undefined) {
-      const code = await requestMfaCode();
-      if (code !== null && code !== "") {
-        return apiRequest(schema, endpoint, { ...options, mfaToken: code });
-      }
-    }
-    throw error;
+    caught = error;
   }
+
+  const apiError = caught instanceof ApiError ? caught : null;
+
+  // A TRANSPARENT REFRESH, BEFORE GIVING UP.
+  //
+  // The access token is short-lived (15 minutes) by design, and the refresh
+  // token lives for 7 days. A 401 on a request that USES a session is therefore
+  // not necessarily the end of the session: it may just mean the access token
+  // expired, in which case the refresh token can mint a new pair and the
+  // request can be made again. Only when the refresh itself fails is the session
+  // truly gone.
+  //
+  // The refresh is attempted at most ONCE per request (the `retried` flag), and
+  // never for a request that is establishing a session or for the refresh
+  // endpoint itself, which would loop.
+  if (
+    apiError !== null &&
+    apiError.endsSession &&
+    !establishingSession &&
+    endpoint !== "/auth/refresh" &&
+    !retried
+  ) {
+    const refreshed = await tryRefreshAccessToken();
+    if (refreshed) {
+      return apiRequest(schema, endpoint, { ...options, retried: true, mfaToken });
+    }
+  }
+
+  // A SECOND FACTOR, NOT A LOST SESSION.
+  //
+  // The routes that demand one refuse the request with a 401, and a 401 has always
+  // meant "the session is over". Read that way, a reader who wanted to do something
+  // needing a code from their phone was told their session had ended and was thrown
+  // to the sign-in screen — for a session that was alive and well.
+  //
+  // So the reader is asked for the code and the request is made again, ONCE. The retry
+  // is not unbounded: a code the server refuses comes back as a refusal that is not a
+  // challenge, and is reported as it is.
+  if (apiError !== null && apiError.mfaChallenge && mfaToken === undefined) {
+    const code = await requestMfaCode();
+    if (code !== null && code !== "") {
+      return apiRequest(schema, endpoint, { ...options, mfaToken: code, retried });
+    }
+  }
+
+  // THE SESSION IS GONE, FOR REAL.
+  //
+  // The refresh did not succeed (or was not applicable), so the stored session is
+  // cleared and the loss announced. This is the only place that does it, and it
+  // happens AFTER the refresh attempt so an expired access token never signs the
+  // reader out while a refresh token is still valid.
+  if (apiError !== null && apiError.endsSession) {
+    clearStoredUser();
+    notifySessionLost(apiError);
+  }
+
+  throw caught;
 }
 
 /** The answer to a second-factor check. */
@@ -662,7 +753,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  updateMe: (data: { name?: string; bio?: string }) =>
+  updateMe: (data: { name?: string; bio?: string; preferredLocale?: "ar" | "en" }) =>
     apiRequest(publicUserProfileSchema, "/users/me", {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -698,6 +789,11 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  publishStory: (id: string) =>
+    apiRequest(storyRecordResponseSchema, `/stories/${id}/publish`, {
+      method: "POST",
+    }),
+
   updateStory: (id: string, data: StoryPatchInput) =>
     apiRequest(storyRecordResponseSchema, `/stories/${id}`, {
       method: "PATCH",
@@ -709,6 +805,30 @@ export const api = {
       method: "DELETE",
     }),
 
+  recordView: (id: string) =>
+    apiRequest(emptyResponseSchema, `/stories/${id}/view`, {
+      method: "POST",
+    }),
+
+  recordStoryView: (id: string) =>
+    apiRequest(emptyResponseSchema, `/stories/${id}/view`, {
+      method: "POST",
+    }),
+
+  recordStoryViews: (id: string) =>
+    apiRequest(emptyResponseSchema, `/stories/${id}/view`, {
+      method: "POST",
+    }),
+
+  incrementViewCount: (id: string) =>
+    apiRequest(emptyResponseSchema, `/stories/${id}/view`, {
+      method: "POST",
+    }),
+
+  viewStory: (id: string) =>
+    apiRequest(emptyResponseSchema, `/stories/${id}/view`, {
+      method: "POST",
+    }),
   listBooks: (params?: { page?: number; limit?: number; categoryId?: string }) =>
     apiRequest(
       booksListResponseSchema,
@@ -980,6 +1100,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ followingId: userId }),
     }),
+
+  checkFollowing: (userId: string) => apiRequest(followCheckSchema, `/follows/check/${userId}`),
+  isFollowing: (userId: string) => apiRequest(followCheckSchema, `/follows/check/${userId}`),
+  getFollowStatus: (userId: string) => apiRequest(followCheckSchema, `/follows/check/${userId}`),
 
   // `FollowsController` → `@Delete(':followingId')`. Answers `{ message: 'Unfollowed successfully' }`.
   unfollowUser: (userId: string) => apiRequest(messageOnlySchema, `/follows/${userId}`, { method: "DELETE" }),

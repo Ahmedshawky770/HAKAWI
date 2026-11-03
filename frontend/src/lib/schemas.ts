@@ -82,6 +82,7 @@ export const publicUserProfileSchema: z.ZodType<PublicUserProfile> = z.object({
   bio: nullableString,
   accountType: accountTypeSchema,
   isVerified: z.boolean(),
+  preferredLocale: z.string().optional(),
   createdAt: isoDate,
 });
 
@@ -521,6 +522,10 @@ export const commentsListResponseSchema = z.object({
 export const commentRepliesResponseSchema = z.object({
   replies: z.array(commentSchema),
   ...pageEnvelope,
+});
+
+export const followCheckSchema = z.object({
+  isFollowing: z.boolean(),
 });
 
 export const followSchema: z.ZodType<Follow> = z.object({
