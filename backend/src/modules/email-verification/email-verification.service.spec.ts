@@ -80,6 +80,7 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
   mfaEnforcedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+      preferredLocale: 'ar',
   ...overrides,
 });
 

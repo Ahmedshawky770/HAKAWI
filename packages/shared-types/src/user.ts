@@ -119,12 +119,14 @@ export type PublicUserProfile = {
   bio: string | null;
   accountType: AccountType;
   isVerified: boolean;
+  preferredLocale?: string;
   createdAt: string;
 };
 
 export type UserProfileUpdate = {
   name?: string;
   bio?: string | null;
+  preferredLocale?: string;
 };
 
 /**

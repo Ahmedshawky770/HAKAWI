@@ -49,6 +49,7 @@ function user(overrides: Partial<User> = {}): User {
     isVerified: false,
     onboardingCompleted: false,
     accessBlocked: false,
+    preferredLocale: 'ar',
     lastLoginAt: null,
     deletedAt: null,
     emailVerified: false,

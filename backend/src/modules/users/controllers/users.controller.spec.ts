@@ -187,6 +187,7 @@ describe('UsersController', () => {
         accountType: AccountType.READER,
         createdAt: new Date(),
         updatedAt: new Date(),
+      preferredLocale: 'ar',
       } as unknown as ClientUser);
 
       const res = await request(httpServer).get('/users/me').set('Authorization', `Bearer ${token}`).expect(200);
@@ -209,6 +210,7 @@ describe('UsersController', () => {
         accountType: AccountType.READER,
         createdAt: new Date(),
         updatedAt: new Date(),
+      preferredLocale: 'ar',
       } as unknown as ClientUser);
 
       const res = await request(httpServer)
@@ -282,6 +284,7 @@ describe('UsersController', () => {
         accountType: AccountType.READER,
         createdAt: new Date(),
         updatedAt: new Date(),
+      preferredLocale: 'ar',
       } as unknown as ClientUser);
 
       const res = await request(httpServer)
@@ -337,6 +340,7 @@ describe('UsersController', () => {
         adminRole: AdminRole.CONTENT_MODERATOR,
         createdAt: new Date(),
         updatedAt: new Date(),
+      preferredLocale: 'ar',
       } as unknown as ClientUser);
 
       await request(httpServer)

@@ -53,6 +53,7 @@ const createMockUser = (overrides: Record<string, unknown> = {}): Record<string,
   deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+      preferredLocale: 'ar',
   ...overrides,
 });
 

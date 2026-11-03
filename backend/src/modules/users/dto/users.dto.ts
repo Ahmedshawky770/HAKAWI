@@ -56,6 +56,11 @@ export class UpdateUserProfileDto {
   @IsOptional()
   @IsBoolean()
   onboardingCompleted?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['ar', 'en'], { message: 'Preferred locale must be ar or en' })
+  preferredLocale?: string;
 }
 
 /**
@@ -106,6 +111,7 @@ export class UserResponseDto {
   isVerified: boolean;
   onboardingCompleted: boolean;
   accessBlocked: boolean;
+  preferredLocale: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -149,6 +155,7 @@ export class UserProfileResponseDto {
   isVerified: boolean;
   onboardingCompleted: boolean;
   accessBlocked: boolean;
+  preferredLocale: string;
   createdAt: Date;
   updatedAt: Date;
 }

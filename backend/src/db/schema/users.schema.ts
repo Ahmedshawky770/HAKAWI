@@ -36,6 +36,7 @@ export const users = pgTable(
     mfaEnabled: boolean('mfa_enabled').default(false).notNull(),
     mfaEnforcedAt: timestamp('mfa_enforced_at'),
     isAgent: boolean('is_agent').default(false).notNull(),
+    preferredLocale: varchar('preferred_locale', { length: 5 }).notNull().default('ar'),
     agencyName: varchar('agency_name', { length: 255 }),
     agentLicense: varchar('agent_license', { length: 255 }),
     canRepresentOthers: boolean('can_represent_others').default(false).notNull(),

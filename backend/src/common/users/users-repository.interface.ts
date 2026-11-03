@@ -27,6 +27,7 @@ export type UpdateUserInput = Partial<{
   isVerified: boolean;
   onboardingCompleted: boolean;
   accessBlocked: boolean;
+  preferredLocale: string;
   lastLoginAt: Date;
   emailVerified: boolean;
   emailVerificationToken: string | null;
@@ -57,6 +58,7 @@ export type User = {
   isVerified: boolean | null;
   onboardingCompleted: boolean | null;
   accessBlocked: boolean | null;
+  preferredLocale: string | null;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   emailVerified: boolean | null;
