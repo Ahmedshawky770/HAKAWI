@@ -465,3 +465,33 @@ no single rate limit; there are four.
 ---
 
 *This document defines the REST API contract for Hakawi.*
+
+---
+
+## Recent additions (2026-11-03)
+
+### Users
+| Method | Path | Guard | Notes |
+|---|---|---|---|
+| POST | `/users/me/professional-application` | `@Secured()` | Multipart: fields (birthDate, country, bio, phoneNumber, ...) + video file. Sets `professional_status='pending'`. |
+| POST | `/users/me/professional-request` | `@Secured()` | Eligibility check (existing). |
+| POST | `/users/me/upgrade` | `@Secured()` | Self-upgrade to `rising_star` / `professional` (professional requires verification officer). |
+| PATCH | `/users/me` | `@Secured()` | Now accepts `preferredLocale`, `onboardingCompleted`. |
+
+### Publishers
+| Method | Path | Guard | Notes |
+|---|---|---|---|
+| POST | `/publishers/applications` | `@Secured()` | Extended DTO (9-step wizard fields). |
+| GET | `/publishers/applications/me` | `@Secured()` | Caller's application. |
+| PATCH | `/publishers/applications/:id/review` | verification officer / super admin | Approve/reject; approve upgrades accountType to publisher + sends email. |
+
+### Auth
+| Method | Path | Guard | Notes |
+|---|---|---|---|
+| GET | `/auth/session` | `@Secured()` | Response now includes `onboardingCompleted`. |
+| POST | `/auth/login` | `@Public()` | Response now includes `onboardingCompleted`. |
+
+### Frontend routes (not API)
+- `/onboarding` — account type selection (Reader / Professional / Publisher).
+- `/professional/apply` — professional application form (4 fields + video).
+- `/publishers/apply` — 9-step publisher registration wizard with file upload.

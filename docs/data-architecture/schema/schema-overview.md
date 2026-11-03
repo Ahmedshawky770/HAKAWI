@@ -171,10 +171,16 @@ or subsumed into.
 ### Users
 | Table | Note |
 |---|---|
-| `users` | Profile, `account_type`, `admin_role`, `is_verified`, `onboarding_completed`, `access_blocked` |
+| `users` | Profile, `account_type`, `admin_role`, `is_verified`, `onboarding_completed`, `access_blocked`, `preferred_locale`, plus professional application fields (`birth_date`, `country`, `phone_number`, `professional_status`, `professional_video_path`, `professional_requested_at`, `professional_reviewed_at`, `professional_rejection_reason`) added by migration 0043 |
 | — | ⛔ `user_profiles` does not exist; profile fields live on `users` |
 | — | ⛔ `user_achievements` / `user_evolution` do not exist |
 | — | ⛔ `user_verifications` does not exist; verification is a boolean + `user_verifications` handled by the verification service |
+
+### Publishers
+| Table | Note |
+|---|---|
+| `publisher_applications` | Extended by migration 0044 with registrant/company/legal/tax/contact/bio/publishing fields, document URLs, banking (IBAN), and agreement flags |
+| `publisher_writers` | Publisher-writer commission links |
 
 ### Stories
 | Table | Note |

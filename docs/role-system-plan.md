@@ -144,7 +144,7 @@ Fixed to use proper decorators instead of manual role checks:
 All planned items completed:
 1. ✅ Backend permissions + UpdateUserInput/Dto + controller guards
 2. ✅ Backend upgrade endpoint + admin provisioning
-3. ✅ Frontend gating + onboarding (optional)
+3. ✅ Frontend gating + onboarding (implemented: /onboarding, /professional/apply, /publishers/apply)
 4. ✅ Docs update
 5. ✅ Tests (unit + e2e)
 6. ✅ Typecheck + lint + tests
