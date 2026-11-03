@@ -84,6 +84,7 @@ const envSchema = z.object({
    * there cannot silently make `X-Forwarded-For` attacker-controlled.
    */
   THROTTLE_TRUST_PROXY: booleanFlag.default(false),
+  PUBLIC_API_URL: z.string().default('http://localhost:3001/api/v1'),
 });
 
 export type WafFailMode = 'open' | 'closed';
@@ -115,6 +116,12 @@ export interface WafConfig {
   readonly blockForwardingHeaders: boolean;
   /** Shared with the rate limiter; see `THROTTLE_TRUST_PROXY` above. */
   readonly trustProxy: boolean;
+  /**
+   * The origin the API serves its own assets (uploaded files) from. URLs pointing at
+   * this origin are references to resources the application itself produced and stored,
+   * not attacker-supplied SSRF targets, so the SSRF rules must not block them.
+   */
+  readonly publicApiUrl?: string;
 }
 
 export const DEFAULT_WAF_CONFIG: WafConfig = {
@@ -134,6 +141,7 @@ export const DEFAULT_WAF_CONFIG: WafConfig = {
   blockedCountries: [],
   blockForwardingHeaders: false,
   trustProxy: false,
+  publicApiUrl: 'http://localhost:3001/api/v1',
 };
 
 export function buildWafConfig(source: NodeJS.ProcessEnv): WafConfig {
@@ -164,6 +172,7 @@ export function buildWafConfig(source: NodeJS.ProcessEnv): WafConfig {
     blockedCountries: env.WAF_BLOCKED_COUNTRIES,
     blockForwardingHeaders,
     trustProxy: env.THROTTLE_TRUST_PROXY,
+    publicApiUrl: env.PUBLIC_API_URL.replace(/\/+$/, ''),
   };
 }
 

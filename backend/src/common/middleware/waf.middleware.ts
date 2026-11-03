@@ -286,6 +286,8 @@ export class WafMiddleware implements NestMiddleware {
   private readonly disabledRuleIds: ReadonlySet<string>;
   private readonly enabledOptInControls: ReadonlySet<WafOptInControl>;
   private readonly blocklistDegradation: DegradationTracker;
+  private readonly publicApiUrl: string;
+  private readonly allowedOrigin: string;
 
   constructor(
     @Inject(WinstonLoggerService) private readonly logger: WinstonLoggerService,
@@ -297,6 +299,12 @@ export class WafMiddleware implements NestMiddleware {
     this.disabledRuleIds = new Set(this.config.disabledRules);
     this.enabledOptInControls = new Set(this.config.enabledOptInControls);
     this.blocklistDegradation = new DegradationTracker(this.logger, generateCorrelationId);
+    this.publicApiUrl = (this.config.publicApiUrl ?? 'http://localhost:3001/api/v1').replace(/\/+$/, '');
+    try {
+      this.allowedOrigin = new URL(this.publicApiUrl).origin;
+    } catch {
+      this.allowedOrigin = 'http://localhost:3001';
+    }
   }
 
   private isRuleActive(rule: WafRule): boolean {
@@ -380,6 +388,20 @@ export class WafMiddleware implements NestMiddleware {
     return violations;
   }
 
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private stripOwnUrls(value: string): string {
+    // Only the application's own uploaded-asset URLs are masked, identified by their upload path.
+    // A value that merely contains the API origin but is not an uploaded asset keeps the origin
+    // subject to SSRF evaluation, so an attacker cannot hide a target behind the API host.
+    const originPattern = this.escapeRegex(this.allowedOrigin);
+    return value.replace(new RegExp(`${originPattern}[^\\s"'<>]*`, 'gi'), (match) =>
+      /\/upload\//i.test(match) ? match.replace(this.allowedOrigin, 'http://example.com') : match,
+    );
+  }
+
   evaluate(req: Request): WafViolation[] {
     const violations = this.evaluateNonPatternRules(req);
     const values = collectInspectableValues(req);
@@ -395,8 +417,10 @@ export class WafMiddleware implements NestMiddleware {
         if (!rule.targets.includes(candidate.target)) {
           continue;
         }
+        const valueToTest =
+          rule.id.startsWith('ssrf-') ? this.stripOwnUrls(candidate.value) : candidate.value;
         const matched =
-          rule.kind === 'control-char' ? candidate.value.includes(rule.char) : matchesRuleValue(rule, candidate.value);
+          rule.kind === 'control-char' ? valueToTest.includes(rule.char) : matchesRuleValue(rule, valueToTest);
         if (matched) {
           violations.push({
             ruleId: rule.id,
