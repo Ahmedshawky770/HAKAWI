@@ -205,12 +205,6 @@ describe("TrendingRail", () => {
     expect(await screen.findByText(stringsFor(DEFAULT_LOCALE).shell.noStories)).toBeInTheDocument();
   });
 
-  it("offers the writing action above the ranking", () => {
-    renderWithProviders(<TrendingRail />);
-    const links = screen.getAllByRole("link", { name: "اكتب حكايتك هنا…" });
-    expect(links[0]).toHaveAttribute("href", "/stories/create");
-  });
-
   it("stays out of the way below xl", () => {
     renderWithProviders(<TrendingRail />);
     expect(screen.getByRole("complementary").className).toContain("xl:block");

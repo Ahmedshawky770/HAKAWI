@@ -50,7 +50,7 @@ describe("SkipLink", () => {
   it("paints nothing itself: the focused state is the stylesheet's job", () => {
     // The link carries only `hk-skip-link`; every colour and box property comes
     // from `.hk-skip-link:focus-visible` in globals.css. jsdom applies no
-    // stylesheet, so the pairing (accent fill + on-accent text, the pair §4.6
+    // stylesheet, so the pairing (accent fill + on-primary text, the pair §4.6
     // tabulates at 8.70:1 and 5.18:1) is asserted where the CSS can be read:
     // `design-system.test.ts`, which would fail if this block painted a token no
     // theme defines — the bug that shipped `--hk-accent-strong`.

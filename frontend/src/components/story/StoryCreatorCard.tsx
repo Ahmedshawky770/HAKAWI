@@ -51,7 +51,11 @@ export function StoryCreatorCard() {
   const remaining = 120 - title.trim().length;
 
   const createStory = useMutation({
-    mutationFn: (payload: StoryMutationInput) => api.createStory(payload),
+    mutationFn: async (payload: StoryMutationInput) => {
+      const story = await api.createStory(payload);
+      await api.publishStory(story.id);
+      return story;
+    },
     onSuccess: (story) => {
       notify(strings.story.creatorPublishedToast, "success");
       setTitle("");

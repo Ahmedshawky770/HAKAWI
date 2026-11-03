@@ -69,7 +69,11 @@ const categoryOptions =
         ];
 
   const createStory = useMutation({
-    mutationFn: (payload: StoryMutationInput) => api.createStory(payload),
+    mutationFn: async (payload: StoryMutationInput) => {
+      const story = await api.createStory(payload);
+      await api.publishStory(story.id);
+      return story;
+    },
     onSuccess: (story) => {
       // WHY THE NAVIGATION GOES FIRST. `invalidateQueries` resolves only after
       // the refetches it triggered SETTLE, so awaiting it before the
@@ -119,7 +123,7 @@ const categoryOptions =
     e.preventDefault();
     const selectedCategory = categoriesQuery.data?.find((c) => c.slug === category);
     createStory.mutate({
-      title,
+      title: title.trim(),
       content,
       // Only send a categoryId when the chosen slug actually resolves to a seeded category.
       // A selection made before the categories list loaded cannot be resolved, so it is

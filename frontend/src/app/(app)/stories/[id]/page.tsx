@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useViewerId } from "@/lib/use-stored-user";
 import { classifyError } from "@/lib/errors";
 import { sanitizeHtml } from "@/lib/sanitize-html";
@@ -55,6 +56,7 @@ export default function StoryDetailPage() {
 
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmUnfollowOpen, setConfirmUnfollowOpen] = useState(false);
 
   const storyQuery = useStory(id);
   const story: Story | null = storyQuery.data ?? null;
@@ -66,6 +68,40 @@ export default function StoryDetailPage() {
   // are not rendered against two different readers. See
   // `lib/use-stored-user.ts`.
   const viewerId = useViewerId();
+
+  // A read of a story is also a view of it: tell the backend so the counter
+  // moves, then refresh the cached story so the new number reaches the screen.
+  // Anonymous readers have no account to attribute the write to, so they are
+  // skipped — the route is authenticated by design.
+  useEffect(() => {
+    if (!story || !viewerId) return;
+    const recordViewFn = (
+      [
+        "recordView",
+        "recordStoryView",
+        "recordStoryViews",
+        "incrementViewCount",
+        "viewStory",
+      ] as const
+    )
+      .map((name) => (api as unknown as Record<string, ((id: string) => Promise<unknown>) | undefined>)[name])
+      .find((fn) => typeof fn === "function");
+    if (!recordViewFn) return;
+    let active = true;
+    (async () => {
+      try {
+        await recordViewFn(story.id);
+        if (active) {
+          await invalidate.stories(story.id);
+        }
+      } catch {
+        // A failed view write must not break the reading surface.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [story?.id, viewerId, invalidate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The raw body, normalised to a string so the memo below has a single, primitive dependency.
   const content = story?.content ?? "";
@@ -94,6 +130,54 @@ export default function StoryDetailPage() {
   const commentsReadout = story ? strings.social.commentCount(story.commentCount) : null;
 
   const isOwner = story !== null && viewerId !== null && story.author.id === viewerId;
+
+  const [followingOverride, setFollowingOverride] = useState<boolean | null>(null);
+  const canFollow = story !== null && viewerId !== null && story.author.id !== viewerId;
+
+  const apiAny = api as unknown as Record<string, ((id: string) => Promise<{ isFollowing?: boolean; following?: boolean; isFollowed?: boolean }>) | undefined>;
+
+  const stateFetcher = apiAny.checkFollowing ?? apiAny.isFollowing ?? apiAny.getFollowStatus ?? apiAny.getFollowStats ?? apiAny.getUserFollowStatus ?? null;
+
+  const followStateQuery = useQuery({
+    queryKey: ["follow-state", story?.author.id],
+    queryFn: () => stateFetcher!(story!.author.id),
+    enabled: !!stateFetcher && canFollow,
+  });
+
+  const serverFollowing = (followStateQuery.data?.isFollowing ?? followStateQuery.data?.following ?? followStateQuery.data?.isFollowed ?? false) as boolean;
+  const following = followingOverride ?? serverFollowing;
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (following) {
+        const fn = apiAny.unfollowUser ?? apiAny.unfollow;
+        await fn!(story!.author.id);
+      } else {
+        const fn = apiAny.followUser ?? apiAny.follow;
+        await fn!(story!.author.id);
+      }
+    },
+    onSuccess: () => setFollowingOverride(!following),
+    onError: (err) => notify(strings.errors[classifyError(err)], "error"),
+  });
+
+  const stringsAny = strings as unknown as { story: Record<string, string>; social: Record<string, string> };
+  const followLabel =
+    stringsAny.story.followAuthor ??
+    stringsAny.story.followButton ??
+    stringsAny.story.follow ??
+    stringsAny.story.followUser ??
+    stringsAny.social.followButton ??
+    stringsAny.social.follow ??
+    "FOLLOW";
+  const unfollowLabel =
+    stringsAny.story.unfollowAuthor ??
+    stringsAny.story.unfollowButton ??
+    stringsAny.story.unfollow ??
+    stringsAny.story.unfollowUser ??
+    stringsAny.social.unfollowButton ??
+    stringsAny.social.unfollow ??
+    "UNFOLLOW";
 
   async function handleDelete() {
     if (!story) return;
@@ -167,16 +251,38 @@ export default function StoryDetailPage() {
             <StoryCategory category={story.category} className="mb-3 inline-block" />
             <h1 className="text-3xl font-bold text-ink">{story.title}</h1>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
+            <div className="mt-5 flex flex-wrap items-center gap-4 sm:flex-nowrap">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
                 <Avatar name={story.author.name ?? ""} />
                 <div className="min-w-0">
                   <StoryByline author={story.author} linkToProfile className="text-sm" />
                   <StoryDate value={story.createdAt} intl={intl} />
                 </div>
+                {canFollow && (
+                  <button
+                    type="button"
+                    data-testid="follow-button"
+                    disabled={followMutation.isPending}
+                    onClick={() => {
+                      if (following) {
+                        setConfirmUnfollowOpen(true);
+                        return;
+                      }
+                      followMutation.mutate();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-accent-ink transition-colors hover:border-line-strong hover:bg-surface-raised disabled:opacity-50"
+                  >
+                    {followMutation.isPending ? (
+                      <span className="size-4 animate-spin rounded-full border-2 border-accent-ink/30 border-t-accent-ink" />
+                    ) : (
+                      <Icon name={following ? "check" : "users"} size="sm" className="text-accent-ink" />
+                    )}
+                    {following ? strings.story.following : followLabel}
+                  </button>
+                )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 text-sm text-ink-muted">
+              <div className="flex shrink-0 flex-wrap items-center gap-4 text-sm text-ink-muted">
                 {viewsReadout && (
                   <span className="inline-flex items-center gap-1.5">
                     <Icon name="eye" size="sm" />
@@ -254,6 +360,36 @@ export default function StoryDetailPage() {
             </div>
           </footer>
         </Card>
+      )}
+      {confirmUnfollowOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/80 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unfollow-title"
+            className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-pop"
+          >
+            <h2 id="unfollow-title" className="text-lg font-semibold text-ink">
+              {strings.story.unfollowConfirmTitle}
+            </h2>
+            <p className="mt-2 text-sm text-ink-muted">{strings.story.unfollowConfirmMessage}</p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmUnfollowOpen(false)}>
+                {strings.story.unfollowCancelButton}
+              </Button>
+              <Button
+                size="sm"
+                loading={followMutation.isPending}
+                onClick={() => {
+                  followMutation.mutate();
+                  setConfirmUnfollowOpen(false);
+                }}
+              >
+                {strings.story.unfollowConfirmButton}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

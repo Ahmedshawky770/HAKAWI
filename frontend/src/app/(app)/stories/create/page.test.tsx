@@ -27,6 +27,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     createStory: vi.fn(),
+    publishStory: vi.fn(),
     listStories: vi.fn(),
     listCategories: vi.fn(),
     uploadFile: vi.fn(),
@@ -59,6 +60,7 @@ const mockStory = {
 describe("Story create page", () => {
   beforeEach(() => {
     mockedApi.createStory.mockResolvedValue(mockStory);
+    mockedApi.publishStory.mockResolvedValue(mockStory);
     mockedApi.listCategories.mockResolvedValue([
       { id: "cat-1", name: "Fiction", slug: "fiction", isActive: true },
     ]);
