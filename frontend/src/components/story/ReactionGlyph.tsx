@@ -11,7 +11,7 @@ import type { ReactionType } from "@hakawi/shared-types";
  * Windows, so the reaction row looks like a different product on every device
  * — and a product whose identity is amber-on-obsidian cannot afford a row of
  * red and yellow hearts that the vendor chose. The designed assets already
- * existed in `public/Reactions/` and were never used by a single line of the
+ * existed in `public/reactions/` and were never used by a single line of the
  * source; these are they.
  *
  * THE MAPPING. The API's vocabulary is `REACTION_TYPES` — `like`, `love`, `wow`,
@@ -37,12 +37,12 @@ import type { ReactionType } from "@hakawi/shared-types";
  * screen reader hears the reaction, not "image".
  */
 const ASSETS: Record<ReactionType, string> = {
-  like: "/Reactions/default.svg",
-  love: "/Reactions/Love.svg",
-  wow: "/Reactions/Brilliant.svg",
-  sad: "/Reactions/Sad.svg",
-  angry: "/Reactions/Excited.svg",
-  haunted: "/Reactions/Scared.svg",
+  like: "/reactions/default.svg",
+  love: "/reactions/Love.svg",
+  wow: "/reactions/Brilliant.svg",
+  sad: "/reactions/Sad.svg",
+  angry: "/reactions/Excited.svg",
+  haunted: "/reactions/Scared.svg",
 };
 
 export function ReactionGlyph({ type, size = 20 }: { type: ReactionType; size?: number }) {
