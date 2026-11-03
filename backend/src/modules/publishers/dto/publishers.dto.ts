@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsOptional, IsEmail, IsUrl, IsIn, IsInt, Min, Max } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsEmail, IsUrl, IsIn, IsInt, Min, Max, IsBoolean } from 'class-validator';
 
 export class CreatePublisherApplicationDto {
   @IsString()
@@ -37,6 +37,50 @@ export class CreatePublisherApplicationDto {
   @IsString()
   @MinLength(50, { message: 'Description must be at least 50 characters' })
   description: string;
+
+  @IsOptional() @IsString() registrantName?: string;
+  @IsOptional() @IsString() registrantPhone?: string;
+  @IsOptional() @IsString() registrantRole?: string;
+  @IsOptional() @IsString() tradingName?: string;
+  @IsOptional() @IsString() nameEn?: string;
+  @IsOptional() @IsString() entityType?: string;
+  @IsOptional() @IsString() province?: string;
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() logoUrl?: string;
+  @IsOptional() @IsString() website?: string;
+  @IsOptional() @IsString() socialLinks?: string;
+  @IsOptional() @IsString() crIssuer?: string;
+  @IsOptional() crExpiry?: Date;
+  @IsOptional() @IsString() activityType?: string;
+  @IsOptional() vatRegistered?: boolean;
+  @IsOptional() @IsString() isbnPrefix?: string;
+  @IsOptional() @IsString() legalRepName?: string;
+  @IsOptional() @IsString() legalRepNationalId?: string;
+  @IsOptional() @IsString() legalRepTitle?: string;
+  @IsOptional() @IsString() legalRepPhone?: string;
+  @IsOptional() @IsString() @IsEmail() officialEmail?: string;
+  @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() whatsapp?: string;
+  @IsOptional() @IsString() @IsEmail() supportEmail?: string;
+  @IsOptional() @IsString() bio?: string;
+  @IsOptional() @IsString() publishingFields?: string;
+  @IsOptional() @IsInt() foundedYear?: number;
+  @IsOptional() @IsInt() titleCount?: number;
+  @IsOptional() @IsString() crImageUrl?: string;
+  @IsOptional() @IsString() taxCardImageUrl?: string;
+  @IsOptional() @IsString() idCardFrontUrl?: string;
+  @IsOptional() @IsString() idCardBackUrl?: string;
+  @IsOptional() @IsString() authorizationLetterUrl?: string;
+  @IsOptional() @IsString() delegateIdCardUrl?: string;
+  @IsOptional() @IsString() depositCertificateUrl?: string;
+  @IsOptional() @IsString() bankAccountName?: string;
+  @IsOptional() @IsString() bankName?: string;
+  @IsOptional() @IsString() iban?: string;
+  @IsOptional() @IsString() swiftCode?: string;
+  @IsOptional() @IsBoolean() termsAccepted?: boolean;
+  @IsOptional() @IsBoolean() privacyAccepted?: boolean;
+  @IsOptional() @IsBoolean() dataAccuracyAccepted?: boolean;
+  @IsOptional() @IsBoolean() copyrightAccepted?: boolean;
 }
 
 export class ReviewPublisherApplicationDto {
