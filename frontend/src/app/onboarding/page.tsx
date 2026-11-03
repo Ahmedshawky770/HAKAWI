@@ -11,7 +11,7 @@ import { useLocale } from "@/components/providers/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 
-type Choice = "reader" | "rising_star" | "professional";
+type Choice = "reader" | "rising_star" | "professional" | "publisher";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -45,7 +45,11 @@ export default function OnboardingPage() {
         setStoredUser({ ...stored, onboardingCompleted: true });
       }
       queryClient.clear();
-      router.push("/");
+      if (choice === "publisher") {
+        router.push("/publishers/apply");
+      } else {
+        router.push("/");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("فشل", "Failed"));
     } finally {
@@ -57,6 +61,7 @@ export default function OnboardingPage() {
     { value: "reader", title: t("قارئ", "Reader"), desc: t("اقرأ القصص وتفاعل معها.", "Read and react to stories.") },
     { value: "rising_star", title: t("كاتب ناشئ", "Rising Star"), desc: t("اكتب قصصك وشاركها.", "Write and share your stories.") },
     { value: "professional", title: t("كاتب محترف", "Professional"), desc: t("بيع كتبك (يتطلب موافقة).", "Sell your books (requires approval).") },
+    { value: "publisher", title: t("دار نشر", "Publisher"), desc: t("أنشئ وأدر المسابقات (يتطلب مراجعة).", "Create and manage contests (requires review).") },
   ];
 
   return (

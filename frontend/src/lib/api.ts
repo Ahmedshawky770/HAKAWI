@@ -1388,4 +1388,22 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+
+  submitPublisherApplication: (data: {
+    companyName: string;
+    companyWebsite?: string;
+    companyAddress?: string;
+    taxId?: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone?: string;
+    description: string;
+  }) =>
+    apiRequest(publisherApplicationSchema, "/publishers/applications", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getMyPublisherApplication: () =>
+    apiRequest(publisherApplicationSchema.nullable(), "/publishers/applications/me"),
 };
