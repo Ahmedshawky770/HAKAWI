@@ -1,0 +1,16 @@
+ALTER TABLE publisher_applications
+  DROP COLUMN IF EXISTS registrant_name, DROP COLUMN IF EXISTS registrant_phone, DROP COLUMN IF EXISTS registrant_role,
+  DROP COLUMN IF EXISTS trading_name, DROP COLUMN IF EXISTS name_en, DROP COLUMN IF EXISTS entity_type,
+  DROP COLUMN IF EXISTS province, DROP COLUMN IF EXISTS city, DROP COLUMN IF EXISTS logo_url, DROP COLUMN IF EXISTS website,
+  DROP COLUMN IF EXISTS social_links, DROP COLUMN IF EXISTS cr_issuer, DROP COLUMN IF EXISTS cr_expiry,
+  DROP COLUMN IF EXISTS activity_type, DROP COLUMN IF EXISTS vat_registered, DROP COLUMN IF EXISTS isbn_prefix,
+  DROP COLUMN IF EXISTS legal_rep_name, DROP COLUMN IF EXISTS legal_rep_national_id, DROP COLUMN IF EXISTS legal_rep_title,
+  DROP COLUMN IF EXISTS legal_rep_phone, DROP COLUMN IF EXISTS official_email, DROP COLUMN IF EXISTS phone,
+  DROP COLUMN IF EXISTS whatsapp, DROP COLUMN IF EXISTS support_email, DROP COLUMN IF EXISTS bio,
+  DROP COLUMN IF EXISTS publishing_fields, DROP COLUMN IF EXISTS founded_year, DROP COLUMN IF EXISTS title_count,
+  DROP COLUMN IF EXISTS cr_image_url, DROP COLUMN IF EXISTS tax_card_image_url, DROP COLUMN IF EXISTS id_card_front_url,
+  DROP COLUMN IF EXISTS id_card_back_url, DROP COLUMN IF EXISTS authorization_letter_url,
+  DROP COLUMN IF EXISTS delegate_id_card_url, DROP COLUMN IF EXISTS deposit_certificate_url,
+  DROP COLUMN IF EXISTS bank_account_name, DROP COLUMN IF EXISTS bank_name, DROP COLUMN IF EXISTS iban,
+  DROP COLUMN IF EXISTS swift_code, DROP COLUMN IF EXISTS terms_accepted, DROP COLUMN IF EXISTS privacy_accepted,
+  DROP COLUMN IF EXISTS data_accuracy_accepted, DROP COLUMN IF EXISTS copyright_accepted;
