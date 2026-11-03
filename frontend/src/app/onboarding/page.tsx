@@ -34,9 +34,7 @@ export default function OnboardingPage() {
     setLoading(true);
     setError("");
     try {
-      if (choice === "professional") {
-        await api.professionalRequest();
-      }
+      // Professional and Publisher both complete onboarding then redirect to their apply pages.
       await api.updateMe({ onboardingCompleted: true });
       const stored = getStoredUser();
       if (stored) {
@@ -45,6 +43,8 @@ export default function OnboardingPage() {
       queryClient.clear();
       if (choice === "publisher") {
         router.push("/publishers/apply");
+      } else if (choice === "professional") {
+        router.push("/professional/apply");
       } else {
         router.push("/");
       }

@@ -749,6 +749,12 @@ export const api = {
       { method: "POST" },
     ),
 
+  submitProfessionalApplication: (data: FormData) =>
+    apiRequest(z.any(), "/users/me/professional-application", {
+      method: "POST",
+      body: data,
+    }),
+
   upgradeAccount: (target: "rising_star" | "professional") =>
     apiRequest(publicUserProfileSchema, "/users/me/upgrade", {
       method: "POST",
