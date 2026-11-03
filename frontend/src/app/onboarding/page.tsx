@@ -11,7 +11,7 @@ import { useLocale } from "@/components/providers/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 
-type Choice = "reader" | "publisher";
+type Choice = "reader" | "professional" | "publisher";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -34,7 +34,9 @@ export default function OnboardingPage() {
     setLoading(true);
     setError("");
     try {
-      // Rising Star and Professional are earned via upgrades, not chosen at onboarding.
+      if (choice === "professional") {
+        await api.upgradeAccount("professional");
+      }
       await api.updateMe({ onboardingCompleted: true });
       const stored = getStoredUser();
       if (stored) {
@@ -55,6 +57,7 @@ export default function OnboardingPage() {
 
   const options: { value: Choice; title: string; desc: string }[] = [
     { value: "reader", title: t("قارئ", "Reader"), desc: t("اقرأ القصص وتفاعل معها.", "Read and react to stories.") },
+    { value: "professional", title: t("كاتب محترف", "Professional"), desc: t("بيع كتبك (يتطلب موافقة).", "Sell your books (requires approval).") },
     { value: "publisher", title: t("دار نشر", "Publisher"), desc: t("أنشئ وأدر المسابقات (يتطلب مراجعة).", "Create and manage contests (requires review).") },
   ];
 
