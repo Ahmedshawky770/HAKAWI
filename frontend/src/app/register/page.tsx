@@ -55,7 +55,11 @@ export default function RegisterPage() {
       // account's name — the query keys carry no account identity, so the
       // only thing standing between the two readers is this clear.
       startSession(queryClient, session.user);
-      router.push(AUTHENTICATED_HOME_ROUTE);
+      if (session.user.onboardingCompleted === false) {
+        router.push("/onboarding");
+      } else {
+        router.push(AUTHENTICATED_HOME_ROUTE);
+      }
     } catch (err) {
       setError(strings.errors[classifyError(err)]);
     } finally {
