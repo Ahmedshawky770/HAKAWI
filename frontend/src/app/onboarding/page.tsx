@@ -35,7 +35,7 @@ export default function OnboardingPage() {
     setError("");
     try {
       if (choice === "professional") {
-        await api.upgradeAccount("professional");
+        await api.professionalRequest();
       }
       await api.updateMe({ onboardingCompleted: true });
       const stored = getStoredUser();
