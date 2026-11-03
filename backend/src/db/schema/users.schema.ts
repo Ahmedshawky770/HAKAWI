@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index, unique, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, index, unique, jsonb, date } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -37,6 +37,14 @@ export const users = pgTable(
     mfaEnforcedAt: timestamp('mfa_enforced_at'),
     isAgent: boolean('is_agent').default(false).notNull(),
     preferredLocale: varchar('preferred_locale', { length: 5 }).notNull().default('ar'),
+    birthDate: timestamp('birth_date'),
+    country: varchar('country', { length: 100 }),
+    phoneNumber: varchar('phone_number', { length: 20 }),
+    professionalStatus: varchar('professional_status', { length: 20 }),
+    professionalVideoPath: varchar('professional_video_path', { length: 500 }),
+    professionalRequestedAt: timestamp('professional_requested_at'),
+    professionalReviewedAt: timestamp('professional_reviewed_at'),
+    professionalRejectionReason: text('professional_rejection_reason'),
     agencyName: varchar('agency_name', { length: 255 }),
     agentLicense: varchar('agent_license', { length: 255 }),
     canRepresentOthers: boolean('can_represent_others').default(false).notNull(),

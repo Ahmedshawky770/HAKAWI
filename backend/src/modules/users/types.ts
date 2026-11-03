@@ -21,6 +21,14 @@ export type User = {
   onboardingCompleted: boolean | null;
   accessBlocked: boolean | null;
   preferredLocale: string | null;
+  birthDate?: Date | null;
+  country?: string | null;
+  phoneNumber?: string | null;
+  professionalStatus?: string | null;
+  professionalVideoPath?: string | null;
+  professionalRequestedAt?: Date | null;
+  professionalReviewedAt?: Date | null;
+  professionalRejectionReason?: string | null;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   emailVerified: boolean | null;
@@ -58,6 +66,14 @@ export type UpdateUserInput = Partial<{
   onboardingCompleted: boolean;
   accessBlocked: boolean;
   preferredLocale: string;
+  birthDate?: Date | null;
+  country?: string | null;
+  phoneNumber?: string | null;
+  professionalStatus?: string | null;
+  professionalVideoPath?: string | null;
+  professionalRequestedAt?: Date | null;
+  professionalReviewedAt?: Date | null;
+  professionalRejectionReason?: string | null;
   lastLoginAt: Date;
   emailVerified: boolean;
   emailVerificationToken: string | null;
@@ -199,6 +215,14 @@ function toUserFields(user: User, rawAccountType: string): ClientUser {
     onboardingCompleted: user.onboardingCompleted,
     accessBlocked: user.accessBlocked,
     preferredLocale: user.preferredLocale,
+    birthDate: user.birthDate,
+    country: user.country,
+    phoneNumber: user.phoneNumber,
+    professionalStatus: user.professionalStatus,
+    professionalVideoPath: user.professionalVideoPath,
+    professionalRequestedAt: user.professionalRequestedAt,
+    professionalReviewedAt: user.professionalReviewedAt,
+    professionalRejectionReason: user.professionalRejectionReason,
     lastLoginAt: user.lastLoginAt,
     deletedAt: user.deletedAt,
     emailVerified: user.emailVerified,

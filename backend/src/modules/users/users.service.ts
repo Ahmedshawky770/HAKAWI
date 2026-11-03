@@ -17,6 +17,7 @@ import { follows } from '../../db/schema/social.schema.ts';
 import { reactions } from '../../db/schema/social.schema.ts';
 
 import { UserStatsDto } from './dto/users.dto.ts';
+import { ProfessionalApplicationDto } from './dto/users.dto.ts';
 import type { ClientUser, CreateUserInput, PublicUserProfile, UpdateUserInput, User } from './types.ts';
 import { revivePublicUserProfileDates, reviveUserDates, toClientUser, toPublicUserProfile } from './types.ts';
 
@@ -269,6 +270,41 @@ export class UsersService {
 
     await this.invalidateUserCache(id);
     return toClientUser(user);
+  }
+
+  async submitProfessionalApplication(
+    id: string,
+    dto: ProfessionalApplicationDto,
+    videoPath: string | null,
+  ): Promise<ClientUser> {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.professionalStatus === 'pending') {
+      throw new ConflictException('Professional application already pending');
+    }
+
+    const updated = await this.usersRepository.update(id, {
+      birthDate: new Date(dto.birthDate) as unknown as Date,
+      country: dto.country,
+      bio: dto.bio,
+      phoneNumber: dto.phoneNumber,
+      professionalStatus: 'pending',
+      professionalVideoPath: videoPath,
+      professionalRequestedAt: new Date(),
+      onboardingCompleted: true,
+    });
+
+    await this.invalidateUserCache(id);
+
+    await this.eventBus.emit('professional.application.submitted', {
+      userId: id,
+      country: dto.country,
+    });
+
+    return toClientUser(updated);
   }
 
   async updateLastLogin(id: string): Promise<void> {

@@ -175,3 +175,22 @@ export class VerifyUserDto {
   @Matches(/^[a-f0-9]+$/, { message: 'Token must be lowercase hexadecimal' })
   token: string;
 }
+
+export class ProfessionalApplicationDto {
+  @IsString()
+  birthDate: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  country: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  bio: string;
+
+  @IsString()
+  @Matches(/^\+?[0-9]{10,15}$/, { message: 'Invalid phone number' })
+  phoneNumber: string;
+}

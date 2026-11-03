@@ -18,10 +18,12 @@ import {
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../../common/decorators/secured.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
+import { UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RequireAdminRole, RequirePermissions, RequireMfa } from '../../../common/decorators/roles.decorator.ts';
 import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
 import { Permission } from '../../../common/permissions/permissions.ts';
-import { CreateUserDto, UpdateUserProfileDto, AdminUpdateUserDto, UpgradeDto, VerifyUserDto } from '../dto/users.dto.ts';
+import { CreateUserDto, UpdateUserProfileDto, AdminUpdateUserDto, UpgradeDto, VerifyUserDto, ProfessionalApplicationDto } from '../dto/users.dto.ts';
 import { UsersService } from '../users.service.ts';
 import { UserVerificationService } from '../services/user-verification.service.ts';
 import type { CreateUserInput } from '../types.ts';
@@ -67,6 +69,18 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   async professionalRequest(@Request() req: { user: { sub: string } }) {
     return this.usersService.checkProfessionalEligibility(req.user.sub);
+  }
+
+  @Post('me/professional-application')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('video'))
+  async submitProfessionalApplication(
+    @Request() req: { user: { sub: string } },
+    @Body() dto: ProfessionalApplicationDto,
+    @UploadedFile() file?: any,
+  ) {
+    const videoPath = file ? file.path ?? file.originalname : null;
+    return this.usersService.submitProfessionalApplication(req.user.sub, dto, videoPath);
   }
 
   @Secured()
