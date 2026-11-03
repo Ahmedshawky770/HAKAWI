@@ -31,6 +31,7 @@ export default function PublisherApplyPage() {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormData>({
     email: "",
@@ -87,6 +88,18 @@ export default function PublisherApplyPage() {
   });
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleFileUpload = async (field: string, file: File) => {
+    setUploadingField(field);
+    try {
+      const ticket = await api.uploadFile(file);
+      set(field, ticket.cdnUrl ?? ticket.url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadingField(null);
+    }
+  };
 
   const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
   const prev = () => setStep((s) => Math.max(s - 1, 0));
@@ -195,7 +208,7 @@ export default function PublisherApplyPage() {
             <Input label="Province" value={String(form.province)} onChange={(e) => set("province", e.target.value)} required />
             <Input label="City" value={String(form.city)} onChange={(e) => set("city", e.target.value)} required />
             <Input label="Address" value={String(form.address)} onChange={(e) => set("address", e.target.value)} required />
-            <Input label="Logo URL" value={String(form.logoUrl)} onChange={(e) => set("logoUrl", e.target.value)} />
+            <div><label className="mb-1 block text-sm font-medium">Logo (PNG/JPG)</label><input type="file" accept="image/png,image/jpeg" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("logoUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.logoUrl)}</p>{uploadingField === "logoUrl" && <p className="text-xs">Uploading...</p>}</div>
             <Input label="Website" value={String(form.website)} onChange={(e) => set("website", e.target.value)} />
             <Input label="Social links" value={String(form.socialLinks)} onChange={(e) => set("socialLinks", e.target.value)} />
           </div>
@@ -248,13 +261,13 @@ export default function PublisherApplyPage() {
       case 6:
         return (
           <div className="space-y-3">
-            <Input label="CR image URL" value={String(form.crImageUrl)} onChange={(e) => set("crImageUrl", e.target.value)} required />
-            <Input label="Tax card image URL" value={String(form.taxCardImageUrl)} onChange={(e) => set("taxCardImageUrl", e.target.value)} required />
-            <Input label="ID card front URL" value={String(form.idCardFrontUrl)} onChange={(e) => set("idCardFrontUrl", e.target.value)} required />
-            <Input label="ID card back URL" value={String(form.idCardBackUrl)} onChange={(e) => set("idCardBackUrl", e.target.value)} required />
-            <Input label="Authorization letter URL (if delegate)" value={String(form.authorizationLetterUrl)} onChange={(e) => set("authorizationLetterUrl", e.target.value)} />
-            <Input label="Delegate ID card URL" value={String(form.delegateIdCardUrl)} onChange={(e) => set("delegateIdCardUrl", e.target.value)} />
-            <Input label="Deposit certificate URL" value={String(form.depositCertificateUrl)} onChange={(e) => set("depositCertificateUrl", e.target.value)} />
+            <div><label className="mb-1 block text-sm font-medium">CR image (JPG/PNG/PDF)</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("crImageUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.crImageUrl)}</p>{uploadingField === "crImageUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">Tax card image</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("taxCardImageUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.taxCardImageUrl)}</p>{uploadingField === "taxCardImageUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">ID card front</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("idCardFrontUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.idCardFrontUrl)}</p>{uploadingField === "idCardFrontUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">ID card back</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("idCardBackUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.idCardBackUrl)}</p>{uploadingField === "idCardBackUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">Authorization letter (if delegate)</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("authorizationLetterUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.authorizationLetterUrl)}</p>{uploadingField === "authorizationLetterUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">Delegate ID card</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("delegateIdCardUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.delegateIdCardUrl)}</p>{uploadingField === "delegateIdCardUrl" && <p className="text-xs">Uploading...</p>}</div>
+            <div><label className="mb-1 block text-sm font-medium">Deposit certificate</label><input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload("depositCertificateUrl", f); }} /><p className="text-xs text-ink-muted">{String(form.depositCertificateUrl)}</p>{uploadingField === "depositCertificateUrl" && <p className="text-xs">Uploading...</p>}</div>
           </div>
         );
       case 7:
