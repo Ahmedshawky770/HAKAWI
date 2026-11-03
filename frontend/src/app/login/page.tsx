@@ -91,7 +91,11 @@ export default function LoginPage() {
       // reader's conversations, library and payments. They are emptied here,
       // the same way an explicit sign-out empties them.
       startSession(queryClient, session.user);
-      router.push(AUTHENTICATED_HOME_ROUTE);
+      if (session.user.onboardingCompleted === false) {
+        router.push("/onboarding");
+      } else {
+        router.push(AUTHENTICATED_HOME_ROUTE);
+      }
     } catch (err) {
       // The server's own wording ("Invalid email or password") is a fact about
       // the API, not about the reader, and it arrives in English inside an

@@ -59,6 +59,7 @@ export const authUserSchema = z.object({
   name: z.string(),
   username: z.string(),
   accountType: accountTypeSchema,
+  onboardingCompleted: z.boolean().optional(),
 });
 
 export const authResponseSchema: z.ZodType<AuthResponse> = z.object({
@@ -83,6 +84,7 @@ export const publicUserProfileSchema: z.ZodType<PublicUserProfile> = z.object({
   accountType: accountTypeSchema,
   isVerified: z.boolean(),
   preferredLocale: z.string().optional(),
+  onboardingCompleted: z.boolean().optional(),
   createdAt: isoDate,
 });
 

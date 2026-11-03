@@ -120,6 +120,7 @@ const storedUserSchema = z.object({
   username: z.string().optional(),
   accountType: z.string().optional(),
   adminRole: z.string().optional(),
+  onboardingCompleted: z.boolean().optional(),
 });
 
 export type StoredUser = {
@@ -129,6 +130,7 @@ export type StoredUser = {
   username?: string;
   accountType?: string;
   adminRole?: string;
+  onboardingCompleted?: boolean;
 };
 
 export function setStoredUser(user: StoredUser) {
@@ -747,13 +749,19 @@ export const api = {
       { method: "POST" },
     ),
 
+  upgradeAccount: (target: "rising_star" | "professional") =>
+    apiRequest(publicUserProfileSchema, "/users/me/upgrade", {
+      method: "POST",
+      body: JSON.stringify({ target }),
+    }),
+
   updateUser: (id: string, data: { name?: string; bio?: string }) =>
     apiRequest(publicUserProfileSchema, `/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  updateMe: (data: { name?: string; bio?: string; preferredLocale?: "ar" | "en" }) =>
+  updateMe: (data: { name?: string; bio?: string; preferredLocale?: "ar" | "en"; onboardingCompleted?: boolean }) =>
     apiRequest(publicUserProfileSchema, "/users/me", {
       method: "PATCH",
       body: JSON.stringify(data),

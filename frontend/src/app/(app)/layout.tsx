@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -9,6 +9,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { Loading } from "@/components/ui/Loading";
 import { useStrings } from "@/components/providers/LocaleProvider";
 import { useAuthGuard } from "@/lib/auth-guard";
+import { useStoredUser } from "@/lib/use-stored-user";
 
 /**
  * The authenticated frame.
@@ -36,6 +37,8 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   const { auth } = useStrings();
   const queryClient = useQueryClient();
   const pathname = usePathname();
+  const router = useRouter();
+  const storedUser = useStoredUser();
 
   /**
    * THE CACHE IS EMPTIED WHEN THE SESSION ENDS — AND NOT ONE MOMENT EARLIER.
@@ -77,6 +80,14 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     if (status !== "unauthenticated") return;
     queryClient.clear();
   }, [status, queryClient]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (pathname === "/onboarding") return;
+    if (storedUser?.onboardingCompleted === false) {
+      router.replace("/onboarding");
+    }
+  }, [status, pathname, storedUser, router]);
 
   if (status === "loading") {
     return (
