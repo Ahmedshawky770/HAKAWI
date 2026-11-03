@@ -79,7 +79,17 @@ export class UsersController {
     @Body() dto: ProfessionalApplicationDto,
     @UploadedFile() file?: any,
   ) {
-    const videoPath = file ? file.path ?? file.originalname : null;
+    let videoPath: string | null = null;
+    if (file) {
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const dir = path.join(process.cwd(), 'uploads', 'professional');
+      fs.mkdirSync(dir, { recursive: true });
+      const filename = `${req.user.sub}-${Date.now()}-${file.originalname}`;
+      const fullPath = path.join(dir, filename);
+      fs.writeFileSync(fullPath, file.buffer);
+      videoPath = fullPath;
+    }
     return this.usersService.submitProfessionalApplication(req.user.sub, dto, videoPath);
   }
 
