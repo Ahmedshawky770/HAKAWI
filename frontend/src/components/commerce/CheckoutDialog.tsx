@@ -295,7 +295,7 @@ export function CheckoutDialog({
                     value={option.id}
                     checked={method === option.id}
                     onChange={() => setMethod(option.id)}
-                    className="size-5 accent-accent-fill"
+                    className="size-5 accent-primary-fill"
                   />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-ink">{option.label}</span>

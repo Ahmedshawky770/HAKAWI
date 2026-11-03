@@ -75,8 +75,8 @@ const REQUIRED_PAIRS: { theme: string; palette: Palette; fg: string; bg: string;
   { theme: "dark", palette: dark, fg: "--hk-accent-ink", bg: "--hk-surface-raised", min: 4.5, role: "accent text on a raised row" },
   { theme: "dark", palette: dark, fg: "--hk-chrome-ink", bg: "--hk-canvas", min: 4.5, role: "navigation text" },
   { theme: "dark", palette: dark, fg: "--hk-chrome-ink", bg: "--hk-surface", min: 4.5, role: "navigation text on a card" },
-  { theme: "dark", palette: dark, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "label on the primary button" },
-  { theme: "dark", palette: dark, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "the focused skip link" },
+  { theme: "dark", palette: dark, fg: "--hk-on-primary", bg: "--hk-primary-fill", min: 4.5, role: "label on the primary button" },
+  { theme: "dark", palette: dark, fg: "--hk-on-primary", bg: "--hk-primary-fill", min: 4.5, role: "the focused skip link" },
   { theme: "dark", palette: dark, fg: "--hk-on-error", bg: "--hk-error-fill", min: 4.5, role: "label on the danger button" },
   { theme: "dark", palette: dark, fg: "--hk-success-ink", bg: "--hk-surface", min: 4.5, role: "success text" },
   { theme: "dark", palette: dark, fg: "--hk-warning-ink", bg: "--hk-surface", min: 4.5, role: "warning text" },
@@ -94,8 +94,8 @@ const REQUIRED_PAIRS: { theme: string; palette: Palette; fg: string; bg: string;
   { theme: "light", palette: light, fg: "--hk-accent-ink", bg: "--hk-surface-raised", min: 4.5, role: "accent text on a raised row" },
   { theme: "light", palette: light, fg: "--hk-chrome-ink", bg: "--hk-canvas", min: 4.5, role: "navigation text" },
   { theme: "light", palette: light, fg: "--hk-chrome-ink", bg: "--hk-surface", min: 4.5, role: "navigation text on a card" },
-  { theme: "light", palette: light, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "label on the primary button" },
-  { theme: "light", palette: light, fg: "--hk-on-accent", bg: "--hk-accent-fill", min: 4.5, role: "the focused skip link" },
+  { theme: "light", palette: light, fg: "--hk-on-primary", bg: "--hk-primary-fill", min: 4.5, role: "label on the primary button" },
+  { theme: "light", palette: light, fg: "--hk-on-primary", bg: "--hk-primary-fill", min: 4.5, role: "the focused skip link" },
   { theme: "light", palette: light, fg: "--hk-on-error", bg: "--hk-error-fill", min: 4.5, role: "label on the danger button" },
   { theme: "light", palette: light, fg: "--hk-success-ink", bg: "--hk-surface", min: 4.5, role: "success text" },
   { theme: "light", palette: light, fg: "--hk-warning-ink", bg: "--hk-surface", min: 4.5, role: "warning text" },
@@ -122,8 +122,8 @@ describe("design tokens", () => {
       "--hk-ink-faint",
       "--hk-accent",
       "--hk-accent-ink",
-      "--hk-accent-fill",
-      "--hk-on-accent",
+      "--hk-primary-fill",
+      "--hk-on-primary",
       "--hk-chrome",
       "--hk-chrome-ink",
       "--hk-success",
@@ -145,7 +145,7 @@ describe("design tokens", () => {
   it("never names a raw colour outside the palette in a component class", () => {
     // A stock Tailwind colour in a component means a page that ignores the theme.
     // Allowed inside the stylesheet itself; this asserts the utilities exist.
-    for (const utility of ["--color-surface", "--color-ink", "--color-accent-fill", "--color-control-line"]) {
+    for (const utility of ["--color-surface", "--color-ink", "--color-primary-fill", "--color-control-line"]) {
       expect(css).toContain(utility);
     }
   });
@@ -219,14 +219,14 @@ describe("the focused skip link", () => {
     return match[1];
   }
 
-  it("paints the accent fill with its own on-accent text", () => {
+  it("paints the accent fill with its own on-primary text", () => {
     // The one pair §4.6 tabulates at 8.70:1 (dark) and 5.18:1 (light). The block
     // used to pair `--hk-accent` with `--hk-accent-strong`, a token no theme
     // defines, so the colour computed to the inherited ink: 1.91:1 on the dark
     // canvas, and a focused skip link nobody could read.
     const block = skipLinkBlock();
-    expect(block).toContain("background: var(--hk-accent-fill)");
-    expect(block).toContain("color: var(--hk-on-accent)");
+    expect(block).toContain("background: var(--hk-primary-fill)");
+    expect(block).toContain("color: var(--hk-on-primary)");
   });
 
   it("names no colour token that a theme does not define", () => {

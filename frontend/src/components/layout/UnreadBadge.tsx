@@ -26,7 +26,7 @@ export function UnreadBadge({ count, label }: { count: number; label: string }) 
   if (count <= 0) return null;
 
   return (
-    <span className="pointer-events-none absolute -end-1.5 -top-1 flex min-w-5 items-center justify-center rounded-full bg-accent-fill px-1.5 text-[10px] font-bold leading-5 text-on-accent">
+    <span className="pointer-events-none absolute -end-1.5 -top-1 flex min-w-5 items-center justify-center rounded-full bg-primary-fill px-1.5 text-[10px] font-bold leading-5 text-on-primary">
       {/* The visible digits are decoration for a screen reader: the sentence
           below carries the count AND the thing being counted, so the reader
           hears "3 رسائل غير مقروءة" rather than "3 3 رسائل غير مقروءة". */}

@@ -25,7 +25,7 @@ export function ProgressBar({
 }) {
   const clamped = Math.max(0, Math.min(100, value));
   const fills = {
-    accent: "bg-accent-fill",
+    accent: "bg-primary-fill",
     chrome: "bg-chrome",
     success: "bg-success",
   } as const;

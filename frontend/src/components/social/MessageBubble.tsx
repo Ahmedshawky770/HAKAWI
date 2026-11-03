@@ -9,7 +9,7 @@ import { useStrings } from "@/components/providers/LocaleProvider";
 /**
  * One message bubble.
  *
- * Own messages take the accent pair — `bg-accent-fill` with `text-on-accent`,
+ * Own messages take the accent pair — `bg-primary-fill` with `text-on-primary`,
  * which is the fill and its only legible text colour as a pair, not two
  * independent choices. Everyone else's take the raised surface, so the reader's
  * own voice is the one warm shape in the thread.
@@ -40,12 +40,12 @@ export function MessageBubble({
     <li className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-2 ${
-          isOwn ? "bg-accent-fill text-on-accent" : "bg-surface-raised text-ink"
+          isOwn ? "bg-primary-fill text-on-primary" : "bg-surface-raised text-ink"
         }`}
       >
-        {isOwn && <p className="mb-1 text-xs font-medium text-on-accent/80">{strings.social.messageOwnLabel}</p>}
+        {isOwn && <p className="mb-1 text-xs font-medium text-on-primary/80">{strings.social.messageOwnLabel}</p>}
         <p className="whitespace-pre-wrap break-words text-sm leading-7">{message.content}</p>
-        <p className={`hk-numeric mt-1 text-xs ${isOwn ? "text-on-accent/80" : "text-ink-muted"}`}>
+        <p className={`hk-numeric mt-1 text-xs ${isOwn ? "text-on-primary/80" : "text-ink-muted"}`}>
           {formatTime(message.createdAt, intl)}
         </p>
       </div>

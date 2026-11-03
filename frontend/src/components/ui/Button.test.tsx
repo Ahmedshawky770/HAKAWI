@@ -33,14 +33,14 @@ describe("Button", () => {
 
   it("applies the accent fill token by default", () => {
     render(<Button>Primary</Button>);
-    expect(screen.getByRole("button").className).toContain("bg-accent-fill");
+    expect(screen.getByRole("button").className).toContain("bg-primary-fill");
   });
 
   it("pairs the accent fill with the matching text token", () => {
     render(<Button>Primary</Button>);
     const classes = screen.getByRole("button").className;
-    expect(classes).toContain("bg-accent-fill");
-    expect(classes).toContain("text-on-accent");
+    expect(classes).toContain("bg-primary-fill");
+    expect(classes).toContain("text-on-primary");
   });
 
   it("applies the surface tokens to the secondary variant", () => {
@@ -57,13 +57,13 @@ describe("Button", () => {
 
   it("keeps the danger variant out of the primary accent", () => {
     const classes = renderAndClassName(<Button variant="danger">Danger</Button>);
-    expect(classes).not.toContain("bg-accent-fill");
+    expect(classes).not.toContain("bg-primary-fill");
   });
 
   it("renders the ghost variant with no resting fill", () => {
     const classes = renderAndClassName(<Button variant="ghost">Ghost</Button>);
     expect(classes).toContain("text-ink-muted");
-    expect(classes).not.toContain("bg-accent-fill");
+    expect(classes).not.toContain("bg-primary-fill");
     expect(classes).not.toContain("bg-error-fill");
     // The only background it declares is the one it gains on hover.
     expect(classes.split(" ").filter((token) => token.startsWith("bg-"))).toEqual([]);
@@ -138,7 +138,7 @@ describe("ButtonLink", () => {
         اكتب قصة
       </ButtonLink>,
     );
-    expect(screen.getByRole("link").className).toContain("bg-accent-fill");
+    expect(screen.getByRole("link").className).toContain("bg-primary-fill");
   });
 });
 

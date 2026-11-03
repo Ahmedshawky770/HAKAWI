@@ -128,7 +128,7 @@ export function ReadingProgress({ content, targetId }: { content: string; target
         className="pointer-events-none fixed inset-x-0 top-14 z-30 h-0.5 bg-transparent"
       >
         <div
-          className="h-full bg-accent-fill transition-[width] duration-150 ease-out"
+          className="h-full bg-primary-fill transition-[width] duration-150 ease-out"
           style={{ width: `${percent}%` }}
         />
       </div>

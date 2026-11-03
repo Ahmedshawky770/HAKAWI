@@ -24,8 +24,8 @@ describe("MessageBubble", () => {
     const { container } = renderWithProviders(<MessageBubble message={MESSAGE} isOwn intl="ar-EG" />);
     const bubble = container.querySelector("li > div");
 
-    expect(bubble?.className).toContain("bg-accent-fill");
-    expect(bubble?.className).toContain("text-on-accent");
+    expect(bubble?.className).toContain("bg-primary-fill");
+    expect(bubble?.className).toContain("text-on-primary");
     expect(screen.getByText("أنت")).toBeInTheDocument();
   });
 

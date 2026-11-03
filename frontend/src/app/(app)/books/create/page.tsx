@@ -186,7 +186,7 @@ export default function CreateBookPage() {
                 type="checkbox"
                 checked={isFree}
                 onChange={(e) => setIsFree(e.target.checked)}
-                className="size-5 rounded border-control-line accent-accent-fill"
+                className="size-5 rounded border-control-line accent-primary-fill"
               />
               <label htmlFor="isFree" className="text-sm text-ink-muted">
                 {strings.books.freeLabel}

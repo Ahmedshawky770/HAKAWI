@@ -27,16 +27,16 @@ const config: Config = {
         "control-line": "#8a7a9a", // form control boundary, 3:1+ (dark)
 
         /* --- Ink (text) --- */
-        ink: "#f5f5f0", // Soft Cream White — body text (dark)
-        "ink-muted": "#c9b8d6", // Muted Lilac — metadata (dark)
+        ink: "#ddd0e9", // Soft Cream White — body text (dark)
+        "ink-muted": "#b5a3c0", // Muted Lilac — metadata (dark)
         "ink-faint": "#9a8aa8", // decorative ink (dark)
 
         /* --- Accents --- */
         accent: "#d4af37", // Warm Matte Gold — headings, marks (dark)
         "accent-ink": "#f0e6d2", // text-safe gold on dark (dark)
-        "accent-fill": "#1a5e63", // Deep Teal — primary button fill (dark)
-        "on-accent": "#ffffff", // white on teal (dark)
-        "accent-hover": "#2a7e83",
+        "primary-fill": "#1a5e63", // Deep Teal — primary button fill (dark)
+        "on-primary": "#ffffff", // white on teal (dark)
+        "primary-hover": "#2a7e83",
         "accent-soft": "rgb(212 175 55 / 12%)",
 
         /* --- Chrome (navigation/UI) --- */
@@ -46,16 +46,16 @@ const config: Config = {
         "chrome-soft": "rgb(26 94 99 / 10%)",
 
         /* --- Semantic states --- */
-        success: "#10b981",
-        "success-ink": "#34d399",
-        warning: "#f59e0b",
-        "warning-ink": "#fbbf24",
-        error: "#ef4444",
-        "error-fill": "#dc2626",
+        success: "#2a8f6f",
+        "success-ink": "#5fd4a8",
+        warning: "#d98a0a",
+        "warning-ink": "#f2b84b",
+        error: "#d94444",
+        "error-fill": "#c0392b",
         "on-error": "#ffffff",
-        "error-ink": "#f87171",
-        info: "#3b82f6",
-        "info-ink": "#7dabff",
+        "error-ink": "#f07070",
+        info: "#4a6fa5",
+        "info-ink": "#8fb3e8",
       } as const,
     },
   },

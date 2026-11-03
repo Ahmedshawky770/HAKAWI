@@ -23,7 +23,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
  *
  * The four base states of §6 of the design system live here:
  *
- * - `primary` — the amber CTA. `bg-accent-fill` with `text-on-accent`, which
+ * - `primary` — the amber CTA. `bg-primary-fill` with `text-on-primary`, which
  *   is a *pair*: in dark mode that is amber with obsidian text (8.70:1) and in
  *   light mode a deeper amber with white (5.18:1). White-on-amber is 3.76:1
  *   and would fail AA on the brand hue, which is why the fill is its own token.
@@ -41,7 +41,7 @@ const BASE_STYLES =
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent-fill text-on-accent shadow-[0_1px_2px_rgb(0_0_0/0.25)] hover:bg-accent-hover hover:shadow-[var(--hk-glow-accent)] hover:scale-[1.02]",
+    "bg-primary-fill text-on-primary shadow-[0_1px_2px_rgb(0_0_0/0.25)] hover:bg-primary-hover hover:shadow-[var(--hk-glow-accent)] hover:scale-[1.02]",
   secondary:
     "border border-line-strong bg-surface-raised text-ink hover:border-chrome/40 hover:bg-surface-raised hover:text-ink",
   ghost: "text-ink-muted hover:bg-surface-raised hover:text-ink",
