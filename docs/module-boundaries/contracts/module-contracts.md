@@ -87,7 +87,7 @@ This document defines the public API contracts for each module, including HTTP e
 **Error Responses:**
 - 401: Invalid credentials
 - 403: Account locked
-- 401 + `code: 'MFA_REQUIRED'`: requires MFA — ⚠️ **not emitted by this route.** `POST /auth/login` has no MFA branch; step-up verification is the separate authenticated endpoint `POST /api/v1/auth/mfa/challenge`, and `MfaGuard` (which emits that 401) is mounted on no route
+- 401 + `code: 'MFA_REQUIRED'`: requires MFA — ⚠️ not emitted by `POST /auth/login` (no MFA branch; step-up is `POST /api/v1/auth/mfa/challenge`). `MfaGuard` is mounted via `@Secured()` and enforces on `@RequireMfa()` routes (admin/moderation/users/payments); the code is set as `code`, not `error`, so it does not reach clients as `errorCode`.
 
 ---
 

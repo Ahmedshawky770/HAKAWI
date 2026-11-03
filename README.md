@@ -68,7 +68,7 @@ Two variables are load-bearing and have no safe default:
 | variable | why |
 | --- | --- |
 | `JWT_SECRET` | `public-secret.ts` refuses the published non-production default when `NODE_ENV=production`, so a missing value in production is a **boot failure** rather than a service that mints forgeable tokens. |
-| `PAYMOB_API_KEY`, `PAYMOB_MERCHANT_ID`, `PAYMOB_INTEGRATION_ID` | **No production guard.** They fall back to `sandbox-*` values and the app boots healthy while failing every real checkout. Set them explicitly, and set `PAYMOB_ENVIRONMENT=live`. |
+| `PAYMOB_API_KEY`, `PAYMOB_MERCHANT_ID`, `PAYMOB_INTEGRATION_ID` | Production guard exists (`paymob.config.ts`): boot fails in production if any still holds its published `sandbox-*` placeholder, or if `PAYMOB_ENVIRONMENT=sandbox` while `NODE_ENV=production`. Set them explicitly and set `PAYMOB_ENVIRONMENT=live`. |
 
 ## Run
 

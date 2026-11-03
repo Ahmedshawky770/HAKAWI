@@ -76,6 +76,23 @@ All four load through `next/font/google` with `display: "swap"` and are mounted
 once, from `frontend/src/app/fonts.ts`. Utilities: `font-arabic-heading`,
 `font-arabic-body`, `font-latin`.
 
+Weights and subsets actually shipped. Note that `subsets` only selects which
+files get a preload link; the glyphs that actually download are governed by
+each file's `unicode-range`, so this list is the honest record of what *can*
+download, not what *does* on a given page:
+
+| Face | Weights | Subsets |
+|------|---------|---------|
+| Amiri | 400, 700 | arabic, latin |
+| Cairo | (variable) | arabic, latin |
+| IBM Plex Sans Arabic | 400, 500, 600, 700 | arabic, latin |
+| Inter | (variable) | latin |
+
+`preload` is `false` on every face: the browser fetches a face only when a rule
+asks for it, which avoids the unused-preload warnings; `display: "swap"` plus
+Next's automatic fallback metrics keep text readable and the layout stable
+while it arrives. The cost is roughly one round trip later than a preload.
+
 ![Type roles](ui-ux/type-specimen.svg)
 
 ### 2.2 Scale
@@ -153,8 +170,8 @@ paper over an ambiguity.
 | `--shadow-card` | `0 1px 2px rgb(0 0 0/.4), 0 8px 24px rgb(0 0 0/.24)` | `0 1px 2px rgb(42 36 33/.06), 0 8px 24px rgb(42 36 33/.08)` | Cards at rest, toasts |
 | `--shadow-pop` | `0 12px 40px rgb(0 0 0/.45)` | `0 12px 40px rgb(42 36 33/.12)` | Toasts and anything that floats |
 
-Interaction glows are not elevation: `--hk-glow-chrome` (aqua, 15px blur) marks a
-card that is a link, `--hk-glow-accent` (amber, 15px blur) marks a reaction.
+Interaction glows are not elevation: `--hk-glow-chrome` (teal, 15px blur) marks a
+card that is a link, `--hk-glow-accent` (gold, 15px blur) marks a reaction.
 
 ---
 
@@ -163,9 +180,11 @@ card that is a link, `--hk-glow-accent` (amber, 15px blur) marks a reaction.
 ### 4.1 The 60-30-10 rule
 
 Sixty per cent canvas, thirty per cent surfaces, ten per cent accent. The accent
-is small on purpose: it is spent on the things a reader acts on (reactions, the
-primary action, the active nav item) and on nothing else. An accent used for
-decoration stops being a signal.
+(gold) is small on purpose: it is spent on reactions, marks and glows, and on
+nothing that is not a reaction. Primary actions use `--hk-primary-fill` (teal)
+and navigation uses `--hk-chrome` (teal); the two teals are the same hue on
+purpose, but the tokens are named by role so the intent reads in the code. An
+accent used for decoration stops being a signal.
 
 ### 4.2 Dark theme (default) — Tinted Velvet
 
@@ -177,23 +196,23 @@ decoration stops being a signal.
 | Divider | `--hk-line` | `#3a2e4e` | — | card edges, table rules |
 | Divider, emphasised | `--hk-line-strong` | `#4a3e5e` | — | hovered card edges |
 | Control boundary | `--hk-control-line` | `#8a7a9a` | — | the border of every form control |
-| Text primary | `--hk-ink` | `#f5f5f0` | — | headings, body |
-| Text secondary | `--hk-ink-muted` | `#c9b8d6` | — | metadata, excerpts |
+| Text primary | `--hk-ink` | `#ddd0e9` | — | headings, body |
+| Text secondary | `--hk-ink-muted` | `#b5a3c0` | — | metadata, excerpts |
 | Text tertiary | `--hk-ink-faint` | `#9a8aa8` | — | placeholders, ordinals |
 | Accent hue | `--hk-accent` | `#d4af37` | — | reaction glyphs, glows, marks |
-| Accent text | `--hk-accent-ink` | `#f0e6d2` | — | links, active nav, numbers in accent |
-| Accent fill | `--hk-accent-fill` | `#1a5e63` | — | primary buttons, progress |
-| On accent fill | `--hk-on-accent` | `#ffffff` | — | the label on an accent fill |
-| Accent hover | `--hk-accent-hover` | `#2a7e83` | — | primary hover |
+| Accent text | `--hk-accent-ink` | `#f0e6d2` | — | links (text-safe gold, distinguished by underline), accent-coloured numbers |
+| Primary fill | `--hk-primary-fill` | `#1a5e63` | — | primary buttons, progress |
+| On primary fill | `--hk-on-primary` | `#ffffff` | — | the label on a primary fill |
+| Primary hover | `--hk-primary-hover` | `#2a7e83` | — | primary hover |
 | Chrome hue | `--hk-chrome` | `#1a5e63` | — | nav marks, category chips |
-| Chrome text | `--hk-chrome-ink` | `#ffffff` | — | links, secondary buttons |
+| Chrome text | `--hk-chrome-ink` | `#ffffff` | — | navigation labels, secondary buttons |
 | Chrome hover | `--hk-chrome-hover` | `#2a7e83` | — | link hover |
-| Success | `--hk-success` / `--hk-success-ink` | `#10b981` / `#34d399` | — | owned, active, completed |
-| Warning | `--hk-warning` / `--hk-warning-ink` | `#f59e0b` / `#fbbf24` | — | pending, reading in progress |
-| Error | `--hk-error` / `--hk-error-fill` | `#ef4444` / `#dc2626` | — | overdue, expired, destructive |
+| Success | `--hk-success` / `--hk-success-ink` | `#2a8f6f` / `#5fd4a8` | — | owned, active, completed |
+| Warning | `--hk-warning` / `--hk-warning-ink` | `#d98a0a` / `#f2b84b` | — | pending, reading in progress |
+| Error | `--hk-error` / `--hk-error-fill` | `#d94444` / `#c0392b` | — | overdue, expired, destructive |
 | On error fill | `--hk-on-error` | `#ffffff` | — | the label on a destructive button |
-| Error text | `--hk-error-ink` | `#f87171` | — | validation text, banners |
-| Info | `--hk-info` / `--hk-info-ink` | `#3b82f6` / `#7dabff` | — | contests, neutral notices |
+| Error text | `--hk-error-ink` | `#f07070` | — | validation text, banners |
+| Info | `--hk-info` / `--hk-info-ink` | `#4a6fa5` / `#8fb3e8` | — | contests, neutral notices |
 
 ![Dark palette](ui-ux/palette-dark.svg)
 
@@ -212,18 +231,18 @@ decoration stops being a signal.
 | Text tertiary | `--hk-ink-faint` | `#6f6963` | placeholders, ordinals |
 | Accent hue | `--hk-accent` | `#d4af37` | Warm Matte Gold: marks, glows |
 | Accent text | `--hk-accent-ink` | `#7a5a12` | a deeper gold, because this one carries text |
-| Accent fill | `--hk-accent-fill` | `#1a5e63` | Deep Teal: the button fill |
-| On accent fill | `--hk-on-accent` | `#ffffff` | |
-| Accent hover | `--hk-accent-hover` | `#0e4a4f` | |
+| Primary fill | `--hk-primary-fill` | `#1a5e63` | Deep Teal: the button fill |
+| On primary fill | `--hk-on-primary` | `#ffffff` | |
+| Primary hover | `--hk-primary-hover` | `#0e4a4f` | |
 | Chrome hue | `--hk-chrome` | `#1a5e63` | Deep Teal marks |
 | Chrome text | `--hk-chrome-ink` | `#0e4a4f` | links, because teal is text-safe here |
 | Chrome hover | `--hk-chrome-hover` | `#0b3a3e` | |
-| Success | `--hk-success` / `--hk-success-ink` | `#10b981` / `#047857` | |
-| Warning | `--hk-warning` / `--hk-warning-ink` | `#f59e0b` / `#b45309` | |
-| Error | `--hk-error` / `--hk-error-fill` | `#ef4444` / `#dc2626` | |
+| Success | `--hk-success` / `--hk-success-ink` | `#2a8f6f` / `#1f6b52` | |
+| Warning | `--hk-warning` / `--hk-warning-ink` | `#d98a0a` / `#a85008` | |
+| Error | `--hk-error` / `--hk-error-fill` | `#d94444` / `#c0392b` | |
 | On error fill | `--hk-on-error` | `#ffffff` | |
-| Error text | `--hk-error-ink` | `#b91c1c` | |
-| Info | `--hk-info` / `--hk-info-ink` | `#3b82f6` / `#1d4ed8` | |
+| Error text | `--hk-error-ink` | `#b02020` | |
+| Info | `--hk-info` / `--hk-info-ink` | `#4a6fa5` / `#3a5a9a` | |
 
 ![Light palette](ui-ux/palette-light.svg)
 
@@ -234,12 +253,12 @@ One hue cannot be both the brand colour and a legible background. Measured on
 
 | Colour | Ratio on white | Verdict |
 |--------|----------------|---------|
-| `#d4af37` Warm Matte Gold as a fill with white text | 2.76:1 | **fails AA** for body-size text |
+| `#d4af37` Warm Matte Gold as a fill with white text | 2.10:1 | **fails AA** for body-size text |
 | `#1a5e63` Deep Teal as a fill with white text | 7.43:1 | passes |
-| `#d4af37` Warm Matte Gold as link text on canvas | 5.28:1 | **passes** at 24px+ (3:1 threshold) |
+| `#d4af37` Warm Matte Gold as link text on canvas | 9.14:1 dark / 2.03:1 light | **passes** in dark (4.5:1); **fails** in light — use `--hk-accent-ink` |
 | `#7a5a12` as link text | 6.16:1 | passes AA |
-| `#ef4444` Coral with white text | 3.76:1 | **fails** |
-| `#dc2626` with white text | 4.83:1 | passes |
+| `#d94444` Coral with white text | 4.32:1 | **fails** |
+| `#c0392b` with white text | 5.44:1 | passes |
 
 So every accent is split in three, and the *role* picks the token:
 
@@ -247,9 +266,9 @@ So every accent is split in three, and the *role* picks the token:
   larger, where 3:1 is the AA threshold.
 - `--hk-accent-ink` — the text-safe variant, used for links, active navigation
   and accent-coloured numbers.
-- `--hk-accent-fill` + `--hk-on-accent` — the button fill and the *only* colour
-  that may sit on it. The pair differs per theme: white on teal in both dark
-  and light.
+- `--hk-primary-fill` + `--hk-on-primary` — the button fill and the *only* colour
+  that may sit on it. The pair is the same in both themes: white on teal,
+  7.43:1.
 
 The same split applies to `--hk-error-fill` / `--hk-on-error`. This is the single
 most consequential correction this design system makes to the palette it started
@@ -275,24 +294,26 @@ Every ratio below is recomputed from the tokens by
 
 | Pair | Colours | Measured | Required |
 |------|---------|----------|----------|
-| body text on the canvas | `--hk-ink` on `--hk-canvas` (dark) | 17.57:1 | 4.5:1 |
-| body text on a card | `--hk-ink` on `--hk-surface` (dark) | 16.28:1 | 4.5:1 |
-| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (dark) | 14.50:1 | 4.5:1 |
-| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (dark) | 10.35:1 | 4.5:1 |
-| secondary text on a card | `--hk-ink-muted` on `--hk-surface` (dark) | 9.59:1 | 4.5:1 |
+| body text on the canvas | `--hk-ink` on `--hk-canvas` (dark) | 13.06:1 | 4.5:1 |
+| body text on a card | `--hk-ink` on `--hk-surface` (dark) | 12.10:1 | 4.5:1 |
+| body text on a raised row | `--hk-ink` on `--hk-surface-raised` (dark) | 10.78:1 | 4.5:1 |
+| secondary text on the canvas | `--hk-ink-muted` on `--hk-canvas` (dark) | 8.20:1 | 4.5:1 |
+| secondary text on a card | `--hk-ink-muted` on `--hk-surface` (dark) | 7.60:1 | 4.5:1 |
 | tertiary text on the canvas | `--hk-ink-faint` on `--hk-canvas` (dark) | 6.02:1 | 4.5:1 |
 | accent text on the canvas | `--hk-accent-ink` on `--hk-canvas` (dark) | 15.51:1 | 4.5:1 |
 | accent text on a card | `--hk-accent-ink` on `--hk-surface` (dark) | 14.37:1 | 4.5:1 |
 | accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (dark) | 12.80:1 | 4.5:1 |
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (dark) | 19.21:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (dark) | 17.80:1 | 4.5:1 |
-| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (dark) | 7.43:1 | 4.5:1 |
-| label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 4.83:1 | 4.5:1 |
-| success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.26:1 | 4.5:1 |
-| warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 10.66:1 | 4.5:1 |
-| error text | `--hk-error-ink` on `--hk-surface` (dark) | 6.44:1 | 4.5:1 |
-| info text | `--hk-info-ink` on `--hk-surface` (dark) | 7.75:1 | 4.5:1 |
+| label on the primary button | `--hk-on-primary` on `--hk-primary-fill` (dark) | 7.43:1 | 4.5:1 |
+| label on the danger button | `--hk-on-error` on `--hk-error-fill` (dark) | 5.44:1 | 4.5:1 |
+| success text | `--hk-success-ink` on `--hk-surface` (dark) | 9.72:1 | 4.5:1 |
+| warning text | `--hk-warning-ink` on `--hk-surface` (dark) | 9.95:1 | 4.5:1 |
+| error text | `--hk-error-ink` on `--hk-surface` (dark) | 6.15:1 | 4.5:1 |
+| info text | `--hk-info-ink` on `--hk-surface` (dark) | 8.29:1 | 4.5:1 |
 | form control boundary | `--hk-control-line` on `--hk-surface-raised` (dark) | 4.02:1 | 3:1 |
+
+The dark text ramp (`--hk-ink` 13.06, `--hk-ink-muted` 8.20, `--hk-ink-faint` 6.02) clears AA at every step, but the hues sit close together (1.59 and 1.36 apart); the secondary/tertiary distinction therefore leans on size and weight as much as on colour.
 
 **Light**
 
@@ -309,12 +330,12 @@ Every ratio below is recomputed from the tokens by
 | accent text on a raised row | `--hk-accent-ink` on `--hk-surface-raised` (light) | 5.56:1 | 4.5:1 |
 | navigation text on the canvas | `--hk-chrome-ink` on `--hk-canvas` (light) | 9.62:1 | 4.5:1 |
 | navigation text on a card | `--hk-chrome-ink` on `--hk-surface` (light) | 9.95:1 | 4.5:1 |
-| label on the primary button | `--hk-on-accent` on `--hk-accent-fill` (light) | 7.43:1 | 4.5:1 |
-| label on the danger button | `--hk-on-error` on `--hk-error-fill` (light) | 4.83:1 | 4.5:1 |
-| success text | `--hk-success-ink` on `--hk-surface` (light) | 5.48:1 | 4.5:1 |
-| warning text | `--hk-warning-ink` on `--hk-surface` (light) | 5.02:1 | 4.5:1 |
-| error text | `--hk-error-ink` on `--hk-surface` (light) | 6.47:1 | 4.5:1 |
-| info text | `--hk-info-ink` on `--hk-surface` (light) | 6.70:1 | 4.5:1 |
+| label on the primary button | `--hk-on-primary` on `--hk-primary-fill` (light) | 7.43:1 | 4.5:1 |
+| label on the danger button | `--hk-on-error` on `--hk-error-fill` (light) | 5.44:1 | 4.5:1 |
+| success text | `--hk-success-ink` on `--hk-surface` (light) | 6.40:1 | 4.5:1 |
+| warning text | `--hk-warning-ink` on `--hk-surface` (light) | 5.50:1 | 4.5:1 |
+| error text | `--hk-error-ink` on `--hk-surface` (light) | 6.83:1 | 4.5:1 |
+| info text | `--hk-info-ink` on `--hk-surface` (light) | 6.75:1 | 4.5:1 |
 | form control boundary | `--hk-control-line` on `--hk-surface-raised` (light) | 3.27:1 | 3:1 |
 
 ### 4.7 Money
@@ -344,11 +365,15 @@ product had the two facts that cost the most: **the currency** and **the unit**.
 
 - **Never** pure black or pure white as a canvas in dark mode, and never a
   stock Tailwind colour anywhere.
-- **Gold is for social reactions** — `like`, `love`, `wow`, `sad`, `angry`,
-  `haunted` — and for nothing that is not a reaction. Never blue. The set itself
-  comes from `REACTION_TYPES` in `@hakawi/shared-types`, not from a local array.
-- **Teal is for navigation and chrome** — links, secondary actions, active
-  navigation. Never for a content highlight.
+- **Gold is for social reactions and earned badges** — `like`, `love`, `wow`,
+  `sad`, `angry`, `haunted`, plus badge/award surfaces — and for nothing that is
+  not one of those. Never blue. The reaction set itself comes from
+  `REACTION_TYPES` in `@hakawi/shared-types`, not from a local array.
+- **Teal is for navigation and chrome** — secondary actions, active
+  navigation, category chips and card hover borders. Solid teal on a dark canvas
+  is 2.58:1 and is therefore only used at reduced opacity for borders (decorative,
+  exempt from WCAG 1.4.11) or as a fill with white text (7.43:1). Never for a
+  content highlight.
 - **Semantic states own their colour.** `owned`, `active`, `completed` are
   success; `reading`, `pending` are warning; `overdue`, `expired`, `failed` are
   error. The mapping is declared once, in `components/ui/Badge.tsx`, and read
@@ -372,7 +397,7 @@ product had the two facts that cost the most: **the currency** and **the unit**.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Header — sticky top-0, h-14, brand · search · theme · language · profile│
+│ Header — sticky top-0, h-14, brand · search · notifications bell · theme · language · profile│
 ├──────────────┬───────────────────────────────┬─────────────────────────┤
 │              │                               │                         │
 │  Start       │      Middle column            │   End                   │
@@ -399,7 +424,7 @@ one that can wait.
 │      Middle column, fluid, centred       │
 │                                          │
 ├──────────────────────────────────────────┤
-│ Bottom navigation (5 items)              │
+│ Bottom navigation (5 primary + More)    │
 └──────────────────────────────────────────┘
 ```
 
@@ -453,8 +478,7 @@ component plus a form.
 | Story card | full width | full width | full width of the feed |
 | Type | `text-base` | `text-lg` | `text-lg` |
 
-Five bottom-bar items is the ceiling: six would push the 44px touch targets below
-the minimum on a 320px screen. Everything else is reachable from the feed itself.
+Five primary destinations plus a "More" button is the ceiling: the bar carries Home, Stories, Books, Messages and Profile, and "More" opens a sheet with Contests, Library, Rentals, Payments, Badges, Notifications and admin. Everything beyond the five stays reachable without crowding the 44px targets.
 
 ---
 
@@ -469,7 +493,7 @@ quoted in the anatomy blocks are the real ones.
 
 ```
 ┌───────────────────────┐
-│  ✎  اكتب قصة           │   primary: bg-accent-fill + text-on-accent
+│  ✎  اكتب قصة           │   primary: bg-primary-fill + text-on-primary
 └───────────────────────┘   secondary: bg-surface-raised + border-line-strong
                             ghost: no resting fill, text-ink-muted
                             danger: bg-error-fill + text-on-error
@@ -526,8 +550,8 @@ cursor mid-typing.
 │ ليلة في الحارة                  (xl)   │
 │ مقتطف من القصة، أربعة أسطر…     (sm)   │
 │                                        │
-│ بواسطة أحمد · خيال · ٣ أكتوبر           │
-│ ❤ ٤٢                     👁 ١٫٥ ألف     │
+│ بواسطة أحمد · خيال · 3 أكتوبر           │
+│ ❤ 42                      👁 1.5 ألف      │
 └────────────────────────────────────────┘
 ```
 
@@ -535,7 +559,7 @@ cursor mid-typing.
   at the title.
 - The cover is `alt=""` and `loading="lazy"`: it carries no information the title
   does not.
-- Views are compacted (`١٫٥ ألف`) with `formatCompact`; the exact figure stays on
+- Views are compacted (`1.5 ألف`) with `formatCompact`; the exact figure stays on
   the story page. A view count is a magnitude, not a measurement.
 - `StoryCardCompact` is the no-cover variant for grids and rails.
 - `StoryCardSkeleton` mirrors the real card's heights exactly, including the
@@ -563,7 +587,8 @@ off the screen.
   be a second source of truth for an API contract.
 - Each button carries its name and the total: `aria-label="أعجبني (42)"`, and
   `aria-pressed` for its own state.
-- `ReactionCount` is the read-only variant for cards. Amber, per §4.7.
+- `ReactionCount` is the read-only variant for cards. Gold, per §4.8.
+- The glyphs are SVG assets from `public/reactions/`, not emoji, so they render identically on every device and stay inside the palette.
 
 ### 6.7 Badge — `components/ui/Badge.tsx`
 
@@ -616,11 +641,11 @@ region that owns it. Announcing both talks over itself.
 
 | Part | Width | Behaviour |
 |------|-------|-----------|
-| `Header` | full | `sticky top-0 h-14`; brand, search, theme, language, profile |
-| `Sidebar` | `w-60` (240px) | from `lg`; sticky under the header; nine destinations, two labelled landmarks |
+| `Header` | full | `sticky top-0 h-14`; brand, search, notifications bell, theme, language, profile |
+| `Sidebar` | `w-60` (240px) | from `lg`; sticky under the header; nine base destinations (five primary + four secondary), plus admin items for admins; two labelled landmarks |
 | `main` | fluid | the only scrolling column; `id="main-content"` is the skip-link target; `px-6 md:px-8` |
 | `TrendingRail` | `w-70` (280px) | from `xl`; sticky; shares the feed's cache entry |
-| `BottomNav` | full | below `lg`; five items; `min-h-14` each |
+| `BottomNav` | full | below `lg`; five primary items plus a "More" sheet; `min-h-14` each |
 
 ---
 
@@ -699,7 +724,7 @@ reverted under the reader's finger.
 | Rule | Where it is honoured |
 |------|----------------------|
 | 4.5:1 for body text, 3:1 for large text and control boundaries | §4.6, enforced by `design-system.test.ts` |
-| Visible focus on everything interactive | one global rule in `globals.css`: `outline: 2px solid var(--hk-accent)` + 2px offset |
+| Visible focus on everything interactive | one global rule in `globals.css`: `outline: 2px solid var(--hk-accent-ink)` + 2px offset |
 | Full keyboard operation | every control is a real `<button>`, `<a>`, `<input>`, `<select>`; no click-only affordance |
 | `aria-current="page"` on the active destination | `Sidebar`, `BottomNav` — never colour alone |
 | Landmarks | `header`, `nav` (two, each labelled), `main#main-content`, `aside`, `role="status"`, `role="alert"` |
@@ -708,6 +733,7 @@ reverted under the reader's finger.
 | `prefers-reduced-motion` | one global block in `globals.css` collapses every animation and transition |
 | No colour-only meaning | active nav, unread items and status pills all carry text or an icon too |
 | Decorative icons hidden | `Icon` sets `aria-hidden` unless given a `title` |
+| Notification bell and counter | header bell link carries an `aria-label` with the unread count; the counter is positioned, not in the flow (`UnreadBadge`) |
 | Skip link | `.hk-skip-link` in the root layout, targeting `#main-content` |
 | Numbers in RTL | `.hk-numeric` isolates and LTR-orders digits, signs and currency |
 
@@ -772,7 +798,7 @@ same colours can drift, which is the failure mode Principle #9 exists to prevent
 @theme inline {
   --color-surface: var(--hk-surface);
   --color-ink: var(--hk-ink);
-  --color-accent-fill: var(--hk-accent-fill);
+  --color-primary-fill: var(--hk-primary-fill);
   /* … */
   --animate-skeleton: skeleton 1.5s ease-in-out infinite;
   @keyframes skeleton { /* … */ }
@@ -783,18 +809,18 @@ same colours can drift, which is the failure mode Principle #9 exists to prevent
 
 ```mermaid
 flowchart LR
-  A["@theme inline<br/>--hk-accent-fill: #1a5e63"] --> B["@theme inline<br/>--color-accent-fill: var(--hk-accent-fill)"]
-  B --> C["Utility: bg-accent-fill"]
+  A["@theme inline<br/>--hk-primary-fill: #1a5e63"] --> B["@theme inline<br/>--color-primary-fill: var(--hk-primary-fill)"]
+  B --> C["Utility: bg-primary-fill"]
   D["&lt;html data-theme&gt;"] -.->|"selects the palette"| E[":root / :root[data-theme=light]"]
   E -.-> A
   C --> F["&lt;Button variant=primary&gt;"]
-  F --> G["Paints teal in both themes,<br/>with text-on-accent as its label"]
+  F --> G["Paints teal in both themes,<br/>with text-on-primary as its label"]
 ```
 
 ### 10.3 Component classes
 
 Four, all in `globals.css` §4, because they style content a component cannot
-reach: `.hk-prose` (authored story HTML), `.hk-skeleton` (the amber→aqua
+reach: `.hk-prose` (authored story HTML), `.hk-skeleton` (the gold→teal
 shimmer), `.hk-numeric` (figures in RTL), `.hk-skip-link`.
 
 ### 10.4 Animations
@@ -855,7 +881,7 @@ first paint
 | Layout | mirrored | normal |
 | Icons | directional glyphs mirror | normal |
 | Navigation | start column on the right | start column on the left |
-| Dates | `ar-EG` via `toLocaleDateString` | `en-GB` |
+| Dates | `ar-EG` via `toLocaleDateString(..., { numberingSystem: 'latn' })` | `en-GB` |
 
 ---
 
@@ -901,6 +927,9 @@ Every rule in this document, and the file that implements it.
 | Byline, category, date | `frontend/src/components/story/StoryMeta.tsx` |
 | One query key per fact, paging maths, trending derivation | `frontend/src/lib/queries.ts` |
 | Money: one currency, one unit, one division | `frontend/src/lib/money.ts` |
+| Reaction glyphs (no emoji) | `components/story/ReactionGlyph.tsx` (assets in `public/reactions/`) |
+| Notification bell and icon set | `components/layout/Header.tsx`, `components/social/NotificationRow.tsx` (assets in `public/notification-icons/`) |
+| Mobile "More" sheet | `components/layout/BottomNav.tsx` |
 | **This document, held against the stylesheet** | `frontend/src/app/design-system.test.ts` |
 
 ---
@@ -928,7 +957,7 @@ is worse than one that does not exist.
    `limit` and `category`, so the rail sorts the recent page by reactions on the
    client. A server-side trending endpoint is the correct answer; until it
    exists, the derivation is documented rather than hidden.
-5. **`InteractionObserver` is used, not virtual scrolling.** §7 of the original
+5. **`IntersectionObserver` is used, not virtual scrolling.** §7 of the original
    document mentioned virtual scrolling above 100 items. With a 20-item page size
    and infinite scroll the DOM never grows past a few hundred cards in practice,
    and windowing a feed of variable-height Arabic text costs more in scroll
@@ -946,6 +975,26 @@ is worse than one that does not exist.
 
 ---
 
+### 14.1 Design review log (2026-11)
+
+A review raised nine issues; all are now resolved. This section is a review
+log (kept for traceability) rather than a list of live deviations — the live
+deviations are items 1–8 above. Per §1.3, any future deviation is written down
+here rather than silently shipped.
+
+| # | Issue | Status |
+|---|-------|--------|
+| 1 | Focus ring is gold (`--hk-accent`) in both themes; on the light canvas (`#fdfbf7`) gold measures ~2:1, below the 3:1 a focus indicator needs. | **Fixed.** The global focus outline now uses `--hk-accent-ink`, which clears 3:1 on both canvases. |
+| 2 | "Accent" is overloaded: 60-30-10 names the accent as the primary action, yet the primary button is teal while gold is called the accent; `--hk-primary-fill` and `--hk-chrome` are the same `#1a5e63` under two names. | **Fixed.** Primary-action tokens renamed to `--hk-primary-fill` / `--hk-on-primary` / `--hk-primary-hover`, leaving `--hk-accent` (gold) for reactions/marks and `--hk-chrome` (teal) for navigation. |
+| 3 | Semantic colours are stock Tailwind 500 values and sit outside the warm purple palette, contradicting §4.8. | **Fixed.** Semantic hues retuned into the warm palette (`#2a8f6f`, `#d98a0a`, `#d94444`, `#4a6fa5`). |
+| 4 | Mobile bottom bar carries five items and the sidebar nine, with the rest "reachable from the feed"; messages, payments and library are at risk. | **Fixed.** The bar keeps five primary destinations plus a "More" sheet (Library, Rentals, Payments, Badges, Notifications, admin). |
+| 5 | No notification bell in the header (brand, search, theme, language, profile only); notifications appeared only as §14 content. | **Fixed.** The header now carries a notifications bell (`/notification-icons/01-bell*.svg`) with the unread count, and notification rows render the dedicated icon set from `public/notification-icons/`. |
+| 6 | §4.7 mandates Western digits everywhere, but §6.4's example showed Arabic-Indic digits (`٤٢`, `١٫٥ ألف`) and `ar-EG` dates can render Indic digits. | **Fixed.** Documented example and `formatCompact`/cards render Western digits; date formatting forces `numberingSystem: "latn"`. |
+| 7 | Four Google Font families under a <1.5s FCP budget; subsets and weight counts need bounding. | **Fixed.** `preload: false` on every face, so only faces a rule actually uses are fetched; subsets documented. |
+| 8 | Emoji in `ReactionBar` rendered per-OS and off-palette. | **Fixed.** `ReactionGlyph` now renders the designed SVG assets from `public/reactions/`. |
+| 9 | Dark body text at 17.57:1 is harsh for long Arabic reading; ~13:1 would better serve "readability first". | **Fixed.** Dark `--hk-ink` softened to `#ddd0e9` (13.06:1 on canvas). |
+
+---
 *This document defines the UI/UX design system for Hakawi, and
 `frontend/src/app/design-system.test.ts` fails the build if it stops describing the
 product.*

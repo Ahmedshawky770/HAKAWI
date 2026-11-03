@@ -129,18 +129,19 @@ A `grep -rniE "mfa|totp|two.factor|2fa"` across `backend/src` returns **15 files
 | Migration | `migrations/0029_add_mfa_support.sql` |
 | Tests | `mfa.controller.spec.ts`, `mfa.service.spec.ts` |
 
-**What is still false about MFA, stated precisely:**
+**MFA enforcement status (verified 2026-11-01):**
 
-- ❌ **No route enforces it.** `@RequireMfa()` has **no call site** and `MfaGuard` appears in no
-  module's `providers` and no `@UseGuards`, so no request is ever gated on a second factor.
-- ❌ **No `mfa_required` branch in the login flow.** `POST /api/v1/auth/login` returns tokens
-  directly; the second factor is verified separately at `POST /api/v1/auth/mfa/challenge`.
-- ❌ **The `MFA_REQUIRED` code never reaches a client.** `MfaGuard` sets `code` on the exception
-  body, but `AllExceptionsFilter` copies only the `error` field onto the response.
-- ❌ **Admin enforcement is coded but unreachable.** `shouldEnforceMfa()` returns `true` for any user
-  with an `adminRole`, and `MfaGuard` would block such an account until `X-MFA-Token` verifies —
-  but since the guard is mounted nowhere, an admin account is still exactly as strong as its
-  password.
+- ✅ **`MfaGuard` is mounted.** It is composed into `@Secured()` (`common/decorators/secured.decorator.ts`),
+  so every secured route runs it; it only enforces when the handler is decorated with `@RequireMfa()`.
+  Call sites: admin-roles controller (3), moderation controller (3), users controller (3), payments
+  controller (2).
+- ⚠️ **No `mfa_required` branch in the login flow.** `POST /api/v1/auth/login` returns tokens
+  directly; the second factor is verified separately at `POST /api/v1/auth/mfa/challenge` (step-up).
+- ⚠️ **The `MFA_REQUIRED` code does not reach clients as `errorCode`.** `MfaGuard` sets `code` on
+  the exception body, but `AllExceptionsFilter` reads the `error` field, so clients receive
+  `errorCode: 'INTERNAL_ERROR'` rather than `'MFA_REQUIRED'`/`'MFA_CHALLENGE_REQUIRED'`.
+- ✅ **Admin enforcement is live.** `shouldEnforceMfa()` returns `true` for any user with an admin
+  role, and the guard blocks such an account until `X-MFA-Token` verifies on `@RequireMfa()` routes.
 
 The subsections below describe what is implemented, and call out where the original design intent
 was not carried out.
@@ -351,7 +352,7 @@ codebase sets that field. In practice the `error` field carries Nest's default r
 |---|---|
 | `INVALID_CREDENTIALS` | ❌ not implemented — login throws a bare `UnauthorizedException('Invalid credentials')` |
 | `ACCOUNT_LOCKED` | ❌ not implemented — there is no lockout |
-| `MFA_REQUIRED` | ⚠️ real inside `MfaGuard` as a 401 with `code: 'MFA_REQUIRED'` (`common/guards/mfa.guard.ts:48`), but unreachable: the guard is mounted on no route, it sets `code` rather than the `error` field the filter reads, and it returns 401 rather than the documented 403 |
+| `MFA_REQUIRED` | ⚠️ raised by `MfaGuard` on `@RequireMfa()` routes (admin/moderation/users/payments), but the code is set as `code` not `error`, so `AllExceptionsFilter` reports `INTERNAL_ERROR`; status is 401, not the documented 403 |
 | `TOKEN_EXPIRED` | ❌ not implemented as a code; the JWT library raises `TokenExpiredError`, which the filter maps to 401 with reason `"Unauthorized"` |
 | `TOKEN_INVALID` | ❌ not implemented as a code |
 | `SESSION_REVOKED` | ⚠️ partially — the message `"Refresh token has been revoked"` is real (`backend/src/modules/auth/auth.service.ts:566`) but it is a message, not a code |

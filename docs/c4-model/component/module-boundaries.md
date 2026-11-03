@@ -340,7 +340,7 @@ mutably used, which is a wider coupling than the boundary rule intends.
 | "Auth → Users is a read-only repository dependency" | ⚠️ **False.** Auth uses `create` and `update` through the shared repository |
 | "Read the module's README.md" | ✅ **There are 25 of them.** `find backend/src -name README.md` returns 25 files, including one per module (`modules/auth/README.md`, `modules/books/README.md`, … `modules/search/README.md`) plus `common/guards`, `common/waf`, `common/throttler`, `common/observability`, `db/migrations`, `modules/shared/cache` and `modules/email-verification`. ⛔ This row previously claimed "Per-module READMEs do not exist (only `modules/search/README.md`)" |
 | Shared Kernel: rate limiting under "Cache Service" | ✅ Real, but it is a dedicated `ValkeyThrottlerStorage`, not the cache |
-| — | **New:** the 4-tab frontend/backend route mismatches (comments, reactions, follows, upload, moderation) recorded in `api-contract/openapi/rest-api-spec.md` |
+| — | **Resolved 2026-11-01:** the frontend/backend route mismatches (comments, reactions, follows, upload, moderation) are fixed in `frontend/src/lib/api.ts`; see `api-contract/openapi/rest-api-spec.md` → *Frontend / Backend Route Alignment* |
 
 ---
 

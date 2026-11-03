@@ -351,22 +351,22 @@ GET  /api/v1/notifications/unread-count
 
 ---
 
-## ⚠️ Known Frontend / Backend Route Mismatches
+## ✅ Frontend / Backend Route Alignment (verified 2026-11-01)
 
 Cross-checked by comparing every path literal in `frontend/src/lib/api.ts` against the controllers.
-**Four of the frontend's calls do not match any route.** These are recorded here rather than fixed,
-because `frontend/src` is outside the documentation scope:
+**All frontend calls now match a backend route.** The previously recorded mismatches (comments,
+reactions ×3, uploads ×2, follows ×3, moderation patch) have been corrected in `frontend/src/lib/api.ts`:
 
 | Frontend calls | Real route | Status |
 |---|---|---|
-| `` `/stories/${storyId}/comments` `` (`GET`) | `GET /api/v1/comments/story/:storyId` | ⛔ 404 |
-| `` `/stories/${storyId}/reactions` `` (`POST`/`DELETE`) | `POST`/`DELETE /api/v1/reactions/stories/:storyId` | ⛔ 404 |
-| `` `/stories/${storyId}/reactions/counts` `` (`GET`) | `GET /api/v1/reactions/stories/:storyId/counts` | ⛔ 404 |
-| `"/upload/image-url"`, `"/upload/pdf-url"` (`POST`) | `POST /api/v1/upload/image`, `/upload/pdf` | ⛔ 404 |
-| `` `/users/${userId}/follow` `` (`POST`/`DELETE`) | `POST /api/v1/follows`, `DELETE /api/v1/follows/:followingId` | ⛔ 404 |
-| `` `/users/${userId}/followers` `` (`GET`) | `GET /api/v1/follows/user/:userId/followers` | ⛔ 404 |
-| `` `/users/${userId}/following` `` (`GET`) | `GET /api/v1/follows/user/:userId/following` | ⛔ 404 |
-| `` `/moderation/${itemId}` `` (`PATCH`) | `PATCH /api/v1/moderation/reports/:id` | ⛔ 404 |
+| `` `/comments/story/${storyId}` `` (`GET`) | `GET /api/v1/comments/story/:storyId` | ✅ |
+| `` `/reactions/stories/${storyId}` `` (`POST`/`DELETE`) | `POST`/`DELETE /api/v1/reactions/stories/:storyId` | ✅ |
+| `` `/reactions/stories/${storyId}/counts` `` (`GET`) | `GET /api/v1/reactions/stories/:storyId/counts` | ✅ |
+| `` `/upload/image` ``, `` `/upload/pdf` ``, `` `/upload/confirm` `` (`POST`) | `POST /api/v1/upload/image`, `/upload/pdf`, `/upload/confirm` | ✅ |
+| `` `/follows` `` (`POST`), `` `/follows/${userId}` `` (`DELETE`) | `POST /api/v1/follows`, `DELETE /api/v1/follows/:followingId` | ✅ |
+| `` `/follows/user/${userId}/followers` `` (`GET`) | `GET /api/v1/follows/user/:userId/followers` | ✅ |
+| `` `/follows/user/${userId}/following` `` (`GET`) | `GET /api/v1/follows/user/:userId/following` | ✅ |
+| `` `/moderation/reports/${id}` `` (`PATCH`) | `PATCH /api/v1/moderation/reports/:id` | ✅ |
 | `` `/messages/conversations/${id}/messages` `` | ✅ matches | ✅ |
 | `` `/contests/${contestId}/submissions` `` | ✅ matches | ✅ |
 | `` `/books/${id}/purchase` ``, `` `/books/${id}/rent` `` | ✅ matches | ✅ |

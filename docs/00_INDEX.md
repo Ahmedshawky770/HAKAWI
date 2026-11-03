@@ -34,7 +34,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 16 | `data-architecture/erd/entity-relationship.md` | ERD: real FKs, indexes, cascade rules | ✅ 2026-09-30 (fully rewritten) |
 | 17 | `data-architecture/migrations/migration-strategy.md` | Migration runner, checksums, rollback classes | ✅ 2026-09-30 (fully rewritten) |
 | 19 | `security-architecture/overview/security-architecture.md` | Security architecture | ✅ 2026-09-30 |
-| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions, MFA (TOTP + backup codes) | ✅ 2026-09-30 (MFA marked unbuilt) · ⚠️ 2026-10-11 the MFA sections are stale — MFA is implemented (enforcement still open) |
+| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions, MFA (TOTP + backup codes) | ✅ 2026-11-01 — MFA implemented and enforced via `@Secured()`+`@RequireMfa()` on admin/moderation/users/payments; `MFA_REQUIRED` code not propagated as `errorCode` (known gap) |
 | 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 51 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
 | 22 | `security-architecture/waf/waf-overview.md` | 34 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
 | 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ⚠️ not audited |
@@ -45,7 +45,7 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 28 | `module-boundaries/contracts.md` | The real repository interfaces and event shapes | ✅ 2026-09-30 (fully rewritten) |
 | 28b | `module-boundaries/dependency-rules.md`, `interfaces.md` + nested dirs | ⚠️ **four near-duplicate pairs**, no canonical file named. `contracts.md` is now the audited one |
 | 29 | `api-contract/openapi/rest-api-spec.md` | REST API specification — all 167 route handlers enumerated | ✅ 2026-09-30 (fully rewritten) · ⚠️ 2026-10-11 route count and MFA section corrected |
-| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-09-30 (14 codes marked unbuilt; `MFA_REQUIRED` is now real in `MfaGuard` but mounted on no route) |
+| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-11-01 — `MFA_REQUIRED` raised by `MfaGuard` on `@RequireMfa()` routes; code not propagated as `errorCode` (known gap) |
 | 31 | `api-contract/{examples,openapi-spec,integration-tests,postman-collection}.md` | Supporting API docs | ⚠️ `integration-tests.md` describes Supertest; the suite is Vitest. `postman-collection.md` ✅ baseUrl corrected to 3001 |
 | 32 | `development/setup.md` | Development setup guide | ✅ 2026-09-30 |
 | 33 | `development/code-standards.md` | Code standards | ✅ 2026-09-30 |
@@ -84,11 +84,9 @@ Four things a reader should know before trusting this documentation set:
    upstream of the text was not regenerated), `c4-model/README.md`, `system-architecture/ui-ux-design-system.md`,
    the flat `security/` set, `module-boundaries/events/`, and the flat `contracts.md` /
    `dependency-rules.md` / `interfaces.md` duplicates.
-4. **Four live frontend/backend route mismatches are documented, not fixed.**
-   `api-contract/openapi/rest-api-spec.md` → *Known Frontend / Backend Route Mismatches* lists the
-   calls in `frontend/src/lib/api.ts` that 404: the comments list route, the three reaction routes,
-   the two upload routes, the three follows routes, and the moderation PATCH. `frontend/src` is
-   outside the documentation scope, so these are recorded rather than corrected.
+4. ~~Four live frontend/backend route mismatches~~ **resolved 2026-11-01.** `frontend/src/lib/api.ts` now
+   calls the correct routes (comments, reactions, uploads, follows, moderation). The section in
+   `api-contract/openapi/rest-api-spec.md` has been renamed to *Frontend / Backend Route Alignment*.
 
 ---
 
