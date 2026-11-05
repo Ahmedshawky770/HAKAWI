@@ -57,7 +57,6 @@ import {
   publisherVerificationStatsSchema,
   publicUserProfileSchema,
   publisherStatsSchema,
-  adminRoleSchema,
   roleAssignmentSchema,
   roleAssignmentsListResponseSchema,
   breakGlassResponseSchema,
@@ -591,8 +590,9 @@ async function apiRequest<S extends z.ZodTypeAny>(
 ): Promise<z.infer<S>> {
   const { establishingSession = false, mfaToken, retried = false, ...requestInit } = options;
 
+  const isFormData = requestInit.body instanceof FormData;
   const headers: HeadersInit = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...requestInit.headers,
     // The second factor travels in the header the API reads. It is added only when
     // there is one, so an ordinary request carries nothing it does not need.

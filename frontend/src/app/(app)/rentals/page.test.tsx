@@ -86,6 +86,7 @@ function rentalServer(initial: Rental[], overrides: (url: string, init?: Request
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("confirm", () => true);
   // The locale lives on the document, so every suite starts from the default.
   document.documentElement.setAttribute("lang", "ar");
 });

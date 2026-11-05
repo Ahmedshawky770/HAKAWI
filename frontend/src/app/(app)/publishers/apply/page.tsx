@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { useStrings } from "@/components/providers/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -26,7 +25,6 @@ const STEPS = [
 type FormData = Record<string, string | boolean | number>;
 
 export default function PublisherApplyPage() {
-  const strings = useStrings();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
@@ -87,7 +85,7 @@ export default function PublisherApplyPage() {
     copyrightAccepted: false,
   });
 
-  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: string | boolean | number) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleFileUpload = async (field: string, file: File) => {
     setUploadingField(field);

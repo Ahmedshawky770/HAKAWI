@@ -108,6 +108,7 @@ function rentalServer(options: { rental?: Rental; progress?: ReadingProgress[] }
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("confirm", () => true);
 });
 
 /**

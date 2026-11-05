@@ -1,7 +1,7 @@
 import type { Locale } from "@/lib/preferences";
-import { countReadout, type CountReadout } from "./count-readout";
+import { countReadout, type CountReadout } from "../count-readout";
 
-export { countReadout, type CountReadout } from "./count-readout";
+export { countReadout, type CountReadout } from "../count-readout";
 
 /**
  * Formats a number with the locale's numbering system (Western digits for both

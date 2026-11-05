@@ -30,7 +30,7 @@ export function countReadout(
   forms: PluralForms,
 ): CountReadout {
   const intlLocale = locale === "ar" ? "ar-EG" : "en-GB";
-  const formattedCount = new Intl.NumberFormat(intlLocale).format(value);
+  const formattedCount = new Intl.NumberFormat(intlLocale, { numberingSystem: "latn" }).format(value);
   const pluralRule = new Intl.PluralRules(intlLocale);
   const category = pluralRule.select(value);
 

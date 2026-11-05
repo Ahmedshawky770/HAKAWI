@@ -66,6 +66,7 @@ function shelfServer(initial: LibraryItem[], overrides: (url: string) => Respons
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("confirm", () => true);
   // The locale lives on the document, so every suite starts from the default.
   document.documentElement.setAttribute("lang", "ar");
 });

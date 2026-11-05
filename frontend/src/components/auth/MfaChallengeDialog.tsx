@@ -128,7 +128,7 @@ export function MfaChallengeDialog({ open, onSubmit, onClose, error, pending = f
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="mfa-title"
+        aria-labelledby="mfa-challenge-title"
         tabIndex={-1}
         className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-pop"
       >

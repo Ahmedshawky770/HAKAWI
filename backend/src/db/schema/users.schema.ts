@@ -37,7 +37,7 @@ export const users = pgTable(
     mfaEnforcedAt: timestamp('mfa_enforced_at'),
     isAgent: boolean('is_agent').default(false).notNull(),
     preferredLocale: varchar('preferred_locale', { length: 5 }).notNull().default('ar'),
-    birthDate: timestamp('birth_date'),
+    birthDate: date('birth_date', { mode: 'date' }),
     country: varchar('country', { length: 100 }),
     phoneNumber: varchar('phone_number', { length: 20 }),
     professionalStatus: varchar('professional_status', { length: 20 }),

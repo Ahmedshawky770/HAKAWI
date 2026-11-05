@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, index, unique, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, index, unique, boolean, integer, date } from 'drizzle-orm/pg-core';
 
 import { users } from './index.ts';
 
@@ -35,7 +35,7 @@ export const publisherApplications = pgTable(
     website: varchar('website', { length: 500 }),
     socialLinks: text('social_links'),
     crIssuer: varchar('cr_issuer', { length: 255 }),
-    crExpiry: timestamp('cr_expiry'),
+    crExpiry: date('cr_expiry', { mode: 'date' }),
     activityType: varchar('activity_type', { length: 100 }),
     vatRegistered: boolean('vat_registered'),
     isbnPrefix: varchar('isbn_prefix', { length: 50 }),

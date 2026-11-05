@@ -443,6 +443,11 @@ export const UserUpgradedSchema = z.object({
   newType: z.string(),
 });
 
+export const ProfessionalApplicationSubmittedSchema = z.object({
+  userId: z.string(),
+  country: z.string(),
+});
+
 export const ModerationEscalatedSchema = z.object({
   reportId: z.string(),
   targetId: z.string(),
@@ -583,6 +588,7 @@ export const EVENT_SCHEMAS: Record<string, { schema: z.ZodSchema; version: strin
   'mfa.enabled': { schema: MfaEnabledSchema, version: 'v1' },
   'mfa.disabled': { schema: MfaDisabledSchema, version: 'v1' },
   'user.upgraded': { schema: UserUpgradedSchema, version: 'v1' },
+  'professional.application.submitted': { schema: ProfessionalApplicationSubmittedSchema, version: 'v1' },
   'publisher.application.submitted': { schema: PublisherApplicationSubmittedSchema, version: 'v1' },
   'publisher.application.reviewed': { schema: PublisherApplicationReviewedSchema, version: 'v1' },
   'publisher.writer.added': { schema: PublisherWriterAddedSchema, version: 'v1' },

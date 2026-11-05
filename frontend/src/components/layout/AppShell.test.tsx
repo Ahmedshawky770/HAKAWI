@@ -166,12 +166,12 @@ describe("BottomNav", () => {
   });
 
   it("marks the current destination for a screen reader, not only in colour", () => {
-    pathnameMock.mockReturnValue("/library/book-1");
+    pathnameMock.mockReturnValue("/books/123");
     renderWithProviders(<BottomNav />);
 
     const current = screen.getAllByRole("link").filter((link) => link.getAttribute("aria-current") === "page");
     expect(current).toHaveLength(1);
-    expect(current[0]).toHaveTextContent("مكتبتي");
+    expect(current[0]).toHaveTextContent("الكتب");
   });
 });
 
@@ -180,8 +180,8 @@ describe("TrendingRail", () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
         stories: [
-          { id: "s1", title: "الأقل تفاعلاً", slug: "a", excerpt: null, content: null, coverImage: null, status: "published", category: null, tags: [], views: 5, reactions: 3, author: { id: "u1", name: "أحمد" }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
-          { id: "s2", title: "الأكثر تفاعلاً", slug: "b", excerpt: null, content: null, coverImage: null, status: "published", category: null, tags: [], views: 9, reactions: 90, author: { id: "u2", name: "سارة" }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
+          { id: "s1", title: "الأقل تفاعلاً", slug: "a", excerpt: null, content: null, coverImage: null, status: "published", category: null, tags: [], views: 5, reactions: 3, commentCount: 0, author: { id: "u1", name: "أحمد" }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
+          { id: "s2", title: "الأكثر تفاعلاً", slug: "b", excerpt: null, content: null, coverImage: null, status: "published", category: null, tags: [], views: 9, reactions: 90, commentCount: 0, author: { id: "u2", name: "سارة" }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
         ],
         total: 2,
         page: 1,

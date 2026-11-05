@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { useStrings } from "@/components/providers/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -13,7 +12,6 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { ONBOARDING_VIDEO_CONSTRAINTS, PROFESSIONAL_BIO_MIN, PROFESSIONAL_BIO_MAX, PHONE_REGEX } from "@/lib/constants/onboarding";
 
 export default function ProfessionalApplyPage() {
-  const strings = useStrings();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ birthDate: "", country: "", bio: "", phoneNumber: "" });
@@ -29,7 +27,7 @@ export default function ProfessionalApplyPage() {
 
   const validateVideo = (file: File): string => {
     const c = ONBOARDING_VIDEO_CONSTRAINTS;
-    if (!c.allowedTypes.includes(file.type as any)) return "Invalid video format";
+    if (!c.allowedTypes.includes(file.type as (typeof c.allowedTypes)[number])) return "Invalid video format";
     if (file.size > c.maxSizeBytes) return "Video too large (max 15MB)";
     if (file.size < c.minSizeBytes) return "Video too small (min 500KB)";
     const age = Date.now() - file.lastModified;

@@ -14,12 +14,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { Public } from '../../../common/decorators/roles.decorator.ts';
 import { Secured } from '../../../common/decorators/secured.decorator.ts';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
-import { UseInterceptors, UploadedFile } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { RequireAdminRole, RequirePermissions, RequireMfa } from '../../../common/decorators/roles.decorator.ts';
 import { AccountType, AdminRole } from '../../../common/constants/roles.ts';
 import { Permission } from '../../../common/permissions/permissions.ts';
@@ -77,17 +77,18 @@ export class UsersController {
   async submitProfessionalApplication(
     @Request() req: { user: { sub: string } },
     @Body() dto: ProfessionalApplicationDto,
-    @UploadedFile() file?: any,
+    @UploadedFile() file?: { buffer: Buffer; originalname: string } | undefined,
   ) {
     let videoPath: string | null = null;
     if (file) {
-      const fs = await import('node:fs');
+      const fs = await import('node:fs/promises');
       const path = await import('node:path');
       const dir = path.join(process.cwd(), 'uploads', 'professional');
-      fs.mkdirSync(dir, { recursive: true });
-      const filename = `${req.user.sub}-${Date.now()}-${file.originalname}`;
+      await fs.mkdir(dir, { recursive: true });
+      const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `${req.user.sub}-${Date.now()}-${safeName}`;
       const fullPath = path.join(dir, filename);
-      fs.writeFileSync(fullPath, file.buffer);
+      await fs.writeFile(fullPath, file.buffer);
       videoPath = fullPath;
     }
     return this.usersService.submitProfessionalApplication(req.user.sub, dto, videoPath);

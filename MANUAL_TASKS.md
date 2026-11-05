@@ -38,3 +38,7 @@ This file lists items that require manual work by the developer and were NOT ful
 
 ## 10. Professional application review flow
 - No admin review endpoint/UI yet for professional applications (only publisher). Add `/admin/professional-applications` if needed.
+
+## 11. EKS / Production deployment
+- **Status**: Not applied.
+- **What's needed**: Terraform (`infrastructure/terraform/`) and Helm (`infrastructure/helm/backend`, `infrastructure/helm/frontend`) exist with per-environment values, but no EKS cluster has been provisioned. Run `terraform apply -var-file=environments/<env>/terraform.tfvars` then `helm upgrade --install hakawi-backend ./infrastructure/helm/backend --namespace hakawi` to deploy. Compose runs datastores plus source-mounted apps for local development only.
