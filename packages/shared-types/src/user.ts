@@ -99,6 +99,7 @@ export type AuthUserSummary = {
   name: string;
   username: string;
   accountType: AccountType;
+  adminRole?: string | null;
   onboardingCompleted?: boolean;
 };
 

@@ -59,6 +59,7 @@ export const authUserSchema = z.object({
   name: z.string(),
   username: z.string(),
   accountType: accountTypeSchema,
+  adminRole: z.string().nullable().optional(),
   onboardingCompleted: z.boolean().optional(),
 });
 

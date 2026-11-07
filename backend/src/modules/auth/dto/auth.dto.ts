@@ -54,6 +54,7 @@ export class AuthResponseDto {
     name: string;
     username: string;
     accountType: string;
+    adminRole?: string | null;
     onboardingCompleted?: boolean;
   };
   tokens: {
@@ -69,6 +70,7 @@ export class SessionResponseDto {
     name: string;
     username: string;
     accountType: string;
+    adminRole?: string | null;
     onboardingCompleted?: boolean;
   };
   expiresAt: string;
