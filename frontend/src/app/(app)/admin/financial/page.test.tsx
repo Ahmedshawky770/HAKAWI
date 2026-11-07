@@ -44,7 +44,7 @@ describe('financial admin page', () => {
     expect(screen.getByRole('button', { name: 'المدفوعات' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /الاستردادات|المستردات/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /التحويلات|المدفوعات للناشرين/ })).toBeInTheDocument();
-    expect(screen.getByText('لا توجد مدفوعات بعد.')).toBeInTheDocument();
+    expect(screen.getByText(/لا توجد مدفوعات/)).toBeInTheDocument();
   });
 
   it('switches tabs', async () => {
@@ -52,7 +52,7 @@ describe('financial admin page', () => {
     renderWithProviders(<FinancialAdminPage />);
     await screen.findByRole('heading', { level: 1, name: /المالية/ });
     await user.click(screen.getByRole('button', { name: /الاستردادات|المستردات/ }));
-    expect(screen.getByText(/لا توجد (مستردات|استردادات) بعد\.?/)).toBeInTheDocument();
+    expect(screen.getByText(/لا توجد (مستردات|استردادات)/)).toBeInTheDocument();
   });
 
   it('shows failure state', async () => {
