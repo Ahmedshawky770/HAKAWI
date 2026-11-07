@@ -57,7 +57,7 @@ describe('verification admin page', () => {
     await screen.findByRole('heading', { level: 1, name: /التحقق/ });
     const buttons = screen.getAllByRole('button').map((b) => b.textContent ?? '').join('|');
     expect(buttons).toMatch(/انتظار|قيد|Pending/i);
-    expect(buttons).toMatch(/معتمد|Approved/i);
+    expect(buttons).toMatch(/مُعتمد|معتمد|Approved/i);
     expect(buttons).toMatch(/مرفوض|Rejected/i);
     expect(screen.getByText('لا توجد طلبات تحقق بعد.')).toBeInTheDocument();
   });
