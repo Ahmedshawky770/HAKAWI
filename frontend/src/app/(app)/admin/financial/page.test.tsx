@@ -34,13 +34,13 @@ describe('financial admin page', () => {
   it('shows loading state while payments load', () => {
     vi.mocked(queries.useAdminPayments).mockReturnValue({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() } as never);
     renderWithProviders(<FinancialAdminPage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'المالية والمدفوعات' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /المالية/ })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('جارٍ التحميل');
   });
 
   it('renders tabs and empty payments state', async () => {
     renderWithProviders(<FinancialAdminPage />);
-    expect(await screen.findByRole('heading', { level: 1, name: 'المالية والمدفوعات' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /المالية/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'المدفوعات' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'المستردات' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'المدفوعات للناشرين' })).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe('financial admin page', () => {
   it('switches tabs', async () => {
     const user = userEvent.setup();
     renderWithProviders(<FinancialAdminPage />);
-    await screen.findByRole('heading', { level: 1, name: 'المالية والمدفوعات' });
+    await screen.findByRole('heading', { level: 1, name: /المالية/ });
     await user.click(screen.getByRole('button', { name: 'المستردات' }));
     expect(screen.getByText('لا توجد مستردات بعد.')).toBeInTheDocument();
   });

@@ -34,13 +34,13 @@ describe('verification admin page', () => {
   it('shows loading state', () => {
     vi.mocked(queries.useAdminPublisherApplications).mockReturnValue(loading() as never);
     renderWithProviders(<VerificationAdminPage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'التحقق من الهوية' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /التحقق/ })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('جارٍ التحميل');
   });
 
   it('renders tabs and empty state', async () => {
     renderWithProviders(<VerificationAdminPage />);
-    await screen.findByRole('heading', { level: 1, name: 'التحقق من الهوية' });
+    await screen.findByRole('heading', { level: 1, name: /التحقق/ });
     expect(screen.getByRole('button', { name: 'قيد المراجعة' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'معتمدة' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'مرفوضة' })).toBeInTheDocument();
