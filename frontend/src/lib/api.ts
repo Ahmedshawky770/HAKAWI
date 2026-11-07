@@ -4,7 +4,6 @@ import type { ReactionType, StoryMutationInput, StoryPatchInput } from "@hakawi/
 
 import { notifySessionChanged, notifySessionLost } from "@/lib/session-events";
 import { MFA_TOKEN_HEADER, requestMfaCode } from "@/lib/mfa-step-up";
-import { addTraceHeaders } from "@/lib/otel.config";
 
 /**
  * THE SESSION'S SIGNALS, RE-EXPORTED HERE.
@@ -600,12 +599,9 @@ async function apiRequest<S extends z.ZodTypeAny>(
     ...(mfaToken === undefined ? {} : { [MFA_TOKEN_HEADER]: mfaToken }),
   };
 
-  // Add OpenTelemetry trace headers for distributed tracing
-  const tracedHeaders = addTraceHeaders(headers);
-
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...requestInit,
-    headers: tracedHeaders,
+    headers,
     credentials: "include",
   });
 
