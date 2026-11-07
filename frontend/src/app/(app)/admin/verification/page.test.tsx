@@ -13,7 +13,21 @@ vi.mock('@/lib/queries', () => ({
 }));
 vi.mock('@/lib/auth-home-route', () => ({ getAuthenticatedHomeRoute: () => '/admin/verification' }));
 vi.mock('@/components/providers/ToastProvider', async (orig) => { const actual = await orig<typeof import('@/components/providers/ToastProvider')>(); return { ...actual, useToast: () => ({ notify: vi.fn() }) }; });
-vi.mock('@/lib/api', () => ({ api: { reviewPublisherApplication: vi.fn() } }));
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>();
+  return {
+    ...actual,
+    getAuthToken: () => 't',
+    getStoredUser: () => {
+      try {
+        return JSON.parse(window.localStorage.getItem('hakawi_user') ?? 'null');
+      } catch {
+        return null;
+      }
+    },
+    api: { reviewPublisherApplication: vi.fn() },
+  };
+});
 
 import { renderWithProviders } from '@/test-utils/render';
 import { stubAdminSession } from '@/test-utils/admin';
