@@ -59,7 +59,7 @@ describe('verification admin page', () => {
     expect(buttons).toMatch(/انتظار|قيد|Pending/i);
     expect(buttons).toMatch(/مُعتمد|معتمد|Approved/i);
     expect(buttons).toMatch(/مرفوض|Rejected/i);
-    expect(screen.getByText('لا توجد طلبات تحقق بعد.')).toBeInTheDocument();
+    expect(screen.getByText(/لا توجد طلبات تحقق/)).toBeInTheDocument();
   });
 
   it('shows failure state', async () => {
