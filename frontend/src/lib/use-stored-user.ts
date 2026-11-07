@@ -65,8 +65,20 @@ const USER_STORAGE_KEY = "hakawi_user";
  * schema validation — work that was being redone at least twice per render,
  * for every component that reads the session.
  */
+let cachedRaw: string | null = null;
+let cached: StoredUser | null = null;
+
 function getSnapshot(): StoredUser | null {
-  return getStoredUser();
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(USER_STORAGE_KEY);
+  if (raw === cachedRaw) return cached;
+  cachedRaw = raw;
+  try {
+    cached = raw ? (JSON.parse(raw) as StoredUser) : null;
+  } catch {
+    cached = null;
+  }
+  return cached;
 }
 
 /**
