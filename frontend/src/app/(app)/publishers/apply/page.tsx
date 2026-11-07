@@ -179,8 +179,8 @@ export default function PublisherApplyPage() {
             <Input label="Registrant name" value={String(form.registrantName)} onChange={(e) => set("registrantName", e.target.value)} required />
             <Input label="Registrant phone" value={String(form.registrantPhone)} onChange={(e) => set("registrantPhone", e.target.value)} required />
             <div>
-              <label className="mb-1 block text-sm font-medium">Registrant role</label>
-              <select value={String(form.registrantRole)} onChange={(e) => set("registrantRole", e.target.value)} className="w-full rounded border border-line bg-surface p-2">
+              <label htmlFor="registrantRole" className="mb-1 block text-sm font-medium">Registrant role</label>
+              <select id="registrantRole" value={String(form.registrantRole)} onChange={(e) => set("registrantRole", e.target.value)} className="w-full rounded border border-line bg-surface p-2">
                 <option value="legal_rep">Legal representative</option>
                 <option value="delegate">Delegate</option>
               </select>
@@ -194,8 +194,8 @@ export default function PublisherApplyPage() {
             <Input label="Trading name" value={String(form.tradingName)} onChange={(e) => set("tradingName", e.target.value)} />
             <Input label="Name (English)" value={String(form.nameEn)} onChange={(e) => set("nameEn", e.target.value)} />
             <div>
-              <label className="mb-1 block text-sm font-medium">Entity type</label>
-              <select value={String(form.entityType)} onChange={(e) => set("entityType", e.target.value)} className="w-full rounded border border-line bg-surface p-2">
+              <label htmlFor="entityType" className="mb-1 block text-sm font-medium">Entity type</label>
+              <select id="entityType" value={String(form.entityType)} onChange={(e) => set("entityType", e.target.value)} className="w-full rounded border border-line bg-surface p-2">
                 <option value="company">Company</option>
                 <option value="individual">Individual</option>
                 <option value="association">Association</option>
@@ -248,8 +248,8 @@ export default function PublisherApplyPage() {
         return (
           <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-sm font-medium">Bio</label>
-              <textarea name="bio" value={String(form.bio)} onChange={(e) => set("bio", e.target.value)} required rows={4} className="w-full rounded border border-line bg-surface p-2" />
+              <label htmlFor="publisher-bio" className="mb-1 block text-sm font-medium">Bio</label>
+              <textarea id="publisher-bio" name="bio" value={String(form.bio)} onChange={(e) => set("bio", e.target.value)} required rows={4} className="w-full rounded border border-line bg-surface p-2" />
             </div>
             <Input label="Publishing fields (comma separated)" value={String(form.publishingFields)} onChange={(e) => set("publishingFields", e.target.value)} required />
             <Input label="Founded year" type="number" value={String(form.foundedYear)} onChange={(e) => set("foundedYear", e.target.value)} />

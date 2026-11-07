@@ -82,8 +82,8 @@ export default function ProfessionalApplyPage() {
             <Input label="Birth date" name="birthDate" type="date" value={form.birthDate} onChange={handleChange} required />
             <Input label="Country" name="country" value={form.country} onChange={handleChange} required />
             <div>
-              <label className="mb-1 block text-sm font-medium">Bio</label>
-              <textarea
+              <label htmlFor="bio" className="mb-1 block text-sm font-medium">Bio</label>
+              <textarea id="bio"
                 name="bio"
                 value={form.bio}
                 onChange={handleChange}
@@ -96,8 +96,8 @@ export default function ProfessionalApplyPage() {
             <Input label="Phone number" name="phoneNumber" value={form.phoneNumber} onChange={handleChange} required />
             {!phoneValid && form.phoneNumber && <p className="text-xs text-error">Invalid phone number</p>}
             <div>
-              <label className="mb-1 block text-sm font-medium">Face verification video</label>
-              <input ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" onChange={handleVideoChange} />
+              <label htmlFor="video" className="mb-1 block text-sm font-medium">Face verification video</label>
+              <input id="video" ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" onChange={handleVideoChange} />
               {videoError && <p className="text-xs text-error">{videoError}</p>}
               {videoFile && !videoError && <p className="text-xs text-success">{videoFile.name}</p>}
             </div>
