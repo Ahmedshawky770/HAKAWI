@@ -12,7 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
-import { formatDate } from "@/lib/i18n";
+import { formatDate, formatRelativeTime } from "@/lib/i18n";
 import { CommentForm } from "@/components/social/CommentForm";
 import { CommentReactions } from "@/components/social/CommentReactions";
 import { CommentThread } from "@/components/social/CommentThread";
@@ -116,7 +116,7 @@ export function CommentItem({
                 </span>
               )}
               <time dateTime={comment.createdAt} className="text-xs text-ink-muted">
-                {formatDate(comment.createdAt, intl)}
+                {formatDate(comment.createdAt, intl)} · {formatRelativeTime(comment.createdAt, intl)}
               </time>
             </div>
             <p className="text-sm text-ink break-words">{comment.content}</p>

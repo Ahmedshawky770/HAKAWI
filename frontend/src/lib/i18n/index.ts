@@ -165,3 +165,37 @@ export function formatTime(value: string | Date, intl: string): string {
 export function formatDateTime(value: string | Date, intl: string): string {
   return new Date(value).toLocaleString(intl, WESTERN_DIGITS);
 }
+
+/** Relative time: `1د`, `1س`, `1ي`, `1أ`, `1ش`, `1س` (year). */
+export function formatRelativeTime(value: string | Date, intl: string): string {
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+  const diffMonth = Math.floor(diffDay / 30);
+  const diffYear = Math.floor(diffDay / 365);
+
+  const isArabic = intl.startsWith("ar");
+
+  if (diffSec < 60) {
+    return isArabic ? `${diffSec}ث` : `${diffSec}s`;
+  }
+  if (diffMin < 60) {
+    return isArabic ? `${diffMin}د` : `${diffMin}m`;
+  }
+  if (diffHour < 24) {
+    return isArabic ? `${diffHour}س` : `${diffHour}h`;
+  }
+  if (diffDay < 7) {
+    return isArabic ? `${diffDay}ي` : `${diffDay}d`;
+  }
+  if (diffWeek < 4) {
+    return isArabic ? `${diffWeek}أ` : `${diffWeek}w`;
+  }
+  if (diffMonth < 12) {
+    return isArabic ? `${diffMonth}ش` : `${diffMonth}mo`;
+  }
+  return isArabic ? `${diffYear}س` : `${diffYear}y`;
+}

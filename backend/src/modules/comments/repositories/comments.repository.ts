@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { WinstonLoggerService } from '../../../common/services/winston-logger.service.ts';
 import type {
@@ -63,7 +63,7 @@ export class CommentsRepository implements ICommentsRepository {
     const visibleReplies = and(eq(comments.parentId, parentId), eq(comments.isDeleted, false));
 
     const [repliesList, [{ total }]] = await Promise.all([
-      db.select().from(comments).where(visibleReplies).orderBy(desc(comments.createdAt)).limit(limit).offset(offset),
+      db.select().from(comments).where(visibleReplies).orderBy(asc(comments.createdAt)).limit(limit).offset(offset),
       db
         .select({ total: sql<number>`count(*)` })
         .from(comments)

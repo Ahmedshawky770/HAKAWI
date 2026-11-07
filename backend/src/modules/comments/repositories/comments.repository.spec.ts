@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
 import { comments } from '../../../db/schema/social.schema.ts';
 import {
@@ -186,6 +186,14 @@ describe('CommentsRepository', () => {
 
       expect(firstArgsOf(chainAt(chains, 0), 'limit')).toEqual([5]);
       expect(firstArgsOf(chainAt(chains, 0), 'offset')).toEqual([5]);
+    });
+
+    it('orders oldest first', async () => {
+      control.queue([], [{ total: 0 }]);
+
+      await repository.findReplies(PARENT_ID, 1, 20);
+
+      expect(firstArgsOf(chainAt(chains, 0), 'orderBy')).toEqual([asc(comments.createdAt)]);
     });
   });
 
