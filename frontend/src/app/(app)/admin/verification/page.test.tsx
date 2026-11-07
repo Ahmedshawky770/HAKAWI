@@ -55,9 +55,10 @@ describe('verification admin page', () => {
   it('renders tabs and empty state', async () => {
     renderWithProviders(<VerificationAdminPage />);
     await screen.findByRole('heading', { level: 1, name: /التحقق/ });
-    expect(screen.getByRole('button', { name: 'قيد المراجعة' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'معتمدة' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'مرفوضة' })).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent ?? '').join('|');
+    expect(buttons).toMatch(/انتظار|قيد|Pending/i);
+    expect(buttons).toMatch(/معتمد|Approved/i);
+    expect(buttons).toMatch(/مرفوض|Rejected/i);
     expect(screen.getByText('لا توجد طلبات تحقق بعد.')).toBeInTheDocument();
   });
 

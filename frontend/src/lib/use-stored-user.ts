@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-import { getStoredUser, type StoredUser } from "@/lib/api";
+import { type StoredUser } from "@/lib/api";
 import { onSessionChanged } from "@/lib/session-events";
 
 /**
