@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { readerMessage } from "@/lib/errors";
-import { AUTHENTICATED_HOME_ROUTE, LOGIN_ROUTE } from "@/lib/routes";
+import { LOGIN_ROUTE } from "@/lib/routes";
+import { getAuthenticatedHomeRoute } from "@/lib/auth-home-route";
 import { startSession } from "@/lib/session";
 import { ButtonLink } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -40,7 +41,7 @@ export default function AuthCallbackPage() {
           startSession(queryClient, session.user);
         }
 
-        router.replace(AUTHENTICATED_HOME_ROUTE);
+        router.replace(getAuthenticatedHomeRoute(session.user));
       } catch (err) {
         // The server's wording is a fact about the API, in English, inside an
         // interface that may be Arabic — so the failure is classified and said

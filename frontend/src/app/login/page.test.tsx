@@ -220,7 +220,7 @@ describe("login page", () => {
     });
   });
 
-  it("stores the session user and moves to the authenticated home after a successful login", async () => {
+  it("stores the session user and moves to the authenticated home after a successful reader login", async () => {
     const user = userEvent.setup({ delay: null });
     renderWithProviders(<LoginPage />);
 
@@ -234,7 +234,7 @@ describe("login page", () => {
     expect(mockedSetStoredUser).toHaveBeenCalledWith({ ...AUTH_USER });
   });
 
-  it("never navigates to the removed dashboard route", async () => {
+  it("never navigates to the removed dashboard route for a reader login", async () => {
     const user = userEvent.setup({ delay: null });
     renderWithProviders(<LoginPage />);
 
@@ -245,6 +245,70 @@ describe("login page", () => {
       expect(router.push).toHaveBeenCalled();
     });
     expect(router.push).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("redirects a super_admin to the admin hub after login", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "super_admin" },
+    });
+    renderWithProviders(<LoginPage />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith("/admin");
+    });
+  });
+
+  it("redirects a content_moderator to moderation after login", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "content_moderator" },
+    });
+    renderWithProviders(<LoginPage />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith("/admin/moderation");
+    });
+  });
+
+  it("redirects a financial_officer to financial after login", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "financial_officer" },
+    });
+    renderWithProviders(<LoginPage />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith("/admin/financial");
+    });
+  });
+
+  it("redirects a verification_officer to verification after login", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "verification_officer" },
+    });
+    renderWithProviders(<LoginPage />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith("/admin/verification");
+    });
   });
 
   it("surfaces a rejected credential message inside an alert region", async () => {

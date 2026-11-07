@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { ApiError, classifySignInError, isAppErrorCode } from "@/lib/errors";
 import { isCaptchaProvider, type CaptchaProvider } from "@/lib/captcha";
 import { SESSION_REASON_PARAM } from "@/lib/auth-guard";
-import { AUTHENTICATED_HOME_ROUTE } from "@/lib/routes";
+import { getAuthenticatedHomeRoute } from "@/lib/auth-home-route";
 import { startSession } from "@/lib/session";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { CaptchaField } from "@/components/auth/CaptchaField";
@@ -91,11 +91,7 @@ export default function LoginPage() {
       // reader's conversations, library and payments. They are emptied here,
       // the same way an explicit sign-out empties them.
       startSession(queryClient, session.user);
-      if (session.user.onboardingCompleted === false) {
-        router.push("/onboarding");
-      } else {
-        router.push(AUTHENTICATED_HOME_ROUTE);
-      }
+      router.push(getAuthenticatedHomeRoute(session.user));
     } catch (err) {
       // The server's own wording ("Invalid email or password") is a fact about
       // the API, not about the reader, and it arrives in English inside an

@@ -1,9 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { normalizeAdminRole } from "@hakawi/shared-types";
 
+import { getAuthenticatedHomeRoute } from "@/lib/auth-home-route";
 import { useStoredUser } from "@/lib/use-stored-user";
 import { PageHeader } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -17,6 +19,8 @@ export function AdminGuard({
   children: React.ReactNode;
 }) {
   const strings = useStrings();
+  const router = useRouter();
+  const pathname = usePathname();
   const user = useStoredUser();
 
   const isAdminAccount = user?.accountType === "admin";
@@ -26,6 +30,14 @@ export function AdminGuard({
   const adminRole = normalizedRole ?? (isAdminAccount ? (user?.adminRole ?? null) : null);
   const mayEnter =
     isAdminAccount && normalizedRole !== undefined && allowedRoles.includes(normalizedRole);
+  const homeRoute = getAuthenticatedHomeRoute(user);
+
+  useEffect(() => {
+    if (!isAdminAccount) return;
+    if (mayEnter) return;
+    if (pathname === homeRoute) return;
+    router.replace(homeRoute);
+  }, [isAdminAccount, mayEnter, pathname, homeRoute, router]);
 
   if (!isAdminAccount) {
     return (

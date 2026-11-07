@@ -40,7 +40,7 @@ describe("auth callback page", () => {
     expect(screen.getByText("جاري إكمال تسجيل الدخول...")).toBeInTheDocument();
   });
 
-  it("stores the session user and replaces the history with the authenticated home", async () => {
+  it("stores the session user and replaces the history with the authenticated home for a reader", async () => {
     renderWithProviders(<AuthCallbackPage />);
 
     await waitFor(() => {
@@ -56,6 +56,55 @@ describe("auth callback page", () => {
       expect(router.replace).toHaveBeenCalled();
     });
     expect(router.replace).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+
+  it("replaces the history with the admin home for a super_admin", async () => {
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "super_admin" },
+    });
+    renderWithProviders(<AuthCallbackPage />);
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith("/admin");
+    });
+  });
+
+  it("replaces the history with the moderation desk for a content_moderator", async () => {
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "content_moderator" },
+    });
+    renderWithProviders(<AuthCallbackPage />);
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith("/admin/moderation");
+    });
+  });
+
+  it("replaces the history with the financial desk for a financial_officer", async () => {
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "financial_officer" },
+    });
+    renderWithProviders(<AuthCallbackPage />);
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith("/admin/financial");
+    });
+  });
+
+  it("replaces the history with the verification desk for a verification_officer", async () => {
+    mockedApi.getSession.mockResolvedValue({
+      ...SESSION_RESPONSE,
+      user: { ...AUTH_USER, accountType: "admin", adminRole: "verification_officer" },
+    });
+    renderWithProviders(<AuthCallbackPage />);
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith("/admin/verification");
+    });
   });
 
   it("renders the page title as a level one heading", () => {
