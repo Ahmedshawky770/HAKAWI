@@ -40,13 +40,21 @@ export default function AdminHubPage() {
   const paymentStats = useAdminPaymentStats(isSuperAdmin);
   const publisherStats = useAdminPublisherStats(isSuperAdmin);
 
-  const failed =
-    isFailedLoad(moderationStats) ||
-    isFailedLoad(roleAssignments) ||
-    isFailedLoad(paymentStats) ||
+  const anyLoading =
+    moderationStats.isLoading || roleAssignments.isLoading || paymentStats.isLoading || publisherStats.isLoading;
+  const allFailed =
+    isFailedLoad(moderationStats) &&
+    isFailedLoad(roleAssignments) &&
+    isFailedLoad(paymentStats) &&
     isFailedLoad(publisherStats);
+  const partialFailure =
+    !allFailed &&
+    (isFailedLoad(moderationStats) ||
+      isFailedLoad(roleAssignments) ||
+      isFailedLoad(paymentStats) ||
+      isFailedLoad(publisherStats));
 
-  if (failed) {
+  if (allFailed && !anyLoading) {
     return (
       <div className="animate-rise">
         <PageHeader title={strings.admin.hub.pageTitle} description={strings.admin.hub.pageDescription} />
@@ -116,6 +124,21 @@ export default function AdminHubPage() {
           title={strings.admin.hub.pageTitle}
           description={strings.admin.hub.pageDescription}
         />
+
+        {partialFailure && (
+          <ErrorMessage
+            error="بعض بيانات لوحة الإدارة غير متاحة حاليًا (قد يتطلب ذلك تفعيل التحقق بخطوتين MFA للحساب الإداري)."
+            title="تحميل جزئي للبيانات"
+            onRetry={() => {
+              void moderationStats.refetch();
+              void roleAssignments.refetch();
+              void paymentStats.refetch();
+              void publisherStats.refetch();
+              void invalidate.admin();
+            }}
+            retryLabel="تحديث"
+          />
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {cards.map((card) => (

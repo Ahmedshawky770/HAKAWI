@@ -43,6 +43,7 @@ export function Input({ label, error, hint, className = "", wrapperClassName, id
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(inputId, error, hint)}
         className={controlClassName(error, className)}
+        suppressHydrationWarning
         {...props}
       />
     </Field>
@@ -77,6 +78,7 @@ export function Textarea({
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(inputId, error, hint)}
         className={`${controlClassName(error, `font-arabic-body leading-7 ${className}`.trim())} min-h-32`}
+        suppressHydrationWarning
         {...props}
       />
     </Field>

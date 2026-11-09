@@ -84,7 +84,7 @@ export function ReactionBar({ storyId, fallbackCount }: { storyId: string; fallb
    * `lib/use-stored-user.ts`.
    */
   const currentUserId = useStoredUser()?.id ?? null;
-  const myReaction = mineQuery.data?.reactions.find((reaction) => reaction.userId === currentUserId)?.type ?? null;
+  const myReaction = mineQuery.data?.reactions?.find((reaction) => reaction.userId === currentUserId)?.type ?? null;
 
   const mutation = useMutation({
     mutationFn: async (next: ReactionType | null) => {
