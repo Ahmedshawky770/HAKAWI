@@ -1,3 +1,10 @@
+> ⚠️ **Status: policy and target document.** Several items below are NOT implemented in the
+> current codebase and are marked as such: there is no `GET /users/:id/data-export` endpoint, no
+> `DELETE /users/:id` account-deletion endpoint, no purge job for soft-deleted rows, no session store,
+> and no consent-management endpoints. Implemented today: RBAC (53 permissions), Winston structured
+> logging, MFA enrollment events (`mfa.enabled`/`mfa.disabled`), soft deletes on 7 tables (no purge),
+> TLS via reverse proxy. Treat unchecked checklist items as roadmap, not shipped behaviour.
+
 # Compliance Notes
 ## Hakawi Security Architecture
 
@@ -24,16 +31,12 @@ This document defines compliance requirements, data retention policies, privacy 
    - Right to data portability
    - Right to object
 
-3. **Implementation**
-   ```typescript
-   // Data export
-   GET /users/:id/data-export
-   
-   // Account deletion
+3. **Implementation** (planned — none of these endpoints exist today)
+   ```http
+   # NOT IMPLEMENTED
+   GET    /users/:id/data-export
    DELETE /users/:id
-   
-   // Consent management
-   POST /users/:id/consent
+   POST   /users/:id/consent
    ```
 
 ### CCPA (California Consumer Privacy Act)
@@ -68,19 +71,10 @@ This document defines compliance requirements, data retention policies, privacy 
 
 ### Retention Policies
 
-#### Automatic Deletion
+#### Automatic Deletion (planned — no purge job exists today)
 ```typescript
-// Daily job to purge expired data
-async function purgeExpiredData() {
-  // Delete soft-deleted users older than 30 days
-  await userRepository.purgeSoftDeleted(30);
-  
-  // Delete expired sessions
-  await sessionRepository.purgeExpired();
-  
-  // Delete old access logs
-  await logRepository.purgeOld(90);
-}
+// NOT IMPLEMENTED
+async function purgeExpiredData() { /* ... */ }
 ```
 
 #### Archival
@@ -253,4 +247,17 @@ maskId('usr_123456789') => 'usr_***'
 
 ---
 
-*This document defines compliance requirements for Hakawi.*
+## Compliance Backlog
+
+The following compliance obligations are NOT implemented in the current codebase. They are tracked here as backlog items and must be completed before any production deployment that handles EU or California user data.
+
+| ID | Requirement | Regulation | Gap | Priority |
+|----|-------------|------------|-----|----------|
+| CB-01 | `GET /users/:id/data-export` — data portability / right to access | GDPR Art. 15, 20 | No endpoint exists | High |
+| CB-02 | `DELETE /users/:id` — right to erasure / account deletion | GDPR Art. 17, CCPA | No endpoint exists | High |
+| CB-03 | `POST /users/:id/consent` — consent management | GDPR Art. 7, CCPA | No endpoint exists | High |
+| CB-04 | Purge job for soft-deleted rows (30-day recovery window) | GDPR storage limitation | No purge job exists | Medium |
+| CB-05 | Session store for audit and revocation tracking | Security best practice | No session store | Medium |
+| CB-06 | MFA events recorded as audit records (`mfa.enabled`, `mfa.disabled`) | Audit requirements | Events exist but not recorded as audit records | Medium |
+
+*This document defines compliance requirements for Hakawi. Unchecked checklist items above are roadmap, not shipped behaviour.*
