@@ -23,7 +23,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
   // Content-Security-Policy: restrict resources to same origin by default
   // Adjust as needed for external scripts, styles, fonts, etc.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
 
 function applySecurityHeaders(req: Request, res: Response, next: NextFunction): void {

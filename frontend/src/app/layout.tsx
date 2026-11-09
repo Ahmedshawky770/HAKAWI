@@ -6,7 +6,6 @@ import { designFonts } from "./fonts";
 import { SkipLink } from "@/components/layout/SkipLink";
 import { TitleMirror } from "@/components/providers/TitleMirror";
 import { stringsFor } from "@/lib/i18n";
-import { PREFERENCE_BOOTSTRAP_SCRIPT } from "@/lib/preferences";
 import { SITE_URL } from "@/lib/site-url";
 import { Providers } from "./providers";
 
@@ -64,14 +63,20 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Resolves the stored theme and locale before the first paint. See
             src/lib/preferences.ts for why this cannot be an effect.
 
-            This is the one `dangerouslySetInnerHTML` sink that is NOT HTML-sanitized, on purpose:
-            it renders a fixed JavaScript constant (`PREFERENCE_BOOTSTRAP_SCRIPT`) whose only inputs
-            are localStorage values it validates against a closed allowlist ("dark"/"light",
-            "ar"/"en") before writing anything to the DOM — it can never emit an attacker string, so
-            there is nothing to sanitize. Running the markup sanitizer over it would strip the whole
-            script and break theme resolution. This same inline script is what the CSP
-            `script-src 'unsafe-inline'` allowance in next.config.ts exists to permit. */}
-        <script dangerouslySetInnerHTML={{ __html: PREFERENCE_BOOTSTRAP_SCRIPT }} />
+            The bootstrap script now lives in an external file
+            (/js/preference-bootstrap.js), loaded with a plain <script src>.
+            Because it is same-origin, it needs no 'unsafe-inline' allowance
+            in the CSP — only 'self'. Its only inputs are localStorage values
+            validated against a closed allowlist ("dark"/"light", "ar"/"en"),
+            so it can never emit attacker data.
+
+            'unsafe-inline' remains in script-src only for Next.js App Router's
+            own injected runtime scripts (hydration, RSC payload), which cannot
+            be reached by a hash or nonce under the current static rendering
+            model. A nonce would force every route to dynamic rendering and
+            disable Partial Prerendering. 'unsafe-eval' has been removed
+            entirely in all environments. */}
+        <script src="/js/preference-bootstrap.js" defer />
       </head>
       <body className="min-h-full bg-canvas text-ink antialiased">
         <Providers>
