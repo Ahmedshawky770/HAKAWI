@@ -208,8 +208,10 @@ export class AuthService {
   }
 
   private buildGoogleAuthUrl(state: string): string {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw new BadRequestException('Google sign-in is not configured (GOOGLE_CLIENT_ID missing)');
     const params = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID || '',
+      client_id: clientId,
       redirect_uri: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/v1/auth/oauth/google/callback',
       response_type: 'code',
       scope: 'openid email profile',
@@ -221,8 +223,10 @@ export class AuthService {
   }
 
   private buildFacebookAuthUrl(state: string): string {
+    const clientId = process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+    if (!clientId) throw new BadRequestException('Facebook sign-in is not configured (FACEBOOK_CLIENT_ID/FACEBOOK_APP_ID missing)');
     const params = new URLSearchParams({
-      client_id: process.env.FACEBOOK_APP_ID || '',
+      client_id: clientId,
       redirect_uri: process.env.FACEBOOK_CALLBACK_URL || 'http://localhost:3001/api/v1/auth/oauth/facebook/callback',
       response_type: 'code',
       scope: 'email',
@@ -232,8 +236,10 @@ export class AuthService {
   }
 
   private buildGithubAuthUrl(state: string): string {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) throw new BadRequestException('GitHub sign-in is not configured (GITHUB_CLIENT_ID missing)');
     const params = new URLSearchParams({
-      client_id: process.env.GITHUB_CLIENT_ID || '',
+      client_id: clientId,
       redirect_uri: process.env.GITHUB_CALLBACK_URL || 'http://localhost:3001/api/v1/auth/oauth/github/callback',
       scope: 'user:email',
       state,
@@ -242,8 +248,10 @@ export class AuthService {
   }
 
   private buildAppleAuthUrl(state: string): string {
+    const clientId = process.env.APPLE_CLIENT_ID;
+    if (!clientId) throw new BadRequestException('Apple sign-in is not configured (APPLE_CLIENT_ID missing)');
     const params = new URLSearchParams({
-      client_id: process.env.APPLE_CLIENT_ID || '',
+      client_id: clientId,
       redirect_uri: process.env.APPLE_CALLBACK_URL || 'http://localhost:3001/api/v1/auth/oauth/apple/callback',
       response_type: 'code',
       scope: 'name email',
@@ -254,8 +262,10 @@ export class AuthService {
   }
 
   private buildTiktokAuthUrl(state: string): string {
+    const clientKey = process.env.TIKTOK_CLIENT_KEY;
+    if (!clientKey) throw new BadRequestException('TikTok sign-in is not configured (TIKTOK_CLIENT_KEY missing)');
     const params = new URLSearchParams({
-      client_key: process.env.TIKTOK_CLIENT_KEY || '',
+      client_key: clientKey,
       redirect_uri: process.env.TIKTOK_CALLBACK_URL || 'http://localhost:3001/api/v1/auth/oauth/tiktok/callback',
       response_type: 'code',
       scope: 'user.info.basic',
