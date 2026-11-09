@@ -193,10 +193,8 @@ export function getStoredUser(): StoredUser | null {
 export function clearStoredUser() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("hakawi_user");
-  localStorage.removeItem("hakawi_tokens");
   notifySessionChanged();
 }
-
 
 
 /**
@@ -205,22 +203,6 @@ export function clearStoredUser() {
  * @returns the function that cancels the subscription.
  */
 
-const storedTokensSchema = z.object({
-  refreshToken: z.string(),
-});
-
-export function getStoredRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("hakawi_tokens");
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const tokens = storedTokensSchema.safeParse(parsed);
-    return tokens.success ? tokens.data.refreshToken : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * ONE FIELD OF AN ERROR BODY, READ AS A SENTENCE.
@@ -333,6 +315,22 @@ function readMfaChallenge(payload: unknown): boolean {
   if (record.code === "MFA_CHALLENGE_REQUIRED") return true;
   const message = readMessageField(record.message);
   return message !== null && message.toLowerCase().includes("mfa challenge");
+}
+
+/**
+ * MFA-related 401s that do not mean the session is gone.
+ *
+ * `MFA_REQUIRED` means the account must enable MFA before protected admin actions; it is an
+ * authorization precondition, not an expired session. `MFA_INVALID_CODE` means the provided code
+ * was wrong. Neither should clear the session or redirect the reader to login.
+ */
+function readMfaSessionIntact(payload: unknown): boolean {
+  const record = asRecord(payload);
+  if (record === null) return false;
+  const code = typeof record.code === "string" ? record.code : typeof record.error === "string" ? record.error : "";
+  if (code === "MFA_REQUIRED" || code === "MFA_INVALID_CODE") return true;
+  const message = readMessageField(record.message)?.toLowerCase() ?? "";
+  return message.includes("mfa required") || message.includes("invalid mfa code");
 }
 
 /**
@@ -483,6 +481,7 @@ async function handleResponse<S extends z.ZodTypeAny>(
     // 401 that the classifier read differently left the previous reader's data
     // in the cache.
     const mfaChallenge = readMfaChallenge(payload);
+    const mfaSessionIntact = readMfaSessionIntact(payload);
     // A SECOND FACTOR IS NOT A LOST SESSION.
     //
     // The routes that demand one refuse the request with a 401, and the refusal says
@@ -490,7 +489,8 @@ async function handleResponse<S extends z.ZodTypeAny>(
     // end of the session would destroy a session that is alive: the reader would be
     // signed out for trying to do something that needs a code from their phone, and
     // the request they were making would never be made.
-    const endsSession = !options.establishingSession && !mfaChallenge;
+    // MFA_REQUIRED/MFA_INVALID_CODE are also not session expiry; they are MFA preconditions.
+    const endsSession = !options.establishingSession && !mfaChallenge && !mfaSessionIntact;
     const message = readErrorMessage(payload);
 
     const captcha = readCaptchaDetails(payload);
@@ -542,7 +542,8 @@ let refreshPromise: Promise<boolean> | null = null;
 
 /**
  * Attempt a transparent refresh of the access token using the refresh token
- * (httpOnly cookie, and the stored one if present).
+ * (httpOnly cookie only — the client no longer holds the refresh token in
+ * localStorage, so the browser sends it with `credentials: "include"`).
  *
  * Concurrent refresh attempts share a single in-flight promise so a burst of
  * expired requests does not trigger a burst of refresh calls.
@@ -554,12 +555,10 @@ async function tryRefreshAccessToken(): Promise<boolean> {
 
   const run = (async (): Promise<boolean> => {
     try {
-      const stored = getStoredRefreshToken();
       const response = await fetch(`${API_URL}/auth/refresh`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(stored ? { refreshToken: stored } : {}),
       });
       if (!response.ok) return false;
       // A successful refresh must actually carry a new token pair, not just any
@@ -721,18 +720,16 @@ export const api = {
       body: JSON.stringify({ token }),
     }),
 
-  refreshToken: (refreshToken: string) =>
+  refreshToken: () =>
     apiRequest(authResponseSchema, "/auth/refresh", {
       method: "POST",
-      body: JSON.stringify({ refreshToken }),
     }),
 
   getSession: () => apiRequest(sessionResponseSchema, "/auth/session"),
 
-  logout: (refreshToken?: string) =>
+  logout: () =>
     apiRequest(messageOnlySchema, "/auth/logout", {
       method: "POST",
-      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     }),
 
   getUser: (id: string) => apiRequest(publicUserProfileSchema, `/users/${id}`),

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api, clearStoredUser, getStoredRefreshToken } from "@/lib/api";
+import { api, clearStoredUser } from "@/lib/api";
 import { LOGOUT_REDIRECT_ROUTE } from "@/lib/routes";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -26,7 +26,7 @@ export function LogoutButton() {
 
   const handleLogout = async () => {
     setPending(true);
-    await api.logout(getStoredRefreshToken() ?? undefined).catch(() => null);
+    await api.logout().catch(() => null);
     clearStoredUser();
     queryClient.clear();
     setPending(false);

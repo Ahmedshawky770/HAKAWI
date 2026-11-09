@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { api, clearStoredUser, getStoredRefreshToken } from "@/lib/api";
+import { api, clearStoredUser } from "@/lib/api";
 import { LOGOUT_REDIRECT_ROUTE } from "@/lib/routes";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -70,7 +70,7 @@ export function useLogout(): () => Promise<void> {
   const queryClient = useQueryClient();
 
   return async () => {
-    await api.logout(getStoredRefreshToken() ?? undefined).catch(() => null);
+    await api.logout().catch(() => null);
     clearStoredUser();
     queryClient.clear();
     router.push(LOGOUT_REDIRECT_ROUTE);

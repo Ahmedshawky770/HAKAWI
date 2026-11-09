@@ -66,7 +66,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     emit();
     // Persist the preference to the backend when authenticated, so notifications
     // and other server-generated content can be localized.
-    if (window.localStorage.getItem("hakawi_tokens")) {
+    if (window.localStorage.getItem("hakawi_user")) {
       void api.updateMe({ preferredLocale: next }).catch(() => undefined);
     }
   }, []);

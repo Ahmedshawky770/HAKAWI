@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { router } from "@/test-utils/navigation-mock";
 import { createDeferred } from "@/test-utils/support";
 import { createTestQueryClient, renderWithProviders } from "@/test-utils/render";
-import { api, clearStoredUser, getStoredRefreshToken } from "@/lib/api";
+import { api, clearStoredUser } from "@/lib/api";
 import { LogoutButton } from "@/components/layout/LogoutButton";
 
 vi.mock("next/navigation", () => ({
@@ -20,13 +20,11 @@ vi.mock("@/lib/api", () => ({
     logout: vi.fn(),
   },
   clearStoredUser: vi.fn(),
-  getStoredRefreshToken: vi.fn(() => null),
   setStoredUser: vi.fn(),
 }));
 
 const mockedApi = vi.mocked(api);
 const mockedClearStoredUser = vi.mocked(clearStoredUser);
-const mockedGetStoredRefreshToken = vi.mocked(getStoredRefreshToken);
 
 const SIGN_OUT = "تسجيل الخروج";
 
@@ -38,7 +36,6 @@ describe("LogoutButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedApi.logout.mockResolvedValue({ message: "Logged out" });
-    mockedGetStoredRefreshToken.mockReturnValue(null);
   });
 
   it("renders a sign out button", () => {
@@ -53,17 +50,6 @@ describe("LogoutButton", () => {
 
     await waitFor(() => {
       expect(mockedApi.logout).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("forwards the stored refresh token when the client holds one", async () => {
-    mockedGetStoredRefreshToken.mockReturnValue("refresh-token");
-    renderWithProviders(<LogoutButton />);
-
-    await signOut();
-
-    await waitFor(() => {
-      expect(mockedApi.logout).toHaveBeenCalledWith("refresh-token");
     });
   });
 
@@ -158,15 +144,13 @@ describe("LogoutButton", () => {
     });
   });
 
-  it("really removes both storage keys through the api module", async () => {
+  it("really removes the storage key through the api module", async () => {
     const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
     actual.setStoredUser({ id: "user-1", email: "a@b.c", name: "أحمد" });
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
     expect(window.localStorage.getItem("hakawi_user")).not.toBeNull();
 
     actual.clearStoredUser();
 
     expect(window.localStorage.getItem("hakawi_user")).toBeNull();
-    expect(window.localStorage.getItem("hakawi_tokens")).toBeNull();
   });
 });

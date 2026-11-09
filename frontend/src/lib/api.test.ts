@@ -14,7 +14,7 @@ import {
   STORY,
   STORY_RECORD,
 } from "@/test-utils/fixtures";
-import { api, clearStoredUser, getStoredRefreshToken, getStoredUser, onSessionLost, setStoredUser, type StoredUser } from "@/lib/api";
+import { api, clearStoredUser, getStoredUser, onSessionLost, setStoredUser, type StoredUser } from "@/lib/api";
 import { registerMfaCodeRequester } from "@/lib/mfa-step-up";
 import { ApiError } from "@/lib/errors";
 import { countResultSchema, messageOnlySchema } from "@/lib/schemas";
@@ -85,12 +85,10 @@ describe("api client request handling", () => {
     expect(getStoredUser()).toBeNull();
   });
 
-  it("clears the refresh token of the stored session on an unauthorized response", async () => {
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
+  it("does not clear the refresh token on an unauthorized response (it is HttpOnly)", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "Token expired" }, 401));
 
     await expectRejection(api.request(countResultSchema, "/library/count"), "Token expired");
-    expect(window.localStorage.getItem("hakawi_tokens")).toBeNull();
   });
 
   it("announces the loss of the session on an unauthorized response", async () => {
@@ -129,24 +127,20 @@ describe("api client request handling", () => {
    */
   it("keeps the stored session when a sign-in is refused", async () => {
     setStoredUser(STORED_USER);
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
     fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid email or password" }, 401));
 
     await expectRejection(api.login({ email: "a@b.c", password: "wrong" }), "Invalid email or password");
 
     expect(getStoredUser()).toEqual(STORED_USER);
-    expect(window.localStorage.getItem("hakawi_tokens")).not.toBeNull();
   });
 
   it("keeps the stored session when a sign-up is refused", async () => {
     setStoredUser(STORED_USER);
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
     fetchMock.mockResolvedValue(jsonResponse({ message: "Email already exists" }, 409));
 
     await expect(api.register({ email: "a@b.c", password: "p", name: "n", username: "u" })).rejects.toThrow();
 
     expect(getStoredUser()).toEqual(STORED_USER);
-    expect(window.localStorage.getItem("hakawi_tokens")).not.toBeNull();
   });
 
   it("does not announce the loss of the session when a sign-in is refused", async () => {
@@ -895,14 +889,12 @@ describe("stored user", () => {
     expect(getStoredUser()).toEqual({ id: "user-1", email: "a@b.c", name: "أحمد" });
   });
 
-  it("removes the stored user and its tokens", () => {
+  it("removes the stored user", () => {
     setStoredUser(STORED_USER);
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
 
     clearStoredUser();
 
     expect(window.localStorage.getItem("hakawi_user")).toBeNull();
-    expect(window.localStorage.getItem("hakawi_tokens")).toBeNull();
   });
 
   it("survives a server side render without a window", () => {
@@ -911,7 +903,6 @@ describe("stored user", () => {
     expect(() => setStoredUser(STORED_USER)).not.toThrow();
     expect(getStoredUser()).toBeNull();
     expect(() => clearStoredUser()).not.toThrow();
-    expect(getStoredRefreshToken()).toBeNull();
 
     vi.unstubAllGlobals();
   });
@@ -923,14 +914,14 @@ describe("logout request", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  it("posts to the logout endpoint", async () => {
+  it("posts to the logout endpoint without a body", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "Logged out" }));
 
-    await api.logout("refresh-token");
+    await api.logout();
 
     expect(lastCall().url).toBe("http://localhost:3001/api/v1/auth/logout");
     expect(lastCall().init?.method).toBe("POST");
-    expect(lastBody()).toEqual({ refreshToken: "refresh-token" });
+    expect(lastCall().init?.body).toBeUndefined();
   });
 
   it("sends the session cookie so the server can clear it", async () => {
@@ -941,45 +932,11 @@ describe("logout request", () => {
     expect(lastCall().init?.credentials).toBe("include");
   });
 
-  it("sends no refresh token when the client holds none", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ message: "Logged out" }));
-
-    await api.logout();
-
-    expect(lastBody()).toEqual({});
-  });
-
   it("rejects when the server refuses the logout", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "Invalid refresh token" }, 401));
 
     await expectRejection(api.logout(), "Invalid refresh token");
     expect(getStoredUser()).toBeNull();
-  });
-});
-
-describe("stored refresh token", () => {
-  it("returns null when no token is stored", () => {
-    expect(getStoredRefreshToken()).toBeNull();
-  });
-
-  it("reads the refresh token back", () => {
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: "r" }));
-    expect(getStoredRefreshToken()).toBe("r");
-  });
-
-  it("returns null for a stored value that is not JSON", () => {
-    window.localStorage.setItem("hakawi_tokens", "not-json");
-    expect(getStoredRefreshToken()).toBeNull();
-  });
-
-  it("returns null for a stored object without a refresh token", () => {
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ accessToken: "a" }));
-    expect(getStoredRefreshToken()).toBeNull();
-  });
-
-  it("returns null for a stored refresh token that is not a string", () => {
-    window.localStorage.setItem("hakawi_tokens", JSON.stringify({ refreshToken: 7 }));
-    expect(getStoredRefreshToken()).toBeNull();
   });
 });
 
