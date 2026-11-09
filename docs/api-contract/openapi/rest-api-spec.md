@@ -26,8 +26,8 @@ Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exi
 
 ### Scope
 
-The previous version documented **14 endpoints**. The application exposes **167** route handlers
-across 27 controller files. This document now enumerates all of them, and gives worked request/response
+The previous version documented **14 endpoints**. The application exposes **216** route handlers
+across 30 controller files. This document now enumerates all of them, and gives worked request/response
 examples for the eight most-used resources.
 
 ---
@@ -52,7 +52,7 @@ endpoint uses — it is not uniform.
 
 ---
 
-## Complete Route Map — 167 handlers
+## Complete Route Map — 216 handlers
 
 All paths are relative to `/api/v1`.
 
@@ -441,7 +441,7 @@ no single rate limit; there are four.
 | Previous claim | Reality |
 |---|---|
 | Base URL `https://api.hakawi.com/v1` | **`/api/v1`** — `app.setGlobalPrefix('api/v1')` (`backend/src/main.ts:65`) |
-| **14 endpoints** | **167** route handlers across 27 controller files. All enumerated above |
+| **14 endpoints** | **216** route handlers across 30 controller files. All enumerated above |
 | No `stories` routes for slug / publish / archive | ✅ All three exist |
 | `GET /stories?q=` | **`?search=`** — `StoriesQueryDto` has `search`, not `q` |
 | `GET /stories?category=fiction` | `category` is a **UUID** (`categoryId`), not a slug |

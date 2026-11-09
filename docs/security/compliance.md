@@ -1,3 +1,5 @@
+> ⚠️ **Deprecated/unaudited.** Canonical: `docs/security-architecture/compliance/compliance-overview.md`. Prefer the audited `security-architecture/` set.
+
 # Compliance
 ## Hakawi Security Architecture
 

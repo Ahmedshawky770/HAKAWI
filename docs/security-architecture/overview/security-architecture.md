@@ -143,7 +143,7 @@ See `docs/security-architecture/permissions/permissions-overview.md`.
 ## WAF (Web Application Firewall)
 
 ### Threat Detection — ✅ implemented
-34 typed rules in 8 layers (`backend/src/common/waf/rules.ts`), of which 33 evaluate by default
+36 typed rules in 8 layers (`backend/src/common/waf/rules.ts`), of which 33 evaluate by default
 (`header-forbidden-forwarding-headers` is opt-in behind `WAF_BLOCK_FORWARDING_HEADERS=true`), covering:
 - SQL Injection (8 rules)
 - NoSQL injection and LDAP injection (3 rules)
@@ -194,7 +194,7 @@ See `docs/security-architecture/waf/waf-overview.md`.
 ### Data Retention — ⛔ NOT IMPLEMENTED
 No retention job, no purge, and no lifecycle policy exists in the codebase.
 - ⛔ Logs: 90 days — no log-rotation or retention configuration
-- ⛔ Soft deletes: 30 days before purge — `deleted_at` is set on 7 of 33 tables and is **never
+- ⛔ Soft deletes: 30 days before purge — `deleted_at` is set on 7 of 40 tables and is **never
   purged**; nothing sweeps it
 - ⛔ Audit logs: 1 year — no audit log store
 

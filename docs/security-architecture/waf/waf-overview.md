@@ -47,9 +47,9 @@ typed layers** (`WAF_LAYERS`, `backend/src/common/waf/rules.ts:1-10`):
 IP blocking and logging are **not rule layers**: blocking is a pipeline stage inside the
 middleware, and logging is a side effect of a decision.
 
-### Rule count: 34
+### Rule count: 36
 
-`WAF_RULES` in `backend/src/common/waf/rules.ts` contains **34** rules, not the ~40 previously
+`WAF_RULES` in `backend/src/common/waf/rules.ts` contains **36** rules, not the ~40 previously
 claimed. Three rule *kinds* are supported, all typed:
 
 | Kind | Mechanism | Example |
@@ -119,7 +119,7 @@ database-backed suite. Leave both unset in production.
 
 ---
 
-## Threat Detection — ✅ implemented, 34 typed rules
+## Threat Detection — ✅ implemented, 36 typed rules
 
 Rule ids grouped by layer, all from `backend/src/common/waf/rules.ts`:
 
@@ -390,7 +390,7 @@ missing. The controller exists now, and the real guard pair is `JwtAuthGuard` +
 
 | Claim | Reality | Evidence |
 |---|---|---|
-| "~40 patterns" | **34** typed rules in 8 layers | `backend/src/common/waf/rules.ts` |
+| "~40 patterns" | **36** typed rules in 8 layers | `backend/src/common/waf/rules.ts` |
 | "4 layers (rate limiting / threat detection / IP blocking / logging)" | 8 typed rule layers; blocking is a pipeline stage, logging a side effect, rate limiting a separate subsystem | `backend/src/common/waf/rules.ts:1-10` |
 | Body rule blocking `'`, `#`, `--` | **Removed** — it 403'd ordinary Arabic and English prose | absent from `rules.ts`; 73-test `waf.middleware.spec.ts` |
 | `WAF_RATE_LIMIT_*` variables | ⛔ Never existed. Rate limiting is the 4 throttler tiers | `backend/src/config/throttle.config.ts` |

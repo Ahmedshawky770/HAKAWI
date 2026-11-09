@@ -314,10 +314,10 @@ is no automated payout and no call into `PaymentsModule`.
 | # | Rule | Status | Evidence |
 |---|---|---|---|
 | 1 | **No Direct Database Access** — modules use repositories only | ⚠️ **PARTIAL** | 18 repository interfaces exist across 17 files, but **26 files across 18 modules import `src/db/index.ts` directly** (`messages.service.ts`, `stories.service.ts`, `moderation.service.ts`, `admin-dashboard.service.ts`, …). The `Repository` pattern is applied inconsistently |
-| 2 | **No Direct Service Calls** — use events or public interfaces | ⚠️ **PARTIAL** | The event bus carries **55 event names** and is the primary channel, but there are deliberate direct service injections: `Books → PaymentsService`, plus `IUsersRepository` shared from `common/users/` |
+| 2 | **No Direct Service Calls** — use events or public interfaces | ⚠️ **PARTIAL** | The event bus carries **68 event names** and is the primary channel, but there are deliberate direct service injections: `Books → PaymentsService`, plus `IUsersRepository` shared from `common/users/` |
 | 3 | **No Shared State** — each module owns its data | ⚠️ **PARTIAL** | `stories` is read by Stories, Contests, Moderation, Search, Upload and Messages; `users` by 12 modules. The `users` table is the most-shared entity in the system |
 | 4 | **Explicit Contracts** — public interfaces are versioned | ⚠️ **PARTIAL** | 18 `I*Repository` interfaces exist, but ⛔ **none of them is versioned**, and no `IUsersService` / `IStoriesService` service-level interface exists. ⛔ `IStoriesRepository` has **no second implementation** — there is one Drizzle implementation, so the interface buys testability, not substitutability |
-| 5 | **Event-Driven** — cross-module communication via events | ✅ **HOLDS** | 55 event names, 10 event definition files under `common/events/`, 72 `@OnEvent` handlers under `modules/*/events/`, a schema registry, a validator, and a dead letter queue |
+| 5 | **Event-Driven** — cross-module communication via events | ✅ **HOLDS** | 68 event names, 10 event definition files under `common/events/`, 82 `@OnEvent` handlers under `modules/*/events/`, a schema registry, a validator, and a dead letter queue |
 | 6 | **Auth/Users separation** — Auth reads Users only through the repository, never the service; Users listens to Auth events | ✅ **HOLDS** | Auth imports `IUsersRepository`; there is no `Auth → UsersModule` import in the module graph |
 
 ---
@@ -327,8 +327,8 @@ is no automated payout and no call into `PaymentsModule`.
 The previous version of this document said the event registry was "planned". **It shipped early**,
 during Phases 1–2, together with the DLQ. See `docs/adr/004-use-event-emitter2.md`.
 
-- **55 event names** across 10 definition files in `backend/src/common/events/`
-- **72 `@OnEvent` handlers** under `backend/src/modules/*/events/`
+- **68 event names** across 10 definition files in `backend/src/common/events/`
+- **82 `@OnEvent` handlers** under `backend/src/modules/*/events/`
 - `event-schema-registry.ts` — one registered schema per event, with versioning
 - `event-validator.service.ts` — a handler receiving a schema-invalid event is rejected
 - `dlq.service.ts` — an event whose handler throws is captured, not lost
@@ -339,12 +339,9 @@ See **`module-boundaries/events/event-schema-registry.md`** for the contract def
 
 ## Related Documentation
 
-- **Module contracts:** `module-boundaries/contracts.md` ⚠️ and its near-duplicate
-  `module-boundaries/contracts/module-contracts.md` — **neither is marked canonical**
-- **Module dependencies:** `module-boundaries/dependencies/dependency-rules.md` ⚠️ and its near-duplicate
-  `module-boundaries/dependency-rules.md`
-- **Module interfaces:** `module-boundaries/interfaces.md` ⚠️ and its near-duplicate
-  `module-boundaries/interfaces/shared-interfaces.md`
+- **Module contracts:** `module-boundaries/contracts.md` ✅ (canonical); `module-boundaries/contracts/module-contracts.md` is a deprecated stub
+- **Module dependencies:** `module-boundaries/dependency-rules.md` ✅ (canonical); `module-boundaries/dependencies/dependency-rules.md` is a deprecated stub
+- **Module interfaces:** `module-boundaries/interfaces.md` ✅ (canonical); `module-boundaries/interfaces/shared-interfaces.md` is a deprecated stub
 - **Event Schema Registry:** `module-boundaries/events/event-schema-registry.md`
 - **Payment System:** `module-boundaries/payments/payment-system.md` ✅
 - **Architecture Principles:** `01_ARCHITECTURE_PRINCIPLES.md` ✅
@@ -366,7 +363,7 @@ See **`module-boundaries/events/event-schema-registry.md`** for the contract def
 | `POST /contests/:id/submit`, `POST /contests/:id/vote` | ⛔ Wrong paths. Real: `POST /contests/:id/submissions`, `POST /contests/:id/votes` |
 | Publisher dashboard not mentioned | ✅ Real: `GET /contests/publisher/stats`, `/publisher/:id/submissions`, `/publisher/:id/votes` |
 | Contests "Dependencies: Payments Module (prizes)" | ⛔ **False.** No Payments import. Prizes are rows in `contest_prizes`; there is no automated payout |
-| "The registry contains 30+ event schemas … planned for Phase 7" | ✅ **Shipped.** **55 event names**, 10 definition files, 72 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
+| "The registry contains 30+ event schemas … planned for Phase 7" | ✅ **Shipped.** **68 event names**, 10 definition files, 82 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
 | "No Direct Database Access — modules use repositories only" | ⚠️ **PARTIAL.** 18 repository interfaces exist, but 26 files across 18 modules import `src/db/index.ts` directly |
 | "No Direct Service Calls" | ⚠️ **PARTIAL.** The event bus is primary, but `Books → PaymentsService` is a deliberate direct call |
 | "Public interfaces are versioned" | ⚠️ **PARTIAL.** 18 `I*Repository` interfaces exist; **none is versioned**, and no `IUsersService` / `IStoriesService` exists |

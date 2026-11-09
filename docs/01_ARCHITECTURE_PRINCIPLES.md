@@ -575,7 +575,7 @@ declares every ID as `string`. `docs/03_ids_as_strings.md` matches the code.
 
 ### #6 Minimize Migrations — ✅ ENFORCED
 The strongest principle in the set, and now mechanised rather than aspirational:
-- ✅ 22 numbered `.sql` files at repo-root `migrations/` are the single source of truth
+- ✅ 44 numbered `.sql` files at repo-root `migrations/` are the single source of truth
 - ✅ `drizzle-kit up:pg` (a schema push that discarded history) is **gone**
 - ✅ Every migration is **transaction-wrapped** (`migration-runner.ts:218,247`)
 - ✅ A **sha256 content-checksum ledger** makes editing an applied file a hard error
@@ -608,8 +608,8 @@ The strongest principle in the set, and now mechanised rather than aspirational:
   `drizzle.config.ts` and declared nowhere, so `db:studio` had never worked; both are now declared
 
 ### #7 Loose Coupling — ⚠️ PARTIAL
-- ✅ **Event-driven communication is real:** EventEmitter2 with a registry of **55 event schemas**
-  across **10** `*.events.ts` schema modules, **72 `@OnEvent` handler methods** in **16**
+- ✅ **Event-driven communication is real:** EventEmitter2 with a registry of **68 event schemas**
+  across **10** `*.events.ts` schema modules, **82 `@OnEvent` handler methods** in **16**
   event-handler files spanning **14** modules, a validator, and a **dead letter queue** that has a
   drain (`GET /api/v1/events/dlq`, `POST /api/v1/events/dlq/:id/replay`, `DLQController`,
   `SUPER_ADMIN`). ⛔ **Correction to the previous version of this row:** it said "16 event modules,
@@ -648,8 +648,8 @@ The strongest principle in the set, and now mechanised rather than aspirational:
 - ✅ Extension points exist: the `PaymobClient` sits behind `ResilientHttpClient`; the throttler
   storage is an interface with a Valkey implementation; the **35** WAF rules
   (`backend/src/common/waf/rules.ts`) are a **data-driven table** where a new rule is a new entry,
-  not a new branch. ⛔ **Correction:** this line previously said **34**, contradicting §#15 of the
-  same document ("34 typed rules in 8 layers") and the code, which defines **34** rules, every one of
+  not a new branch. ⛔ **Correction:** this line previously said **36**, contradicting §#15 of the
+  same document ("36 typed rules in 8 layers") and the code, which defines **36** rules, every one of
   them `enabledByDefault: true`. There is no rule disabled by default; `WafConfig.enabledOptInControls`
   is `[]` except `blockForwardingHeaders` when `WAF_BLOCK_FORWARDING_HEADERS` is set, and that is an
   additional control, not a 35th-to-36th rule
@@ -663,7 +663,7 @@ The strongest principle in the set, and now mechanised rather than aspirational:
 ### #9 Single Source of Truth — ✅ ENFORCED
 - ✅ **Roles:** `ACCOUNT_TYPES` / `ADMIN_ROLES` in `@hakawi/shared-types`, re-exported by
   `backend/src/common/constants/roles.ts`. There is no second list.
-- ✅ **Permissions:** `backend/src/common/permissions/permissions.ts` — 51 permissions,
+- ✅ **Permissions:** `backend/src/common/permissions/permissions.ts` — 53 permissions,
   `PERMISSIONS_BY_ACCOUNT_TYPE` and `PERMISSIONS_BY_ROLE`
 - ✅ **Types:** `@hakawi/shared-types` is compiled and consumed by both backend and frontend, with
   `Exact<A,B>` compile-time drift assertions
@@ -786,7 +786,7 @@ Rate limiting is now genuinely the first line, and the WAF's own layers are stil
   SSRF rules cannot match, and the fact that the body-size rule **detects** rather than prevents
 
 **Layer 2 — WAF: ⚠️ partial**
-- ✅ 34 typed rules in 8 layers. Four of them (`xss-script-function`, `command-chain-separator`,
+- ✅ 36 typed rules in 8 layers. Four of them (`xss-script-function`, `command-chain-separator`,
   `sql-time-based`, `ldap-filter-injection`) used to match ordinary prose — `"steps & id check"`,
   `"the book made me sleep( a lot"`, `"(uid=*) group"` — and at the default `WAF_BLOCK_SEVERITY=high`
   that was a one-hour IP block for writing a technical sentence. The **patterns were tightened,
@@ -830,7 +830,7 @@ or tenant.
 
 ### #16 Smart Hybrid Consistency — ⚠️ PARTIAL
 - ✅ The three-way classification is documented and `docs/consistency-matrix.md` has been
-  reconciled against all 33 tables
+  reconciled against all 40 tables
 - ✅ Causal ordering is real in the schema: `comments.parent_id` is a self-referencing FK, and
   messages are timestamp-ordered
 - ✅ Eventual is real for notifications, story → Sanity sync, and derived analytics

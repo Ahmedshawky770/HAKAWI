@@ -287,7 +287,7 @@ free-text `varchar`.
 | 4 | A conversation must have exactly 2 participants | ✅ Structural: two columns, no join table |
 | 5 | A notification must have a recipient | ✅ `notifications.user_id` NOT NULL, FK → users |
 | 6 | A contest submission deadline must be before the contest end | ⛔ **Not enforced anywhere.** No CHECK constraint, no service validation found |
-| 7 | Only soft deletes are allowed | ⚠️ **Partly false.** `deleted_at` exists on only **7 of 33** tables. `messages`, `reactions`, `comment_reactions`, `follows`, `notifications`, `conversations` and the contest tables have no `deleted_at`; and several tables *are* hard-deleted by their `.down.sql` rollback scripts |
+| 7 | Only soft deletes are allowed | ⚠️ **Partly false.** `deleted_at` exists on only **7 of 40** tables. `messages`, `reactions`, `comment_reactions`, `follows`, `notifications`, `conversations` and the contest tables have no `deleted_at`; and several tables *are* hard-deleted by their `.down.sql` rollback scripts |
 
 ---
 
@@ -324,7 +324,7 @@ on read)
   schema per event, validated by `event-validator.service.ts` before delivery
 - The **dead letter queue** (`common/events/dlq.service.ts`) — an event whose handler throws is
   captured, not lost
-- 10 event definition files and **72 `@OnEvent` handlers** under `modules/*/events/`
+- 10 event definition files and **82 `@OnEvent` handlers** under `modules/*/events/`
 
 See `docs/module-boundaries/events/event-schema-registry.md`.
 
@@ -334,7 +334,7 @@ See `docs/module-boundaries/events/event-schema-registry.md`.
 
 | Previous claim | Reality |
 |---|---|
-| Concept-only, "implementation may use different names" | Anchored to the real 33 tables, columns, and 55 event names |
+| Concept-only, "implementation may use different names" | Anchored to the real 40 tables, columns, and 68 event names |
 | 6 account types, 4 admin roles | ✅ **Correct.** Added the implication lattice and the legacy-value normalisation (`author` → `writer`, etc.) |
 | "A user cannot delete themselves" | ⛔ **False.** `DELETE /users/me` is the self-delete route and it soft-deletes |
 | "An admin cannot be downgraded directly" | ⛔ No such guard exists |
@@ -354,7 +354,7 @@ See `docs/module-boundaries/events/event-schema-registry.md`.
 | "Participants cannot be the same user" | ⛔ No CHECK constraint |
 | Message "Only soft delete is allowed" | ⛔ `messages` has no `deleted_at` and no DELETE route |
 | Invariant 6: "submission deadline before contest end" | ⛔ **Not enforced anywhere** |
-| Invariant 7: "Only soft deletes are allowed" | ⚠️ Partly false — `deleted_at` on 7 of 33 tables |
+| Invariant 7: "Only soft deletes are allowed" | ⚠️ Partly false — `deleted_at` on 7 of 40 tables |
 | PascalCase event names throughout | ✅ Real names are dotted lowercase strings, emitted via `emit()` + `@OnEvent()` |
 | 8 events listed that do not exist | ⛔ `UserVerified`, `UserBlocked`, `BookPurchased`, `BookRented`, `ContestEnded`, `NotificationRead` |
 | "StoryDeleted — story archived" | ⚠️ `story.archived` and `story.deleted` are two distinct events |

@@ -17,8 +17,8 @@ This document provides comprehensive integration test examples for the Hakawi pl
 ### Tools
 - Vitest (test runner)
 - Supertest (HTTP assertions)
-- Testcontainers (database)
 - @nestjs/testing (NestJS testing utilities)
+- A real PostgreSQL 15 + Valkey 8 (via docker compose / GitHub Actions services), not Testcontainers
 
 ---
 

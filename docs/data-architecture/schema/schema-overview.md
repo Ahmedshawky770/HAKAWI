@@ -7,7 +7,7 @@ module-level schema ownership for the Hakawi database.
 Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exist.
 
 **Sources of truth, in order:**
-1. `migrations/*.sql` — **22** numbered files that create the schema
+1. `migrations/*.sql` — **44** numbered files that create the schema
 2. `backend/src/db/schema/*.ts` — the Drizzle models, 1:1 with the SQL
 3. `packages/shared-types/src/*.ts` — the TypeScript contract
 
@@ -18,18 +18,18 @@ Everything in this document was reconciled against those three on 2026-09-30.
 ## Schema Design Principles
 
 ### 1. UUID Primary Keys — ✅
-All 33 tables use `uuid` primary keys. This provides global uniqueness, no ID enumeration, and safe
+All 40 tables use `uuid` primary keys. This provides global uniqueness, no ID enumeration, and safe
 external references.
 
 ### 2. Timestamps — ⚠️ partial
 | Column | Tables | Note |
 |---|---|---|
-| `created_at` | **31 of 33** | Missing on `contest_submissions`, `user_badges` |
-| `updated_at` | **15 of 33** | Missing on `book_tags`, `comment_reactions`, `contest_prizes`, `contest_submissions`, `contest_votes`, `conversations`, `follows`, `messages`, `moderation_actions`, `notifications`, `payment_transactions`, `reactions`, `refunds`, `rental_extensions`, `story_tags`, `tags`, `user_badges`, `user_restrictions` |
-| `deleted_at` | **7 of 33** | See below |
+| `created_at` | **37 of 40** | Missing on `admin_role_assignments`, `user_badges`, `contest_submissions`
+| `updated_at` | **17 of 40** | Missing on `admin_role_assignments`, `user_badges`, `book_tags`, `contest_submissions`, `contest_votes`, `contest_prizes`, `moderation_actions`, `user_restrictions`, `payment_transactions`, `refunds`, `payment_transactions_p`, `rental_extensions`, `follows`, `reactions`, `comment_reactions`, `notifications`, `conversations`, `messages`, `messages_p`, `notifications_p`, `reactions_p`, `tags`, `story_tags`
+| `deleted_at` | **7 of 40** | See below |
 
 > **The previous claim — "every table includes `createdAt` / `updatedAt` / `deletedAt`" — is false.**
-> Only 7 of 33 tables have `deleted_at`, and roughly half have `updated_at`. Join tables and
+> Only 7 of 40 tables have `deleted_at`, and roughly half have `updated_at`. Join tables and
 > append-only records (`follows`, `reactions`, `comment_reactions`, `contest_votes`, `tags`,
 > `story_tags`, `book_tags`) legitimately need no `updated_at`; the rest is drift.
 
@@ -146,14 +146,14 @@ on payments (`paymob_order_id`, `paymob_payment_key`).
 
 | Field | Status |
 |---|---|
-| `created_at` | ✅ on 31 of 33 tables |
-| `updated_at` | ⚠️ on 15 of 33 tables |
-| `deleted_at` | ⚠️ on 7 of 33 tables |
+| `created_at` | ✅ on 37 of 40 tables |
+| `updated_at` | ⚠️ on 17 of 40 tables |
+| `deleted_at` | ⚠️ on 7 of 40 tables |
 | `created_by` / `updated_by` | ⛔ **DO NOT EXIST.** No table has a `created_by` or `updated_by` column, and no `createdBy` / `updatedBy` field in any Drizzle model. Attribution is done through the separate `moderation_actions` and `payment_transactions` tables. |
 
 ---
 
-## Module Schema Ownership — the 33 real tables
+## Module Schema Ownership — the 40 real tables
 
 The previous version of this document listed **22 tables that do not exist** and **omitted 13 that
 do**. Both errors are corrected below. The **Right column** shows what the old name was renamed to
@@ -277,7 +277,7 @@ or subsumed into.
 | `created_by` / `updated_by` optional audit fields | ⛔ No such column exists in any table | zero matches in `backend/src/db/schema/` |
 | `gen_random_uuid()` as the ID generator | IDs are generated **application-side** via `crypto.randomUUID()` (`$defaultFn`); the DB default is `uuid_generate_v4()` from `uuid-ossp` | `backend/src/db/schema/users.schema.ts:5-7` |
 | 22 documented tables | **22 of them do not exist.** 7 were renamed (`user_libraries`→`library`, `book_rentals`→`rentals`, `story_reactions`→`reactions`, `moderation_logs`→`moderation_actions`, `transactions`→`payment_transactions`, `story_categories`→`story_tags`, `prize_transactions`→`contest_prizes`); 3 were subsumed into columns on `users` (`external_auth_accounts` → `*_id` columns); 12 were never built | full table list from `migrations/*.sql` and `backend/src/db/schema/*.ts` |
-| — | **13 real tables were missing from the doc:** `uploads`, `reading_progress`, `refunds`, `badges`, `user_badges`, `contest_prizes`, `rental_extensions`, `payment_transactions`, `book_categories`, `book_tags`, `conversations`, `messages`, `notification_preferences` | 33 tables total, SQL and Drizzle agree |
+| — | **13 real tables were missing from the doc:** `uploads`, `reading_progress`, `refunds`, `badges`, `user_badges`, `contest_prizes`, `rental_extensions`, `payment_transactions`, `book_categories`, `book_tags`, `conversations`, `messages`, `notification_preferences` | 40 tables total, SQL and Drizzle agree |
 | Module-prefixed table names (`auth_users`, `story_comments`) | No table is prefixed | 33-table inventory |
 | Soft deletes "preserves data for audit" | ⚠️ `deleted_at` on 7 tables and **never purged**; several tables are hard-deleted by their down scripts | no purge job in `backend/src` |
 | `user_sessions` table | ⛔ No session store exists | `auth.service.ts` uses a Valkey blacklist only |

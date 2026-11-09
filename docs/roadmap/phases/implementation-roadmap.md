@@ -56,7 +56,7 @@ under Phase 1 and `docs/roadmap/risks.md`.
       no `jest` dependency, no `jest.config`, no `@types/jest` in any of the three `package.json`
       files. **Supertest is present**: it is a backend devDependency (`"supertest": "^7.0.0"`,
       `backend/package.json:112`) and it drives the HTTP layer of the test suite. It is imported by
-      **34** files under `backend/src/` and **12** under `backend/test/` — 46 in all — of which **23
+      **36** files under `backend/src/` and **12** under `backend/test/` — 46 in all — of which **23
       of the `src/` side** run inside the unit job (the other 11 are `e2e/**`, which
       `backend/vitest.config.ts` excludes). "Supertest is not used here" was never true; "Jest is not
       used here" is
@@ -88,7 +88,7 @@ e2e assumed a draft appeared in the public list, which is exactly what Phase 2 h
 green suite means nothing if the suite did not run.**
 
 ### Week 2: Core Infrastructure — ✅
-- [x] Database schema design — 33 tables
+- [x] Database schema design — 40 tables
 - [x] Drizzle ORM setup — query builder + type layer only; migrations are hand-written `.sql`
 - [x] Authentication module — JWT access + refresh, 5 OAuth providers, bcrypt (12 rounds)
 - [x] Authorization module — `@Secured()` composing **four** guards: `JwtAuthGuard` +
@@ -716,7 +716,7 @@ than failing on the gap.
 | **Payment gateway issues** | Low | High | Zod-validated client, cached auth token, circuit breaker, retry, clean 503 failure | 🔄 untested live |
 | **Sanity CMS integration** | Medium | High | Circuit breaker, PostgreSQL fallback | ✅ |
 | **Performance bottlenecks** | Medium | Medium | Cache-aside + tagged invalidation; read replicas and load testing never built | ⛔ unmitigated |
-| **Security vulnerabilities** | Low | High | WAF (34 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
+| **Security vulnerabilities** | Low | High | WAF (36 rules, 8 layers), rate limiting (4 tiers), fail-closed guards, `npm audit` in CI | 🔄 no pentest |
 | **Testing delays** | Medium | High | TDD, CI on every PR | ✅ — but see the retired *silent suite skip* hazard in `risks.md` |
 | **Scope creep** | High | Medium | Phase boundaries | ✅ |
 | **Migration data loss** | Low | High | **sha256 ledger, transaction wrapping, reversibility classification** — 0 irreversible, 18 data-loss, 4 reversible across the 22 down scripts | ✅ materially reduced |
@@ -726,7 +726,7 @@ than failing on the gap.
 ## Success Criteria — actual state
 
 ### Functionality
-- ✅ All core features working (22 backend modules, 33 tables, 24 controllers)
+- ✅ All core features working (22 backend modules, 40 tables, 24 controllers)
 - ✅ Payment flows implemented and unit-tested
 - ✅ Sanity CMS integrated
 - ✅ Search working
@@ -743,7 +743,7 @@ than failing on the gap.
 ### Security
 - ✅ CI `npm audit` job passes
 - ⛔ No external pentest
-- ✅ WAF configured — 34 rules, 8 layers
+- ✅ WAF configured — 36 rules, 8 layers
 - ✅ Rate limiting active — 4 tiers, Valkey-backed
 - ⚠️ Encryption at rest (AES-256-GCM) and in transit (TLS, if the platform terminates it) —
       the app itself has no HTTPS redirect or `trust proxy`
@@ -916,7 +916,7 @@ the second pass; the first was 2026-09-30 and it did not survive contact with a 
 
 | Was | Reality |
 |---|---|
-| "**Vitest** (not Jest/Supertest)" | Half false. Jest is genuinely absent — no `jest` dependency, config or types in any `package.json`. **Supertest is present** (`backend/package.json:112`) and is imported by **34** files under `backend/src/` and **12** under `backend/test/`; **23 of the `src/` side** run in the unit job |
+| "**Vitest** (not Jest/Supertest)" | Half false. Jest is genuinely absent — no `jest` dependency, config or types in any `package.json`. **Supertest is present** (`backend/package.json:112`) and is imported by **36** files under `backend/src/` and **12** under `backend/test/`; **23 of the `src/` side** run in the unit job |
 | "the DLQ has **no drain** … a dead-lettered event is never redelivered" | **False.** `DLQController` serves `GET /events/dlq` and `POST /events/dlq/:id/replay`; `replayDeadLettered` re-validates against the registered schema and re-emits. `retryDLQ` is **deleted**. `getDLQStats` is the only remaining spec-only method |
 | "`0001` is deliberately irreversible because it owns `uuid-ossp`" (asserted in `docs/roadmap/risks.md`) | **False.** All **22** down scripts classify: **0 irreversible, 18 data-loss, 4 reversible** (`0014`, `0020`, `0021`, `0022`). `0001_create_stories_tables.down.sql` declares `reversibility=data-loss`, and its down script never drops `uuid-ossp` — which was the entire stated reason |
 | Two module-graph bugs recorded nowhere while every phase below reads ✅ | `BooksModule` ↔ `LibraryModule` had no `forwardRef()` — **the backend could not boot**, and all 11 integration specs plus the stories e2e **skipped silently with CI green**. `ContestsModule` imported `NotificationsModule` without listing it. Both fixed; 8 never-run tests then failed on stale fixtures and were fixed |
@@ -937,7 +937,7 @@ contest winner receives **two** notification rows for each. One side must be dec
 
 ### Unchanged, and re-verified rather than assumed
 Coverage floors **79 / 70 / 73 / 78** and **9** per-path ratchets · frontend gate **38 / 33 / 33 / 38** ·
-**33** `CREATE TABLE` · **35** WAF rules with **34** active by default · **55** `EVENT_SCHEMAS`, all
+**33** `CREATE TABLE` · **35** WAF rules with **36** active by default · **55** `EVENT_SCHEMAS`, all
 `v1` · **10** event-constant modules · no `EventBusModule` · no `it.fails` anywhere in the repository.
 
 ---

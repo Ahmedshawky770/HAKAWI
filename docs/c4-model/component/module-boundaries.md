@@ -206,7 +206,7 @@ scheduler.
 | **Database Service** | ✅ The `pg` Pool + Drizzle. ⚠️ it is a **module-level singleton**, not injectable — the reason 26 files across 18 modules import `src/db/index.ts` directly, and the reason the e2e suite needs a cloned database per test file |
 | **Cache Service** | ✅ `TaggedCacheService` — cache-aside with tag invalidation, `STORY`/`BOOK` 600s, `PAYMENT` 300s, default 3600s |
 | **Rate Limiter** | ✅ `ValkeyThrottlerStorage` over **5** tiers (`default`, `auth`, `session`, `upload`, `search` — `THROTTLE_TIER_NAMES` in `throttle.config.ts:4`). ⛔ **Corrected:** this line previously said **4 tiers**; there have been five since the `session` tier was added, and the file’s own comment on `THROTTLE_TIER_NAMES` warns that "all five tiers run" for an undecorated route. Fail-open. Was described here as "Cache Service → rate limiting"; it is a separate, dedicated store |
-| **Event Bus** | ✅ EventEmitter2 with a schema registry, a validator, and a **dead letter queue**. 55 event names |
+| **Event Bus** | ✅ EventEmitter2 with a schema registry, a validator, and a **dead letter queue**. 68 event names |
 | **Logger Service** | ✅ Winston, with correlation IDs threaded from the WAF middleware. ⚠️ `winston.createLogger` is called with no `level`, so `debug()` and `verbose()` are discarded |
 | **WAF Middleware** | ✅ **35** typed rules in 8 layers, every one `enabledByDefault: true` (⛔ this line previously said **34**, contradicting §#15 of `docs/01_ARCHITECTURE_PRINCIPLES.md` and `backend/src/common/waf/rules.ts`), a Valkey-backed IP blocklist, `X-Waf-*` and `X-RateLimit-*` headers. ⚠️ **no admin operations endpoints and no metrics endpoint** |
 | **Observability** | ✅ `@sentry/nestjs@11.1.0` via `common/observability/sentry.config.ts`; `GET /api/v1/metrics/cache` |
@@ -263,7 +263,7 @@ Controller → Guard → Pipe → Service → Repository → Database, with the 
 `ThrottlerGuard` upstream and `AllExceptionsFilter` + `LoggingInterceptor` downstream.
 
 ### Asynchronous — ✅ the primary cross-module channel
-**55 event names** · 10 definition files in `common/events/` · **72 `@OnEvent` handlers** under
+**68 event names** · 10 definition files in `common/events/` · **82 `@OnEvent` handlers** under
 `modules/*/events/` · a schema registry · a validator · a **dead letter queue**.
 
 Non-critical work — notifications, library access grants, reading progress, prize distribution,
@@ -333,7 +333,7 @@ mutably used, which is a wider coupling than the boundary rule intends.
 | Moderation event `content.reported` | ⛔ Real name is `moderation.report.created` |
 | Moderation "Depends on Stories/Comments (content)" | ⚠️ Reports are **polymorphic** (`target_id` + `target_type`), not FKs |
 | **Series / Playlists** | ⛔ Neither module exists. Added ⛔ **Badges, Library, Rentals, ReadingProgress, Categories, Tags, Upload, Search, SharedCache, Database** |
-| Event bus "planned" | ✅ **Shipped.** 55 events, 10 definition files, 72 `@OnEvent` handlers, a registry, a validator, a DLQ |
+| Event bus "planned" | ✅ **Shipped.** 68 events, 10 definition files, 82 `@OnEvent` handlers, a registry, a validator, a DLQ |
 | `this.eventBus.publish(new StoryCreatedEvent(...))` / `IEventBus.subscribe` | ⛔ No `publish`, no `IEventBus`, no `subscribe`. Real: `emit('story.created', payload as StoryCreatedEvent)` + `@OnEvent` |
 | "No direct database access across modules" | ⚠️ **PARTIAL.** 26 files in 18 modules import `db/index.ts` directly; no enforcement mechanism |
 | "No direct service calls" | ⚠️ **PARTIAL.** One deliberate exception: `BooksService → PaymentsService` |

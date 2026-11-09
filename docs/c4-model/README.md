@@ -55,7 +55,7 @@ c4-model/
 - Frontend containers (Next.js app)
 - Backend containers (NestJS modules)
 - Data containers (PostgreSQL, Valkey, Sanity)
-- Infrastructure containers (Docker, message queue)
+- Infrastructure containers (Docker, in-process EventEmitter2 with DLQ)
 
 ---
 

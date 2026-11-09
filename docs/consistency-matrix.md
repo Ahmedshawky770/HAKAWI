@@ -40,8 +40,7 @@ Reconciled against `backend/src/db/schema/*.ts` on 2026-09-30.
 ## What Is Actually Implemented
 
 The previous version of this document said only **Users** and **Auth Tokens** existed, because it
-was written when only Phase 1 had shipped. That is no longer true. **22 backend modules and 33
-tables are live**, and this is the full picture.
+was written when only Phase 1 had shipped. That is no longer true. **22 backend modules and 40 tables are live**, and this is the full picture.
 
 | Layer | Tables | Consistency | Notes |
 |---|---|---|---|
@@ -267,7 +266,7 @@ there is no cluster, so no rule is ever evaluated.
 
 | Previous claim | Reality |
 |---|---|
-| "Phase 1: only **Users** and **Auth Tokens** are implemented" | ⛔ Outdated. **22 backend modules and 33 tables are live**, across the 12 functional layers of the inventory above. Replaced with a full inventory |
+| "Phase 1: only **Users** and **Auth Tokens** are implemented" | ⛔ Outdated. **22 backend modules and 40 tables are live**, across the 12 functional layers of the inventory above. Replaced with a full inventory |
 | "Valkey cache with **immediate invalidation**" for Users and Stories | ✅ **Confirmed real** — the cache is tagged (`books`, `stories`, `payments`) and `@CacheInvalidateTags` fires on every write. The claim was right; the document understated how much depends on it |
 | "Cache hit-rate monitoring (planned for Phase 7)" | ✅ **Live now**, at `GET /api/v1/metrics/cache` |
 | "Consistency-violation detection (planned for Phase 7)" | ⛔ Still not built |

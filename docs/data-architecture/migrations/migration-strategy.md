@@ -11,7 +11,7 @@ Status markers: ✅ implemented · ⚠️ partial · ⛔ not implemented.
 
 The migration system was **rebuilt** during 2026-09. The current system is:
 
-- **22 numbered `.sql` files at the repository-root `migrations/` directory** are the single source
+- **44 numbered `.sql` files at the repository-root `migrations/` directory** are the single source
   of truth for schema.
 - `backend/src/db/migrations/` holds the **runner** (discovery, checksum ledger, execution,
   rollback), not the migrations themselves.
@@ -62,7 +62,7 @@ this as a warning (`sequence jumps from 16 to 18; a migration file is missing fr
 needs filling, or the chain should be renumbered — the current state is deliberate-looking but
 unexplained.
 
-Total schema: **33 tables** across the chain, matching `backend/src/db/schema/*.ts` exactly.
+Total schema: **40 tables** across the chain, matching `backend/src/db/schema/*.ts` exactly.
 
 ---
 

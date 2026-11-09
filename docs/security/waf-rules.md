@@ -1,3 +1,5 @@
+> ⚠️ **Deprecated/unaudited.** Canonical: `docs/security-architecture/waf/waf-overview.md`. Prefer the audited `security-architecture/` set.
+
 # WAF Rules
 ## Hakawi Security Architecture
 

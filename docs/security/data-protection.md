@@ -1,3 +1,5 @@
+> ⚠️ **Deprecated/unaudited.** Canonical: `docs/security-architecture/overview/security-architecture.md`. Prefer the audited `security-architecture/` set.
+
 # Data Protection
 ## Hakawi Security Architecture
 

@@ -22,8 +22,8 @@ This document defines dependency rules and circular dependency prevention for th
 >   `forwardRef()`, and the application **could not boot at all**. Both sides now carry `forwardRef()`.
 >   See `docs/architecture-principles-deviations.md` → *Principle #4*.
 >
-> `docs/module-boundaries/dependencies/dependency-rules.md` is a second, shorter file at the same
-> level. Neither is declared canonical.
+> `docs/module-boundaries/dependencies/dependency-rules.md` is now a deprecation stub pointing here;
+> this file is canonical.
 
 ---
 

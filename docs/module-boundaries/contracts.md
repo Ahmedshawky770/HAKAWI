@@ -7,10 +7,9 @@ Reconciled against `backend/src/common/users/users-repository.interface.ts`,
 `backend/src/modules/**/interfaces/*-repository.interface.ts`, and
 `backend/src/common/events/*.events.ts` on 2026-09-30.
 
-> ⚠️ **This document has a near-duplicate at `module-boundaries/contracts/module-contracts.md`, and
-> neither file is marked canonical.** They can drift apart silently. The same is true of
-> `module-boundaries/interfaces.md` vs `interfaces/shared-interfaces.md`, and
-> `module-boundaries/dependency-rules.md` vs `dependencies/dependency-rules.md`.
+> ✅ **Canonical.** The former near-duplicates (`contracts/module-contracts.md`,
+> `interfaces/shared-interfaces.md`, `dependencies/dependency-rules.md`) are now deprecation stubs
+> pointing here and at the other canonical files.
 
 Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exist.
 
@@ -24,7 +23,7 @@ Status markers: ✅ as described · ⚠️ partial / drifted · ⛔ does not exi
 | 2. **Dependency Inversion** — depend on abstractions | ⚠️ | The repository layer is inverted. **The service layer is not** — see the note below |
 | 3. **Explicit Dependencies** — all dependencies declared | ⚠️ | 18 repository interfaces are declared; 26 files across 18 modules import `src/db/index.ts` directly |
 | 4. **Versioned APIs** — backward compatibility maintained | ⛔ **NOT IMPLEMENTED** | No `I*Repository` interface carries a version. `IStoriesRepository` has one implementation and no substitutability behind it. ⛔ **Corrected:** the row previously merged the Status and Reality columns into one cell, which left the table with three columns against a four-column header and shifted every cell left when rendered |
-| 5. **Event-Driven** — async communication via events | ✅ | 55 event names, 10 definition files, 72 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
+| 5. **Event-Driven** — async communication via events | ✅ | 68 event names, 10 definition files, 82 `@OnEvent` handlers, a schema registry, a validator, and a DLQ |
 
 ### ⚠️ There are no service-level interfaces
 

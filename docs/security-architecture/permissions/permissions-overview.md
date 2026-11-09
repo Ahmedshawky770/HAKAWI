@@ -79,7 +79,7 @@ permission is a **compile error**.
 ### Resources, actions, scopes
 `PERMISSION_RESOURCES`, `PERMISSION_ACTIONS`, `PERMISSION_SCOPES` (`permissions.ts:10,34,53`).
 
-### Count: 51 permissions
+### Count: 53 permissions
 
 `ALL_PERMISSIONS` is `Object.freeze(Object.values(Permission))` — **53** entries.
 

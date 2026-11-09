@@ -46,7 +46,7 @@ Establish the project foundation: authentication, database, and basic infrastruc
 - [x] Monorepo structure initialized — npm workspaces
 - [x] NestJS backend with module structure
 - [x] Next.js frontend with App Router
-- [x] PostgreSQL database configured — 33 tables
+- [x] PostgreSQL database configured — 40 tables
 - [x] Valkey cache configured
 - [x] Docker Compose for local development — ✅ services plus `docker-compose.yml`; **Dockerfiles exist** (root, `backend/`, `frontend/`)
 - [x] CI/CD pipeline configured — `.github/workflows/ci.yml`, **12 jobs**. ⚠️ the previous version of
@@ -65,7 +65,7 @@ Establish the project foundation: authentication, database, and basic infrastruc
    - Basic routing works
    - Connects to the backend API via the Zod-validated `api.ts` layer
 4. **Database** ✅
-   - All 33 tables created by `npm run migration:run`
+   - All 40 tables created by `npm run migration:run`
    - Seed data available via `npm run seed:dev`
    - ⚠️ **Connection-pool sizing is not configurable** — `DB_POOL_*` variables do not exist
 5. **CI/CD** ✅

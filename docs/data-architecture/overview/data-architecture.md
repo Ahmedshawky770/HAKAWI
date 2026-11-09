@@ -10,7 +10,7 @@
 3. **Eventual Consistency** - For non-critical data
 4. **Strong Consistency** - For critical data (payments, auth)
 5. **Audit Trail** - All mutations logged
-6. **Soft Deletes** - No hard deletes in production
+6. **Soft Deletes** - `deleted_at` on 7 of 40 tables only; hard deletes used for join tables
 
 ---
 
@@ -23,14 +23,10 @@ graph TB
         Stories[(stories)]
         Books[(books)]
         Contests[(contests)]
-        Interactions[(interactions)]
         Messages[(messages)]
         Notifications[(notifications)]
-        Series[(series)]
-        Playlists[(playlists)]
         Reports[(reports)]
         Payments[(payments)]
-        Settings[(settings)]
     end
 
     subgraph "Sanity CMS"
@@ -48,15 +44,11 @@ graph TB
     Users --> Stories : 1:N
     Users --> Books : 1:N
     Users --> Contests : 1:N
-    Users --> Interactions : 1:N
     Users --> Messages : 1:N
     Users --> Notifications : 1:N
-    Users --> Series : 1:N
-    Users --> Playlists : 1:N
     Users --> Reports : 1:N
     Users --> Payments : 1:N
 
-    Stories --> Interactions : 1:N
     Stories --> Comments : 1:N
     Stories --> Reactions : 1:N
 
@@ -72,9 +64,9 @@ graph TB
 ## Schema Design Principles
 
 1. **UUID Primary Keys** - All entities use UUID v4
-2. **Timestamps** - `createdAt` and `updatedAt` on all tables
-3. **Soft Deletes** - `deletedAt` timestamp instead of hard delete
-4. **Audit Fields** - `createdBy`, `updatedBy` where applicable
+2. **Timestamps** - `created_at` on 37/40 tables; `updated_at` on 17/40; `deleted_at` on 7/40
+3. **Soft Deletes** - `deleted_at` on 7/40 tables only
+4. **Audit Fields** - no `created_by`/`updated_by` columns; attribution via `moderation_actions`/`payment_transactions`
 5. **Indexing Strategy** - Indexed foreign keys and frequently queried fields
 6. **JSONB for Flexibility** - For metadata and flexible data
 

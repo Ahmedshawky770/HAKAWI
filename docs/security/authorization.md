@@ -1,3 +1,5 @@
+> ⚠️ **Deprecated/unaudited.** Canonical: `docs/security-architecture/permissions/permissions-overview.md`. Prefer the audited `security-architecture/` set.
+
 # Authorization
 ## Hakawi Security Architecture
 

@@ -1,7 +1,7 @@
 # Entity Relationship Diagram
 ## Hakawi Data Architecture
 
-Entity-relationship overviews and key relationship rules across the 33 tables in the Hakawi database.
+Entity-relationship overviews and key relationship rules across the 40 tables in the Hakawi database.
 
 Reconciled against `backend/src/db/schema/*.ts` and `migrations/*.sql` on 2026-09-30. Every
 foreign key, index, and constraint below was extracted from the Drizzle models — not transcribed
@@ -292,7 +292,7 @@ Verified against the Drizzle models:
 
 ---
 
-## Cascading Deletes — ⚠️ only 2 of 33 tables
+## Cascading Deletes — ⚠️ only 2 of 40 tables
 
 The previous version claimed "user deleted → cascade delete their stories, books, contests" and
 "story deleted → cascade delete comments, reactions". **Neither is implemented.**
@@ -308,7 +308,7 @@ Every other FK has **no `onDelete` clause**, which means PostgreSQL's default: `
 a user row referenced by a story, comment, payment, or rental will be **rejected by the database**.
 
 **The practical model is soft delete, not cascade:**
-- `deleted_at` exists on only **7 of 33** tables: `users`, `stories`, `comments`, `uploads`,
+- `deleted_at` exists on only **7 of 40** tables: `users`, `stories`, `comments`, `uploads`,
   `books`, `payments`, `rentals`
 - ⛔ **No purge job exists.** `deleted_at` is written and never swept, so "soft delete preserves data
   for audit" is true and "30-day purge" is a policy with no implementation
@@ -320,7 +320,7 @@ a user row referenced by a story, comment, payment, or rental will be **rejected
 ## Indexing Strategy
 
 ### Primary Keys
-✅ Every table's primary key is indexed automatically (33/33 `uuid` PKs).
+✅ Every table's primary key is indexed automatically (40/40 `uuid` PKs).
 
 ### Foreign Keys
 ⚠️ **Most are indexed, but not all.** Indexed FK columns include `stories.author_id`,
@@ -373,7 +373,7 @@ is.
 
 | Previous claim | Reality |
 |---|---|
-| 22 entities across 7 groups | **33 tables** across 10 groups. The previous ERD omitted `uploads`, `reading_progress`, `refunds`, `badges`, `user_badges`, `contest_prizes`, `rental_extensions`, `payment_transactions`, `book_categories`, `book_tags` |
+| 22 entities across 7 groups | **40 tables** across 10 groups. The previous ERD omitted `uploads`, `reading_progress`, `refunds`, `badges`, `user_badges`, `contest_prizes`, `rental_extensions`, `payment_transactions`, `book_categories`, `book_tags` |
 | `external_auth_accounts`, `user_refresh_tokens`, `user_sessions`, `user_profiles`, `user_achievements`, `user_verifications` | ⛔ **None exist.** OAuth links are 6 columns on `users`; tokens and sessions are a Valkey blacklist; profile and verification are columns |
 | `book_sales`, `book_reviews`, `user_libraries`, `book_rentals`, `story_views`, `story_categories`, `story_interactions`, `notification_groups`, `contest_badges`, `prize_transactions`, `transactions`, `withdrawals`, `moderation_logs` | ⛔ **None exist.** 4 were renamed (`library`, `rentals`, `reactions`, `moderation_actions`, `payment_transactions`, `contest_prizes`, `story_tags`); the rest were never built |
 | "One story can have multiple categories (many-to-many)" | ⚠️ **False.** `stories.category_id` is a single nullable FK. Only *tags* are many-to-many |

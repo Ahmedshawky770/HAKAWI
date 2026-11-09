@@ -745,7 +745,7 @@ succeeded. See the changelog in `backup.md` for the corrected command.
 |-----------|-----------------|---------------|--------|
 | **Frontend** | Auto-scale (Vercel) | Unlimited | ✅ `next build` succeeds. The root `build` script builds shared-types first |
 | **Backend** | Horizontal pod autoscaling | 10+ instances | ⚠️ **Stateless and horizontally safe** — no in-process session state, and the cache and rate-limit counters are in Valkey, so the previous per-instance in-memory throttler problem is gone. ⛔ But no environment has been applied from `infrastructure/terraform/` / `infrastructure/helm/`, so no autoscaler has anything to scale (the backend chart defines an HPA). See `system-architecture/infrastructure/read-replicas.md` |
-| **PostgreSQL** | Read replicas | 1 primary + 3 replicas | ⚠️ **Router built, wired nowhere.** `backend/src/db/router.ts` reads `DB_REPLICA_*` and routes `select()` → replica (round-robin, primary fallback) and writes → primary, and is registered in `database.module.ts`. ⛔ Zero modules inject `DATABASE`; 26 source files import the plain `db` from `db/index.ts`, so every query hits the primary |
+| **PostgreSQL** | Read replicas | 1 primary + 2 replicas (compose) | ✅ **Router active.** `db/index.ts` re-exports the routed proxy, so reads via `{ db }` split to replicas; writes go to primary. Residual: no lag metric in app code |
 | **Valkey** | Cluster mode | 3+ nodes | ⛔ Not configured. ⛔ Also a **single point of failure**: the cache, the refresh-token blacklist, the rate-limit counters, and the WAF blocklist all live in it, and both the cache and the throttler **fail open** |
 | **Sanity** | Managed service | Unlimited | ⚠️ Wrapped in a `CircuitBreakerService` with a PostgreSQL fallback |
 

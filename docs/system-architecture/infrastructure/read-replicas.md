@@ -48,13 +48,14 @@ Read replicas are introduced when:
 - **Database CPU** exceeds **70%** due to read load
 - **Reporting/analytics** queries impact production performance
 
-### Current Stage — ⚠️ router built, wired nowhere
+### Current Stage — ✅ router active, reads split
 
-**Actual:** single primary database in practice; no query is split today. The read/write-splitting
-router (`backend/src/db/router.ts`) is registered in `database.module.ts` but injected by no module —
-26 files import the plain `db` from `db/index.ts`, so every read still hits the primary, and no
-replica exists in any deployed environment. The "Phase 4+ (Weeks 8+)" line in the previous version of
-this document was aspirational — Phase 4 shipped in week 10 and read replicas did not arrive.
+**Actual:** `db/index.ts` re-exports the routed proxy, so the 32 files that import `{ db }` from it
+automatically get read/write splitting (`select()` → replica round-robin with primary fallback,
+writes → primary). `docker-compose.yml` defines `postgres-primary` plus
+`postgres-replica-1`/`postgres-replica-2` and passes `DB_REPLICA_HOSTS` to the backend. Residual gap:
+no `pg_stat_replication` query or lag metric in application code; the `PostgreSQLReplicationLag`
+alert rule exists but is not applied to a cluster.
 
 ---
 

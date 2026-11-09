@@ -1,3 +1,5 @@
+> ⚠️ **Deprecated/unaudited.** Canonical: `docs/security-architecture/auth/auth-overview.md`. Prefer the audited `security-architecture/` set.
+
 # Authentication
 ## Hakawi Security Architecture
 
