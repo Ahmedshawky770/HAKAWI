@@ -95,35 +95,31 @@ COPY --chown=nextjs:nextjs --from=frontend-builder /app/frontend/public /app/fro
 # even though in this repository it only sets `transpilePackages`, which matters at build time.
 COPY --chown=nextjs:nextjs --from=frontend-builder /app/frontend/next.config.ts /app/frontend/next.config.ts
 
-# The server this image actually runs is the FRONTEND's, started with `next start` rather than
-# `.next/standalone/server.js` — because `frontend/next.config.ts` sets no `output: 'standalone'`
-# and this file may not edit it. See `frontend/Dockerfile` for why the full build is the correct
-# pairing with that constraint. This is the WORKDIR the process runs in and the one the CMD's
-# `PATH` lookup is relative to.
-WORKDIR /app/frontend
-
-# The backend's compiled output, so this image is a build of the whole repository rather than the
-# frontend image wearing a second hat. It is not served by the CMD below; it exists so an
-# operator who pulls this image has the API artifact in hand without a second build.
+# This image runs BOTH services: the frontend on 3000 and the backend on 3001.
+# The backend's compiled output is also copied so the image carries the full
+# repository build, and the start-all.sh script launches both processes.
 COPY --chown=nextjs:nextjs --from=backend-builder /app/backend/dist /app/backend/dist
 # Belt and braces for the same reason as `frontend/Dockerfile`: the build inlines
 # `@hakawi/shared-types` through `transpilePackages`, so the runtime does not need it, and a few
 # kilobytes keep the image working if that setting is ever removed.
 COPY --chown=nextjs:nextjs --from=shared-types-builder /app/packages/shared-types/dist /app/packages/shared-types/dist
 
+# The start-all.sh script runs both services: backend (3001) and frontend (3000).
+COPY --chown=nextjs:nextjs scripts/start-all.sh /app/scripts/start-all.sh
+RUN chmod +x /app/scripts/start-all.sh
+
+# The frontend is served from this directory, so WORKDIR is here so `next start` can find the `.next` directory.
+WORKDIR /app/frontend
+
+ENV BACKEND_PORT=3001
+
 USER nextjs
 
-# The probe and its reasoning are identical to `frontend/Dockerfile`: the portable
-# `["sh", "-c", ...]` form because `CMD-SHELL` is BuildKit-only and a legacy `docker build`
-# rejects it; busybox `wget` rather than an installed `curl`; the frontend's own root route
-# (which renders server-side without calling anything) rather than a backend health route this
-# image does not serve; `${PORT:-3000}` resolved by the shell at CHECK time rather than frozen
-# at build time; and `--start-period` to cover the cold Next compile.
+# Healthcheck probes both services: frontend root route and backend /api/v1/health.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["sh", "-c", "wget --spider -q http://127.0.0.1:${PORT:-3000}/ || exit 1"]
+  CMD ["sh", "-c", "wget --spider -q http://127.0.0.1:${PORT:-3000}/ && wget --spider -q http://127.0.0.1:${BACKEND_PORT:-3001}/api/v1/health || exit 1"]
 
-EXPOSE 3000
+EXPOSE 3000 3001
 
-# `next` by name, resolved through the `PATH` set above, rather than a deep path into
-# `next/dist/bin` that a Next major is free to move.
-CMD ["next", "start"]
+# Run both services via the start script.
+CMD ["sh", "/app/scripts/start-all.sh"]
