@@ -46,6 +46,7 @@ import { PrometheusRegistry } from './observability/prometheus-registry.ts';
 import { DefaultMetricsCollector } from './observability/default-metrics.collector.ts';
 import { DLQController } from './events/dlq.controller.ts';
 import { WafMiddleware, WAF_CONFIG } from './middleware/waf.middleware.ts';
+import { SwaggerAuthMiddleware } from './middleware/swagger-auth.middleware.ts';
 import { IpBlocklistService } from './waf/ip-blocklist.service.ts';
 import { GeoIpService } from './waf/geo-ip.service.ts';
 import { ValkeyThrottlerStorage } from './throttler/valkey-throttler.storage.ts';
@@ -159,6 +160,7 @@ const appReflector = new Reflector();
     IpBlocklistService,
     GeoIpService,
     WafMiddleware,
+    SwaggerAuthMiddleware,
     ResilientHttpClient,
     UsersRepository,
     {
@@ -230,6 +232,7 @@ const appReflector = new Reflector();
     IpBlocklistService,
     GeoIpService,
     WafMiddleware,
+    SwaggerAuthMiddleware,
     ResilientHttpClient,
     SmtpEmailTransporter,
     EMAIL_TRANSPORTER,

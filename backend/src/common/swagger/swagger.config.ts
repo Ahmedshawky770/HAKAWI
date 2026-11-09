@@ -1,5 +1,8 @@
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { INestApplication } from '@nestjs/common';
+import type { Request, Response, NextFunction } from 'express';
+
+import { SwaggerAuthMiddleware } from '../middleware/swagger-auth.middleware.ts';
 
 export const SWAGGER_API_PATH = 'api/docs';
 export const SWAGGER_TITLE = 'Hakawi API';
@@ -46,6 +49,13 @@ export const createSwaggerDocument = (app: INestApplication) => {
 };
 
 export const setupSwagger = (app: INestApplication) => {
+  // Protect the Swagger documentation with JWT authentication before the
+  // document handlers are mounted. The middleware runs for every path under
+  // /api/v1/api/docs and requires a valid access token; in production it
+  // additionally requires the super_admin role.
+  const swaggerAuth = app.get(SwaggerAuthMiddleware);
+  app.use(`/api/v1/${SWAGGER_API_PATH}`, (req: Request, res: Response, next: NextFunction) => swaggerAuth.use(req, res, next));
+
   const document = createSwaggerDocument(app);
   SwaggerModule.setup(SWAGGER_API_PATH, app, document, {
     explorer: true,
