@@ -14,6 +14,7 @@ import {
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.ts';
 import { RestrictionGuard } from '../../../common/guards/restriction.guard.ts';
+import { UserFacingInteractionGuard } from '../../../common/guards/user-facing-interaction.guard.ts';
 import { parseOrThrow } from '../../shared/validation/zod-validation.util.ts';
 import { MessagesService } from '../messages.service.ts';
 import {
@@ -41,7 +42,7 @@ export class MessagesController {
    * 400 the plural form that `test/messages.integration-spec.ts` sends, and the service has always
    * taken one recipient.
    */
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, UserFacingInteractionGuard)
   @Post('conversations')
   async createConversation(@Body() body: CreateConversationInput, @Request() req: { user: { sub: string } }) {
     const parsed = parseOrThrow(CreateConversationDto, body);
@@ -92,7 +93,7 @@ export class MessagesController {
    * metadata for a validator to read. An empty body sent `undefined` into a `NOT NULL` column and
    * answered 500, and an unbounded string was accepted at any size.
    */
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, UserFacingInteractionGuard)
   @Post('conversations/:conversationId/messages')
   async sendMessage(
     @Param('conversationId', ParseUUIDPipe) conversationId: string,
@@ -122,13 +123,13 @@ export class MessagesController {
    * construction, so there is no registration order that could make one shadow the other.
    * `ParseUUIDPipe` is what rejects a caller who puts a non-UUID in the `messageId` position.
    */
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, UserFacingInteractionGuard)
   @Patch(':messageId/read')
   async markAsRead(@Param('messageId', ParseUUIDPipe) messageId: string, @Request() req: { user: { sub: string } }) {
     return this.messagesService.markAsRead(messageId, req.user.sub);
   }
 
-  @UseGuards(JwtAuthGuard, RestrictionGuard)
+  @UseGuards(JwtAuthGuard, RestrictionGuard, UserFacingInteractionGuard)
   @Patch('conversations/:conversationId/read')
   async markAllAsRead(
     @Param('conversationId', ParseUUIDPipe) conversationId: string,

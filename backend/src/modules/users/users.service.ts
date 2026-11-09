@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { PasswordHasher } from '../../common/utils/password.util.ts';
 import { EventValidatorService } from '../../common/events/event-validator.service.ts';
+import { assertUserFacingProfileVisible, isHiddenAdminAccount } from '../../common/constants/user-facing-account-policy.ts';
 import { parseDurationToMs } from '../auth/auth.service.ts';
 import { AccountType } from '../../common/constants/roles.ts';
 import { ValkeyService } from '../../common/services/valkey.service.ts';
@@ -116,6 +117,7 @@ export class UsersService {
         if (!user || user.deletedAt) {
           throw new NotFoundException('User not found');
         }
+        assertUserFacingProfileVisible(user.accountType);
         return toPublicUserProfile(user);
       },
     });

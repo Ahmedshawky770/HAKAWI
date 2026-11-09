@@ -294,7 +294,7 @@ export class SearchRepository implements ISearchRepository {
         })
         .from(users)
         .leftJoin(stories, eq(stories.authorId, users.id))
-        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt)))
+        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt), sql`coalesce(${users.accountType}::text, 'reader') <> 'admin'`))
         .groupBy(users.id, users.name)
         .orderBy(desc(sql<number>`count(${stories.id})`))
         .limit(limit)
@@ -302,7 +302,7 @@ export class SearchRepository implements ISearchRepository {
       db
         .select({ total: sql<number>`count(*)` })
         .from(users)
-        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt))),
+        .where(and(searchAuthorsPredicate(query), isNull(users.deletedAt), sql`coalesce(${users.accountType}::text, 'reader') <> 'admin'`)),
     ]);
 
     return {
