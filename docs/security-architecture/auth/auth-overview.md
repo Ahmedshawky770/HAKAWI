@@ -137,9 +137,7 @@ A `grep -rniE "mfa|totp|two.factor|2fa"` across `backend/src` returns **15 files
   controller (2).
 - ⚠️ **No `mfa_required` branch in the login flow.** `POST /api/v1/auth/login` returns tokens
   directly; the second factor is verified separately at `POST /api/v1/auth/mfa/challenge` (step-up).
-- ⚠️ **The `MFA_REQUIRED` code does not reach clients as `errorCode`.** `MfaGuard` sets `code` on
-  the exception body, but `AllExceptionsFilter` reads the `error` field, so clients receive
-  `errorCode: 'INTERNAL_ERROR'` rather than `'MFA_REQUIRED'`/`'MFA_CHALLENGE_REQUIRED'`.
+- ✅ **`MFA_REQUIRED` / `MFA_INVALID_CODE` reach clients as `errorCode`.** `MfaGuard` sets `code` on the exception body, and `AllExceptionsFilter` reads `code` first (`backend/src/common/filters/all-exceptions.filter.ts:62`), so clients receive `errorCode: 'MFA_REQUIRED'` or `'MFA_INVALID_CODE'`.
 - ✅ **Admin enforcement is live.** `shouldEnforceMfa()` returns `true` for any user with an admin
   role, and the guard blocks such an account until `X-MFA-Token` verifies on `@RequireMfa()` routes.
 

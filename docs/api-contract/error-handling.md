@@ -72,7 +72,7 @@ They are listed below as a **retained requirement**, not a description of the AP
 | `INVALID_CREDENTIALS` | 401 | Wrong email/password | ⛔ login throws a bare `UnauthorizedException('Invalid credentials')` |
 | `TOKEN_EXPIRED` | 401 | Token has expired | ⚠️ the **status** is right (401) but the **code** does not exist. `JwtAuthGuard` catches the library's `TokenExpiredError` and rethrows `UnauthorizedException('Invalid or expired token')` (`backend/src/common/guards/jwt-auth.guard.ts:35-42`), so an expired and a malformed token are indistinguishable |
 | `SESSION_REVOKED` | 401 | Session was revoked | ⚠️ the *message* `"Refresh token has been revoked"` is real; there is no code |
-| `MFA_REQUIRED` | 401 | MFA code needed | ✅ `MfaGuard` is composed into `@Secured()` and enforces on routes decorated with `@RequireMfa()` (admin, moderation, users, payments). Guard raises 401 with `code: 'MFA_REQUIRED'` in the body, but `AllExceptionsFilter` reads the `error` field, so the code is not propagated as `errorCode` to clients (known gap). |
+| `MFA_REQUIRED` | 401 | MFA code needed | ✅ `MfaGuard` is composed into `@Secured()` and enforces on routes decorated with `@RequireMfa()` (admin, moderation, users, payments). Guard raises 401 with `code: 'MFA_REQUIRED'` in the body; `AllExceptionsFilter` reads `code` first (`backend/src/common/filters/all-exceptions.filter.ts:62`), so the code IS propagated as `errorCode` to clients. |
 
 ### 5xx Server Errors — ⛔ all unimplemented as codes
 

@@ -59,7 +59,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = exceptionResponse;
       } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         message = (exceptionResponse as { message?: string }).message || message;
-        errorCode = (exceptionResponse as { error?: string }).error || errorCode;
+        errorCode = (exceptionResponse as { code?: string }).code || (exceptionResponse as { error?: string }).error || errorCode;
         details = (exceptionResponse as { details?: unknown[] }).details || [];
       }
     } else if (exception instanceof Error) {

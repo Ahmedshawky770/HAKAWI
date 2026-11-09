@@ -19,34 +19,34 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 | 5 | `adr/001`–`adr/004` | Drizzle · NestJS · Valkey · EventEmitter2 decisions | ✅ 004 corrected |
 | 5b | `adr/005` | Security and correctness hardening of the unreviewed change set | ✅ accepted |
 | 5c | `adr/006` | **The backend could not boot, and the suites that should have caught it were green** | ✅ accepted |
-| 6 | `c4-model/README.md` | C4 model index | ✅ 2026-09-30 |
+| 6 | `c4-model/README.md` | C4 model index | ✅ 2026-11-08 (message-queue ref corrected) |
 | 7 | `c4-model/context/*` | System context, actors, external systems | ✅ 2026-09-30 |
 | 8 | `c4-model/container/*` | Container diagram and per-container detail | ✅ 2026-09-30 (Next.js 16.3.5, no Shadcn) |
 | 9 | `c4-model/component/module-boundaries.md` | C4 component view: module responsibilities, dependency rules | ✅ 2026-09-30 (fully rewritten) |
-| 9b | `c4-model/code/domain-concepts.md` | C4 code view: domain vocabulary mapped to the real tables and 55 events | ✅ 2026-09-30 (fully rewritten) |
+| 9b | `c4-model/code/domain-concepts.md` | C4 code view: domain vocabulary mapped to the real tables and 68 events | ✅ 2026-09-30 (fully rewritten) |
 | 10 | `system-architecture/overview/high-level-architecture.md` | System architecture overview | ✅ 2026-09-30 |
 | 11 | `system-architecture/non-functional-requirements.md` | NFRs, with a per-claim verification status | ✅ 2026-09-30 (fully rewritten) |
-| 12 | `system-architecture/ui-ux-design-system.md` | UI/UX design system | ⚠️ not audited |
-| 13 | `system-architecture/infrastructure/read-replicas.md` | Read replica strategy | ⚠️ **code implemented, wired nowhere** — `db/router.ts` is registered but no query is split; 26 files import plain `db/index.ts` |
-| 14 | `data-architecture/overview/data-architecture.md` | Data architecture overview | ⚠️ not audited |
+| 12 | `system-architecture/ui-ux-design-system.md` | UI/UX design system | ✅ 2026-11-08 — pinned by `frontend/src/app/design-system.test.ts` |
+| 13 | `system-architecture/infrastructure/read-replicas.md` | Read replica strategy | ✅ 2026-11-08 — router active; reads split via `db/index.ts` proxy |
+| 14 | `data-architecture/overview/data-architecture.md` | Data architecture overview | ✅ 2026-11-08 — rewritten to match 40 tables |
 | 14b | `data-architecture/seeders/seed-strategy.md` | Seed strategy | ✅ 2026-09-30 (paths and scripts corrected) |
-| 15 | `data-architecture/schema/schema-overview.md` | Schema: 33 tables, ID strategy, audit fields | ✅ 2026-09-30 (fully rewritten) |
-| 16 | `data-architecture/erd/entity-relationship.md` | ERD: real FKs, indexes, cascade rules | ✅ 2026-09-30 (fully rewritten) |
+| 15 | `data-architecture/schema/schema-overview.md` | Schema: 40 tables, ID strategy, audit fields | ✅ 2026-09-30 (fully rewritten) |
+| 16 | `data-architecture/erd/entity-relationship.md` | ERD: real FKs, indexes, cascade rules | ✅ 2026-11-08 (counts updated to 40) |
 | 17 | `data-architecture/migrations/migration-strategy.md` | Migration runner, checksums, rollback classes | ✅ 2026-09-30 (fully rewritten) |
 | 19 | `security-architecture/overview/security-architecture.md` | Security architecture | ✅ 2026-09-30 |
-| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions, MFA (TOTP + backup codes) | ✅ 2026-11-01 — MFA implemented and enforced via `@Secured()`+`@RequireMfa()` on admin/moderation/users/payments; `MFA_REQUIRED` code not propagated as `errorCode` (known gap) |
-| 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 51 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
-| 22 | `security-architecture/waf/waf-overview.md` | 34 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
-| 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ⚠️ not audited |
-| 24 | `security/{authentication,authorization,compliance,data-protection,waf-rules}.md` | Flat security set | ⚠️ not audited — see the `security-architecture/` set instead |
+| 20 | `security-architecture/auth/auth-overview.md` | Tokens, cookies, sessions, MFA (TOTP + backup codes) | ✅ 2026-11-01 — MFA implemented and enforced via `@Secured()`+`@RequireMfa()` on admin/moderation/users/payments; `MFA_REQUIRED`/`MFA_INVALID_CODE` propagated as `errorCode` via `AllExceptionsFilter`. |
+| 21 | `security-architecture/permissions/permissions-overview.md` | RBAC, 53 permissions, guards | ✅ 2026-09-30 (fully rewritten) |
+| 22 | `security-architecture/waf/waf-overview.md` | 36 rules, 8 layers, blocklist, throttling | ✅ 2026-09-30 (fully rewritten) |
+| 23 | `security-architecture/compliance/compliance-overview.md` | Compliance notes | ✅ 2026-11-08 — marked policy/target, unimplemented items flagged |
+| 24 | `security/{authentication,authorization,compliance,data-protection,waf-rules}.md` | Flat security set | ✅ deprecated stubs — canonical content in `security-architecture/` |
 | 25 | `module-boundaries/overview/module-boundaries.md` | **Authoritative module inventory** — 23 registered modules | ✅ 2026-09-30 (fully rewritten) |
-| 26 | `module-boundaries/events/event-schema-registry.md` | Event registry + DLQ | ⚠️ not audited (both are now built) |
+| 26 | `module-boundaries/events/event-schema-registry.md` | Event registry + DLQ | ✅ 2026-11-08 — 53 emitted events reconciled |
 | 27 | `module-boundaries/payments/payment-system.md` | Paymob flows, webhooks, refunds | ✅ 2026-09-30 |
 | 28 | `module-boundaries/contracts.md` | The real repository interfaces and event shapes | ✅ 2026-09-30 (fully rewritten) |
 | 28b | `module-boundaries/dependency-rules.md`, `interfaces.md` + nested dirs | ⚠️ **four near-duplicate pairs**, no canonical file named. `contracts.md` is now the audited one |
-| 29 | `api-contract/openapi/rest-api-spec.md` | REST API specification — all 167 route handlers enumerated | ✅ 2026-09-30 (fully rewritten) · ⚠️ 2026-10-11 route count and MFA section corrected |
-| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-11-01 — `MFA_REQUIRED` raised by `MfaGuard` on `@RequireMfa()` routes; code not propagated as `errorCode` (known gap) |
-| 31 | `api-contract/{examples,openapi-spec,integration-tests,postman-collection}.md` | Supporting API docs | ⚠️ `integration-tests.md` describes Supertest; the suite is Vitest. `postman-collection.md` ✅ baseUrl corrected to 3001 |
+| 29 | `api-contract/openapi/rest-api-spec.md` | REST API specification — all 216 route handlers enumerated | ✅ 2026-09-30 (fully rewritten) · ⚠️ 2026-10-11 route count and MFA section corrected |
+| 30 | `api-contract/error-handling.md` | Error contract and codes | ✅ 2026-11-01 — `MFA_REQUIRED` raised by `MfaGuard` on `@RequireMfa()` routes; code propagated as `errorCode` via `AllExceptionsFilter`. |
+| 31 | `api-contract/{examples,openapi-spec,integration-tests,postman-collection}.md` | Supporting API docs | ✅ `integration-tests.md` reconciled (Vitest + Supertest, real PG/Valkey) · `postman-collection.md` ✅ baseUrl 3001 |
 | 32 | `development/setup.md` | Development setup guide | ✅ 2026-09-30 |
 | 33 | `development/code-standards.md` | Code standards | ✅ 2026-09-30 |
 | 34 | `testing/testing-strategy.md` | Suites, coverage, isolation, CI | ✅ 2026-09-30 (fully rewritten) |
@@ -71,19 +71,21 @@ the software. Documents that still describe unbuilt behaviour are marked ⚠️ 
 
 Four things a reader should know before trusting this documentation set:
 
-1. **`docs/system-architecture/infrastructure/read-replicas.md` describes a system whose code exists but is wired nowhere.** `grep -rni "replica" backend/src` now matches: `backend/src/db/router.ts` implements read/write splitting (select → replica round-robin with primary fallback; writes → primary; `DB_REPLICA_*`) and is registered in `database.module.ts`. It is unused in practice: no module injects `DATABASE`/`DATABASE_PRIMARY`/`DATABASE_REPLICA`, and 26 files import the plain `db` from `db/index.ts`. The file's banner now reads ⚠️ **CODE IMPLEMENTED, NOT WIRED**, and the read-scaling problem it addresses remains unsolved.
-2. **`docs/module-boundaries/` has four near-duplicate pairs** — `contracts.md` /
-   `contracts/module-contracts.md`, `dependency-rules.md` / `dependencies/dependency-rules.md`,
-   `interfaces.md` / `interfaces/shared-interfaces.md`, plus a flat `security/` set that overlaps
-   `security-architecture/`. **`contracts.md` is now the audited one**; the others are not marked
-   subordinate, so they can still drift apart silently.
-3. **~10 documents have not been audited.** They are listed above as ⚠️. The audit covered every
-   document the refactor touched, plus the roadmap, testing, deployment, security, data
-   architecture, module-boundaries, C4, and NFR sets. It did **not** cover:
-   `data-architecture/overview/`, `data-architecture/erd/` (audited, but the ERD *mermaid* diagram
-   upstream of the text was not regenerated), `c4-model/README.md`, `system-architecture/ui-ux-design-system.md`,
-   the flat `security/` set, `module-boundaries/events/`, and the flat `contracts.md` /
-   `dependency-rules.md` / `interfaces.md` duplicates.
+1. **Read replicas — resolved.** `backend/src/db/router.ts` now routes `select()` to a healthy replica
+   (round-robin, primary fallback) and writes to the primary; `db/index.ts` re-exports the routed proxy,
+   and `docker-compose.yml` defines `postgres-primary` plus two replicas with `DB_REPLICA_HOSTS`.
+   `docs/system-architecture/infrastructure/read-replicas.md` and `docs/adr/007-read-write-splitting-replica-lag.md`
+   describe the live behaviour. Residual gap: no `pg_stat_replication` query / lag metric in app code; the
+   `PostgreSQLReplicationLag` alert rule exists but is not applied to a cluster.
+2. **Duplicate documentation pairs — resolved.** The nested near-duplicates
+   (`contracts/module-contracts.md`, `dependencies/dependency-rules.md`,
+   `interfaces/shared-interfaces.md`) and the flat `security/*.md` set are now deprecation stubs that
+   point at the audited canonical documents (`contracts.md`, `dependency-rules.md`, `interfaces.md`,
+   and the `security-architecture/` set respectively). Only the canonical files should be edited.
+3. **Audit coverage.** Every document listed in the table above has now been checked against
+   the code at least once. Residual items are explicitly marked in their own files: the ERD mermaid
+   diagram is a structural overview (not regenerated), and `compliance-overview.md` is a
+   policy/target document with unimplemented items flagged.
 4. ~~Four live frontend/backend route mismatches~~ **resolved 2026-11-01.** `frontend/src/lib/api.ts` now
    calls the correct routes (comments, reactions, uploads, follows, moderation). The section in
    `api-contract/openapi/rest-api-spec.md` has been renamed to *Frontend / Backend Route Alignment*.
@@ -203,10 +205,10 @@ docs/
 │   ├── overview/high-level-architecture.md
 │   ├── non-functional-requirements.md
 │   ├── ui-ux-design-system.md
-│   └── infrastructure/read-replicas.md   # ⚠️ code implemented, wired nowhere
+│   └── infrastructure/read-replicas.md   # ✅ router active, reads split
 ├── data-architecture/               # Data architecture
 │   ├── overview/
-│   ├── schema/schema-overview.md          # 33 tables
+│   ├── schema/schema-overview.md          # 40 tables
 │   ├── erd/
 │   ├── migrations/migration-strategy.md   # runner, checksums, rollback classes
 │   └── seeders/
