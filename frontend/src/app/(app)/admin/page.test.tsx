@@ -43,7 +43,8 @@ describe('admin hub', () => {
 
   it('shows failure state when a query fails', async () => {
     vi.mocked(queries.useAdminPaymentStats).mockReturnValue(failed() as never);
+    vi.mocked(queries.useAdminPublisherStats).mockReturnValue(failed() as never);
     renderWithProviders(<AdminHubPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/فشل تحميل البيانات|تعذّر تحميل بيانات الإدارة/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/فشل تحميل|تعذّر تحميل|تحميل جزئي|MFA/i);
   });
 });

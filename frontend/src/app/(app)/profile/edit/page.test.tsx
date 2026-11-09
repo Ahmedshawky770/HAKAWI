@@ -50,6 +50,7 @@ const mockUser = {
 describe("Profile edit page", () => {
   beforeEach(() => {
     mockedGetStoredUser.mockReturnValue(AUTH_USER);
+    window.localStorage.setItem("hakawi_user", JSON.stringify(AUTH_USER));
     mockedApi.getUser.mockResolvedValue(mockUser);
   });
 

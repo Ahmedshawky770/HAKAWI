@@ -22,6 +22,7 @@ const mockedGetStoredUser = vi.mocked(getStoredUser);
 describe("restrictions page", () => {
   beforeEach(() => {
     mockedGetStoredUser.mockReturnValue(AUTH_USER);
+    window.localStorage.setItem("hakawi_user", JSON.stringify(AUTH_USER));
     mockedApi.getUserRestrictions.mockResolvedValue({
       restrictions: [
         {

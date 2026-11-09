@@ -62,6 +62,7 @@ describe("conversation page", () => {
 
   beforeEach(() => {
     mockedGetStoredUser.mockReturnValue(AUTH_USER);
+    window.localStorage.setItem("hakawi_user", JSON.stringify(AUTH_USER));
     mockedApi.getMessages.mockResolvedValue(MESSAGES);
     mockedApi.sendMessage.mockResolvedValue({
       id: "message-3",

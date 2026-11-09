@@ -37,6 +37,7 @@ const STATS = {
 describe("publisher dashboard", () => {
   beforeEach(() => {
     mockedGetStoredUser.mockReturnValue(AUTH_USER);
+    window.localStorage.setItem("hakawi_user", JSON.stringify(AUTH_USER));
     mockedApi.getPublisherStats.mockResolvedValue(STATS);
     mockedApi.listContests.mockResolvedValue({
       contests: [CONTEST],

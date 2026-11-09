@@ -32,6 +32,7 @@ const BADGE = {
 describe("badges page", () => {
   beforeEach(() => {
     mockedGetStoredUser.mockReturnValue(AUTH_USER);
+    window.localStorage.setItem("hakawi_user", JSON.stringify(AUTH_USER));
     mockedApi.listBadges.mockResolvedValue({ badges: [BADGE] });
     mockedApi.listUserBadges.mockResolvedValue({
       badges: [

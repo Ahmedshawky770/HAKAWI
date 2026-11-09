@@ -9,18 +9,20 @@ import { stringsFor } from "@/lib/i18n";
 import { storyCategoryLabel } from "@/lib/i18n/story";
 import { DEFAULT_LOCALE } from "@/lib/preferences";
 
-const { mockGetStory, mockDeleteStory, mockGetStoredUser } = vi.hoisted(() => ({
+const { mockGetStory, mockDeleteStory, mockGetStoredUser, mockGetReactionCounts, mockGetReactions } = vi.hoisted(() => ({
   mockGetStory: vi.fn(),
   mockDeleteStory: vi.fn(),
   mockGetStoredUser: vi.fn(() => ({ id: "user-1" })),
+  mockGetReactionCounts: vi.fn(),
+  mockGetReactions: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
     getStory: mockGetStory,
     deleteStory: mockDeleteStory,
-    getReactionCounts: vi.fn(),
-    getReactions: vi.fn(),
+    getReactionCounts: mockGetReactionCounts,
+    getReactions: mockGetReactions,
     addReaction: vi.fn(),
     removeReaction: vi.fn(),
   },
@@ -77,6 +79,9 @@ describe("Story detail page", () => {
     vi.resetAllMocks();
     mockGetStory.mockResolvedValue(mockStory);
     mockGetStoredUser.mockReturnValue({ id: "user-1" });
+    mockGetReactionCounts.mockResolvedValue({ likes: 10, loves: 5 });
+    mockGetReactions.mockResolvedValue([]);
+    window.localStorage.setItem("hakawi_user", JSON.stringify({ id: "user-1" }));
   });
 
   it("renders the story title", async () => {
@@ -126,8 +131,10 @@ describe("Story detail page", () => {
   it("deletes the story when the owner confirms", async () => {
     renderPage();
     await screen.findByText("قصة مميزة");
-    fireEvent.click(screen.getByRole("button", { name: "حذف القصة" }));
-    fireEvent.click(screen.getByRole("button", { name: "تأكيد الحذف" }));
+    const deleteButton = await screen.findByRole("button", { name: "حذف القصة" });
+    fireEvent.click(deleteButton);
+    const confirmButton = await screen.findByRole("button", { name: "تأكيد الحذف" });
+    fireEvent.click(confirmButton);
     await settle();
     expect(mockDeleteStory).toHaveBeenCalledWith("story-1");
   });
